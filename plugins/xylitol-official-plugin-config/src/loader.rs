@@ -119,10 +119,76 @@ fn merge_layer(
     path: &Path,
     secrets: &super::secret_env::SecretMap,
 ) -> Result<(), LoadError> {
+    let mut stack = Vec::new();
+    merge_layer_rec(merged, from_yaml_layers, path, secrets, &mut stack)
+}
+
+fn merge_layer_rec(
+    merged: &mut Value,
+    from_yaml_layers: &mut bool,
+    path: &Path,
+    secrets: &super::secret_env::SecretMap,
+    stack: &mut Vec<std::path::PathBuf>,
+) -> Result<(), LoadError> {
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if stack.contains(&canonical) {
+        return Err(LoadError::validation(format!(
+            "config include cycle: {}",
+            path.display()
+        )));
+    }
+    stack.push(canonical);
+
     let value = load_and_render(path, secrets)?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    for raw in include_paths(&value) {
+        let include_path = resolve_include_path(&raw, base_dir);
+        if !include_path.exists() {
+            log::warn!(
+                target: "xylitol::config",
+                "config include not found: {}",
+                include_path.display()
+            );
+            continue;
+        }
+        merge_layer_rec(merged, from_yaml_layers, &include_path, secrets, stack)?;
+    }
+
+    stack.pop();
     deep_merge(merged, value);
     *from_yaml_layers = true;
     Ok(())
+}
+
+fn include_paths(value: &Value) -> Vec<String> {
+    value
+        .get("include")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn resolve_include_path(raw: &str, base_dir: &Path) -> std::path::PathBuf {
+    let expanded = if raw == "~" {
+        dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(raw))
+    } else if let Some(rest) = raw.strip_prefix("~/") {
+        dirs::home_dir()
+            .map(|home| home.join(rest))
+            .unwrap_or_else(|| std::path::PathBuf::from(raw))
+    } else {
+        std::path::PathBuf::from(raw)
+    };
+    if expanded.is_absolute() {
+        expanded
+    } else {
+        base_dir.join(expanded)
+    }
 }
 
 fn load_from_paths(
@@ -324,6 +390,96 @@ mod tests {
         let overlay = json!(["c"]);
         deep_merge(&mut base, overlay);
         assert_eq!(base, json!(["c"]));
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn include_merges_before_current_layer() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("magpie-models.yaml"),
+            "models:\n  models:\n    magpie-model:\n      provider: openai\n      model: from-include\n",
+        )
+        .unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "include:\n  - magpie-models.yaml\nmodels:\n  models:\n    magpie-model:\n      model: override\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [("HOME", home_s), ("XYLITOL_CONFIG_DIR", global_s)];
+        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
+        let entry = cfg
+            .model
+            .models
+            .get("magpie-model")
+            .expect("included model");
+        assert_eq!(entry.model, "override");
+        assert_eq!(
+            entry.provider,
+            xylitol_plugin_sdk::model::XyModelKind::OpenAi
+        );
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn include_resolves_relative_to_including_file() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        let sub = global.join("generated");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(
+            sub.join("models.yaml"),
+            "models:\n  models:\n    sub-model:\n      provider: anthropic\n      model: sub\n",
+        )
+        .unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "include:\n  - generated/models.yaml\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [("HOME", home_s), ("XYLITOL_CONFIG_DIR", global_s)];
+        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
+        assert!(cfg.model.models.contains_key("sub-model"));
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn include_missing_file_is_skipped() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "include:\n  - not-yet-generated.yaml\nmodels:\n  models:\n    local-model:\n      provider: openai\n      model: local\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [("HOME", home_s), ("XYLITOL_CONFIG_DIR", global_s)];
+        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
+        assert!(cfg.model.models.contains_key("local-model"));
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn include_cycle_errors() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(global.join("a.yaml"), "include:\n  - b.yaml\n").unwrap();
+        std::fs::write(global.join("b.yaml"), "include:\n  - a.yaml\n").unwrap();
+        std::fs::write(global.join("config.yaml"), "include:\n  - a.yaml\n").unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [("HOME", home_s), ("XYLITOL_CONFIG_DIR", global_s)];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("cycle");
+        assert!(err.to_string().contains("cycle"), "unexpected error: {err}");
     }
 
     #[test]

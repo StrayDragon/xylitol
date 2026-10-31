@@ -9,6 +9,8 @@
 # Editor/JSON-Schema contract: configs/config.schema.json is generated from
 # schema_for!(AppConfig) — regenerate with `just gen-config-schema`.
 
+# include:
+#   - magpie-models.yaml  # optional: merge an external config as a low-priority layer
 models:
   # Uncomment default_model + at least one entry under models before first use
   # (avoids accidental live calls from a checked-in example).

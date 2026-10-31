@@ -2,6 +2,9 @@
 depends_on: []
 title: 配置 include：读取外部配置文件
 needs_specs_change: true
+branch: sdd/c3021-add-config-include
+base_branch: main
+base_sha: ad7cd4d523dc1275145878390a65b5d36cda9a26
 ---
 
 # 配置 include：读取外部配置文件

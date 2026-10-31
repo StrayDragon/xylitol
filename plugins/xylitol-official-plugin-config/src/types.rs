@@ -8,6 +8,9 @@ use super::error::LoadError;
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct AppConfig {
+    #[serde(default)]
+    pub include: Vec<String>,
+
     #[serde(rename = "models")]
     #[schemars(rename = "models")]
     pub model: ModelsConfig,

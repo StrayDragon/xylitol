@@ -251,3 +251,6 @@
   @req:r3018
   规则: model-entry-prompt-cache-config
     配置 必须 接受 models.*.prompt_cache（`enabled` 可选布尔、`ttl` 可选 `5m` / `1h`、`retention` 可选 `in_memory` / `24h`）并进入配置 schema 产物；显式字段 必须 覆盖 compat 命名档提供的默认，不得 改变 compat 档自身的语义。
+  @req:r3026
+  规则: config-include
+    配置加载 必须 支持顶层 `include` 列表：每个文件 必须 作为低优先级层在当前文件之前合并，当前文件 必须 覆盖同名字段；相对路径 必须 相对包含文件所在目录解析，`~` 必须 展开为用户主目录；缺失文件 必须 warn 且 跳过，不得 中断加载；include 成环 必须 报错。由配置插件单测覆盖。

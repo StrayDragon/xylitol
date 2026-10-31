@@ -1095,6 +1095,13 @@
         "user": []
       }
     },
+    "include": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "loop_policies": {
       "$ref": "#/$defs/LoopPoliciesConfig",
       "default": {
