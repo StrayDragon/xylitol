@@ -2,6 +2,9 @@
 depends_on: []
 title: 插件注册具名重载参与者
 needs_specs_change: false
+branch: sdd/c3025-add-plugin-reload-participants
+base_branch: main
+base_sha: 3f347a77517c546028ff0990b05811d4667cd4ed
 ---
 
 # 插件注册具名重载参与者

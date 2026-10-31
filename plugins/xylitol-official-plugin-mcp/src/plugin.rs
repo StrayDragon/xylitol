@@ -8,6 +8,7 @@ use xylitol_plugin_sdk::plugin_events::{
 };
 use xylitol_plugin_sdk::rt::{CallExt, Ctx, Plugin, Result};
 use xylitol_plugin_sdk::session_prepare::SessionPrepareHub;
+use xylitol_plugin_sdk::{ReloadEvent, ReloadParticipant};
 
 use crate::config::McpServerConfig;
 use crate::hub::McpPrepareHub;
@@ -65,6 +66,9 @@ async fn install_prepare_hub(ctx: &Ctx, servers: &[McpServerConfig]) -> Result {
     let hub = McpPrepareHub::new(servers.to_vec());
     let hub_arc: Arc<dyn SessionPrepareHub> = Arc::new(hub.clone());
     ctx.provide_as::<dyn SessionPrepareHub>(hub_arc)?;
+    if let Some(reload_hub) = ctx.get::<xylitol_plugin_sdk::ReloadHub>() {
+        reload_hub.register(Arc::new(McpReloadParticipant));
+    }
     ctx.on::<SessionPrepare>({
         let hub = hub.clone();
         move |event, call| {
@@ -88,6 +92,19 @@ async fn install_prepare_hub(ctx: &Ctx, servers: &[McpServerConfig]) -> Result {
         }
     })?;
     Ok(())
+}
+
+struct McpReloadParticipant;
+
+#[async_trait::async_trait]
+impl ReloadParticipant for McpReloadParticipant {
+    fn name(&self) -> &'static str {
+        "mcp"
+    }
+
+    async fn reload(&self, _event: &ReloadEvent) -> Result<String, String> {
+        Ok("session/prepare reload fired".into())
+    }
 }
 
 fn merge_prepare(acc: &mut SessionPrepareResult, mine: SessionPrepareResult) {

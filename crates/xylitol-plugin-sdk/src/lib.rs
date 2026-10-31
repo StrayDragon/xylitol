@@ -21,6 +21,7 @@ pub mod plugin_config;
 pub mod plugin_events;
 mod ports;
 pub mod registry;
+pub mod reload;
 pub mod resource;
 pub mod rt;
 pub mod session;
@@ -103,6 +104,7 @@ pub use ports::{
     run_before_request, sanitize_session_display_name, should_compact, typed,
 };
 pub use registry::{HostRegistries, Registry, SkillEntry, XyPluginCommand};
+pub use reload::{ReloadEvent, ReloadHub, ReloadParticipant};
 pub use rt::{RUTIS_LOCK, SDK_API_VERSION};
 pub use session_prepare::{
     CUSTOM_TYPE_SESSION_PREPARE, SESSION_PREPARE_TIMEOUT_NOTICE, SessionPrepareHub,

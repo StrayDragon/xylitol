@@ -12,6 +12,7 @@ impl Plugin for RegistriesPlugin {
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
         ctx.provide(HostRegistries::new())?;
+        ctx.provide(xylitol_plugin_sdk::ReloadHub::new())?;
         Ok(())
     }
 }

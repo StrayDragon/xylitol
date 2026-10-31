@@ -81,6 +81,10 @@ impl XyInProcessDriver {
         self.reload_registry = registry;
     }
 
+    pub fn ctx(&self) -> Option<&xylitol_plugin_sdk::rt::Ctx> {
+        self.ctx.as_ref()
+    }
+
     pub fn reload_registry(&self) -> &Arc<ReloadRegistry> {
         &self.reload_registry
     }
