@@ -89,6 +89,15 @@ impl McpSlot {
         McpAction::None
     }
 
+    pub fn select_row_at(&mut self, row: u16) -> Option<&str> {
+        let index = self.list.item_index_at_screen_row(row)?;
+        self.list.set_selected_index(index);
+        self.list
+            .filtered_items
+            .get(index)
+            .map(|i| i.value.as_str())
+    }
+
     pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push(theme.paint_muted(&format!(" MCP · {}", self.summary_line)));

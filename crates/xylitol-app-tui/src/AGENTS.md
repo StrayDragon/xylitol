@@ -32,6 +32,7 @@
 | 滚动提示默认 **尾插**（跟底可见、保 paint-cache）；顶层原则与例外见 `app-tui-fixed-zone` spec 与本端代码；瞬时确认优先页脚 / 状态条 / 槽 | 无理由顶插；瞬时确认堆进滚动区 |
 | 渲染只用 `xylitol_tui`；缺能力先改包再接线；产品路径 **host 驱动** | 准通用实现塞进本端；产品调 demo 启动 API（`TUI::start()`） |
 | 鼠标默认 **ApplicationOwned**（host 启动构造时绑定，缺省 AO；应用内选区 + dock 排除）；命中/探针管线细节以包代码与 `package-tui-pointer` 合约为 SSOT；模式命名以包 AGENTS 硬约束为准（`Inline` / `ApplicationOwned`） | mid-session 热切；产品路径读/设 lab env（`XYLITOL_TUI_*`）或用 `HitPriorityFn` |
+| 固定区可点元素（editor 上边框视图 chip、槽 `[关闭]`、槽行、队列条）必须能只靠指针到达；chip 命中以屏上实际绘制行为准（`app-tui-mouse-actions`） | 只在键位上暴露能力；按上次渲染宽度反推 chip 列 |
 | Agent 只经产品线协议客户端（JSON-RPC 文本，端侧）或 Host 内 `XyDriver`（依赖纪律同 `src/AGENTS.md`） | 产品 TUI 默认同进程直握操作器 |
 | Trust 在 CLI 门禁（见 `llmanspec/specs/app-tui-trust/`、`domain-security/`）；本端 `EditorSlot::Choice` 已解冻给内置 `ask` | Plate / Settings stub 冻结期间扩展其功能或抢先落对应 spec |
 | 颜色走本端 theme token；已确认需求须先有 harness / BDD 护栏 | 另立 hex；没有护栏就先写实现 |

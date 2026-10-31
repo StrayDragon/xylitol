@@ -28,7 +28,6 @@ pub(super) fn paint_ask_header_line(
     summary: &str,
     inner: usize,
 ) -> String {
-    let hint = theme.paint_muted(&key_hint("Alt+E"));
     let ask = theme.paint_tool_name("Ask");
     let rest = summary
         .strip_prefix("Ask")
@@ -40,15 +39,14 @@ pub(super) fn paint_ask_header_line(
                 format!(" · {summary}")
             }
         });
-    let fixed =
-        visible_width(marker) + 1 + visible_width("Ask") + 2 + visible_width(&key_hint("Alt+E"));
+    let fixed = visible_width(marker) + 1 + visible_width("Ask");
     let rest_budget = inner.saturating_sub(fixed).max(4);
     let rest_fit = if visible_width(&rest) <= rest_budget {
         rest
     } else {
         truncate_to_width(&rest, rest_budget, "…", false)
     };
-    format!("{marker} {ask}{rest_fit}  {hint}")
+    format!("{marker} {ask}{rest_fit}")
 }
 
 pub(crate) fn format_token_count(n: u64) -> String {
@@ -72,16 +70,12 @@ pub(super) fn paint_tool_header_line(
 ) -> String {
     use crate::bridge::display_tool_title;
     let title = display_tool_title(name);
-    let hint = theme.paint_muted(&key_hint("Alt+E"));
     let timeout_note = match timeout_secs {
         Some(n) => theme.paint_muted(&format!("(timeout {n}s) ")),
         None => String::new(),
     };
     if args_preview.is_empty() {
-        format!(
-            "{marker} {}  {timeout_note}{hint}",
-            theme.paint_tool_name(&title)
-        )
+        format!("{marker} {}  {timeout_note}", theme.paint_tool_name(&title))
     } else {
         let (path, range) = split_path_and_range(args_preview);
         let loc = match range {
@@ -93,7 +87,7 @@ pub(super) fn paint_tool_header_line(
             None => theme.paint_tool_path(path),
         };
         format!(
-            "{marker} {} {}  {timeout_note}{hint}",
+            "{marker} {} {}  {timeout_note}",
             theme.paint_tool_name(&title),
             loc
         )
@@ -428,7 +422,7 @@ pub(super) fn paint_thinking_block(
     };
     let dur = elapsed_secs.filter(|s| *s > 0).map(format_elapsed_secs);
     let label = thought_header_body(dur.as_deref());
-    let header = theme.paint_muted(&format!("{marker} {label}  {}", key_hint("Ctrl+T")));
+    let header = theme.paint_muted(&format!("{marker} {label}"));
     let header_row = lines.len();
     push_wrapped(&mut lines, &header, width);
     block_hits.push(CachedFoldHit {
@@ -763,11 +757,7 @@ pub(super) fn paint_compaction_block(
                 Some(m) => format!("Compacted from {n} → {} tokens", format_token_count(m)),
                 None => format!("Compacted from {n} tokens"),
             };
-            let header = if fold.compaction_expanded {
-                format!("{marker} [compaction] {word}")
-            } else {
-                format!("{marker} [compaction] {word} (Alt+E to expand)")
-            };
+            let header = format!("{marker} [compaction] {word}");
             let header_row = lines.len();
             push_wrapped(&mut lines, &theme.paint_muted(&header), width);
             block_hits.push(CachedFoldHit {

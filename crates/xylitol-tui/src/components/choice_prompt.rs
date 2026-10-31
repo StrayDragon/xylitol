@@ -224,6 +224,10 @@ pub struct ChoicePrompt {
     on_done: Box<dyn Fn(ChoiceResult)>,
     finished: bool,
     skip_confirm_pending: bool,
+    origin: (u16, u16),
+    body_top: usize,
+    option_map: Vec<Option<usize>>,
+    rendered: bool,
 }
 
 impl ChoicePrompt {
@@ -253,11 +257,28 @@ impl ChoicePrompt {
             on_done: Box::new(on_done),
             finished: false,
             skip_confirm_pending: false,
+            origin: (0, 0),
+            body_top: 0,
+            option_map: Vec::new(),
+            rendered: false,
         }
     }
 
     pub fn finished(&self) -> bool {
         self.finished
+    }
+
+    pub fn set_screen_origin(&mut self, col: u16, row: u16) {
+        self.origin = (col, row);
+    }
+
+    pub fn option_index_at_screen_row(&self, row: u16) -> Option<usize> {
+        if !self.rendered || row < self.origin.1 {
+            return None;
+        }
+        let offset = (row - self.origin.1) as usize;
+        let index = offset.checked_sub(self.body_top)?;
+        self.option_map.get(index).copied().flatten()
     }
 
     pub fn set_rail(&mut self, rail: Option<RgbColor>) {
@@ -549,6 +570,9 @@ fn wrap_plain(text: &str, width: usize) -> Vec<String> {
 impl Component for ChoicePrompt {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
+        self.rendered = !self.finished;
+        self.option_map.clear();
+        self.body_top = 0;
         if self.finished {
             return lines;
         }
@@ -675,6 +699,7 @@ impl Component for ChoicePrompt {
         };
 
         let mut left_lines: Vec<String> = Vec::new();
+        let mut left_map: Vec<Option<usize>> = Vec::new();
         let mut focus_desc: Option<String> = None;
         for (i, opt) in options.iter().enumerate() {
             let selected = self.cursor == i;
@@ -687,6 +712,7 @@ impl Component for ChoicePrompt {
                 &self.format_option_row(mode, selected, checked, &opt.label, opt.recommended),
                 left_w,
             ));
+            left_map.push(Some(i));
             if selected {
                 focus_desc = opt.description.clone();
             }
@@ -698,8 +724,11 @@ impl Component for ChoicePrompt {
                     &(self.theme.muted)(&format!("    {desc}")),
                     left_w,
                 ));
+                left_map.push(None);
             }
         }
+        self.body_top = lines.len();
+        self.option_map = left_map;
 
         if allow_other {
             let other_i = options.len();
@@ -725,23 +754,27 @@ impl Component for ChoicePrompt {
                 (self.theme.normal)(&body)
             };
             left_lines.push(Self::fit(&painted, left_w));
+            self.option_map.push(Some(other_i));
             if selected {
                 focus_desc = Some("自由补充你的答案".into());
             }
             if self.other_focused {
                 for line in self.other_input.render(left_w.saturating_sub(4).max(1)) {
                     left_lines.push(Self::fit(&format!("    {line}"), left_w));
+                    self.option_map.push(None);
                 }
             } else if !self.states[self.tab].other_text.is_empty() {
                 left_lines.push(Self::fit(
                     &(self.theme.muted)(&format!("    > {}", self.states[self.tab].other_text)),
                     left_w,
                 ));
+                self.option_map.push(None);
             } else if selected && !side {
                 left_lines.push(Self::fit(
                     &(self.theme.muted)("    Tab · type free text"),
                     left_w,
                 ));
+                self.option_map.push(None);
             }
         }
 
@@ -949,7 +982,15 @@ impl Component for ChoicePrompt {
         let _ = printable_from_key_event(key);
     }
 
-    fn invalidate(&mut self) {}
+    fn invalidate(&mut self) {
+        self.rendered = false;
+        self.option_map.clear();
+        self.body_top = 0;
+    }
+
+    fn set_screen_origin(&mut self, col: u16, row: u16) {
+        ChoicePrompt::set_screen_origin(self, col, row);
+    }
 }
 
 trait InputWithValue {
@@ -1067,6 +1108,52 @@ mod tests {
             r#"{"status":"skipped","answers":[]}"#
         );
         assert_eq!(r.human_summary_line(), "Ask · 已跳过 · 按已有信息继续");
+    }
+
+    fn noop_prompt(questions: Vec<ChoiceQuestion>) -> ChoicePrompt {
+        ChoicePrompt::new(questions, ChoicePromptTheme::default(), |_| {})
+    }
+
+    #[test]
+    fn screen_row_maps_to_option_index_with_origin_offset() {
+        let mut p = noop_prompt(vec![sample_single()]);
+        p.set_screen_origin(0, 10);
+        let _ = p.render(60);
+        let first = (10..20)
+            .find_map(|row| p.option_index_at_screen_row(row).map(|i| (row, i)))
+            .expect("an option row must be reachable");
+        assert_eq!(first.1, 0, "first option row maps to index 0");
+        assert_eq!(p.option_index_at_screen_row(first.0 + 1), Some(1));
+        assert_eq!(
+            p.option_index_at_screen_row(9),
+            None,
+            "row above the origin"
+        );
+        assert_eq!(
+            p.option_index_at_screen_row(19),
+            None,
+            "row past the rendered body"
+        );
+    }
+
+    #[test]
+    fn other_row_and_invalidate_follow_render_state() {
+        let mut p = noop_prompt(vec![sample_single()]);
+        let _ = p.render(60);
+        let last_option = (0..30)
+            .filter_map(|row| p.option_index_at_screen_row(row))
+            .next_back()
+            .expect("option rows");
+        assert_eq!(
+            last_option, 2,
+            "Other… row keeps the option index of the last slot"
+        );
+        p.invalidate();
+        assert_eq!(
+            p.option_index_at_screen_row(5),
+            None,
+            "invalidate clears the row map"
+        );
     }
 
     #[test]

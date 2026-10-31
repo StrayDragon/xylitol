@@ -12,7 +12,7 @@
       那么 空闲帧不含忙碌短词且忙碌帧恰一行 Working 且 footer 不含 Working
   @req:r1224
   规则: footer-minimal
-    产品 footer 须为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，不得在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 须省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 须在 used 字段后追加派生占用比（见 atc21）；并在可获得 prompt cache 读取状态时 须在 used 字段后、占用比之前追加 `· cache N`（命中 N tokens）或 `· cache ?`（上游未上报）；不适用或缺省时 须省略，不得伪造 `cache 0`；不得在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 不得伪造 used 0；不得常驻快捷键墙；放不下时 须截断右侧而非增高。
+    产品 footer 须为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，不得在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 须省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 须在 used 字段后追加派生占用比（见 atc21）；并在可获得 prompt cache 读取状态时 须在 used 字段后、占用比之前追加 `· cache N`（命中 N tokens）或 `· cache ?`（上游未上报）；不适用或缺省时 须省略，不得伪造 `cache 0`；不得在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 不得伪造 used 0；不得常驻快捷键墙；放不下时 须截断右侧而非增高。编辑区上边框右端 可以承载视图动作 chip（`[详情]` / `[侧栏]` / `[重置折叠]`，语义见 app-tui-mouse-actions dock-action-chips）；chip 与边框同高，不得使 footer 或编辑区增高、不得换行，宽度不足时整 chip 不画。
 
     场景: 页脚单一行带启发式来源
       当 以 Heuristic 上下文估计驱动 footer token 字段
@@ -236,13 +236,13 @@
 
   @req:r2903
   规则: 会话详情覆盖弹出框
-    产品 TUI 须提供屏幕右侧会话详情覆盖弹出框（overlay，非常驻分栏，DESIGN 硬规则 2 例外）：键位切换显隐，展示会话身份、生效模型、thinking 档与工作目录；复按切换或 Esc 须收起；通知栈 z 序须高于覆盖弹出框。覆盖弹出框为瞬态展示，不得冒充待办栏、status 或槽，不得常驻占用版面。点击覆盖弹出框矩形 须收起；该矩形 须注册为 chrome 捕获命中区，区内按下/拖拽 不得启动内容区选区。
+    产品 TUI 须提供屏幕右侧会话详情覆盖弹出框（overlay，非常驻分栏，DESIGN 硬规则 2 例外）：除动作 `app.session.popup`（默认无和弦，见 app-tui-mouse-actions default-binding-contraction）外 须有屏上入口——编辑区上边框右端 `[详情]` chip 可左键点击显隐（app-tui-mouse-actions dock-action-chips）；展示会话身份、生效模型、thinking 档与工作目录；复点 chip、再触发动作或 Esc 须收起；通知栈 z 序须高于覆盖弹出框。覆盖弹出框为瞬态展示，不得冒充待办栏、status 或槽，不得常驻占用版面。点击覆盖弹出框矩形 须收起；该矩形 须注册为 chrome 捕获命中区，区内按下/拖拽 不得启动内容区选区。
 
     场景: 会话弹出层切换渲染关闭
       假如 产品 TUI 主循环就绪
-      当 切换覆盖弹出框显隐
+      当 左键单击 编辑区上边框右端 [详情] chip
       那么 覆盖弹出框渲染会话详情
-      当 复按切换收起
+      当 再次左键单击该 chip
       那么 覆盖弹出框不再渲染
 
     场景: 弹出层空闲Esc关闭无树链
@@ -260,18 +260,18 @@
 
   @req:r2904
   规则: 会话侧栏
-    产品 TUI 须提供常驻会话侧栏：独立键位切换；开启时内容区 须按全宽减侧栏宽重排（换行按内容宽，不得以覆盖截断冒充让宽），最右整高绘制分隔与实验占位内容（现施工中；业务字段待正式业务代码定义后回归，见 c2911 草案）；viewport 通知栈与瞬态覆盖弹出框 须按内容宽收口，不得压住侧栏；关闭后内容区 须恢复全宽。侧栏宽度 须支持档位循环（24 / 32 / 40 列），并保证内容区至少 40 列；经 `app.session.sidebarWidth`（默认 alt+shift+u）或点击分隔条 须循环档位。另提供单键三态循环 `app.session.detailsCycle`（默认 alt+o）：关 → 覆盖弹出框 → 侧栏 → 关；窄档侧栏不可用时 须降级为覆盖弹出框，不得丢信息。侧栏开启时滚动槽（gutter）须贴内容右边界（侧栏左缘），侧栏带内 不得渲染滚动条；鼠标滚轮与选区 须以内容边界为界，不得越界作用于侧栏带：侧栏带内滚轮 只作用于侧栏自身内容（占位内容未溢出时保持 0），点击侧栏带 须收起侧栏；侧栏与覆盖弹出框命中区 须捕获指针，选区不得穿透。侧栏与覆盖弹出框显隐互不影响；不得冒充待办栏或槽。侧栏 仅标准档及以上（宽度档位 ≥80 列）可用，标准档以下 不得渲染侧栏；标准档以下按切换键 须降级为打开覆盖弹出框（信息不丢、形态切换）。宿主让宽对账 须与侧栏布局同口径推导——开启且可用才让宽。
+    产品 TUI 须提供常驻会话侧栏：除 `app.session.sidebar` 与 `app.session.detailsCycle`（默认均无和弦，见 app-tui-mouse-actions default-binding-contraction）外 须有屏上入口——编辑区上边框右端 `[侧栏]` chip 可左键点击显隐（app-tui-mouse-actions dock-action-chips）；开启时内容区 须按全宽减侧栏宽重排（换行按内容宽，不得以覆盖截断冒充让宽），最右整高绘制分隔与实验占位内容（现施工中；业务字段待正式业务代码定义后回归，见 c2911 草案）；viewport 通知栈与瞬态覆盖弹出框 须按内容宽收口，不得压住侧栏；关闭后内容区 须恢复全宽。侧栏宽度 须支持档位循环（24 / 32 / 40 列），并保证内容区至少 40 列；经 `app.session.sidebarWidth` 动作（默认无和弦）或点击分隔条 须循环档位。另提供三态循环动作 `app.session.detailsCycle`（默认无和弦）：关 → 覆盖弹出框 → 侧栏 → 关；窄档侧栏不可用时 须降级为覆盖弹出框，不得丢信息。侧栏开启时滚动槽（gutter）须贴内容右边界（侧栏左缘），侧栏带内 不得渲染滚动条；鼠标滚轮与选区 须以内容边界为界，不得越界作用于侧栏带：侧栏带内滚轮 只作用于侧栏自身内容（占位内容未溢出时保持 0），点击侧栏带 须收起侧栏；侧栏与覆盖弹出框命中区 须捕获指针，选区不得穿透。侧栏与覆盖弹出框显隐互不影响；不得冒充待办栏或槽。侧栏 仅标准档及以上（宽度档位 ≥80 列）可用，标准档以下 不得渲染侧栏；标准档以下按切换键 须降级为打开覆盖弹出框（信息不丢、形态切换）。宿主让宽对账 须与侧栏布局同口径推导——开启且可用才让宽。
 
     场景: 会话侧栏切换与恢复
       假如 产品 TUI 主循环就绪
-      当 切换侧栏
+      当 左键单击 编辑区上边框右端 [侧栏] chip
       那么 右侧栏上屏且内容区让宽
-      当 复按收起
+      当 再次左键单击该 chip
       那么 侧栏消失且内容区恢复
 
     场景: 侧栏低于标准档回落返回至弹出层
       假如 产品 TUI 会话就绪于窄终端
-      当 切换侧栏
+      当 左键单击 编辑区上边框右端 [侧栏] chip
       那么 覆盖弹出框上屏且侧栏不出
 
     场景: 侧栏与弹出层共存

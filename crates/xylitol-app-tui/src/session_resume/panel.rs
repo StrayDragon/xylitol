@@ -191,6 +191,38 @@ impl SessionResumePanel {
         }
     }
 
+    pub fn header_rows(&self, _width: usize) -> usize {
+        if self.loading {
+            return if self.status_line.is_some() { 1 } else { 0 };
+        }
+        if self.rename.is_some() {
+            return 2;
+        }
+        4 + usize::from(self.confirming_delete.is_some()) + usize::from(self.status_line.is_some())
+    }
+
+    pub fn row_index_at(&self, list_row: usize) -> Option<usize> {
+        let rows = self.visible_rows();
+        if rows.is_empty() {
+            return None;
+        }
+        let total = rows.len();
+        let max_vis = self.max_visible.min(total);
+        let start = self
+            .selected
+            .saturating_sub(max_vis / 2)
+            .min(total.saturating_sub(max_vis));
+        let end = (start + max_vis).min(total);
+        let mut line = 0usize;
+        for i in start..end {
+            if line == list_row {
+                return Some(i);
+            }
+            line += 1 + usize::from(self.show_path);
+        }
+        None
+    }
+
     pub fn render(&self, width: usize) -> Vec<String> {
         let w = width.max(1);
         let mut lines = Vec::new();
@@ -364,6 +396,16 @@ impl SessionResumePanel {
             );
         }
         lines
+    }
+
+    pub fn select_row_at(&mut self, list_row: usize) -> Option<String> {
+        let index = self.row_index_at(list_row)?;
+        self.selected = index;
+        self.visible_rows().get(index).map(|e| e.id.clone())
+    }
+
+    pub fn selected_session_id(&self) -> Option<String> {
+        self.visible_rows().get(self.selected).map(|e| e.id.clone())
     }
 
     pub fn handle_input(&mut self, event: InputEvent) -> SessionResumeAction {

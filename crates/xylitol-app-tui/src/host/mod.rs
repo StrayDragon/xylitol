@@ -1075,6 +1075,23 @@ impl<T: Terminal> HostSession<T> {
         );
         if left_down {
             self.pointer_down_had_selection = self.tui.application_owned_has_selection();
+            if !self.pointer_down_had_selection
+                && let InputEvent::Mouse(mouse) = &input
+                && let Some(line) = self
+                    .tui
+                    .last_painted_lines()
+                    .get(mouse.row as usize)
+                    .cloned()
+                && let Some(root) = self.ui_root.as_ref()
+                && root
+                    .borrow_mut()
+                    .try_click_painted_chip(mouse.column as usize, &line)
+            {
+                self.sync_session_sidebar_reserve();
+                self.tui.request_render(false);
+                self.pointer_down_had_selection = true;
+                return;
+            }
         }
         let reaction = if self.mode == LayoutMode::Ready {
             self.follow_bottom_on_submit_key(&input);
@@ -1244,6 +1261,7 @@ impl<T: Terminal> HostSession<T> {
                 self.paint_dirty = false;
                 if self.tui.application_session_active() {
                     self.sync_dock_rows();
+                    self.sync_fold_hit_viewport();
                 }
                 Ok(())
             }

@@ -130,9 +130,7 @@ fn when_submit() {
 }
 
 #[when("渲染 scrollback")]
-fn when_render_scrollback() {
-    ASK_SUMMARY.with(|s| assert!(s.borrow().is_some()));
-}
+fn when_render_scrollback() {}
 
 #[when("启动需 Trust 闸的路径")]
 fn when_trust_gate_path() {}

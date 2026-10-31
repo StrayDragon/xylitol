@@ -82,11 +82,11 @@
       并且 会话树未打开
   @req:r1285
   规则: product-queue-fixed-zone
-    产品 TUI 在 steer/follow-up 队列非空时 须在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer；实现为 queue strip）；steer 与 follow-up 每类 须至多一行，取该队列最新一条正文；该类深度 > 1 时 须在标签后附计数 `(N)`，单条 不得显示计数；不得逐条铺开全部排队消息。不得将排队内容写成 scrollback System [steer]/[follow-up] 墙；不得在 footer/status 另加队列计数徽章（如 `q:sN|fM`）；Alt+Up 须将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。经 attach/Remote 时，入队后的 drain_pending 不得用空队列深度把已画条文案清掉；校准 须只按 Host 真实深度 FIFO 消退。
+    产品 TUI 在 steer/follow-up 队列非空时 须在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及点击取回提示（不得写组合键名，见 app-tui-mouse-actions echo-without-key-names；实现为 queue strip）；steer 与 follow-up 每类 须至多一行，取该队列最新一条正文；该类深度 > 1 时 须在标签后附计数 `(N)`，单条 不得显示计数；不得逐条铺开全部排队消息。不得将排队内容写成 scrollback System [steer]/[follow-up] 墙；不得在 footer/status 另加队列计数徽章（如 `q:sN|fM`）；app.message.dequeue（默认 Alt+Up，也可点击队列条）须将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。经 attach/Remote 时，入队后的 drain_pending 不得用空队列深度把已画条文案清掉；校准 须只按 Host 真实深度 FIFO 消退。
 
-    场景: 队列条带渲染与Alt向上恢复
-      当 以主机泵忙碌插队后渲染队列条并按 Alt+Up
-      那么 队列条含插队文本且 Alt+Up 还原队列文本
+    场景: 队列条带渲染与点击恢复
+      当 以主机泵忙碌插队后渲染队列条并点击队列条
+      那么 队列条含插队文本且队列文本还原进编辑器
 
     场景: 多条排队压成每类一行
       当 以主机泵忙碌连续插队两条 steer 后渲染队列条
@@ -307,7 +307,7 @@
       那么 驱动收到的正文为展开全文
   @req:r1311
   规则: keybindings-catalog-hot-reload
-    产品 TUI 须将已接线产品动作注册为 app.*（或文档约定的）keybinding id 并经 KeybindingsManager 匹配，不得在产品输入路径新增字面和弦硬编码；须在启动时从用户 agent 目录 keybindings.json（若存在）加载覆盖；须提供 reload_keybindings（或等价）在成功时替换当前会话绑定、失败时保留旧绑定并报告诊断；重载 不得清空 transcript 或 session 历史。
+    产品 TUI 须将已接线产品动作注册为 app.*（或文档约定的）keybinding id 并经 KeybindingsManager 匹配，不得在产品输入路径新增字面和弦硬编码；被收缩的动作 id（app-tui-mouse-actions default-binding-contraction）必须仍注册且分发可运行，但其默认和弦为空，仅用户重绑后生效；须在启动时从用户 agent 目录 keybindings.json（若存在）加载覆盖；须提供 reload_keybindings（或等价）在成功时替换当前会话绑定、失败时保留旧绑定并报告诊断；重载 不得清空 transcript 或 session 历史。
 
     场景: 键绑定重载失败保留旧
       当 以主机泵以损坏 JSON 请求重载键位

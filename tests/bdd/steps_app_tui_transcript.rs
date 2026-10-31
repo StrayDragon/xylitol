@@ -464,15 +464,15 @@ fn then_thought_label_and_duration(tui_interaction: &TuiInteraction) {
     );
 }
 
-#[then("思考块旁注为括号完整和弦 Ctrl+T")]
+#[then("思考块头不含括号组合键")]
 fn then_thinking_block_chord_hint(tui_interaction: &TuiInteraction) {
     let plain = {
         let mut fx = tui_interaction.fx.borrow_mut();
         fx.as_mut().expect("fixture mounted").render_plain(80)
     };
     assert!(
-        plain.contains("(Ctrl+T)"),
-        "att8: thinking fold hint must be a full parenthesised chord:\n{plain}"
+        !plain.contains("Ctrl+T") && !plain.contains("Alt+E"),
+        "att8: thinking head must not echo chords:\n{plain}"
     );
 }
 
@@ -803,8 +803,8 @@ fn then_write_viewport_tail(tui_interaction: &TuiInteraction) {
         "early lines must stay outside the 10-line tail viewport:\n{plain}"
     );
     assert!(
-        plain.contains("30 total") && plain.contains("ctrl+o to expand"),
-        "att14: omitted lines are announced with count + ctrl+o hint:\n{plain}"
+        plain.contains("30 total") && plain.contains("click to expand"),
+        "att14: omitted lines are announced with count + click hint:\n{plain}"
     );
 }
 
@@ -954,15 +954,6 @@ fn then_no_fabricated_footer(tui_interaction: &TuiInteraction) {
     );
 }
 
-fn ctrl_key(ch: char) -> crossterm::event::KeyEvent {
-    crossterm::event::KeyEvent {
-        code: crossterm::event::KeyCode::Char(ch),
-        modifiers: crossterm::event::KeyModifiers::CONTROL,
-        kind: crossterm::event::KeyEventKind::Press,
-        state: crossterm::event::KeyEventState::NONE,
-    }
-}
-
 #[when("以场景构建器回放硬截断 bash 工具并按下 Ctrl+O")]
 fn when_mount_hard_truncated_bash(tui_interaction: &TuiInteraction) {
     let mut sb = SceneBuilder::begin();
@@ -976,7 +967,7 @@ fn when_mount_hard_truncated_bash(tui_interaction: &TuiInteraction) {
         is_error: false,
     });
     seal_and_open_cluster(&mut fx);
-    fx.handle_key(ctrl_key('o'));
+    fx.toggle_tools_output_default();
     *tui_interaction.fx.borrow_mut() = Some(fx);
 }
 
@@ -1011,7 +1002,7 @@ fn when_mount_long_write_ctrl_o(tui_interaction: &TuiInteraction) {
         args: serde_json::json!({ "path": "docs/x.md", "content": long_body(30) }),
     });
     seal_and_open_cluster(&mut fx);
-    fx.handle_key(ctrl_key('o'));
+    fx.toggle_tools_output_default();
     *tui_interaction.fx.borrow_mut() = Some(fx);
 }
 
@@ -1023,7 +1014,7 @@ fn then_write_body_expands(tui_interaction: &TuiInteraction) {
     };
     assert!(
         plain.contains("body-line-01") && plain.contains("body-line-30"),
-        "att16: write body viewport MUST still allow Ctrl+O expansion:\n{plain}"
+        "att16: write body viewport MUST still allow the viewport default action:\n{plain}"
     );
 }
 
@@ -1269,17 +1260,17 @@ fn then_no_envelope_when_disabled(tui_interaction: &TuiInteraction) {
     );
 }
 
-#[then("折叠信封与收起簇头旁注均为 Alt+Shift+E")]
+#[then("折叠信封与收起簇头行均只有折叠三角且不含括号组合键")]
 fn then_marker_chords(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
     for line in plain.lines().filter(|l| l.contains("Worked for")) {
         assert!(
-            line.contains("(Alt+Shift+E)"),
+            !line.contains("(Alt"),
             "att27: folded envelope head advertises the expand chord: {line:?}"
         );
     }
     assert!(
-        plain.contains("▸ Explored 1 file · 1 read  (Alt+Shift+E)"),
+        plain.contains("▸ Explored 1 file"),
         "att27: collapsed cluster heads advertise the same expand chord:\n{plain}"
     );
     assert!(
@@ -1288,7 +1279,7 @@ fn then_marker_chords(tui_interaction: &TuiInteraction) {
     );
 }
 
-#[then("展开簇头旁注为 Ctrl+Alt+Shift+E 且信封簇头行不带 (Alt+E)")]
+#[then("展开簇头且信封簇头行不含括号组合键")]
 fn then_expanded_head_chord(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
     let expanded_head = plain
@@ -1296,7 +1287,7 @@ fn then_expanded_head_chord(tui_interaction: &TuiInteraction) {
         .find(|l| l.contains("▾") && l.contains("Explored"))
         .expect("a cluster head was opened by the click");
     assert!(
-        expanded_head.contains("(Ctrl+Alt+Shift+E)"),
+        !expanded_head.contains('('),
         "att27: expanded cluster head advertises the collapse chord: {expanded_head:?}"
     );
     for line in plain.lines() {
@@ -1326,40 +1317,28 @@ fn when_mount_four_turns_rebuild(tui_interaction: &TuiInteraction) {
     when_apply_rebuild_crush(tui_interaction);
 }
 
-fn chord_key(ch: char, modifiers: crossterm::event::KeyModifiers) -> crossterm::event::KeyEvent {
-    crossterm::event::KeyEvent {
-        code: crossterm::event::KeyCode::Char(ch),
-        modifiers,
-        kind: crossterm::event::KeyEventKind::Press,
-        state: crossterm::event::KeyEventState::NONE,
-    }
-}
-
-#[when("按下和弦 Alt+Shift+E")]
+#[when("触发动作 app.activity.expandNearest")]
 fn when_press_alt_shift_e(tui_interaction: &TuiInteraction) {
-    use crossterm::event::KeyModifiers;
     let mut fx = tui_interaction.fx.borrow_mut();
     fx.as_mut()
         .expect("fixture mounted")
-        .handle_key(chord_key('e', KeyModifiers::ALT | KeyModifiers::SHIFT));
+        .expand_nearest_activity();
 }
 
-#[when("再按下和弦 Alt+Shift+E")]
+#[when("再触发动作 app.activity.expandNearest")]
 fn when_press_alt_shift_e_again(tui_interaction: &TuiInteraction) {
     when_press_alt_shift_e(tui_interaction);
 }
 
-#[when("按下和弦 Ctrl+Alt+Shift+E")]
+#[when("触发动作 app.activity.collapseNearest")]
 fn when_press_ctrl_alt_shift_e(tui_interaction: &TuiInteraction) {
-    use crossterm::event::KeyModifiers;
     let mut fx = tui_interaction.fx.borrow_mut();
-    fx.as_mut().expect("fixture mounted").handle_key(chord_key(
-        'e',
-        KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
-    ));
+    fx.as_mut()
+        .expect("fixture mounted")
+        .collapse_nearest_activity();
 }
 
-#[when("再按下和弦 Ctrl+Alt+Shift+E")]
+#[when("再触发动作 app.activity.collapseNearest")]
 fn when_press_ctrl_alt_shift_e_again(tui_interaction: &TuiInteraction) {
     when_press_ctrl_alt_shift_e(tui_interaction);
 }
@@ -1729,12 +1708,16 @@ fn then_todo_bar_shows_current(transcript_bdd: &TranscriptBdd) {
         "doing MUST NOT use [~]: {plain}"
     );
     assert!(
+        plain.contains("1 completed") && plain.contains("1 pending"),
+        "r21: both wings keep a count-only header: {plain}"
+    );
+    assert!(
         plain.contains("[x] read glossary"),
-        "past body expanded by default: {plain}"
+        "r21: completed wing body expands by default: {plain}"
     );
     assert!(
         plain.contains("[ ] paint lab states"),
-        "pending body expanded by default: {plain}"
+        "r21: pending wing body expands by default: {plain}"
     );
 }
 

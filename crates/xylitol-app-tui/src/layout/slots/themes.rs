@@ -64,6 +64,25 @@ impl ThemesSlot {
         ThemesAction::None
     }
 
+    pub fn selected_id(&self) -> Option<String> {
+        self.list.get_selected_item().map(|i| i.value.clone())
+    }
+
+    pub fn select_row_at(&mut self, row: u16) -> Option<&str> {
+        let index = self.list.item_index_at_screen_row(row)?;
+        self.list.set_selected_index(index);
+        self.list
+            .filtered_items
+            .get(index)
+            .map(|i| i.value.as_str())
+    }
+
+    pub fn confirm_selected(&mut self) -> Option<String> {
+        let item = self.list.get_selected_item()?;
+        self.confirmed = Some(item.value.clone());
+        Some(item.value.clone())
+    }
+
     pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
         let mut lines = Vec::new();
         let mut head = " themes".to_string();

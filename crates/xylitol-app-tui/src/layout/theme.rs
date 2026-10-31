@@ -137,6 +137,15 @@ impl LayoutTheme {
         apply_background_to_line(&line, w, &move |t| bg_rgb(bg, t))
     }
 
+    pub fn paint_chip(self, s: &str, active: bool) -> String {
+        use xylitol_tui::{bold, fg_rgb};
+        if active {
+            bold(&fg_rgb(self.palette.accent, s))
+        } else {
+            fg_rgb(self.palette.muted, s)
+        }
+    }
+
     pub fn paint_success(self, s: &str) -> String {
         fg_rgb(self.palette.success, s)
     }

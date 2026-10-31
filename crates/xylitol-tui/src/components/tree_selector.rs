@@ -190,6 +190,10 @@ pub struct TreeSelector {
     options: TreeSelectorOptions,
     search_query: String,
     show_annotation_timestamps: bool,
+    origin: (u16, u16),
+    visible_start: usize,
+    visible_len: usize,
+    rendered: bool,
     pub on_select: Option<Box<dyn FnMut(String)>>,
     pub on_cancel: Option<Box<dyn FnMut()>>,
     #[allow(clippy::type_complexity)]
@@ -216,6 +220,10 @@ impl TreeSelector {
             options,
             search_query: String::new(),
             show_annotation_timestamps: false,
+            origin: (0, 0),
+            visible_start: 0,
+            visible_len: 0,
+            rendered: false,
             on_select: None,
             on_cancel: None,
             on_label_edit: None,
@@ -317,6 +325,22 @@ impl TreeSelector {
 
     pub fn filtered_nodes(&self) -> &[FlatNode] {
         &self.filtered
+    }
+
+    pub fn set_screen_origin(&mut self, col: u16, row: u16) {
+        self.origin = (col, row);
+    }
+
+    pub fn item_index_at_screen_row(&self, row: u16) -> Option<usize> {
+        if !self.rendered || row < self.origin.1 {
+            return None;
+        }
+        let offset = (row - self.origin.1) as usize;
+        if offset >= self.visible_len {
+            return None;
+        }
+        let index = self.visible_start + offset;
+        (index < self.filtered.len()).then_some(index)
     }
 
     fn restore_selection(&mut self, prev_id: Option<&str>) {
@@ -885,6 +909,9 @@ fn recalculate_visual_structure(filtered: &mut [FlatNode], flat: &[FlatNode]) {
 impl Component for TreeSelector {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
+        self.rendered = true;
+        self.visible_start = 0;
+        self.visible_len = 0;
         if self.filtered.is_empty() {
             lines.push(truncate_to_width(
                 &(self.theme.empty)("  No entries found"),
@@ -912,6 +939,8 @@ impl Component for TreeSelector {
             .saturating_sub(max_visible / 2)
             .min(self.filtered.len().saturating_sub(max_visible));
         let end = (start + max_visible).min(self.filtered.len());
+        self.visible_start = start;
+        self.visible_len = end.saturating_sub(start);
 
         let mut rows = Vec::with_capacity(end - start);
         for i in start..end {
@@ -1086,7 +1115,15 @@ impl Component for TreeSelector {
         }
     }
 
-    fn invalidate(&mut self) {}
+    fn invalidate(&mut self) {
+        self.rendered = false;
+        self.visible_start = 0;
+        self.visible_len = 0;
+    }
+
+    fn set_screen_origin(&mut self, col: u16, row: u16) {
+        TreeSelector::set_screen_origin(self, col, row);
+    }
 }
 
 #[cfg(test)]
@@ -1101,6 +1138,57 @@ mod tests {
                     .with_children([TreeNode::new("b1", "B1"), TreeNode::new("b2", "B2")]),
             ]),
         ]
+    }
+
+    #[test]
+    fn screen_row_maps_to_filtered_index_through_origin_and_scroll() {
+        let roots =
+            vec![TreeNode::new("r", "root").with_children(
+                (0..20).map(|i| TreeNode::new(format!("n{i}"), format!("node-{i}"))),
+            )];
+        let mut sel = TreeSelector::new(
+            roots,
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions {
+                max_visible: 4,
+                ..TreeSelectorOptions::default()
+            },
+        );
+        sel.set_screen_origin(1, 5);
+        assert!(sel.select_id("n10"));
+        let _ = sel.render(60);
+        assert_eq!(sel.item_index_at_screen_row(5), Some(9));
+        assert_eq!(sel.item_index_at_screen_row(7), Some(11));
+        assert_eq!(
+            sel.item_index_at_screen_row(4),
+            None,
+            "row above the origin"
+        );
+        assert_eq!(
+            sel.item_index_at_screen_row(9),
+            None,
+            "row past the visible window"
+        );
+    }
+
+    #[test]
+    fn screen_row_mapping_needs_render_and_survives_empty_filter() {
+        let mut sel = TreeSelector::new(
+            sample_branch(),
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        sel.set_screen_origin(0, 2);
+        assert_eq!(sel.item_index_at_screen_row(2), None, "no window yet");
+        let _ = sel.render(60);
+        assert_eq!(sel.item_index_at_screen_row(2), Some(0));
+        sel.set_search_query("zzz-no-match");
+        let _ = sel.render(60);
+        assert_eq!(
+            sel.item_index_at_screen_row(2),
+            None,
+            "empty filter has no item rows"
+        );
     }
 
     #[test]

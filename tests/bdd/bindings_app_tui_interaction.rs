@@ -3,13 +3,13 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "工具每块折叠点击与Alt无头"
+    name = "工具每块折叠点击与重置动作无头"
 )]
 fn test_att20_tools_per_block(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "思考每标识折叠点击与CtrlT无头"
+    name = "思考每标识折叠点击与全量重置无头"
 )]
 fn test_att21_thinking_per_id(tui_interaction: TuiInteraction) {}
 
@@ -81,7 +81,7 @@ fn test_att32_unified_hit_table(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "可展开块折叠摘要与和弦键无头"
+    name = "可展开块点击折叠保留摘要无头"
 )]
 fn test_att7_expandable_summary_chords(tui_interaction: TuiInteraction) {}
 

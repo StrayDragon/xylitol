@@ -43,7 +43,7 @@ pub enum EditorSlot {
     #[strum_discriminants(strum(message = "Editor"))]
     Editor,
     #[strum_discriminants(strum(message = "Session tree"))]
-    Tree(TreeSlot),
+    Tree(Box<TreeSlot>),
     #[strum_discriminants(strum(message = "Command Plate"))]
     Plate,
     #[strum_discriminants(strum(message = "Settings"))]

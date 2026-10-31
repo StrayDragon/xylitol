@@ -1,6 +1,7 @@
 mod capabilities_slot;
 mod editor_border;
 mod fixed_zone_footprint_apply;
+mod footer_chips;
 mod mcp_slot;
 mod models_slot;
 mod mount;
@@ -119,7 +120,13 @@ pub struct UiRoot {
     last_status_rows: usize,
     last_editor_rows: usize,
     last_queue_rows: usize,
+    last_mode_rows: usize,
     queue_strip_row: usize,
+    last_footer_hits: Vec<footer_chips::FooterChipHit>,
+    last_chip_row: Option<usize>,
+    last_chip_width: usize,
+    last_slot_top_row: Option<usize>,
+    last_slot_close_hit: Option<(usize, usize)>,
     last_todo_rows: usize,
     todo_doing_open: bool,
     todo_past_open: bool,
@@ -205,7 +212,13 @@ impl UiRoot {
             last_status_rows: 1,
             last_editor_rows: 3,
             last_queue_rows: 0,
+            last_mode_rows: 0,
             queue_strip_row: 0,
+            last_footer_hits: Vec::new(),
+            last_chip_row: None,
+            last_chip_width: 0,
+            last_slot_top_row: None,
+            last_slot_close_hit: None,
             last_todo_rows: 0,
             todo_doing_open: true,
             todo_past_open: true,
@@ -752,6 +765,11 @@ impl UiRoot {
         self.pending.session_popup = true;
     }
 
+    #[cfg(test)]
+    pub fn session_popup_pending_for_test(&self) -> bool {
+        self.pending.session_popup
+    }
+
     pub fn take_pending_session_popup(&mut self) -> bool {
         std::mem::take(&mut self.pending.session_popup)
     }
@@ -772,6 +790,11 @@ impl UiRoot {
 
     pub fn request_session_sidebar(&mut self) {
         self.pending.session_sidebar = true;
+    }
+
+    #[cfg(test)]
+    pub fn has_pending_session_sidebar(&self) -> bool {
+        self.pending.session_sidebar
     }
 
     pub fn take_pending_session_sidebar(&mut self) -> bool {
@@ -1122,7 +1145,7 @@ impl UiRoot {
     }
 
     pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
-        self.slot = EditorSlot::Tree(TreeSlot::mount(self.theme, roots, active_id));
+        self.slot = EditorSlot::Tree(Box::new(TreeSlot::mount(self.theme, roots, active_id)));
     }
 
     pub fn on_ctrl_c(&mut self, quit_flag: &AtomicBool) {
@@ -1444,6 +1467,119 @@ mod tests {
 
     fn enter() -> crossterm::event::KeyEvent {
         key(KeyCode::Enter)
+    }
+
+    fn plain(line: &str) -> String {
+        xylitol_tui::utils::strip_ansi_codes(line)
+    }
+
+    #[test]
+    fn footer_chips_render_details_and_sidebar_at_standard_tier() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        let frame = root.render(120);
+        let chip_row = frame
+            .iter()
+            .map(|l| plain(l))
+            .position(|l| l.contains("[详情]"))
+            .expect("details chip row");
+        let line = plain(&frame[chip_row]);
+        assert!(line.contains("[详情]") && line.contains("[侧栏]"), "{line}");
+        let expected_screen_row = root
+            .term_rows
+            .saturating_sub(root.last_editor_rows)
+            .saturating_sub(1);
+        assert_eq!(Some(expected_screen_row), root.last_chip_row);
+    }
+
+    #[test]
+    fn narrow_terminal_hides_sidebar_chip() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(70);
+        let frame = root.render(70);
+        let joined: String = frame.iter().map(|l| plain(l)).collect();
+        assert!(joined.contains("[详情]"), "{joined}");
+        assert!(
+            !joined.contains("[侧栏]"),
+            "sidebar chip needs standard tier"
+        );
+    }
+
+    #[test]
+    fn footer_chip_click_toggles_sidebar() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        let _ = root.render(120);
+        let actions = root.footer_chip_actions_for_test();
+        assert!(
+            actions
+                .iter()
+                .any(|(a, _, _)| *a == super::footer_chips::FooterAction::Sidebar),
+            "standard tier paints the sidebar chip"
+        );
+        assert!(
+            root.click_footer_action(super::footer_chips::FooterAction::Sidebar),
+            "chip must consume"
+        );
+        assert!(root.take_pending_session_sidebar(), "request queued");
+    }
+
+    #[test]
+    fn slot_row_click_selects_then_commits_on_second_click() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.set_term_rows(30);
+        root.mount_models_picker(vec![
+            ModelPickerRow {
+                id: "m-a".into(),
+                label: "A".into(),
+                levels: Vec::new(),
+                provisional: "off".into(),
+            },
+            ModelPickerRow {
+                id: "m-b".into(),
+                label: "B".into(),
+                levels: Vec::new(),
+                provisional: "off".into(),
+            },
+        ]);
+        let _ = root.render(120);
+        let top = root.last_slot_top_row.expect("slot top");
+        assert!(root.handle_slot_row_click_for_test(top as u16 + 2));
+        assert!(
+            root.pending.model_select.is_none(),
+            "first click only selects"
+        );
+        let _ = root.render(120);
+        assert!(root.handle_slot_row_click_for_test(top as u16 + 2));
+        assert!(
+            root.pending.model_select.is_some(),
+            "second click commits the row action"
+        );
+    }
+
+    #[test]
+    fn slot_close_chip_closes_overlay() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.set_term_rows(30);
+        root.slot =
+            EditorSlot::Themes(ThemesSlot::mount(LayoutTheme::product_dark(), Some("dark")));
+        let _ = root.render(120);
+        let row = root.last_slot_top_row.expect("slot top row");
+        let (start, _end) = root.last_slot_close_hit.expect("close chip hit");
+        assert!(root.handle_close_chip_for_test(start, row));
+        assert!(root.slot().is_editor(), "close chip restores editor");
+    }
+
+    #[test]
+    fn footer_reset_chip_clears_overrides() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.toggle_fold_target(FoldTarget::Tool("t".into()));
+        let _ = root.render(120);
+        assert!(root.click_footer_action(super::footer_chips::FooterAction::ResetFold));
+        assert!(root.fold().tools_overrides.is_empty());
     }
 
     #[test]

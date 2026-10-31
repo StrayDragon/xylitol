@@ -16,7 +16,7 @@ async fn test_c2826_ati_double_esc(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "队列条带渲染与Alt向上恢复"
+    name = "队列条带渲染与点击恢复"
 )]
 async fn test_c2826_ati_queue_strip(host_pump_bdd: HostPumpBdd) {}
 

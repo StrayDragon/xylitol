@@ -96,6 +96,10 @@ pub struct SelectList {
     pub filtered_items: Vec<SelectItem>,
     pub selected_index: usize,
     pub max_visible: usize,
+    origin: (u16, u16),
+    visible_start: usize,
+    visible_len: usize,
+    rendered: bool,
     theme: SelectListTheme,
     layout: SelectListLayoutOptions,
     pub on_select: Option<Box<dyn FnMut(SelectItem) + Send>>,
@@ -115,6 +119,10 @@ impl SelectList {
             items,
             selected_index: 0,
             max_visible,
+            origin: (0, 0),
+            visible_start: 0,
+            visible_len: 0,
+            rendered: false,
             theme,
             layout,
             on_select: None,
@@ -135,6 +143,22 @@ impl SelectList {
 
     pub fn get_selected_item(&self) -> Option<&SelectItem> {
         self.filtered_items.get(self.selected_index)
+    }
+
+    pub fn set_screen_origin(&mut self, col: u16, row: u16) {
+        self.origin = (col, row);
+    }
+
+    pub fn item_index_at_screen_row(&self, row: u16) -> Option<usize> {
+        if !self.rendered || row < self.origin.1 {
+            return None;
+        }
+        let offset = (row - self.origin.1) as usize;
+        if offset >= self.visible_len {
+            return None;
+        }
+        let index = self.visible_start + offset;
+        (index < self.filtered_items.len()).then_some(index)
     }
 
     fn get_primary_column_width(&self) -> usize {
@@ -207,6 +231,9 @@ impl SelectList {
 impl Component for SelectList {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
+        self.rendered = true;
+        self.visible_start = 0;
+        self.visible_len = 0;
 
         if self.filtered_items.is_empty() {
             lines.push(clamp_line_to_width(
@@ -221,6 +248,8 @@ impl Component for SelectList {
         let start_index = (self.selected_index.saturating_sub(self.max_visible / 2))
             .min(self.filtered_items.len().saturating_sub(self.max_visible));
         let end_index = (start_index + self.max_visible).min(self.filtered_items.len());
+        self.visible_start = start_index;
+        self.visible_len = end_index.saturating_sub(start_index);
 
         for i in start_index..end_index {
             let item = &self.filtered_items[i];
@@ -298,7 +327,15 @@ impl Component for SelectList {
         }
     }
 
-    fn invalidate(&mut self) {}
+    fn invalidate(&mut self) {
+        self.rendered = false;
+        self.visible_start = 0;
+        self.visible_len = 0;
+    }
+
+    fn set_screen_origin(&mut self, col: u16, row: u16) {
+        SelectList::set_screen_origin(self, col, row);
+    }
 }
 
 impl SelectList {
@@ -543,6 +580,51 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn screen_row_maps_to_item_index_through_origin_and_scroll() {
+        let many: Vec<SelectItem> = (0..20)
+            .map(|i| SelectItem::new(format!("i{i}"), format!("Item {i}")))
+            .collect();
+        let mut list = SelectList::new(many, 5, theme(), default_layout());
+        list.set_screen_origin(3, 6);
+        list.set_selected_index(10);
+        let _ = list.render(80);
+        assert_eq!(list.item_index_at_screen_row(6), Some(8));
+        assert_eq!(list.item_index_at_screen_row(7), Some(9));
+        assert_eq!(list.item_index_at_screen_row(10), Some(12));
+        assert_eq!(list.item_index_at_screen_row(5), None, "above the origin");
+        assert_eq!(
+            list.item_index_at_screen_row(11),
+            None,
+            "row past the visible window"
+        );
+    }
+
+    #[test]
+    fn screen_row_mapping_needs_a_render_and_respects_origin_col() {
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
+        list.set_screen_origin(2, 4);
+        assert_eq!(
+            list.item_index_at_screen_row(4),
+            None,
+            "no window until the first render"
+        );
+        let _ = list.render(80);
+        assert_eq!(list.item_index_at_screen_row(4), Some(0));
+        assert_eq!(list.item_index_at_screen_row(6), Some(2));
+        assert_eq!(
+            list.item_index_at_screen_row(7),
+            None,
+            "scroll-info row is not an item"
+        );
+        list.invalidate();
+        assert_eq!(
+            list.item_index_at_screen_row(4),
+            None,
+            "invalidate clears the window"
+        );
     }
 
     #[test]

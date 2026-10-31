@@ -1,7 +1,6 @@
 use time::OffsetDateTime;
 
 use crate::bridge::{UiEntry, UiModel};
-use crate::keybindings::with_keybindings;
 use crate::widgets::GlyphSet;
 
 use super::atom::{ActivityAtom, ExploreKind, STREAMING_THINK_ID, activity_atom};
@@ -312,32 +311,6 @@ pub fn thought_header_body(duration: Option<&str>) -> String {
     }
 }
 
-fn pretty_chord(raw: &str) -> String {
-    raw.split('+')
-        .map(|part| {
-            if part.len() == 1 {
-                part.to_ascii_uppercase()
-            } else {
-                let mut chars = part.chars();
-                match chars.next() {
-                    Some(f) => f.to_uppercase().collect::<String>() + chars.as_str(),
-                    None => String::new(),
-                }
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("+")
-}
-
-pub fn binding_chord_hint(binding_id: &'static str) -> String {
-    crate::keybindings::ensure_product_catalog();
-    let raw: Option<String> = with_keybindings(|kb| kb.get_keys(binding_id).into_iter().next());
-    match raw {
-        Some(k) => format!("({})", pretty_chord(&k)),
-        None => "(?)".into(),
-    }
-}
-
 pub fn format_envelope_line(glyphs: GlyphSet, duration: Option<&str>, expanded: bool) -> String {
     let marker = if expanded {
         glyphs.unfold()
@@ -348,12 +321,7 @@ pub fn format_envelope_line(glyphs: GlyphSet, duration: Option<&str>, expanded: 
         Some(d) => format!("Worked for {d}"),
         None => "Worked for".to_string(),
     };
-    let hint = binding_chord_hint(if expanded {
-        "app.activity.collapseNearest"
-    } else {
-        "app.activity.expandNearest"
-    });
-    format!("{marker} {body}  {hint}")
+    format!("{marker} {body}")
 }
 
 #[cfg(test)]
@@ -386,12 +354,7 @@ pub fn format_cluster_header(
             thought_header_body(thought_dur)
         };
     }
-    let hint = binding_chord_hint(if expanded {
-        "app.activity.collapseNearest"
-    } else {
-        "app.activity.expandNearest"
-    });
-    format!("{marker} {body}  {hint}")
+    format!("{marker} {body}")
 }
 
 #[cfg(test)]
