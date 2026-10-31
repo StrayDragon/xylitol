@@ -1465,8 +1465,8 @@ fn stage_payload(
     method: &str,
     mut payload: Value,
 ) -> Result<(Value, bool, Option<std::path::PathBuf>), Box<RpcResult>> {
-    let staged_export =
-        matches!(method, "export_html" | "export_jsonl") && payload.get("output_path").is_none();
+    let staged_export = matches!(method, "export_html" | "export_jsonl")
+        && payload.get("output_path").is_none_or(Value::is_null);
     let staged_import = method == METHOD_IMPORT_JSONL
         && payload.get("input_path").is_none()
         && payload.get("content").is_some();
@@ -1684,6 +1684,33 @@ mod tests {
     use super::*;
     use serde_json::json;
     use xylitol_plugin_sdk::BashChunk;
+
+    #[test]
+    fn stage_export_treats_null_output_path_as_absent() {
+        let (payload, staged, _) =
+            stage_payload("export_html", json!({"output_path": null})).expect("stage");
+        assert!(staged);
+        assert!(
+            payload["output_path"]
+                .as_str()
+                .is_some_and(|p| p.contains("xylitol-export-")),
+            "staged export must get a temp path, got {payload}"
+        );
+    }
+
+    #[test]
+    fn stage_export_keeps_explicit_output_path() {
+        let (payload, staged, _) =
+            stage_payload("export_html", json!({"output_path": "a.html"})).expect("stage");
+        assert!(!staged);
+        assert_eq!(payload["output_path"], json!("a.html"));
+    }
+
+    #[test]
+    fn stage_export_treats_missing_output_path_as_absent() {
+        let (_, staged, _) = stage_payload("export_jsonl", json!({})).expect("stage");
+        assert!(staged);
+    }
 
     #[test]
     fn session_switch_plan_mode_event_uses_latest_entry() {
