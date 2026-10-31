@@ -21,9 +21,7 @@ use super::host::HostSession;
 use super::widgets::footer_token_label;
 
 pub use bang::run_interactive_bang;
-pub use reload::{
-    ClientReloadPhase, ClientReloadStep, default_client_reload_steps, run_interactive_reload,
-};
+pub use reload::{default_client_reload_steps, run_interactive_reload};
 
 pub async fn drain_inline_pending<T: Terminal>(
     session: &mut HostSession<T>,
