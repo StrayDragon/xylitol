@@ -134,3 +134,6 @@
   @req:r3015
   规则: model-output-budget
     模型条目 必须 可声明输出预算上限；声明值 必须 进入 XyModelMeta.max_tokens，未声明 必须 为 0 表示未知。运行时构建生成选项时 必须 把非零上限传入 XyGenerateOptions.max_output_tokens，0 必须 保持未设置。方言适配器 必须 优先使用该选项作为请求输出上限：未提供时 OpenAI 族 必须 省略字段，Anthropic 必须 使用安全缺省。配置值 必须 优先于任何外部模型目录同名字段。
+  @req:r3030
+  规则: reload-rebuilds-registry
+    `/reload` 必须 重建模型注册表：重新读取配置层并应用新模型条目；当前模型失效 必须 回落到默认模型（无默认则首个可用模型）；新注册表为空 必须 保留旧注册表并报可观察诊断；thinking level 在新模型不支持时 必须 回落。由运行时与内核单测覆盖。
