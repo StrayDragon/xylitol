@@ -192,9 +192,7 @@ impl OpenAIProvider {
                 "strict": output.strict.unwrap_or(false),
             }
         });
-        if has_tools {
-            body["parallel_tool_calls"] = serde_json::json!(false);
-        }
+        disable_parallel_tool_calls(body, has_tools);
     }
 
     fn apply_prompt_cache_affinity(
@@ -217,6 +215,12 @@ impl OpenAIProvider {
         if let Some(retention) = self.wire_policy.prompt_cache_retention() {
             body["prompt_cache_retention"] = serde_json::json!(retention.as_wire_str());
         }
+    }
+}
+
+fn disable_parallel_tool_calls(body: &mut Value, has_tools: bool) {
+    if has_tools {
+        body["parallel_tool_calls"] = serde_json::json!(false);
     }
 }
 

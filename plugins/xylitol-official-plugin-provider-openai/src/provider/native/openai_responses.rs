@@ -236,6 +236,10 @@ fn apply_text_format(
             "strict": output.strict.unwrap_or(false),
         }
     });
+    apply_parallel_tool_calls(body, has_tools);
+}
+
+fn apply_parallel_tool_calls(body: &mut Value, has_tools: bool) {
     if has_tools {
         body["parallel_tool_calls"] = serde_json::json!(false);
     }
