@@ -3,6 +3,11 @@ use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 pub struct RegistriesPlugin;
 
+fn provide_reload_hub(ctx: &Ctx) -> Result {
+    ctx.provide(xylitol_plugin_sdk::ReloadHub::new())
+        .map(|_| ())
+}
+
 impl Plugin for RegistriesPlugin {
     type Deps = ();
 
@@ -12,7 +17,7 @@ impl Plugin for RegistriesPlugin {
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
         ctx.provide(HostRegistries::new())?;
-        ctx.provide(xylitol_plugin_sdk::ReloadHub::new())?;
+        provide_reload_hub(ctx)?;
         Ok(())
     }
 }
