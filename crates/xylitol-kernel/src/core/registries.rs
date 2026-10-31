@@ -16,8 +16,12 @@ impl Plugin for RegistriesPlugin {
     }
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
-        ctx.provide(HostRegistries::new())?;
-        provide_reload_hub(ctx)?;
-        Ok(())
+        provide_registries(ctx)
     }
+}
+
+fn provide_registries(ctx: &Ctx) -> Result {
+    ctx.provide(HostRegistries::new()).map(|_| ())?;
+    provide_reload_hub(ctx)?;
+    Ok(())
 }
