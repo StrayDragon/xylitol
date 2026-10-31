@@ -1,6 +1,5 @@
 ---
 source: tests/agent_session_api_baseline.rs
-assertion_line: 98
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn emit_leaf_changed_settlement(&self)
@@ -55,6 +54,7 @@ pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
+pub fn replace_model_registry(&self, registry: ModelRegistry)
 pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>
