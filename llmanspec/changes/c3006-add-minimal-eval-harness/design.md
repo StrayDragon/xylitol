@@ -115,12 +115,12 @@ version: 1
 phase: m0
 dataset:
   name: SWE-bench/SWE-bench_Verified
-  revision: <commit>
+  revision: 78f471bf655a3137b2e8a75af1501690ec009ec3
   split: test
-  instance_ids: [astropy_1776_astropy-12907, sympy_1776_sympy-24661]
+  instance_ids: [astropy__astropy-12907, django__django-13128, pydata__xarray-3151, sphinx-doc__sphinx-8120, sympy__sympy-15599]
   limit: 5
 model:
-  alias: deepseek-v4-flash
+  alias: "zhipu/glm-5.3"
   thinking_level: high
 agent:
   binary: target/eval-bin/xylitol-linux-x86_64
@@ -142,7 +142,62 @@ report:
   formats: [json, markdown]
 ```
 
-密钥只用占位符 `{{ secret.NAME }}`；真实 key 在本地 env / CI secrets。仓库不得出现真实 key。
+密钥只用占位符；真实 key 在本地 env / CI secrets。仓库不得出现真实 key。
+
+xylitol 侧临时模型条目由 driver 从网关 catalog 生成，alias 直接用 catalog id，不手写别名：
+
+```yaml
+models:
+  default_model: "zhipu/glm-5.3"
+  models:
+    "zhipu/glm-5.3":
+      provider: openai
+      model: "zhipu/glm-5.3"
+      base_url: "{{ env.MAGPIE_GATEWAY_URL }}/v1"
+      api: openai-responses
+      api_key: "{{ env.MAGPIE_GATEWAY_KEY }}"
+      thinking: true
+      thinking_levels: [off, low, high]
+      thinking_level_map:
+        off: null
+        low: low
+        high: high
+      context_window: 1000000
+      max_output_tokens: 131072
+```
+
+默认 thinking 档位 = 声明列表最后一项；因此 `[off, low, high]` 默认 high。
+
+## 模型接入（magpie）
+
+- 只用 magpie 网关模型；不使用 `DEEPSEEK_API_KEY`。
+- catalog id 直接作 alias（如 `zhipu/glm-5.3`）；不手写别名。
+- 当前 catalog：`zhipu/glm-5.3`、`zhipu/glm-5.3-flash`、`fusionxparks/DeepSeek-V4.1-Flash-1017`、
+  本地 halogen 模型（id 见本地 catalog）、`cursor/*`。
+- 首选 `zhipu/glm-5.3` high；dry-run 用 `zhipu/glm-5.3-flash`；cursor 作备选。
+- API 选择：catalog `native_endpoints` 含 `/v1/responses` → `openai-responses`；否则 `openai-completions`。
+- 当前本机无 xylitol magpie 插件 / `magpie-models.yaml`；driver 读 catalog 生成临时配置，不写仓库或本地配置。
+- 容器内访问网关需 `MAGPIE_GATEWAY_URL` / `MAGPIE_GATEWAY_KEY`；已验证容器可访问并返回 catalog。
+- 价格：GLM-5.3 约 $1.20/$4.18 per 1M；GLM-5.3-Flash 约 $0.12/$0.42；DeepSeek magpie 约 $0.15/$0.60。成本按实际 usage 记录。
+
+## 实例 id 与镜像名
+
+- `instance_id` 是数据集字段，如 `astropy__astropy-12907`。
+- `image` 是数据集字段，如 `swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest`。
+- `--instance_ids` 用前者；容器镜像用后者；不得混用。
+
+## 数据集 revision 与本地 parquet
+
+- 固定 revision `78f471bf655a3137b2e8a75af1501690ec009ec3`。
+- driver 下载 `test-*.parquet` 到本地缓存，传本地路径给 `--dataset_name`；harness 支持 `.parquet`。
+- 记录 revision、文件名、sha256。
+
+## Linux binary 构建
+
+- 确认前不 push，CI 暂不可用；M0 先在本地 Docker 构建。
+- 目标：`x86_64-unknown-linux-gnu`，Ubuntu 22.04 / glibc 2.35；已验证镜像为 22.04。
+- 构建容器内装 rust nightly、clang、mold；`cargo build --release --locked --target ...`。
+- 产物记录 sha256、target triple；CI 手动触发后复用同一命令。
 
 ## 运行生命周期
 
@@ -206,6 +261,8 @@ on:
 - `strip` + `sha256sum`；上传 artifact；可选滚动 prerelease。
 - 记录 target triple 与 glibc 要求。
 
+确认前不 push，CI 暂不可用；本地 Docker 构建先行。
+
 选择 glibc 而不是 musl：已验证镜像为 Ubuntu 22.04 / glibc 2.35；musl 静态构建受
 `aws-lc-sys` / `libgit2-sys` / `zstd-sys` 影响，未验证。若后续镜像出现 Ubuntu 20.04，
 再评估 musl 或 20.04 构建。
@@ -226,12 +283,13 @@ on:
 ## 模型策略
 
 - 工程链路：fake provider → 1 实例。
-- dry-run 小集：GLM-5.3-Flash（快、便宜）跑 1–2 个典型实例。
-- 终验小集：DeepSeek-V4.1-Flash-1017 跑 5–10 个实例；最终模型与规模由用户确认。
+- dry-run 小集：`zhipu/glm-5.3-flash` 跑 1–2 个典型实例。
+- 终验小集：`zhipu/glm-5.3` high 跑 5–10 个实例；最终模型与规模由用户确认。
+- 备选：`cursor/*`（用户偏好 GLM > cursor）；`fusionxparks/DeepSeek-V4.1-Flash-1017` 仅作廉价对照。
 - baseline：同一模型跑 mini-SWE-agent。
 - 前沿分数只作外部参照，不写入 xylitol 报告。
-
-仓库只写 model alias 与占位符；不写真实 key、内部网关地址、账号。
+- 不使用 `DEEPSEEK_API_KEY`；只用 magpie 网关。
+- 仓库只写 model id 与占位符；不写真实 key、内部网关地址、账号。
 
 ## 测试
 

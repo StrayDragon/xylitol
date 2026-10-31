@@ -10,8 +10,8 @@
   76.8%、Gemini 3 Flash high 75.8%、MiniMax M2.5 high 75.8%、GLM 5 high 72.8%。
 - 官方 Terminal-Bench 4.0：Opus 5.5(max) 64.8%、Sonnet 5.5(max) 61.8%、GPT-6 Astra(max)
   58.2%、GLM-5.3(max) 41.8%、GLM-5.3-Flash(none) 35.8%。
-- 候选：GLM-5.3-Flash 做 dry-run；DeepSeek-V4.1-Flash-1017 做小集终验；同模型跑
-  mini-SWE-agent baseline；前沿模型只作外部参照。
+- 候选：`zhipu/glm-5.3-flash` 做 dry-run；`zhipu/glm-5.3` high 做小集终验；
+  同模型跑 mini-SWE-agent baseline；前沿模型只作外部参照。
 - 聚合站数值互相矛盾，不采用；只取官方榜与厂商文档。
 
 ## 官方 SWE-bench Verified
@@ -57,6 +57,51 @@ Gemini 3 Pro + live-SWE-agent 77.4%。
 
 注意：GLM-5.3-Flash 厂商博客写 AA 57（v4.1.1）；当前 AA v5.0 是 28。版本不同，不能混用。
 
+## Magpie 模型目录（2026-10-31）
+
+来源：本机 magpie 网关 `GET /v1/models`（7 个模型；key 只在本机 env，未写入仓库）。
+
+| id | context | max output | reasoning levels | 价格（in/out per 1M） | native endpoints |
+|---|---|---|---|---|---|
+| `zhipu/glm-5.3` | 1M | 131072 | low / high / max | $1.19516 / $4.18306 | chat / responses / messages |
+| `zhipu/glm-5.3-flash` | 1M | 131072 | low / high / max | $0.11952 / $0.41831 | chat / responses / messages |
+| `fusionxparks/DeepSeek-V4.1-Flash-1017` | 512K | 32000 | 无（reasoning=false） | $0.15 / $0.60 | chat / responses / messages |
+| 本地 halogen 模型（id 见本地 catalog） | 256K | 32000 | low / medium / xhigh | 本地免费 | chat / responses / messages |
+| `cursor/claude-sonnet-5-5@300k` | 300K | 未确认 | low / medium / high / xhigh / max | 未确认 | chat |
+| `cursor/deepseek-v41-flash-1017` | 1M | 未确认 | none / low / medium / high / max | 未确认 | chat |
+| `cursor/cursor-grok-4.6-high` | 未确认 | 未确认 | low / medium / high / xhigh | 未确认 | chat |
+
+验证：
+
+- 容器内可访问网关并返回 catalog（带 key）。
+- xylitol `--list-models` 接受 catalog id 作 alias（含 `/`）；`{{ env.MAGPIE_GATEWAY_KEY }}` 插值可用。
+- 本机无 xylitol magpie 插件，也无 `magpie-models.yaml`；driver 需读 catalog 生成临时配置。
+- 不使用 `DEEPSEEK_API_KEY`；只用 magpie 网关。
+
+## 数据集 revision 与实例 id
+
+- revision：`78f471bf655a3137b2e8a75af1501690ec009ec3`（lastModified 2026-08-16）。
+- dataset `instance_id` 形如 `astropy__astropy-12907`；`image` 形如
+  `swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest`。两者不得混用。
+- 典型 5 实例：`astropy__astropy-12907`、`django__django-13128`、`pydata__xarray-3151`、
+  `sphinx-doc__sphinx-8120`、`sympy__sympy-15599`。
+
+## 安装可行性
+
+- `pip install --dry-run swebench==5.0.2` 经本地代理可解析（swebench 5.0.2 + datasets 5.1 + pyarrow 26）。
+- `uv pip install` 无代理时长时间无进展；本地安装需带 `HTTPS_PROXY` / `HTTP_PROXY`。
+- harness 支持本地 `.parquet`：可先下载固定 revision 的 parquet，再传本地路径，避免运行时取最新 revision。
+
+## 成本估算
+
+按 catalog 单价与多轮上下文粗估（实际以 driver 汇总 usage 为准）：
+
+| 模型 | 单实例粗估 | 5 实例 | 50 实例 |
+|---|---|---|---|
+| `zhipu/glm-5.3` high | $0.8–$2.0 | $4–$10 | $40–$100 |
+| `zhipu/glm-5.3-flash` | $0.05–$0.15 | $0.3–$0.8 | $3–$8 |
+| `fusionxparks/DeepSeek-V4.1-Flash-1017` | $0.1–$0.3 | $0.5–$1.5 | $5–$15 |
+
 ## 厂商自报
 
 - DeepSeek-V4.1-Flash-1017：Terminal-Bench 4.0 42.3（Claude Code 框架）；DeepSWE v1.1 77.0；
@@ -68,14 +113,16 @@ Gemini 3 Pro + live-SWE-agent 77.4%。
 
 | 模型 | 角色 | 理由 | 风险 |
 |---|---|---|---|
-| GLM-5.3-Flash | dry-run / 工程验证 | 快、便宜、1M 上下文 | 需网关 key；TB4.0 35.8% |
-| DeepSeek-V4.1-Flash-1017 | 小集终验 | AA 32、175 tok/s、1M 上下文；TB4.0 42.3 | 版本别名需确认 |
-| GLM-5.3 | 强模型对照 | TB4.0 41.8% | 成本更高 |
-| MiniMax M2.5 high | 廉价 SWE-bench 基线 | 75.8% @ $0.07 | 可用性未确认 |
-| Gemini 3 Flash high | 对照 | 75.8% @ $0.36 | 可用性未确认 |
-| Claude 4.5 Opus / Opus 5.5 | 外部前沿参照 | SWE-bench 76.8%；TB4.0 64.8% | 成本高，不做日常 |
-| halogen-qwen3.8-flash-next | 本地免费冒烟 | 无网络、262K | 无基准分 |
-| fake provider | 纯链路 | 确定性 | 不代表能力 |
+| `zhipu/glm-5.3` high | 小集终验 | 用户偏好；1M；TB4.0 41.8% | 价格高（约 Flash 10x） |
+| `zhipu/glm-5.3-flash` | dry-run / 工程验证 | 快、便宜；1M；TB4.0 35.8% | 能力较弱 |
+| `fusionxparks/DeepSeek-V4.1-Flash-1017` | 廉价对照 | 512K；$0.15/$0.60；reasoning=false | 无 thinking |
+| `cursor/claude-sonnet-5-5@300k` | 备选 | 300K；用户偏好 GLM > cursor | 仅 chat；价格未确认 |
+| `cursor/deepseek-v41-flash-1017` | 备选 | 1M；仅 chat | 价格未确认 |
+| `cursor/cursor-grok-4.6-high` | 备选 | 仅 chat；context 未确认 | 价格/上下文未确认 |
+| 本地 halogen 模型（id 见本地 catalog） | 本地免费冒烟 | 无网络、256K | 无基准分 |
+| `fake provider` | 纯链路 | 确定性 | 不代表能力 |
+
+MiniMax M2.5 / Gemini 3 Flash 不在当前 magpie catalog；本轮不作为候选。
 
 ## 聚合站不可用
 
