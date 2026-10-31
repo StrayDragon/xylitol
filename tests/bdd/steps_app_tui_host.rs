@@ -1116,7 +1116,7 @@ pub(crate) async fn t_ati43_reload_gate_toast(host_pump_bdd: &HostPumpBdd) {
 #[when("经输入流注入 Esc 取消挂起重载")]
 pub(crate) async fn w_ati43_cancel_hanging_reload(host_pump_bdd: &HostPumpBdd) {
     use xylitol_app_tui::XyDriverError;
-    use xylitol_app_tui::harness::run_interactive_reload;
+    use xylitol_app_tui::harness::{default_client_reload_steps, run_interactive_reload};
     let mut pump = take_pump(host_pump_bdd);
     pump.session.end_reload();
     pump.driver.set_hang_reload_until_cancel(true);
@@ -1133,7 +1133,8 @@ pub(crate) async fn w_ati43_cancel_hanging_reload(host_pump_bdd: &HostPumpBdd) {
         Ok::<HostEvent, XyDriverError>(HostEvent::Tick),
         Ok(HostEvent::Input(esc_event())),
     ]);
-    run_interactive_reload(&mut pump.session, &mut pump.driver, input)
+    let steps = default_client_reload_steps();
+    run_interactive_reload(&mut pump.session, &mut pump.driver, input, &steps)
         .await
         .expect("reload loop");
     put_pump(host_pump_bdd, pump);
@@ -2094,7 +2095,8 @@ pub(crate) async fn w_c2826_reload_soft_gate(host_pump_bdd: &HostPumpBdd) {
         Ok(HostEvent::Input(enter_event())),
         Ok(HostEvent::Input(esc_event())),
     ]);
-    xylitol_app_tui::run_interactive_reload(&mut pump.session, &mut pump.driver, input)
+    let steps = xylitol_app_tui::default_client_reload_steps();
+    xylitol_app_tui::run_interactive_reload(&mut pump.session, &mut pump.driver, input, &steps)
         .await
         .expect("reload loop");
     put_pump(host_pump_bdd, pump);
