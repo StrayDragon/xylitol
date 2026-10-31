@@ -634,6 +634,92 @@ for line in sys.stdin:
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial(env_global)]
+    async fn reload_reports_failed_participant_and_continues() {
+        use xylitol_runtime::driver::{ReloadContext, ReloadParticipant, ReloadRegistry, XyDriver};
+
+        struct Failing;
+
+        #[async_trait::async_trait]
+        impl ReloadParticipant for Failing {
+            fn name(&self) -> &'static str {
+                "failing"
+            }
+
+            async fn reload(
+                &self,
+                _driver: &mut xylitol_runtime::XyInProcessDriver,
+                _ctx: &ReloadContext,
+            ) -> Result<String, String> {
+                Err("boom".into())
+            }
+        }
+
+        struct Succeeding;
+
+        #[async_trait::async_trait]
+        impl ReloadParticipant for Succeeding {
+            fn name(&self) -> &'static str {
+                "succeeding"
+            }
+
+            async fn reload(
+                &self,
+                _driver: &mut xylitol_runtime::XyInProcessDriver,
+                _ctx: &ReloadContext,
+            ) -> Result<String, String> {
+                Ok("done".into())
+            }
+        }
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config_path = dir.path().join("config.yaml");
+        std::fs::write(
+            &config_path,
+            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+        )
+        .expect("config");
+        unsafe {
+            std::env::set_var("XYLITOL_CONFIG_DIR", dir.path());
+            std::env::set_var("HOME", dir.path());
+        }
+        let opts = BootOptions {
+            profile: Profile::Print,
+            config_path: Some(config_path),
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        };
+        let mut kernel = boot_with(opts, dir.path().to_path_buf(), dir.path().join(".xylitol"))
+            .await
+            .expect("boot_with");
+        let registry = std::sync::Arc::new(ReloadRegistry::new());
+        registry.register(std::sync::Arc::new(Failing));
+        registry.register(std::sync::Arc::new(Succeeding));
+        kernel.runtime.driver.set_reload_registry(registry);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let report = kernel
+            .runtime
+            .driver
+            .reload_runtime(&cancel)
+            .await
+            .expect("reload");
+        assert_eq!(report.steps.len(), 2);
+        assert!(!report.steps[0].ok);
+        assert_eq!(report.steps[0].message, "boom");
+        assert!(report.steps[1].ok);
+        assert_eq!(report.steps[1].message, "done");
+        let _ = kernel.ctx.shutdown().await;
+        unsafe {
+            std::env::remove_var("XYLITOL_CONFIG_DIR");
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn boot_ctx_skips_untrusted_external_plugins() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (config_path, _script) = write_external_config(&dir, false, "fixture");

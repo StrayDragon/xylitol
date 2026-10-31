@@ -2,6 +2,9 @@
 depends_on: []
 title: 重载参与者注册表：/reload 不再硬编码机制
 needs_specs_change: true
+branch: sdd/c3024-refactor-reload-registry
+base_branch: main
+base_sha: 99fb816cc0ad8084205c9c2ca61fae3e8bbad640
 ---
 
 # 重载参与者注册表：/reload 不再硬编码机制
