@@ -95,7 +95,7 @@
       那么 新建一次且 clone 走 Fork(At) 且命名经 seam 写入
   @req:r1191
   规则: slash-reload
-    产品 TUI idle 时 须解析无参 /reload：依次（或文档约定安全序）触发 keybindings、skills、MCP、themes、context 热重载 API，并以滚动提示汇总成功/失败诊断；agent/bang busy 时 须拒绝且 不得调用重载。启动后的进行中交互（status `Reloading`、输入软闸、Esc/Ctrl+C 协作取消、失败/取消可见）须满足 ath28/atc25/ati43。不得改写已持久化 session 历史或清空已渲染 transcript 历史块；SlashCommandSource 须列出 reload；带参 须 usage 错误或不识别为成功路径。
+    产品 TUI idle 时 须解析无参 /reload：触发当前已注册的宿主热重载机制，并按端侧本地机制重载 keybindings、themes，以滚动提示汇总各步骤成功/失败诊断；宿主机制集合 须 由注册表决定。agent/bang busy 时 须拒绝且 不得调用重载。启动后的进行中交互（status `Reloading`、输入软闸、Esc/Ctrl+C 协作取消、失败/取消可见）须满足 ath28/atc25/ati43。不得改写已持久化 session 历史或清空已渲染 transcript 历史块；SlashCommandSource 须列出 reload；带参 须 usage 错误或不识别为成功路径。
 
     场景: 重载空闲触发忙碌拒绝
       当 以主机泵在 idle 提交 "/reload"
