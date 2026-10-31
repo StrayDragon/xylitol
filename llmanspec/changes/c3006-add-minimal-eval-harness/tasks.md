@@ -14,12 +14,15 @@
 - [ ] 0.10 `just`：eval-test / eval-dryrun / eval-smoke（非默认 qa）
 - [ ] 0.11 `.gitignore`：eval 运行目录 / 本地 binary / venv
 - [ ] 0.12 验收：dry-run 输出正确；unit tests 绿；手动触发 CI 产出 binary
+- [ ] 0.13 本地 Docker 构建 Linux binary（glibc 2.35）：记录 sha256 / target triple
+- [ ] 0.14 magpie catalog 读取：alias 用 catalog id，生成临时 xylitol config（env key）
+- [ ] 0.15 成本护栏：按 catalog 价格估算 5/50 实例预算；超限告警
 
 ## Phase 1：M0 冒烟
 
 - [ ] 1.1 `dataset.py`：固定 revision + 显式 ids + limit；本地缓存
 - [ ] 1.2 `sandbox.py`：Docker pull/run/exec/cp/rm；每实例独立容器与清理
-- [ ] 1.3 `agent.py`：注入 binary/config；隔离 HOME / 配置目录；`--no-trust`；timeout
+- [ ] 1.3 `agent.py`：注入 binary/config；隔离 HOME / 配置目录；`--no-trust`；timeout；模型 key 只经 env
 - [ ] 1.4 `patch.py`：`git add -A && git diff --cached`；空 patch 也写 prediction
 - [ ] 1.5 `preds.py`：`instance_id` / `model_name_or_path` / `model_patch`
 - [ ] 1.6 `grade.py`：调 `run_evaluation`；解析 schema v2；失败分类
@@ -29,6 +32,7 @@
 - [ ] 1.10 Verified 5 dry-run：检查 ids、镜像、命令、config hash
 - [ ] 1.11 Verified 5 实跑：5/5 被处理；error=0；报告可复现
 - [ ] 1.12 验收：`completed + empty_patch = submitted`；每实例日志齐全
+- [ ] 1.13 usage 记录：从 session JSONL 汇总 tokens / cost
 
 ## Phase 2：M1 eval profile
 
@@ -38,6 +42,7 @@
 - [ ] 2.4 无 ask 断言：确认 print 不装配 ask 工具
 - [ ] 2.5 不 resume：不传 `--session`；每实例新 session
 - [ ] 2.6 验收：timeout 仍收 patch；config hash 稳定；max_turns exit 0
+- [ ] 2.7 预算提示：记录成本；超限提示（不实现 runtime cost stop）
 
 ## Phase 3：M2 Verified 50
 

@@ -26,6 +26,7 @@ needs_specs_change: false
   - 调官方 `python -m swebench.harness.run_evaluation` 出报告；
   - 产出 `run.json` / `summary.md`（binary hash、config hash、dataset revision、harness 版本）。
 - 新增仅 `workflow_dispatch` 的 Linux binary CI（不做 nightly）；构建产物供本地评测下载。
+- 确认前不 push，CI 暂不可用；M0 的 Linux binary 先在本地 Docker 构建。
 - 新增 `just eval-test` / `eval-dryrun` / `eval-smoke`（均非默认 `just qa`）。
 - 不新增 live spec；工具契约写在 `tools/eval/README.md` 与本 change 的 `design.md`。
 - 不改变产品默认行为；eval 是开发者/CI 后置能力，不进开箱体验。
@@ -35,9 +36,12 @@ needs_specs_change: false
 - **官方 grader 为唯一分数源**；Langfuse 只作旁路元数据/失败实例回归，不作分数。
 - **只经 `print` / headless 驱动**；禁止 PTY / 自动按键驱动 TUI 作为 eval 前置。
 - **Python 编排**，不在 Rust runtime 引入 Docker/benchmark 依赖；Rust 侧只提供稳定 binary。
+- **只用 magpie 提供的模型**；不使用 `DEEPSEEK_API_KEY`。模型 id 直接用网关 catalog 输出（如 `zhipu/glm-5.3`），不手写别名。
 - **一步到位设计 `tools/eval/`**；阶段验收，接口先定，后续适配器不预埋空壳。
 - **数据集 / harness 组合**：`SWE-bench/SWE-bench_Verified` + `swebench==5.0.2` + 数据集自带
   `image` 字段；不再使用 `--cache_level` / `--namespace`（5.0.2 已移除）。
+- **实例 id 与镜像名分离**：`instance_id` 用数据集字段（如 `astropy__astropy-12907`）；
+  镜像取 `image` 字段（如 `swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest`）。
 - **CI 仅手动触发**：`workflow_dispatch` 构建 Linux binary；不做 nightly。
 - **模型与密钥不外露**：仓库只写占位符（`{{ secret.NAME }}`）；真实 key 只在本地 env / CI secrets。
 - **确认前不开 PR、不 push**；避免未审查代码与密钥泄露。
@@ -71,6 +75,7 @@ needs_specs_change: false
 - Linux binary 与 SWE-bench 镜像 glibc 兼容性需实跑确认。
 - M2 50 实例镜像磁盘占用高，需逐实例清理或扩容。
 - 官方榜是 bash-only / mini-SWE-agent 口径，不能直接当 xylitol 分数。
+- GLM-5.3 价格约为 GLM-5.3-Flash 的 10 倍；小集/全量前需确认预算。
 
 ## Further Notes
 
