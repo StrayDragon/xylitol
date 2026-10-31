@@ -39,9 +39,7 @@ impl UiRoot {
             self.glyphs,
             crate::widgets::TodoBarParams {
                 list: &self.ui_model.todo,
-                doing_open: self.todo_doing_open,
-                past_open: self.todo_past_open,
-                pending_open: self.todo_pending_open,
+                expanded: self.todo_expanded,
                 scroll: self.todo_scroll,
                 width,
                 max_rows,

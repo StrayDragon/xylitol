@@ -58,21 +58,42 @@
       当 读取 Todo SSOT 只读边界
       那么 待办栏摘要只读自 SSOT
   @req:r1129
-  规则: tui-checklist-collapsible
-    产品 TUI 在有 Todo 条目时 须以下缘固定区待办栏呈现同源列表，不得以对话条目充当主清单。待办栏 须分三区：当前 doing（全部 in_progress）、后翼 pending、前翼 completed；区内顺序 须与 SSOT 表序一致，不得为展示重排真源。有条目时默认 须展开三区只读列表，三列 须可独立折叠。无 in_progress 时 须展开非空翼条目，不得假装一条当前任务。计数 须写在翼头（形如 `▾ n doing` / `▾ n pending` / `▾ n completed`，折上为 `▸`），零计数翼 须仍画翼头（形如 `▾ 0 doing` / `▾ 0 pending` / `▾ 0 completed`），不得假装条目；不得另画 done/todo 行，不得仅用无标签的 N/M。doing 条目 须用正常 on-surface 正文，不得用 `[~]` 勾选字形。待办栏正文 须可应用内划选并复制（翼头三角列除外，点三角仍折）。终端列宽达到 DESIGN spacing.diff-side-by-side-min-cols（100）时 须将三区分为栏（doing|pending|completed，顶对齐，高度取最高栏）。三列槽位 须始终三等分（余数列给末栏）；折叠 须只收起该列正文，不得改变列宽或列起点，不得让邻列条目因折上而换行重排。更窄 须竖叠（doing、pending、completed 自上而下）。条目绘制 须按当前栏 cell 宽换行（优先空格；CJK 按字）；pending/completed 续行悬挂 4 cell 与勾选正文对齐；不得省略截断。待办栏内容可见行 须 ≤ min(6, ⌊term_rows/4⌋) 且至少 2；超出 须在栏内滚动（指针在栏上滚轮），翼头计数仍为全表；不得省略正文。有表时 须画上下 `─` 轮廓（与 editor 操作区同形）；未滚入视口的内容 须在对应边框写入 `↑ N more` / `↓ N more`（N 为未显示行数），不得用省略号或替换末字吃正文。空表 须整栏消失且 不得画轮廓。轮廓行计入 Fixed-Zone Footprint，不计入内容行上限。用户展开某一翼 须见该翼完整只读勾选列表（可经栏内滚动）。不得以常驻 Plan/双栏侧栏、status/footer/toast notice 或 ScrollNotice 刷墙作为主清单。本波 不得要求用户手改条目或 /todo slash。
+  规则: tui-todo-bar-summary
+    产品 TUI 在有 Todo 条目时 必须以下缘固定区的待办栏呈现同源列表，不得以对话条目充当主清单。待办栏 必须默认收起为单行摘要，形如 `▸ 待办 2/5 · <当前 doing 正文>`：`2/5` 为已完成数与总数，`· <当前 doing 正文>` 只在存在 in_progress 条目时显示，多条 in_progress 时 必须取 SSOT 表序最前一条。点击摘要行 必须展开为扁平列表，再次点击 必须收起；展开状态只在本会话内有效，不得跨进程或跨会话保留。展开态 必须按状态分组排列 doing → pending → completed，组内顺序 必须与 SSOT 表序一致，不得为展示重排真源。待办栏 不得画上下轮廓，不得画分组翼头，不得渲染可点的分组折叠三角。空表 必须整栏消失并占 0 行。待办栏正文 必须可应用内划选并复制。不得以常驻 Plan/双栏侧栏、status/footer/toast notice 或 ScrollNotice 刷墙作为主清单。本波 不得要求用户手改条目或 /todo slash。
 
-    场景: 待办栏缺省显示于进行中
+    场景: 待办栏默认只占一行摘要
       当 以场景构建器回放含一条 in_progress 与前后翼条目的 TodoUpdated
-      那么 待办栏默认展开当前任务与两翼条目
-      并且 对话条目中 不出现 checklist 投影行
-      并且 翼头 分别标注 completed 与 pending 且 不出现 done/todo 行或无标签 N/M
+      那么 待办栏只有一行摘要且含完成数与总数
+      并且 待办栏 不画上下轮廓且 不出现分组翼头
+
+    场景: 点击摘要行展开为分组列表
+      当 以场景构建器回放含一条 in_progress 与前后翼条目的 TodoUpdated
+      并且 点击待办栏摘要行
+      那么 待办栏按 doing → pending → completed 分组展开
+      并且 组内顺序与 SSOT 表序一致
+  @req:r3051
+  规则: tui-todo-bar-status-glyphs
+    待办栏 必须以三档前导字符与亮度表达状态，不得使用 `[ ]` / `[~]` / `[x]` 勾选字形。进行中条目 必须用 `→` 与 `on_surface` 正文加粗；未完成条目 必须用 `·` 与 `muted` 正文；已完成条目 必须用 `✓` 与 `tool` 正文并叠加 dim。三档取色 必须只经语义 token 派生，浅色与深色主题 均适用。ASCII 字形档 必须分别回落 `>` / `.` / `x`。
+
+    场景: 状态字符与亮度三档
+      当 以场景构建器回放含一条 in_progress 与前后翼条目的 TodoUpdated 并点击待办栏摘要行
+      那么 进行中条目以箭头与最亮正文呈现
+      并且 未完成条目以中点与常规 muted 呈现
+      并且 已完成条目以勾号与最暗 dim 呈现
+  @req:r3052
+  规则: tui-todo-bar-overflow
+    待办栏可见行 必须至多 min(6, ⌊term_rows/4⌋) 且至少 1 行，行数 必须计入 Fixed-Zone Footprint。条目超出可见行时 必须在末行以 `… 还有 N 项 · 滚轮查看` 提示剩余项数，并在栏内用指针滚轮滚动，不得在边框上写 `↑ N more` / `↓ N more`，不得用省略号吃正文。条目绘制 必须按栏宽换行（优先空格；CJK 按字）；续行悬挂 4 cell 与前导字符对齐。
+
+    场景: 超长清单在栏内滚动
+      当 以场景构建器回放七条待办并点击待办栏摘要行
+      那么 待办栏至多六行且末行提示剩余项数
   @req:r1130
   规则: tui-resume-and-tool-refresh
-    TUI 在 resume / 切换会话后 须自当前 leaf 上 latest agent_todo 快照重建待办栏（默认露出与三区折叠同 r1129）；todo_* 工具成功结束后 须经类型化 TodoUpdated 刷新为与 SSOT 一致。Print 面 不得要求待办栏 UI，但工具与持久 须仍可用（同源 SSOT）。
+    TUI 在 resume / 切换会话后 须自当前 leaf 上 latest agent_todo 快照重建待办栏（默认摘要与展开形态同 r1129）；todo_* 工具成功结束后 须经类型化 TodoUpdated 刷新为与 SSOT 一致。Print 面 不得要求待办栏 UI，但工具与持久 须仍可用（同源 SSOT）。
 
     场景: 待办栏续跑匹配在线
       当 以场景构建器回放 todo_rewrite 成功调用的直播与 travel 重建
-      那么 两种路径的待办栏默认露出 一致且同源自 SSOT
+      那么 两种路径的待办栏摘要 一致且同源自 SSOT
       并且 todo_* 工具块 body 仍为清单行形态
   @req:r1119
   规则: compact-preserves-todo-snapshot

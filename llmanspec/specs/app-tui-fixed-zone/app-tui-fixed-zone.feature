@@ -218,7 +218,7 @@
       那么 带 30s 的显示 (timeout 30s) 且省略的不显示 timeout 注记
   @req:r21
   规则: todo-bar-dock-member
-    产品 TUI 待办栏 须为下缘固定区成员：有 Todo 条目时驻留于队列条与 ModeStrip 之间，ModeStrip 位于待办栏与通知条之间，通知条仍紧贴 status、status 仍紧贴 editor；空表 须占 0 行。待办栏 不得写入对话条目，不得冒充 status、footer、通知条或队列条。折叠/展开/换行续行与上下轮廓（含 `↑ N more` / `↓ N more` 边框）须计入 Fixed-Zone Footprint 实际行（可见行，含高度上限后的内容视口高加轮廓，不含未滚入内容）。
+    产品 TUI 待办栏 须为下缘固定区成员：有 Todo 条目时驻留于队列条与 ModeStrip 之间，ModeStrip 位于待办栏与通知条之间，通知条仍紧贴 status、status 仍紧贴 editor；空表 须占 0 行。待办栏 不得写入对话条目，不得冒充 status、footer、通知条或队列条。收起摘要行、展开后的条目行与换行续行 须计入 Fixed-Zone Footprint 实际行（可见行，不含未滚入内容）；待办栏 不得画上下轮廓，也不得在边框写 `↑ N more` / `↓ N more`。
 
     场景: 待办栏位于介于队列与提示条
       当 产品 TUI 同时存在非空待办栏、队列条与通知条

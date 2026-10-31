@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 待办栏改为单行摘要与按需展开
+branch: sdd/c3028-update-todo-bar-visual
+base_branch: main
+base_sha: 8b2ba38b778618a577c20bb1a6e730faa852d956
 ---
 
 # 待办栏改为单行摘要与按需展开

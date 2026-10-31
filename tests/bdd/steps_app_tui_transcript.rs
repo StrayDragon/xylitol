@@ -1691,33 +1691,172 @@ fn when_todo_bar_three_zone(transcript_bdd: &TranscriptBdd) {
     *transcript_bdd.models.borrow_mut() = vec![model];
 }
 
-#[then("待办栏默认展开当前任务与两翼条目")]
-fn then_todo_bar_shows_current(transcript_bdd: &TranscriptBdd) {
+#[when("点击待办栏摘要行")]
+fn when_click_todo_summary(transcript_bdd: &TranscriptBdd) {
+    let mut fx = InteractionBdd::from_model(transcript_bdd.models.borrow()[0].clone());
+    assert!(fx.click_todo_summary(), "summary row must be clickable");
+    let plain = fx.render_plain(80);
+    *transcript_bdd.plain_frame.borrow_mut() = Some(plain);
+}
+
+#[then("待办栏 不画上下轮廓且 不出现分组翼头")]
+fn then_todo_bar_no_outline(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
+    let rows = dock_todo_rows(&plain);
+    assert!(!rows.is_empty(), "bar must be painted: {plain}");
+    for row in &rows {
+        assert!(!row.contains('─'), "no outline rows: {row}");
+        assert!(
+            !row.contains("doing") && !row.contains("completed"),
+            "no wing headers: {row}"
+        );
+    }
+}
+
+#[then("待办栏按 doing → pending → completed 分组展开")]
+fn then_todo_bar_grouped(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
+    let rows = dock_todo_rows(&plain);
+    assert!(rows.len() > 1, "expanded bar lists entries: {plain}");
+    let doing = rows
+        .iter()
+        .position(|r| r.contains("write todo-bar copy"))
+        .expect("doing entry");
+    let pending = rows
+        .iter()
+        .position(|r| r.contains("paint lab states"))
+        .expect("pending entry");
+    let done = rows
+        .iter()
+        .position(|r| r.contains("read glossary"))
+        .expect("completed entry");
+    assert!(
+        doing < pending && pending < done,
+        "doing → pending → completed ordering: {rows:?}"
+    );
+}
+
+#[then("组内顺序与 SSOT 表序一致")]
+fn then_todo_bar_ssot_order(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
+    let rows = dock_todo_rows(&plain);
+    assert!(!rows.is_empty(), "expanded bar lists entries: {plain}");
+}
+
+#[when("以场景构建器回放含一条 in_progress 与前后翼条目的 TodoUpdated 并点击待办栏摘要行")]
+fn when_todo_expanded_three_zone(transcript_bdd: &TranscriptBdd) {
+    when_todo_bar_three_zone(transcript_bdd);
+    when_click_todo_summary(transcript_bdd);
+}
+
+#[then("进行中条目以箭头与最亮正文呈现")]
+fn then_todo_doing_arrow(transcript_bdd: &TranscriptBdd) {
     let plain = transcript_bdd
         .plain_frame
         .borrow()
         .clone()
         .expect("painted frame");
     assert!(
-        plain.contains("write todo-bar copy"),
-        "current task: {plain}"
+        plain.contains("→ write todo-bar copy"),
+        "doing arrow: {plain}"
     );
-    assert!(plain.contains("doing"), "doing header: {plain}");
+}
+
+#[then("未完成条目以中点与常规 muted 呈现")]
+fn then_todo_pending_dot(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
+    assert!(plain.contains("· paint lab states"), "pending dot: {plain}");
+}
+
+#[then("已完成条目以勾号与最暗 dim 呈现")]
+fn then_todo_done_check(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
     assert!(
-        !plain.contains("[~] write todo-bar copy"),
-        "doing MUST NOT use [~]: {plain}"
+        plain.contains("✓ read glossary"),
+        "completed check: {plain}"
     );
-    assert!(
-        plain.contains("1 completed") && plain.contains("1 pending"),
-        "r21: both wings keep a count-only header: {plain}"
+}
+
+#[when("以场景构建器回放七条待办并点击待办栏摘要行")]
+fn when_click_seven_todos(transcript_bdd: &TranscriptBdd) {
+    use xylitol_plugin_sdk::session::{TodoItem, TodoList, TodoStatus};
+    let mut model = UiModel::new();
+    let mut items = vec![TodoItem {
+        id: "0".into(),
+        content: "write todo-bar copy".into(),
+        status: TodoStatus::InProgress,
+    }];
+    for i in 1..7 {
+        items.push(TodoItem {
+            id: i.to_string(),
+            content: format!("pending {i}"),
+            status: TodoStatus::Pending,
+        });
+    }
+    apply_xy_event(
+        &mut model,
+        &xylitol_kernel::driver::XyEvent::TodoUpdated {
+            list: TodoList::new(items),
+        },
     );
+    let mut fx = InteractionBdd::from_model(model.clone());
+    assert!(fx.click_todo_summary(), "summary row must be clickable");
+    let plain = fx.render_plain(80);
+    *transcript_bdd.plain_frame.borrow_mut() = Some(plain);
+    *transcript_bdd.models.borrow_mut() = vec![model];
+}
+
+#[then("待办栏至多六行且末行提示剩余项数")]
+fn then_todo_overflow(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
+    let rows = dock_todo_rows(&plain);
+    assert!(rows.len() <= 6, "row cap: {rows:?}");
+    let last = rows.last().expect("rows");
     assert!(
-        plain.contains("[x] read glossary"),
-        "r21: completed wing body expands by default: {plain}"
+        last.contains("还有") && last.contains("项"),
+        "hint row: {last}"
     );
+}
+
+#[then("待办栏只有一行摘要且含完成数与总数")]
+fn then_todo_bar_shows_current(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
+    let rows = dock_todo_rows(&plain);
+    assert_eq!(rows.len(), 1, "collapsed bar is a single row: {plain}");
+    let row = &rows[0];
+    assert!(row.contains("待办"), "summary label: {row}");
+    assert!(row.contains("1/3"), "done/total summary: {row}");
     assert!(
-        plain.contains("[ ] paint lab states"),
-        "r21: pending wing body expands by default: {plain}"
+        row.contains("write todo-bar copy"),
+        "current task body: {row}"
     );
 }
 
@@ -1769,26 +1908,28 @@ fn then_todo_bar_wing_headers(transcript_bdd: &TranscriptBdd) {
 
 fn dock_todo_rows(frame: &str) -> Vec<String> {
     let lines: Vec<&str> = frame.lines().map(str::trim_end).collect();
-    let start = lines.iter().position(|t| {
-        (t.starts_with("▸ ") || t.starts_with("▾ "))
-            && (t.contains("doing") || t.contains("pending") || t.contains("completed"))
-    });
+    let start = lines
+        .iter()
+        .position(|t| (t.starts_with("▸ ") || t.starts_with("▾ ")) && t.contains("待办"));
     let Some(start) = start else {
         return Vec::new();
     };
-    let mut out = Vec::new();
-    for t in &lines[start..] {
-        if t.chars().all(|c| c == '─') || t.contains(" more ") {
+    let mut out = vec![(*lines[start]).to_string()];
+    for t in &lines[start + 1..] {
+        let trimmed = t.trim_start();
+        let is_entry = trimmed.starts_with("→ ")
+            || trimmed.starts_with("· ")
+            || trimmed.starts_with("✓ ")
+            || trimmed.starts_with("… 还有");
+        if !is_entry {
             break;
         }
-        if !t.is_empty() {
-            out.push((*t).to_string());
-        }
+        out.push((*t).to_string());
     }
     out
 }
 
-#[then("两种路径的待办栏默认露出 一致且同源自 SSOT")]
+#[then("两种路径的待办栏摘要 一致且同源自 SSOT")]
 fn then_todo_bar_resume_matches_live(transcript_bdd: &TranscriptBdd) {
     let models = transcript_bdd.models.borrow();
     assert!(models.len() >= 2, "need rebuilt + live");
@@ -1799,22 +1940,19 @@ fn then_todo_bar_resume_matches_live(transcript_bdd: &TranscriptBdd) {
     let live_bar = dock_todo_rows(&live);
     assert_eq!(
         rebuilt_bar, live_bar,
-        "待办栏 default fold must match (tool-block body is att36, not the bar):\nrebuilt={rebuilt}\nlive={live}"
+        "待办栏 summary must match (tool-block body is att36, not the bar):
+rebuilt={rebuilt}
+live={live}"
     );
-    assert!(
-        rebuilt_bar
-            .iter()
-            .any(|l| l.contains("检查环境") && !l.contains("[~]")),
-        "current task without [~]: {rebuilt_bar:?}"
+    assert_eq!(
+        rebuilt_bar.len(),
+        1,
+        "collapsed summary is one row: {rebuilt_bar:?}"
     );
-    assert!(
-        rebuilt_bar.iter().any(|l| l.contains("pending")),
-        "pending wing header: {rebuilt_bar:?}"
-    );
-    assert!(
-        rebuilt_bar.iter().any(|l| l.contains("[ ] 写清单")),
-        "pending body expanded by default: {rebuilt_bar:?}"
-    );
+    let row = &rebuilt_bar[0];
+    assert!(row.contains("检查环境"), "current task body: {row}");
+    assert!(!row.contains("[~]"), "no checkbox glyphs: {row}");
+    assert!(row.contains("待办"), "summary label: {row}");
 }
 
 #[then("todo_* 工具块 body 仍为清单行形态")]

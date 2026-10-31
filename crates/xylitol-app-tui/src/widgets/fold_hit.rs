@@ -6,9 +6,6 @@ pub enum FoldTarget {
     Diff(String),
     Ask(String),
     Thinking(String),
-    TodoDoing,
-    TodoPending,
-    TodoPast,
     Compaction,
     OutputViewport(String),
     Segment(String),
@@ -129,7 +126,6 @@ fn hover_hits_for(id: HitId, r: &FoldHitRegion) -> Vec<Hit> {
         | FoldTarget::Segment(_)
         | FoldTarget::Cluster(_)
         | FoldTarget::LiveTail => tall_hit(id, r),
-        FoldTarget::TodoDoing | FoldTarget::TodoPending | FoldTarget::TodoPast => Vec::new(),
     }
 }
 
