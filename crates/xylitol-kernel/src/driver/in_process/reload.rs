@@ -14,7 +14,6 @@ pub struct ProductReload;
 pub fn default_reload_registry() -> Arc<ReloadRegistry> {
     let registry = Arc::new(ReloadRegistry::new());
     registry.register(Arc::new(SkillsParticipant));
-    registry.register(Arc::new(PrepareParticipant));
     registry.register(Arc::new(ContextParticipant));
     registry.register(Arc::new(ModelsParticipant));
     registry
@@ -57,24 +56,50 @@ async fn run_participants(
                 cancelled: true,
             });
         }
-        let step = match participant.reload(driver, &ctx).await {
-            Ok(message) => ReloadStepReport {
-                step: participant.name(),
-                ok: true,
-                message,
-            },
-            Err(message) => ReloadStepReport {
-                step: participant.name(),
-                ok: false,
-                message,
-            },
-        };
+        let step = step_report(participant.name(), participant.reload(driver, &ctx).await);
         steps.push(step);
+    }
+    let event = xylitol_plugin_sdk::ReloadEvent {
+        cwd: ctx.cwd.clone(),
+        agent_dir: ctx.agent_dir.clone(),
+        project_trusted: ctx.project_trusted,
+    };
+    let hub_participants = driver
+        .ctx()
+        .and_then(|ctx| ctx.get::<xylitol_plugin_sdk::ReloadHub>())
+        .map(|hub| hub.snapshot())
+        .unwrap_or_default();
+    for participant in hub_participants {
+        if cancel.is_cancelled() {
+            return Ok(RuntimeReloadReport {
+                steps,
+                cancelled: true,
+            });
+        }
+        steps.push(step_report(
+            participant.name(),
+            participant.reload(&event).await,
+        ));
     }
     Ok(RuntimeReloadReport {
         steps,
         cancelled: false,
     })
+}
+
+fn step_report(name: &'static str, result: Result<String, String>) -> ReloadStepReport {
+    match result {
+        Ok(message) => ReloadStepReport {
+            step: name,
+            ok: true,
+            message,
+        },
+        Err(message) => ReloadStepReport {
+            step: name,
+            ok: false,
+            message,
+        },
+    }
 }
 
 struct SkillsParticipant;
@@ -97,23 +122,6 @@ impl ReloadParticipant for SkillsParticipant {
         } else {
             format!("{} skill(s): {}", skills.count, skills.names.join(", "))
         })
-    }
-}
-
-struct PrepareParticipant;
-
-#[async_trait]
-impl ReloadParticipant for PrepareParticipant {
-    fn name(&self) -> &'static str {
-        "mcp"
-    }
-
-    async fn reload(
-        &self,
-        _driver: &mut XyInProcessDriver,
-        _ctx: &ReloadContext,
-    ) -> Result<String, String> {
-        Ok("session/prepare reload fired".into())
     }
 }
 

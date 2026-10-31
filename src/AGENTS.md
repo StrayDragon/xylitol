@@ -238,6 +238,18 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 2. **既有 port / 服务 / 瀑布事件**。不得旁路第二套语义。
 3. **新 port**（仅真实第二套替换，或嵌入/测试必须替换时）
 
+### 重载参与者（`/reload`）
+
+```text
+词表 / 注册表 = xylitol-plugin-sdk（ReloadEvent / ReloadParticipant / ReloadHub）
+宿主注册表   = xylitol-runtime（ReloadRegistry / ReloadContext；kernel 装配注册内置参与者）
+注册表提供者 = kernel 核心插件 registries（Ctx 服务 ReloadHub，插件注册具名参与者）
+```
+
+- `/reload` 宿主实现只遍历注册表并收集步骤；**不得**在命令实现内联机制清单。
+- 内置机制（skills / context / models）由 kernel 装配注册；插件经 `ReloadHub` 注册具名参与者；端侧 keybindings / themes 属客户端本地机制。
+- 参与者失败 → 步骤 `ok=false` 后继续；取消保留已收集步骤。
+
 外进程插件最小切片已交付（配置驱动 + trust 门禁 + JSON-RPC stdio 工具桥）；市场 / 签名 / dylib / 同进程静态链入是方向、未交付。不得为未交付市场预埋清单 / 注册中心 / dylib / 空壳 `Xy*`、“已是统一口再包一层”。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 gpui / 语音端预埋空壳 crate。
 
 Trust / Permission / MCP / LSP / DAP / subagent / 外进程插件产品语义：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`、`infra-lsp/`、`infra-dap/`、`agent-subagent/`、`infra-plugin/`。边界：Trust 门禁**项目本地资源**；工具开箱 allow-all；MCP **有配置才装配**并支持重载；外进程插件须显式 `trusted: true`。

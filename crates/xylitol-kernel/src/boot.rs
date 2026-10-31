@@ -707,11 +707,92 @@ for line in sys.stdin:
             .reload_runtime(&cancel)
             .await
             .expect("reload");
-        assert_eq!(report.steps.len(), 2);
-        assert!(!report.steps[0].ok);
-        assert_eq!(report.steps[0].message, "boom");
-        assert!(report.steps[1].ok);
-        assert_eq!(report.steps[1].message, "done");
+        let failing = report
+            .steps
+            .iter()
+            .find(|step| step.step == "failing")
+            .expect("failing step");
+        assert!(!failing.ok);
+        assert_eq!(failing.message, "boom");
+        let succeeding = report
+            .steps
+            .iter()
+            .find(|step| step.step == "succeeding")
+            .expect("succeeding step");
+        assert!(succeeding.ok);
+        assert_eq!(succeeding.message, "done");
+        let _ = kernel.ctx.shutdown().await;
+        unsafe {
+            std::env::remove_var("XYLITOL_CONFIG_DIR");
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial(env_global)]
+    async fn reload_runs_plugin_hub_participants() {
+        use xylitol_runtime::driver::XyDriver;
+
+        struct PluginStep;
+
+        #[async_trait::async_trait]
+        impl xylitol_plugin_sdk::ReloadParticipant for PluginStep {
+            fn name(&self) -> &'static str {
+                "plugin"
+            }
+
+            async fn reload(
+                &self,
+                _event: &xylitol_plugin_sdk::ReloadEvent,
+            ) -> Result<String, String> {
+                Ok("plugin done".into())
+            }
+        }
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config_path = dir.path().join("config.yaml");
+        std::fs::write(
+            &config_path,
+            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+        )
+        .expect("config");
+        unsafe {
+            std::env::set_var("XYLITOL_CONFIG_DIR", dir.path());
+            std::env::set_var("HOME", dir.path());
+        }
+        let opts = BootOptions {
+            profile: Profile::Print,
+            config_path: Some(config_path),
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        };
+        let mut kernel = boot_with(opts, dir.path().to_path_buf(), dir.path().join(".xylitol"))
+            .await
+            .expect("boot_with");
+        let hub = kernel
+            .ctx
+            .get::<xylitol_plugin_sdk::ReloadHub>()
+            .expect("reload hub");
+        hub.register(std::sync::Arc::new(PluginStep));
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let report = kernel
+            .runtime
+            .driver
+            .reload_runtime(&cancel)
+            .await
+            .expect("reload");
+        let plugin = report
+            .steps
+            .iter()
+            .find(|step| step.step == "plugin")
+            .expect("plugin step");
+        assert!(plugin.ok, "plugin step failed: {}", plugin.message);
+        assert_eq!(plugin.message, "plugin done");
+        assert_eq!(report.steps.last().map(|step| step.step), Some("plugin"));
         let _ = kernel.ctx.shutdown().await;
         unsafe {
             std::env::remove_var("XYLITOL_CONFIG_DIR");

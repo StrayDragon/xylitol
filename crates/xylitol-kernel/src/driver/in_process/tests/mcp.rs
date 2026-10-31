@@ -301,7 +301,10 @@ async fn reload_re_freezes_tools() {
         .reload_runtime(&tokio_util::sync::CancellationToken::new())
         .await
         .expect("reload");
-    assert!(report.steps.iter().any(|s| s.step == "mcp"));
+    assert!(
+        !report.steps.is_empty(),
+        "idle /reload must run registered participants"
+    );
     assert!(
         !driver.is_tools_frozen(),
         "idle /reload fires prepare and must not wait/freeze"
