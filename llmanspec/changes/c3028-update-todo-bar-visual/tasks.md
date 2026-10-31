@@ -17,5 +17,5 @@
 - [ ] 3.3 `app-tui-fixed-zone` 待办栏条款同步：删轮廓行与 `N more` 边框表述，保留「空表占 0 行」与固定区顺序。
 - [ ] 3.4 BDD：`bindings_agent_todo` 与 `steps_app_tui_transcript` 的待办断言改为摘要行与展开后分组；新增点击展开场景。
 
-- [ ] 4.1 `just qa`、`just test-tui-e2e-pty`、`llman-sdd validate` 全绿。
+- [x] 4.1 `just qa`、`just test-tui-e2e-pty`、`llman-sdd validate` 全绿。
 - [ ] 4.2 `DESIGN.md` 补待办栏三档取色与单行摘要形态说明。
