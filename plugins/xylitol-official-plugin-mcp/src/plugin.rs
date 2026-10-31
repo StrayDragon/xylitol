@@ -66,9 +66,7 @@ async fn install_prepare_hub(ctx: &Ctx, servers: &[McpServerConfig]) -> Result {
     let hub = McpPrepareHub::new(servers.to_vec());
     let hub_arc: Arc<dyn SessionPrepareHub> = Arc::new(hub.clone());
     ctx.provide_as::<dyn SessionPrepareHub>(hub_arc)?;
-    if let Some(reload_hub) = ctx.get::<xylitol_plugin_sdk::ReloadHub>() {
-        reload_hub.register(Arc::new(McpReloadParticipant));
-    }
+    register_reload_participant(ctx);
     ctx.on::<SessionPrepare>({
         let hub = hub.clone();
         move |event, call| {
@@ -92,6 +90,12 @@ async fn install_prepare_hub(ctx: &Ctx, servers: &[McpServerConfig]) -> Result {
         }
     })?;
     Ok(())
+}
+
+fn register_reload_participant(ctx: &Ctx) {
+    if let Some(reload_hub) = ctx.get::<xylitol_plugin_sdk::ReloadHub>() {
+        reload_hub.register(Arc::new(McpReloadParticipant));
+    }
 }
 
 struct McpReloadParticipant;
