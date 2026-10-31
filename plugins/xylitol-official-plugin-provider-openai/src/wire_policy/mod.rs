@@ -84,7 +84,7 @@ mod tests {
         assert_eq!(p.compat, Compat::Generic);
         assert_eq!(p.compat.as_str(), "generic");
         assert!(p.expects_prompt_cache_usage());
-        assert!(p.allows_prompt_cache_key());
+        assert!(!p.allows_prompt_cache_key());
         assert_eq!(p.prompt_cache_retention(), None);
         assert!(!p.allows_previous_response_id());
         assert_eq!(p.compat, defaults::COMPAT_DEFAULT);

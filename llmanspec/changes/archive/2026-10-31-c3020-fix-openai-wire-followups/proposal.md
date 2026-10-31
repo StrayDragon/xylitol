@@ -2,6 +2,9 @@
 depends_on: []
 title: OpenAI 线协议跟进：结构化输出并行开关与缓存键默认关
 needs_specs_change: true
+branch: sdd/c3020-fix-openai-wire-followups
+base_branch: main
+base_sha: 53917cb9d6e12c1f7edfd893cd497597a7f45ba6
 ---
 
 # OpenAI 线协议跟进：结构化输出并行开关与缓存键默认关
