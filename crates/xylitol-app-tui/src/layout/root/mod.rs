@@ -41,7 +41,7 @@ use crate::bridge::UiModel;
 use crate::driver::LoadedResourcesSnapshot;
 use crate::session_resume::SessionResumePanel;
 use crate::widgets::{
-    FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold, ScrollbackPaintCache, TodoBarHit, TodoWing,
+    FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold, ScrollbackPaintCache, TodoBarHit,
     footer_thinking_label, format_footer_text,
 };
 use xylitol_plugin_sdk::error::XyToolError;
@@ -128,9 +128,7 @@ pub struct UiRoot {
     last_slot_top_row: Option<usize>,
     last_slot_close_hit: Option<(usize, usize)>,
     last_todo_rows: usize,
-    todo_doing_open: bool,
-    todo_past_open: bool,
-    todo_pending_open: bool,
+    todo_expanded: bool,
     todo_scroll: usize,
     last_todo_hits: Vec<TodoBarHit>,
     last_todo_plain: Vec<String>,
@@ -220,9 +218,7 @@ impl UiRoot {
             last_slot_top_row: None,
             last_slot_close_hit: None,
             last_todo_rows: 0,
-            todo_doing_open: true,
-            todo_past_open: true,
-            todo_pending_open: true,
+            todo_expanded: false,
             todo_scroll: 0,
             last_todo_hits: Vec::new(),
             last_todo_plain: Vec::new(),
@@ -477,11 +473,6 @@ impl UiRoot {
             FoldTarget::Segment(_) | FoldTarget::Cluster(_) | FoldTarget::LiveTail => {
                 self.toggle_activity_fold(target);
             }
-            FoldTarget::TodoDoing | FoldTarget::TodoPast | FoldTarget::TodoPending => {
-                self.toggle_todo_fold(target);
-                self.fold_dirty = true;
-                return;
-            }
             FoldTarget::LoadEarlier => {
                 self.load_earlier_requested = true;
                 self.fold_dirty = true;
@@ -507,13 +498,9 @@ impl UiRoot {
         }
     }
 
-    fn toggle_todo_fold(&mut self, target: FoldTarget) {
-        match target {
-            FoldTarget::TodoDoing => self.todo_doing_open = !self.todo_doing_open,
-            FoldTarget::TodoPast => self.todo_past_open = !self.todo_past_open,
-            FoldTarget::TodoPending => self.todo_pending_open = !self.todo_pending_open,
-            _ => unreachable!("todo fold target"),
-        }
+    fn toggle_todo_expanded(&mut self) {
+        self.todo_expanded = !self.todo_expanded;
+        self.todo_scroll = 0;
     }
 
     pub fn click_todo_bar_at(&mut self, col: u16, screen_row: u16) -> bool {
@@ -552,7 +539,7 @@ impl UiRoot {
         true
     }
 
-    fn click_todo_bar_local(&mut self, col: usize, row_in_bar: usize) -> bool {
+    pub(crate) fn click_todo_bar_local(&mut self, col: usize, row_in_bar: usize) -> bool {
         let Some(hit) = self
             .last_todo_hits
             .iter()
@@ -561,11 +548,8 @@ impl UiRoot {
         else {
             return false;
         };
-        self.toggle_fold_target(match hit.wing {
-            TodoWing::Doing => FoldTarget::TodoDoing,
-            TodoWing::Past => FoldTarget::TodoPast,
-            TodoWing::Pending => FoldTarget::TodoPending,
-        });
+        let _ = hit;
+        self.toggle_todo_expanded();
         true
     }
 
@@ -659,9 +643,7 @@ impl UiRoot {
                 self.glyphs,
                 crate::widgets::TodoBarParams {
                     list: &self.ui_model.todo,
-                    doing_open: self.todo_doing_open,
-                    past_open: self.todo_past_open,
-                    pending_open: self.todo_pending_open,
+                    expanded: self.todo_expanded,
                     scroll: 0,
                     width: 80,
                     max_rows: crate::widgets::todo_bar_max_rows(self.term_rows),
@@ -1261,11 +1243,14 @@ impl UiRoot {
         ));
     }
 
+    pub fn todo_bar_expanded(&self) -> bool {
+        self.todo_expanded
+    }
+
     #[cfg(test)]
-    pub fn todo_bar_fold_for_test(&mut self, past_open: bool, pending_open: bool) {
-        self.todo_doing_open = true;
-        self.todo_past_open = past_open;
-        self.todo_pending_open = pending_open;
+    pub fn todo_bar_expanded_for_test(&mut self, expanded: bool) {
+        self.todo_expanded = expanded;
+        self.todo_scroll = 0;
     }
 
     pub fn push_toast_info_notice(&mut self, body: impl Into<String>) {
@@ -1783,114 +1768,6 @@ mod tests {
         assert!(
             frame.contains("✓ 已选 dark"),
             "Enter must flag the confirmed theme row: {frame}"
-        );
-    }
-
-    #[test]
-    fn todo_bar_sits_in_dock_wraps_without_ellipsis() {
-        use crate::bridge::UiModel;
-        use xylitol_plugin_sdk::session::{TodoItem, TodoList, TodoStatus};
-        use xylitol_tui::utils::strip_ansi_codes;
-
-        let mut root = UiRoot::new();
-        let mut model = UiModel::new();
-        model.todo = TodoList::new(vec![
-            TodoItem {
-                id: "a".into(),
-                content: "read glossary".into(),
-                status: TodoStatus::Completed,
-            },
-            TodoItem {
-                id: "b".into(),
-                content: "Keep the live checklist in the lower dock and wrap long titles not clipping them".into(),
-                status: TodoStatus::InProgress,
-            },
-            TodoItem {
-                id: "c".into(),
-                content: "paint lab states".into(),
-                status: TodoStatus::Pending,
-            },
-        ]);
-        model.enqueue_steer_strip("steer me".into());
-        root.apply_ui_model(&model);
-        root.push_toast_notice("boom");
-        let plain = strip_ansi_codes(&root.render(80).join("\n"));
-        let steer_at = plain.find("steer me").expect("queue");
-        let todo_at = plain.find("Keep the live").expect("待办栏 current");
-        let toast_at = plain.find("boom").expect("toast");
-        assert!(
-            steer_at < todo_at && todo_at < toast_at,
-            "dock order queue → 待办栏 → toast:\n{plain}"
-        );
-        assert!(
-            !plain.contains("Todo ·"),
-            "no unlabeled N/M chrome: {plain}"
-        );
-        assert!(!plain.contains('…'), "must wrap, not ellipsize: {plain}");
-        assert!(
-            plain.contains("clipping them") || plain.contains("not clipping"),
-            "full title after wrap: {plain}"
-        );
-        assert!(plain.contains("1 completed"), "{plain}");
-        assert!(plain.contains("1 pending"), "{plain}");
-        assert!(plain.contains("1 doing"), "{plain}");
-        assert!(
-            plain.contains("[x] read glossary"),
-            "past body expanded by default: {plain}"
-        );
-        assert!(!plain.contains("[~]"), "doing MUST NOT use [~]: {plain}");
-    }
-
-    #[test]
-    fn todo_bar_wing_triangle_toggles_past_body() {
-        use crate::bridge::UiModel;
-        use crate::widgets::TodoWing;
-        use xylitol_plugin_sdk::session::{TodoItem, TodoList, TodoStatus};
-        use xylitol_tui::utils::strip_ansi_codes;
-
-        let mut root = UiRoot::new();
-        let mut model = UiModel::new();
-        model.todo = TodoList::new(vec![
-            TodoItem {
-                id: "a".into(),
-                content: "read glossary".into(),
-                status: TodoStatus::Completed,
-            },
-            TodoItem {
-                id: "b".into(),
-                content: "write todo-bar copy".into(),
-                status: TodoStatus::InProgress,
-            },
-            TodoItem {
-                id: "c".into(),
-                content: "paint lab states".into(),
-                status: TodoStatus::Pending,
-            },
-        ]);
-        root.apply_ui_model(&model);
-        let _ = root.render(80);
-        let past = root
-            .todo_bar_hits_for_test()
-            .iter()
-            .find(|h| h.wing == TodoWing::Past)
-            .copied()
-            .expect("past wing triangle");
-        assert!(
-            root.click_todo_bar_local_for_test(past.col_start, past.row),
-            "triangle click must consume"
-        );
-        assert!(
-            !root.click_todo_bar_local_for_test(past.col_end, past.row),
-            "text column must not toggle"
-        );
-        let plain = strip_ansi_codes(&root.render(80).join("\n"));
-        assert!(
-            !plain.contains("[x] read glossary"),
-            "past wing folded after triangle click: {plain}"
-        );
-        assert!(
-            plain.contains("[ ] paint lab states"),
-            "pending stays expanded: {plain}"
         );
     }
 

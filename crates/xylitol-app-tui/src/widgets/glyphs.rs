@@ -47,6 +47,31 @@ impl GlyphSet {
             Self::Ascii => "*",
         }
     }
+
+    pub fn todo_summary(self, expanded: bool) -> &'static str {
+        if expanded { self.unfold() } else { self.fold() }
+    }
+
+    pub fn todo_doing(self) -> &'static str {
+        match self {
+            Self::Unicode => "→",
+            Self::Ascii => ">",
+        }
+    }
+
+    pub fn todo_pending(self) -> &'static str {
+        match self {
+            Self::Unicode => "·",
+            Self::Ascii => ".",
+        }
+    }
+
+    pub fn todo_done(self) -> &'static str {
+        match self {
+            Self::Unicode => "✓",
+            Self::Ascii => "x",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -64,6 +89,17 @@ mod tests {
         assert_eq!(GlyphSet::Ascii.unfold(), "v");
         assert_eq!(visible_width(GlyphSet::Ascii.fold()), 1);
         assert_eq!(visible_width(GlyphSet::Ascii.unfold()), 1);
+    }
+
+    #[test]
+    fn todo_glyphs_visible_width_one() {
+        for set in [GlyphSet::Unicode, GlyphSet::Ascii] {
+            assert_eq!(visible_width(set.todo_doing()), 1);
+            assert_eq!(visible_width(set.todo_pending()), 1);
+            assert_eq!(visible_width(set.todo_done()), 1);
+            assert_eq!(visible_width(set.todo_summary(true)), 1);
+            assert_eq!(visible_width(set.todo_summary(false)), 1);
+        }
     }
 
     #[test]

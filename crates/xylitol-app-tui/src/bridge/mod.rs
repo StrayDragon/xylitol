@@ -16,7 +16,7 @@ pub(crate) use preview::{
     extract_result_path, extract_tool_path, extract_truncated_tool_display,
     human_tool_args_preview_with_path, humanize_ask_result, humanize_tool_result_for_tui,
     merge_path_preview_with_range, output_looks_like_machine_json, preview_is_downgrade,
-    preview_lacks_real_path, todo_status_glyph,
+    preview_lacks_real_path,
 };
 pub use session_tree::{rebuild_scrollback_from_travel, travel_history_note};
 

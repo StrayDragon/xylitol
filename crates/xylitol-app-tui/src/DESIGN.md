@@ -202,6 +202,8 @@ footer            1 行 dim（cwd · model · 可选 context%）；右端不画�
 7. 居中 `show_overlay` **默认不用**；交互优先 editor 槽（树 / Ask / 板）。仅极短确认可选用 overlay。
 8. **保留 editor 上下边框**作为操作区边界（图 2）；不要为了「更扁」去掉这层分区提示。上边框右端 允许放视图动作 chip（`[详情]` / `[侧栏]` / `[重置折叠]`），chip 与边框同高、不换行、不增高。
 
+待办栏形态：默认收起为单行摘要 `▸ 待办 2/5 · <当前 doing 正文>`，点击展开为扁平列表（doing → pending → completed，组内按 SSOT 表序）；状态用三档前导字符与亮度表达——`→` + `on-surface` 加粗（进行中）、`·` + `muted`（未完成）、`✓` + `tool` + dim（已完成）。不画上下轮廓，不画分组翼头。
+
 `spacing.*` 单位是 cell / 行。宽屏 Diff 阈值见 `spacing.diff-side-by-side-min-cols`。
 
 ### 横向断点档位（信息分级）

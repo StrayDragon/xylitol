@@ -16,7 +16,7 @@ pub use scrollback::find_stable_markdown_prefix_end;
 pub(crate) use scrollback::format_token_count;
 pub use scrollback::{ScrollbackFold, ScrollbackPaintCache, render_scrollback};
 pub use todo_bar::{
-    TodoBarHit, TodoBarParams, TodoWing, render_todo_bar, todo_bar_line_count, todo_bar_max_rows,
+    TodoBarHit, TodoBarParams, render_todo_bar, todo_bar_line_count, todo_bar_max_rows,
 };
 
 use xylitol_plugin_sdk::dto::PromptCacheRead;

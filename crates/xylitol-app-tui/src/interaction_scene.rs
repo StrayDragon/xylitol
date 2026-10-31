@@ -97,6 +97,19 @@ impl InteractionBdd {
         self
     }
 
+    pub fn click_todo_summary(&mut self) -> bool {
+        let _ = self.root.render(80);
+        self.root.click_todo_bar_local(0, 0)
+    }
+
+    pub fn todo_expanded(&self) -> bool {
+        self.root.todo_bar_expanded()
+    }
+
+    pub fn render_lines_raw(&mut self, width: usize) -> Vec<String> {
+        self.root.render(width)
+    }
+
     pub fn left_click(&mut self, col: u16, row: u16) -> bool {
         self.root.click_fold_at(col, row)
     }
