@@ -18,6 +18,9 @@
 - macOS arm64：Docker Desktop 的 amd64 模拟（Rosetta/QEMU）。
 - 保留的 TB4.0 / DeepSWE 镜像都是单平台 `linux/amd64`。
 - Linux arm64 需要 binfmt/qemu；不是默认支持平台。
+- 已验证：DeepSWE 镜像在 macOS arm64 上以 `--platform linux/amd64` 运行，
+  `uname -m` 返回 `x86_64`；TB4.0 `layout-config-recreation` 的 3 个 trial
+  已在 macOS arm64 上跑完（reward 0.0）。
 - SWE-bench Verified 已移除：上游镜像只有 `linux/amd64`，Harbor Compose
   build 在 arm64 主机上按宿主平台拉取，manifest 没有 arm64 条目。
 
