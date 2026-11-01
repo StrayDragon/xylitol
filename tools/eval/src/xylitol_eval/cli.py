@@ -23,6 +23,8 @@ def _parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="validate config and local prerequisites")
     doctor.add_argument("--config", required=True)
+    doctor.add_argument("--lock", default="")
+    doctor.add_argument("--profile", default="compare")
 
     run = sub.add_parser("run", help="run the eval")
     run.add_argument("--config", required=True)
@@ -110,6 +112,12 @@ def _cmd_dry_run(args: argparse.Namespace) -> int:
 
 def _cmd_doctor(args: argparse.Namespace) -> int:
     config = load_config(Path(args.config))
+    if args.lock:
+        from .lock import load_lock, validate_eval_config
+
+        lock = load_lock(Path(args.lock))
+        validate_eval_config(config, lock, args.profile)
+        print(f"lock: ok ({lock.sha256}, profile={args.profile})")
     binary = resolve_path(config.agent.binary)
     print(f"config: ok ({config.sha256})")
     if binary.is_file():

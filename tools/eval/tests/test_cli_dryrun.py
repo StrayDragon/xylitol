@@ -16,6 +16,20 @@ def test_dry_run_json(capsys):
     assert out["commands"]["agent"].startswith("xylitol print")
 
 
+def test_doctor_lock(capsys):
+    code = main(
+        [
+            "doctor",
+            "--config",
+            str(EXAMPLES / "eval-swebench-mini.yaml"),
+            "--lock",
+            str(EXAMPLES.parent / "model-lock.yaml"),
+        ]
+    )
+    assert code == 0
+    assert "lock: ok" in capsys.readouterr().out
+
+
 def test_run_requires_binary(tmp_path, capsys):
     config = tmp_path / "config.yaml"
     config.write_text(
