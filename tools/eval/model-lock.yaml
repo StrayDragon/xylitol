@@ -1,0 +1,32 @@
+schema_version: 1
+
+model:
+  id: group/glm-5.3-flash
+  provider: openai
+  api: openai-responses
+  base_url_env: MAGPIE_GATEWAY_URL
+  api_key_env: MAGPIE_GATEWAY_KEY
+  context_window: 1000000
+  max_output_tokens: 128000
+  thinking_levels: [low, high]
+  thinking_level: high
+
+profiles:
+  smoke:
+    max_turns: 8
+    wall_seconds: 600
+  compare:
+    max_turns: 80
+    wall_seconds: 1800
+
+benchmarks:
+  swe_verified:
+    dataset: swe-bench/swe-bench-verified
+    tasks: 25
+  terminal_bench:
+    dataset: terminal-bench/terminal-bench@4.0.0
+    tasks: 10
+  deepswe:
+    dataset: deep-swe/tasks
+    revision: v1.1
+    tasks: 10
