@@ -47,8 +47,8 @@ needs_specs_change: false
 - **Python 编排**，不在 Rust runtime 引入 Docker/benchmark 依赖；Rust 侧只提供稳定 binary。
 - **只用 magpie 提供的模型**；不使用 `DEEPSEEK_API_KEY`；模型 id 直接用 catalog 输出。
 - **模型与密钥不外露**：仓库只写占位符；真实 key 只在本地 env / CI secrets；
-  Harbor 用 `--env-file`，xylitol adapter 把 key 写入容器 0600 config，不放进
-  `exec -e` argv。
+  Harbor 用 `--env-file`，xylitol adapter 把 key 写入容器 0600 `secret.env`，
+  `config.yaml` 只引用 `{{ secret.MAGPIE_GATEWAY_KEY }}`；不放进 `exec -e` argv。
 - **确认前不开 PR、不 push**；避免未审查代码与密钥泄露。
 
 ## Capabilities

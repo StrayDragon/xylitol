@@ -23,7 +23,7 @@
 - [x] 1.1 安装 Harbor（0.25）到临时 venv；确认 `harbor run` 可用
 - [x] 1.2 新增 `tools/eval/harbor/xylitol_agent.py`：`BaseInstalledAgent`
 - [x] 1.3 install 上传 binary；configure 写临时 config；run 执行 `xylitol print`
-- [x] 1.4 key 写入容器 0600 config；不把 key 放进 Harbor `exec -e` argv
+- [x] 1.4 key 写入容器 0600 `secret.env`；不把 key 放进 Harbor `exec -e` argv
 - [x] 1.5 Harbor + xylitol 单 task 跑通：agent 执行，verifier 产出 reward
 - [x] 1.6 记录 job 路径、agent log、verifier reward、失败分类
 - [x] 1.7 Docker Hub 不可达的本地 workaround：`DOCKER_BUILDKIT=0`

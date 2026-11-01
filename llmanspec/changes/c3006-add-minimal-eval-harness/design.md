@@ -63,7 +63,8 @@ tools/eval/
 - `configure`：生成临时 `config.yaml`；`group/glm-5.3-flash`，`openai-responses`，
   thinking `[low, high]`，context 1M，max output 128000，`session.max_turns`。
 - `run`：`xylitol print --no-trust --config ... --model ... "<instruction>"`；
-  `HOME` / `XYLITOL_CONFIG_DIR` 隔离；key 写入容器内 0600 config，避免 Harbor
+  `HOME` / `XYLITOL_CONFIG_DIR` 隔离；key 写入容器内 0600 `secret.env`，
+  `config.yaml` 只引用 `{{ secret.MAGPIE_GATEWAY_KEY }}`，避免 Harbor
   `exec -e KEY=value` 把 key 放进 argv；`timeout` 包裹。
 - `populate_context_post_run`：后续解析 session JSONL 的 usage；Phase 1 可先留空。
 - 不采 patch/preds：Harbor verifier 在任务环境内直接跑测试，reward 由
