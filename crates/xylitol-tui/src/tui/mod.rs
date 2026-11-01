@@ -160,6 +160,7 @@ pub struct TUI<T: Terminal> {
     last_render_perf: RenderPerfSnap,
     ao_components_stale: bool,
     ao_wheel_render_requested: bool,
+    ao_hover_render_requested: bool,
     ao_reproject_frames: u64,
     focus_order_counter: u64,
     next_overlay_id: u64,
@@ -208,6 +209,7 @@ impl<T: Terminal> TUI<T> {
             last_render_perf: RenderPerfSnap::default(),
             ao_components_stale: true,
             ao_wheel_render_requested: false,
+            ao_hover_render_requested: false,
             ao_reproject_frames: 0,
             focus_order_counter: 0,
             next_overlay_id: 1,
@@ -295,6 +297,7 @@ impl<T: Terminal> TUI<T> {
     pub fn mark_ao_components_stale(&mut self) {
         self.ao_components_stale = true;
         self.ao_wheel_render_requested = false;
+        self.ao_hover_render_requested = false;
     }
 
     pub fn ao_reproject_frames_for_test(&self) -> u64 {
@@ -348,6 +351,17 @@ impl<T: Terminal> TUI<T> {
             .as_ref()
             .map(ApplicationOwnedRuntime::wheel_notch)
             .unwrap_or(ScrollView::WHEEL_NOTCH)
+    }
+
+    pub fn application_owned_set_scroll_top(&mut self, top: usize) -> bool {
+        let Some(runtime) = self.application_owned.as_mut() else {
+            return false;
+        };
+        let changed = runtime.set_scroll_top(top);
+        if changed {
+            self.request_render(false);
+        }
+        changed
     }
 
     pub fn application_owned_scroll_top(&self) -> usize {
@@ -521,13 +535,24 @@ impl<T: Terminal> TUI<T> {
     }
 
     fn pointer_view(&self, overlay_capturing: bool) -> PointerView {
-        let rows = self.terminal.rows();
-        let transcript_rows = rows.saturating_sub(self.dock_rows.min(rows as usize) as u16);
         PointerView {
             scroll_top: self.application_owned_scroll_top(),
-            transcript_rows,
+            transcript_rows: self.painted_transcript_rows(),
             overlay_capturing,
         }
+    }
+
+    fn painted_transcript_rows(&self) -> u16 {
+        let rows = self.terminal.rows();
+        let painted_dock = self
+            .application_owned
+            .as_ref()
+            .map(|runtime| match runtime.dock_line_count() {
+                0 => self.dock_rows,
+                painted => painted,
+            })
+            .unwrap_or(self.dock_rows);
+        rows.saturating_sub(painted_dock.min(rows as usize) as u16)
     }
 
     fn refresh_pointer_hover_for_paint(&mut self, can_reproject: bool) {
@@ -899,7 +924,7 @@ impl<T: Terminal> TUI<T> {
                 false
             };
             if outcome.hover_changed {
-                self.ao_wheel_render_requested = true;
+                self.ao_hover_render_requested = true;
                 self.sync_pointer_hover_into_runtime();
                 return InputReaction::Rerender;
             }

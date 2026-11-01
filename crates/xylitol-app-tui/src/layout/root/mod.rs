@@ -858,6 +858,7 @@ impl UiRoot {
     pub const SESSION_SIDEBAR_HIT_ID: HitId = 1 << 61 | 1;
     pub const SESSION_SIDEBAR_SEPARATOR_HIT_ID: HitId = 1 << 61 | 2;
     pub const QUEUE_STRIP_HIT_ID: HitId = 1 << 61 | 3;
+    pub const TODO_SUMMARY_HOVER_HIT_ID: HitId = 1 << 61 | 4;
 
     pub fn session_sidebar_reserved_cols(&self, width: usize) -> usize {
         let (on, sidebar_w, _) = self.session_sidebar_layout(width);
@@ -924,6 +925,59 @@ impl UiRoot {
             .capturing()
             .space(HitSpace::Chrome),
         )
+    }
+
+    pub fn overlay_hover_hits(&self, width: usize) -> Vec<Hit> {
+        let mut hits = Vec::new();
+        if let Some(hit) = self.queue_strip_hover_hit(width) {
+            hits.push(hit);
+        }
+        if let Some(hit) = self.todo_summary_hover_hit() {
+            hits.push(hit);
+        }
+        hits
+    }
+
+    fn queue_strip_hover_hit(&self, width: usize) -> Option<Hit> {
+        if self.last_queue_rows == 0 {
+            return None;
+        }
+        Some(
+            Hit::at_screen(
+                Self::QUEUE_STRIP_HIT_ID,
+                0,
+                u16::try_from(self.queue_strip_row).unwrap_or(u16::MAX),
+            )
+            .cols(0, width)
+            .tall(self.last_queue_rows),
+        )
+    }
+
+    fn todo_summary_hover_hit(&self) -> Option<Hit> {
+        let (row, end) = self.todo_summary_row_and_cols()?;
+        Some(
+            Hit::at_screen(Self::TODO_SUMMARY_HOVER_HIT_ID, 0, u16::try_from(row).ok()?)
+                .cols(0, end),
+        )
+    }
+
+    fn todo_summary_row_and_cols(&self) -> Option<(usize, usize)> {
+        if self.last_todo_rows == 0 {
+            return None;
+        }
+        let summary = self.last_todo_hits.first()?;
+        let dock = self.last_dock_rows.max(1).min(self.term_rows);
+        let dock_top = self.term_rows.saturating_sub(dock);
+        let row = dock_top
+            .saturating_add(self.last_queue_rows)
+            .saturating_add(summary.row);
+        let end = self
+            .last_todo_plain
+            .get(summary.row)
+            .map(|line| xylitol_tui::visible_width(line).max(summary.col_end))
+            .unwrap_or(summary.col_end)
+            .max(1);
+        Some((row, end))
     }
 
     fn sidebar_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
@@ -1231,6 +1285,10 @@ impl UiRoot {
             Instant::now() + crate::commands::TOAST_NOTICE_TTL,
             ToastKind::Error,
         ));
+    }
+
+    pub fn todo_summary_row_for_test(&self) -> Option<usize> {
+        self.last_todo_hits.first().map(|hit| hit.row)
     }
 
     pub fn todo_bar_expanded(&self) -> bool {
@@ -1642,6 +1700,82 @@ mod tests {
         assert!(
             !root.take_pending_session_sidebar(),
             "narrow terminal must not request an unavailable sidebar"
+        );
+    }
+
+    fn root_with_dock(queue_rows: usize) -> UiRoot {
+        use xylitol_plugin_sdk::session::{TodoItem, TodoList, TodoStatus};
+
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.set_term_rows(30);
+        root.ui_model.todo = TodoList::new(vec![TodoItem {
+            id: "t1".into(),
+            content: "doing thing".into(),
+            status: TodoStatus::InProgress,
+        }]);
+        let todo = root.render_todo_bar_slot(120);
+        root.last_todo_rows = todo.len();
+        root.last_queue_rows = queue_rows;
+        root.last_dock_rows = queue_rows + todo.len() + 5;
+        root.queue_strip_row = 20;
+        root
+    }
+
+    #[test]
+    fn dock_registers_hover_hits_for_queue_and_todo_summary() {
+        let root = root_with_dock(3);
+        let hovers = root.overlay_hover_hits(120);
+        let ids: Vec<_> = hovers.iter().map(|h| (*h).into_region().id).collect();
+        assert!(
+            ids.contains(&UiRoot::QUEUE_STRIP_HIT_ID),
+            "queue hover: {ids:?}"
+        );
+        assert!(
+            ids.contains(&UiRoot::TODO_SUMMARY_HOVER_HIT_ID),
+            "todo summary hover: {ids:?}"
+        );
+        for hit in &hovers {
+            let region = (*hit).into_region();
+            assert_eq!(
+                region.space,
+                HitSpace::Dock,
+                "dock hover hits must map through the dock row space"
+            );
+            assert!(!region.capturing, "hover hits must not capture the pointer");
+        }
+    }
+
+    #[test]
+    fn todo_summary_hover_sits_below_the_queue_strip() {
+        let root = root_with_dock(3);
+        let todo = root
+            .overlay_hover_hits(120)
+            .into_iter()
+            .map(|hit| hit.into_region())
+            .find(|region| region.id == UiRoot::TODO_SUMMARY_HOVER_HIT_ID)
+            .expect("todo summary hover hit");
+        let queue = root
+            .overlay_hover_hits(120)
+            .into_iter()
+            .map(|hit| hit.into_region())
+            .find(|region| region.id == UiRoot::QUEUE_STRIP_HIT_ID)
+            .expect("queue hover hit");
+        assert_eq!(todo.col_start, 0);
+        assert!(todo.col_end > 0);
+        assert_eq!(
+            todo.content_row,
+            queue.content_row + 3 + crate::widgets::TODO_BAR_SPACER_ROWS,
+            "todo summary sits under the queue strip and its blank spacer row"
+        );
+    }
+
+    #[test]
+    fn empty_dock_registers_no_hover_hits() {
+        let root = UiRoot::new();
+        assert!(
+            root.overlay_hover_hits(120).is_empty(),
+            "no queue and no todo means no dock hover targets"
         );
     }
 

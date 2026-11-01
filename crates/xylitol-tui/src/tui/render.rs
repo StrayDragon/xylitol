@@ -38,6 +38,7 @@ impl<T: Terminal> TUI<T> {
             self.max_lines_rendered = 0;
             self.ao_components_stale = true;
             self.ao_wheel_render_requested = false;
+            self.ao_hover_render_requested = false;
             self.clear_pointer_hover();
         }
         self.render_requested = true;
@@ -50,7 +51,7 @@ impl<T: Terminal> TUI<T> {
         let width = self.terminal.columns() as usize;
         let ao_wheel_reproject = self.ao_wheel_render_requested
             && self.can_reproject_application_owned(self.ao_render_width(width));
-        let cadence_last = if ao_wheel_reproject {
+        let cadence_last = if ao_wheel_reproject || self.ao_hover_render_requested {
             self.last_ao_wheel_render_at
         } else {
             self.last_render_at
@@ -294,6 +295,7 @@ impl<T: Terminal> TUI<T> {
             self.terminal.flush();
         }
         self.ao_wheel_render_requested = false;
+        self.ao_hover_render_requested = false;
         Ok(())
     }
 

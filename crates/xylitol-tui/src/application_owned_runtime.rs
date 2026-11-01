@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::pointer::{HitId, HitRegionList, apply_hover_tint};
+use crate::pointer::{HitId, HitRegionList, PointerView, apply_hover_tint};
 use crate::scroll_gutter::{ScrollGutter, gutter_active, stamp_gutter};
 use crate::scroll_view::ScrollView;
 use crate::selection::{ClipboardSink, ScreenRect, SelectionController, format_osc52};
@@ -134,6 +134,12 @@ impl ApplicationOwnedRuntime {
         true
     }
 
+    pub fn set_scroll_top(&mut self, top: usize) -> bool {
+        let changed = self.scroll.set_scroll_top(top);
+        self.follow_bottom = self.scroll.at_bottom();
+        changed
+    }
+
     pub fn scroll_to_end(&mut self) -> bool {
         let was_at_bottom = self.scroll.at_bottom();
         self.scroll.scroll_to_end();
@@ -221,12 +227,20 @@ impl ApplicationOwnedRuntime {
         let mut visible = self.scroll.visible_lines().to_vec();
         self.selection
             .apply_highlight(&mut visible, self.scroll.scroll_top());
+        let transcript_h = viewport_h.min(term_height);
+        let mut dock_lines = self.last_dock_lines.clone();
+        dock_lines.truncate(term_height.saturating_sub(transcript_h));
         if let Some(id) = self.hover_id
             && !self.selection.is_dragging()
         {
             apply_hover_tint(
                 &mut visible,
-                self.scroll.scroll_top(),
+                &mut dock_lines,
+                PointerView {
+                    scroll_top: self.scroll.scroll_top(),
+                    transcript_rows: transcript_h.min(u16::MAX as usize) as u16,
+                    overlay_capturing: false,
+                },
                 &self.hover_regions,
                 id,
             );
@@ -243,11 +257,11 @@ impl ApplicationOwnedRuntime {
                 content,
             );
         }
-        while visible.len() < viewport_h {
+        while visible.len() < transcript_h {
             visible.push(String::new());
         }
-        visible.truncate(viewport_h);
-        visible.extend(self.last_dock_lines.iter().cloned());
+        visible.truncate(transcript_h);
+        visible.extend(dock_lines);
         if visible.len() > term_height {
             visible.truncate(term_height);
         }
@@ -628,6 +642,84 @@ mod tests {
     }
 
     #[test]
+    fn dock_growth_does_not_move_anchored_content_row() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        let full: Vec<String> = (0..30)
+            .map(|i| format!("L{i:0>3}"))
+            .chain(["d1".into(), "d2".into()])
+            .collect();
+        let _ = runtime.project_frame(&full, 10, 40);
+        assert!(runtime.scroll_by(-8), "scroll off the bottom");
+        let before = runtime.scroll_top();
+        let anchor = runtime.content_lines()[before].clone();
+
+        let full_grown: Vec<String> = (0..30)
+            .map(|i| format!("L{i:0>3}"))
+            .chain(["d1".into(), "d2".into(), "d3".into()])
+            .collect();
+        runtime.set_dock_rows(3);
+        let _ = runtime.project_frame(&full_grown, 10, 40);
+        let after = runtime.scroll_top();
+        assert_eq!(
+            runtime.content_lines()[after].as_str(),
+            anchor.as_str(),
+            "dock growth must not slide the anchored content row (was {anchor:?} at {before}, now {after})"
+        );
+    }
+
+    #[test]
+    fn dock_shrink_does_not_move_anchored_content_row() {
+        let mut runtime = ApplicationOwnedRuntime::new(3);
+        let full: Vec<String> = (0..30)
+            .map(|i| format!("L{i:0>3}"))
+            .chain(["d1".into(), "d2".into(), "d3".into()])
+            .collect();
+        let _ = runtime.project_frame(&full, 10, 40);
+        assert!(runtime.scroll_by(-8), "scroll off the bottom");
+        let before = runtime.scroll_top();
+        let anchor = runtime.content_lines()[before].clone();
+
+        let full_shrunk: Vec<String> = (0..30)
+            .map(|i| format!("L{i:0>3}"))
+            .chain(["d1".into(), "d2".into()])
+            .collect();
+        runtime.set_dock_rows(2);
+        let _ = runtime.project_frame(&full_shrunk, 10, 40);
+        let after = runtime.scroll_top();
+        assert_eq!(
+            runtime.content_lines()[after].as_str(),
+            anchor.as_str(),
+            "dock shrink must not slide the anchored content row"
+        );
+    }
+
+    #[test]
+    fn reproject_uses_the_same_dock_baseline_as_project() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        let full: Vec<String> = (0..30)
+            .map(|i| format!("L{i:0>3}"))
+            .chain(["d1".into(), "d2".into()])
+            .collect();
+        let _ = runtime.project_frame(&full, 10, 40);
+        assert!(runtime.scroll_by(-8), "scroll off the bottom");
+
+        runtime.set_dock_rows(6);
+        let projected = runtime.project_frame(&full, 10, 40);
+        let top_after_project = runtime.scroll_top();
+        let repainted = runtime.reproject_frame(10, 40);
+        let top_after_reproject = runtime.scroll_top();
+
+        assert_eq!(
+            top_after_reproject, top_after_project,
+            "cheap reproject must not move scroll_top relative to a full project"
+        );
+        assert_eq!(
+            repainted, projected,
+            "alternating project/reproject at the same dock must paint identical frames"
+        );
+    }
+
+    #[test]
     fn gutter_paint_matches_across_project_and_reproject() {
         let mut runtime = ApplicationOwnedRuntime::new(2);
         runtime.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
@@ -735,6 +827,90 @@ mod tests {
             !dragging[0].contains("\x1b[1m"),
             "drag must suppress hover emphasis on the header, got {:?}",
             dragging[0]
+        );
+    }
+
+    #[test]
+    fn dock_hover_tints_the_dock_row_and_never_the_transcript() {
+        use crate::pointer::Hit;
+
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        let mut full: Vec<String> = (0..6).map(|i| format!("body{i}")).collect();
+        full.extend(["todo-a".to_string(), "todo-b".to_string()]);
+        let _ = runtime.project_frame(&full, 8, 40);
+        let transcript_before: Vec<String> =
+            runtime.reproject_frame(8, 40).into_iter().take(6).collect();
+
+        let mut regions = HitRegionList::new();
+        regions.mark(Hit::at_screen(31, 0, 7).cols(0, 6));
+        runtime.set_hover(Some(31), regions);
+        let painted = runtime.reproject_frame(8, 40);
+
+        assert!(
+            painted[7].contains("\x1b[1m"),
+            "dock row 1 must be emphasized while hovered, got {:?}",
+            painted[7]
+        );
+        assert_eq!(painted[6], "todo-a", "the sibling dock row stays plain");
+        let transcript_after: Vec<String> = painted.into_iter().take(6).collect();
+        assert_eq!(
+            transcript_before, transcript_after,
+            "a dock hover must not restyle any transcript row"
+        );
+    }
+
+    #[test]
+    fn transcript_hover_does_not_tint_dock_rows() {
+        use crate::pointer::Hit;
+
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        let mut full: Vec<String> = (0..6).map(|i| format!("body{i}")).collect();
+        full.extend(["todo-a".to_string(), "todo-b".to_string()]);
+        let _ = runtime.project_frame(&full, 8, 40);
+
+        let mut regions = HitRegionList::new();
+        regions.mark(Hit::on_line(12, 0).cols(0, 5));
+        runtime.set_hover(Some(12), regions);
+        let painted = runtime.reproject_frame(8, 40);
+
+        assert!(
+            painted[6] == "todo-a" && painted[7] == "todo-b",
+            "a transcript hover must leave dock rows byte-identical, got {:?}",
+            &painted[6..8]
+        );
+        assert!(
+            painted[..6].iter().any(|l| l.contains("\x1b[1m")),
+            "the transcript hit itself must still tint: {painted:?}"
+        );
+    }
+
+    #[test]
+    fn chrome_hit_on_a_dock_row_tints_the_queue_strip() {
+        use crate::pointer::Hit;
+        use crate::pointer::HitSpace;
+
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        let mut full: Vec<String> = (0..6).map(|i| format!("body{i}")).collect();
+        full.extend(["queue-line".to_string(), "hint-line".to_string()]);
+        let _ = runtime.project_frame(&full, 8, 40);
+
+        let mut regions = HitRegionList::new();
+        regions.mark(Hit::at_cell(41, 0, 6).cols(0, 9).space(HitSpace::Chrome));
+        runtime.set_hover(Some(41), regions);
+        let painted = runtime.reproject_frame(8, 40);
+
+        assert!(
+            painted[6].contains("\x1b[1m"),
+            "a chrome hit at screen row 6 (dock row 0) must emphasize it, got {:?}",
+            painted[6]
+        );
+        assert_eq!(
+            painted[7], "hint-line",
+            "only the hit dock row is emphasized"
+        );
+        assert!(
+            painted[..6].iter().all(|l| !l.contains("\x1b[1m")),
+            "the queue-strip hit must not tint transcript rows: {painted:?}"
         );
     }
 

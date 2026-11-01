@@ -99,7 +99,10 @@ impl InteractionBdd {
 
     pub fn click_todo_summary(&mut self) -> bool {
         let _ = self.root.render(80);
-        self.root.click_todo_bar_local(0, 0)
+        let Some(row) = self.root.todo_summary_row_for_test() else {
+            return false;
+        };
+        self.root.click_todo_bar_local(0, row)
     }
 
     pub fn todo_expanded(&self) -> bool {

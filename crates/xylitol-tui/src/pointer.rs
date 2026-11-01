@@ -370,10 +370,19 @@ impl PointerPipeline {
         }
         let hit = self
             .last_cell
-            .and_then(|(col, row)| self.hit_at(col, row, view));
+            .and_then(|(col, row)| self.hover_hit_at(col, row, view));
         let changed = hit != self.hover_id;
         self.hover_id = hit;
         changed
+    }
+
+    pub fn hover_hit_at(&self, col: u16, row: u16, view: PointerView) -> Option<HitId> {
+        self.hover_paint()
+            .hit_at(col, row, view.scroll_top, view.transcript_rows)
+            .or_else(|| {
+                self.regions
+                    .hit_at(col, row, view.scroll_top, view.transcript_rows)
+            })
     }
 
     pub fn take_click(&mut self) -> Option<HitId> {
@@ -441,8 +450,9 @@ impl PointerPipeline {
                 if !self.probe_armed {
                     return PointerOutcome::default();
                 }
-                let hover_changed = hit != self.hover_id;
-                self.hover_id = hit;
+                let hover = self.hover_hit_at(col, row, view);
+                let hover_changed = hover != self.hover_id;
+                self.hover_id = hover;
                 PointerOutcome {
                     hover_changed,
                     ..PointerOutcome::default()
@@ -528,39 +538,64 @@ impl PointerPipeline {
     }
 }
 
+enum HoverRowSource {
+    Transcript(usize),
+    Dock(usize),
+    Offscreen,
+}
+
+fn hover_row_source(region: &HitRegion, offset: usize, view: PointerView) -> HoverRowSource {
+    let screen_row = region.content_row.saturating_add(offset);
+    let transcript_rows = view.transcript_rows as usize;
+    match region.space {
+        HitSpace::Content => screen_row
+            .checked_sub(view.scroll_top)
+            .map_or(HoverRowSource::Offscreen, HoverRowSource::Transcript),
+        HitSpace::Viewport => {
+            if screen_row < transcript_rows {
+                HoverRowSource::Transcript(screen_row)
+            } else {
+                HoverRowSource::Offscreen
+            }
+        }
+        HitSpace::Chrome => {
+            if screen_row < transcript_rows {
+                HoverRowSource::Transcript(screen_row)
+            } else {
+                HoverRowSource::Dock(screen_row - transcript_rows)
+            }
+        }
+        HitSpace::Dock => HoverRowSource::Dock(screen_row.saturating_sub(transcript_rows)),
+    }
+}
+
 pub fn apply_hover_tint(
-    visible: &mut [String],
-    scroll_top: usize,
+    transcript: &mut [String],
+    dock: &mut [String],
+    view: PointerView,
     regions: &HitRegionList,
     hover_id: HitId,
 ) {
-    for region in regions
-        .iter()
-        .filter(|r| r.id == hover_id && r.space != HitSpace::Dock)
-    {
+    for region in regions.iter().filter(|r| r.id == hover_id) {
         let height = region.height.max(1);
         for offset in 0..height {
-            let Some(vis_i) = visible_row_for(&region, offset, scroll_top) else {
-                continue;
+            let line = match hover_row_source(&region, offset, view) {
+                HoverRowSource::Transcript(i) => transcript.get_mut(i),
+                HoverRowSource::Dock(i) => dock.get_mut(i),
+                HoverRowSource::Offscreen => None,
             };
-            if let Some(line) = visible.get_mut(vis_i) {
+            if let Some(line) = line {
                 *line = emphasize_hover_columns(line, region.col_start, region.col_end);
             }
         }
     }
 }
 
-fn visible_row_for(region: &HitRegion, offset: usize, scroll_top: usize) -> Option<usize> {
-    let content_row = region.content_row.saturating_add(offset);
-    match region.space {
-        HitSpace::Content => content_row.checked_sub(scroll_top),
-        HitSpace::Viewport | HitSpace::Chrome => Some(content_row),
-        HitSpace::Dock => None,
-    }
-}
-
 fn emphasize_hover_columns(line: &str, from: usize, to: usize) -> String {
     if to <= from || line.is_empty() {
+        return line.to_string();
+    }
+    if line.contains(HOVER_MARKER) {
         return line.to_string();
     }
     let mut out = String::with_capacity(line.len() + 16);
@@ -599,6 +634,8 @@ fn emphasize_hover_columns(line: &str, from: usize, to: usize) -> String {
     }
     out
 }
+
+const HOVER_MARKER: &str = "\x1b[22m\x1b[1m";
 
 fn is_sgr(seq: &str) -> bool {
     seq.as_bytes().first() == Some(&0x1b)
@@ -863,12 +900,54 @@ mod tests {
         assert_eq!(pipe.hover_id(), Some(1));
     }
 
+    fn hover_view(row: usize) -> PointerView {
+        PointerView {
+            scroll_top: 0,
+            transcript_rows: (row + 1) as u16,
+            overlay_capturing: false,
+        }
+    }
+
+    #[test]
+    fn hover_tint_round_trips_back_to_the_untinted_line() {
+        let mut list = HitRegionList::new();
+        list.push(HitRegion::new(1, 0, 0, 5));
+        let original = "plain title".to_string();
+        let mut visible = vec![original.clone()];
+        let view = hover_view(0);
+        apply_hover_tint(&mut visible, &mut [], view, &list, 1);
+        assert_ne!(visible[0], original, "hover must change the paint");
+
+        let mut restored = vec![original.clone()];
+        apply_hover_tint(&mut restored, &mut [], view, &list, 0);
+        assert_eq!(
+            restored[0], original,
+            "an unmatched hover id must leave the line untouched"
+        );
+    }
+
+    #[test]
+    fn hover_tint_is_idempotent_when_applied_twice() {
+        let mut list = HitRegionList::new();
+        list.push(HitRegion::new(1, 0, 0, 5));
+        let original = "plain title".to_string();
+        let view = hover_view(0);
+        let mut once = vec![original.clone()];
+        apply_hover_tint(&mut once, &mut [], view, &list, 1);
+        let mut twice = once.clone();
+        apply_hover_tint(&mut twice, &mut [], view, &list, 1);
+        assert_eq!(
+            twice[0], once[0],
+            "re-applying hover to an already tinted line must not stack SGR"
+        );
+    }
+
     #[test]
     fn hover_tint_uses_bold_not_invert() {
         let mut list = HitRegionList::new();
         list.push(HitRegion::new(1, 0, 0, 5));
         let mut visible = vec!["hello".into()];
-        apply_hover_tint(&mut visible, 0, &list, 1);
+        apply_hover_tint(&mut visible, &mut [], tint_view(0, 8), &list, 1);
         assert!(
             visible[0].contains("\x1b[1m"),
             "hover must emphasize (bold), got {:?}",
@@ -885,7 +964,7 @@ mod tests {
         let mut list = HitRegionList::new();
         list.push(HitRegion::new(1, 0, 0, 8));
         let mut visible = vec!["\x1b[2mdim title\x1b[22m".into()];
-        apply_hover_tint(&mut visible, 0, &list, 1);
+        apply_hover_tint(&mut visible, &mut [], tint_view(0, 8), &list, 1);
         assert!(
             visible[0].contains("\x1b[22m\x1b[1m"),
             "hover over dim text must reset dim then bold, got {:?}",
@@ -930,16 +1009,119 @@ mod tests {
         );
     }
 
+    fn tint_view(scroll_top: usize, transcript_rows: u16) -> PointerView {
+        PointerView {
+            scroll_top,
+            transcript_rows,
+            overlay_capturing: false,
+        }
+    }
+
     #[test]
-    fn hover_tint_skips_dock_rows() {
+    fn dock_region_hover_bolds_the_matching_dock_row() {
         let mut list = HitRegionList::new();
-        list.mark(Hit::at_screen(7, 0, 1).cols(0, 5));
-        let mut visible = vec!["top".to_string(), "dock".to_string()];
-        apply_hover_tint(&mut visible, 0, &list, 7);
+        list.mark(Hit::at_screen(7, 0, 5).cols(0, 5));
+        let mut transcript = vec!["top".to_string(), "body".to_string()];
+        let mut dock = vec!["dock0".to_string(), "dock1".to_string()];
+        apply_hover_tint(&mut transcript, &mut dock, tint_view(0, 4), &list, 7);
+        assert!(
+            dock[1].contains("\x1b[1m"),
+            "screen row 5 with 4 transcript rows is dock row 1; got {:?}",
+            dock[1]
+        );
+        assert_eq!(dock[0], "dock0", "the sibling dock row stays untouched");
         assert_eq!(
-            visible[1], "dock",
-            "dock rows must not receive hover paint; got {:?}",
-            visible[1]
+            transcript,
+            vec!["top".to_string(), "body".to_string()],
+            "a dock region must never tint a transcript row"
+        );
+    }
+
+    #[test]
+    fn dock_region_never_tints_transcript_rows() {
+        let mut list = HitRegionList::new();
+        list.mark(Hit::at_screen(9, 0, 6).cols(0, 20));
+        let mut transcript = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let mut dock = vec![String::new(), "dock".to_string()];
+        apply_hover_tint(&mut transcript, &mut dock, tint_view(3, 4), &list, 9);
+        assert!(
+            transcript.iter().all(|l| !l.contains("\x1b[1m")),
+            "dock hover must not bleed into transcript rows: {transcript:?}"
+        );
+    }
+
+    #[test]
+    fn transcript_region_never_tints_dock_rows() {
+        let mut list = HitRegionList::new();
+        list.mark(Hit::on_line(3, 1).cols(0, 20));
+        let mut transcript = vec!["a".to_string(), "b".to_string()];
+        let mut dock = vec!["dock".to_string()];
+        apply_hover_tint(&mut transcript, &mut dock, tint_view(0, 4), &list, 3);
+        assert!(
+            transcript[1].contains("\x1b[1m"),
+            "content row 1 must tint transcript row 1; got {:?}",
+            transcript[1]
+        );
+        assert_eq!(
+            dock[0], "dock",
+            "a content region must never tint dock rows"
+        );
+    }
+
+    #[test]
+    fn dock_mapping_follows_terminal_height_changes() {
+        let mut tall = HitRegionList::new();
+        tall.mark(Hit::at_screen(7, 0, 6).cols(0, 4));
+        let mut tall_transcript = vec![String::new(); 6];
+        let mut tall_dock = vec!["d0".to_string(), "d1".to_string()];
+        apply_hover_tint(
+            &mut tall_transcript,
+            &mut tall_dock,
+            tint_view(0, 6),
+            &tall,
+            7,
+        );
+        assert!(
+            tall_dock[0].contains("\x1b[1m"),
+            "height 8 (6 + 2): dock starts at screen row 6; got {:?}",
+            tall_dock[0]
+        );
+        assert_eq!(tall_dock[1], "d1", "the second dock row stays plain");
+
+        let mut short = HitRegionList::new();
+        short.mark(Hit::at_screen(7, 0, 4).cols(0, 4));
+        let mut short_transcript = vec![String::new(); 4];
+        let mut short_dock = vec!["e0".to_string(), "e1".to_string()];
+        apply_hover_tint(
+            &mut short_transcript,
+            &mut short_dock,
+            tint_view(0, 4),
+            &short,
+            7,
+        );
+        assert!(
+            short_dock[0].contains("\x1b[1m"),
+            "height 6 (4 + 2): dock starts at screen row 4; got {:?}",
+            short_dock[0]
+        );
+    }
+
+    #[test]
+    fn chrome_region_on_a_dock_row_bolds_the_dock_line() {
+        let mut list = HitRegionList::new();
+        list.mark(Hit::at_cell(21, 0, 5).cols(0, 9).space(HitSpace::Chrome));
+        let mut transcript = vec!["t0".to_string(), "t1".to_string(), "t2".to_string()];
+        let mut dock = vec!["queue0".to_string(), "queue1".to_string()];
+        apply_hover_tint(&mut transcript, &mut dock, tint_view(0, 4), &list, 21);
+        assert!(
+            dock[1].contains("\x1b[1m"),
+            "a chrome hit past transcript_rows lands on dock row 1; got {:?}",
+            dock[1]
+        );
+        assert_eq!(dock[0], "queue0");
+        assert!(
+            transcript.iter().all(|l| !l.contains("\x1b[1m")),
+            "the out-of-band chrome hit must not touch transcript rows: {transcript:?}"
         );
     }
 
@@ -959,32 +1141,63 @@ mod tests {
     }
 
     #[test]
-    fn visible_row_for_covers_every_hit_space() {
+    fn hover_row_source_covers_every_hit_space() {
         let content = HitRegion::new(1, 6, 0, 4);
-        assert_eq!(visible_row_for(&content, 0, 4), Some(2));
-        assert_eq!(
-            visible_row_for(&content, 1, 4),
-            Some(3),
-            "tall content regions advance one visible row per offset"
+        assert!(matches!(
+            hover_row_source(&content, 0, tint_view(4, 8)),
+            HoverRowSource::Transcript(2)
+        ));
+        assert!(
+            matches!(
+                hover_row_source(&content, 1, tint_view(4, 8)),
+                HoverRowSource::Transcript(3)
+            ),
+            "tall content regions advance one row per offset"
         );
-        assert_eq!(
-            visible_row_for(&content, 0, 7),
-            None,
+        assert!(
+            matches!(
+                hover_row_source(&content, 0, tint_view(7, 8)),
+                HoverRowSource::Offscreen
+            ),
             "content scrolled above scroll_top has no visible row"
         );
         let viewport = Hit::at_cell(2, 0, 3).into_region();
-        assert_eq!(
-            visible_row_for(&viewport, 0, 40),
-            Some(3),
+        assert!(
+            matches!(
+                hover_row_source(&viewport, 0, tint_view(40, 8)),
+                HoverRowSource::Transcript(3)
+            ),
             "viewport rows ignore scroll_top"
         );
-        let chrome = Hit::at_cell(3, 0, 5).space(HitSpace::Chrome).into_region();
-        assert_eq!(visible_row_for(&chrome, 0, 40), Some(5));
+        assert!(
+            matches!(
+                hover_row_source(&viewport, 0, tint_view(0, 3)),
+                HoverRowSource::Offscreen
+            ),
+            "a viewport row past the transcript band is not drawn"
+        );
+        let chrome_on_screen = Hit::at_cell(3, 0, 5).space(HitSpace::Chrome).into_region();
+        assert!(
+            matches!(
+                hover_row_source(&chrome_on_screen, 0, tint_view(0, 8)),
+                HoverRowSource::Transcript(5)
+            ),
+            "chrome inside the transcript band stays on screen rows"
+        );
+        assert!(
+            matches!(
+                hover_row_source(&chrome_on_screen, 0, tint_view(0, 4)),
+                HoverRowSource::Dock(1)
+            ),
+            "chrome past transcript_rows falls through to dock row mapping"
+        );
         let dock = Hit::at_screen(4, 0, 2).into_region();
-        assert_eq!(
-            visible_row_for(&dock, 0, 0),
-            None,
-            "dock rows never map into the visible transcript slice"
+        assert!(
+            matches!(
+                hover_row_source(&dock, 0, tint_view(0, 0)),
+                HoverRowSource::Dock(2)
+            ),
+            "dock rows map by absolute screen row"
         );
     }
 
@@ -993,13 +1206,13 @@ mod tests {
         let mut list = HitRegionList::new();
         list.push(HitRegion::new(1, 2, 0, 4).with_height(3));
         let mut fully_scrolled = vec!["kept".to_string()];
-        apply_hover_tint(&mut fully_scrolled, 5, &list, 1);
+        apply_hover_tint(&mut fully_scrolled, &mut [], tint_view(5, 8), &list, 1);
         assert_eq!(
             fully_scrolled[0], "kept",
             "a region fully above scroll_top must not tint anything"
         );
         let mut partially_visible = vec!["row0".to_string()];
-        apply_hover_tint(&mut partially_visible, 3, &list, 1);
+        apply_hover_tint(&mut partially_visible, &mut [], tint_view(3, 8), &list, 1);
         assert!(
             partially_visible[0].contains("\x1b[1m"),
             "the visible tail of a tall region must still tint, got {:?}",

@@ -385,8 +385,9 @@ impl<T: Terminal> HostSession<T> {
         let transcript_rows = term_rows.saturating_sub(dock) as u16;
         let root = root.borrow();
         let mut clicks = root.fold_hits().pointer_click_hits();
-        let hovers = root.fold_hits().pointer_hover_hits();
+        let mut hovers = root.fold_hits().pointer_hover_hits();
         clicks.extend(root.overlay_hits(cols, transcript_rows as usize));
+        hovers.extend(root.overlay_hover_hits(cols));
         drop(root);
         clicks.extend(self.tui.scroll_gutter_hit_set());
         self.tui.replace_hits(clicks);

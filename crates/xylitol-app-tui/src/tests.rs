@@ -2742,6 +2742,197 @@ fn harness_mouse_moved_armed_probe_sets_hover_without_full_stale() {
 }
 
 #[test]
+fn harness_hovering_todo_summary_sets_a_hover_id() {
+    use crossterm::event::MouseEventKind;
+    use xylitol_plugin_sdk::session::{TodoItem, TodoList, TodoStatus};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.todo = TodoList::new(vec![
+            TodoItem {
+                id: "t1".into(),
+                content: "doing thing".into(),
+                status: TodoStatus::InProgress,
+            },
+            TodoItem {
+                id: "t2".into(),
+                content: "later thing".into(),
+                status: TodoStatus::Pending,
+            },
+        ]);
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    session.render_now().unwrap();
+    assert!(session.tui.pointer_probe_armed(), "AO probe must be armed");
+
+    let summary_row = {
+        let root = root.borrow();
+        root.overlay_hover_hits(100)
+            .into_iter()
+            .map(|hit| hit.into_region())
+            .find(|region| region.id == super::layout::UiRoot::TODO_SUMMARY_HOVER_HIT_ID)
+            .expect("todo summary hover region")
+            .content_row
+    };
+
+    let summary_line = |s: &HostSession<TestTerminal>| {
+        s.tui
+            .last_painted_lines()
+            .iter()
+            .find(|line| xylitol_tui::utils::strip_ansi_codes(line).contains("待办 0/"))
+            .cloned()
+            .unwrap_or_default()
+    };
+
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            2,
+            1,
+        ))))
+        .unwrap();
+    session.render_now().unwrap();
+    let resting = summary_line(&session);
+    assert!(!resting.is_empty(), "summary row must be painted");
+
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            2,
+            summary_row as u16,
+        ))))
+        .unwrap();
+    assert_eq!(
+        session.tui.pointer_hover_id(),
+        Some(super::layout::UiRoot::TODO_SUMMARY_HOVER_HIT_ID),
+        "hovering the todo summary must record its hover id"
+    );
+    session.render_now().unwrap();
+    let hovered = summary_line(&session);
+    assert_ne!(
+        hovered, resting,
+        "the hovered summary row must be repainted, not merely tracked"
+    );
+
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            2,
+            1,
+        ))))
+        .unwrap();
+    assert!(
+        session.tui.pointer_hover_id().is_none(),
+        "moving off the bar must clear the hover id"
+    );
+    session.render_now().unwrap();
+    assert_eq!(
+        summary_line(&session),
+        resting,
+        "leaving the bar must restore the resting paint byte for byte"
+    );
+}
+
+#[test]
+fn hovering_a_fold_block_mid_scroll_keeps_the_viewport_anchored() {
+    use super::widgets::FoldTarget;
+    use crossterm::event::MouseEventKind;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    for i in 0..40 {
+        session.push_scroll_notice(format!("head-{i:03}"));
+    }
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
+            id: "hover-fold-mid".into(),
+            name: "read".into(),
+            args_preview: "a.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "line-a
+line-b
+line-c
+line-d"
+                .into(),
+            is_error: false,
+            done: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    for i in 0..40 {
+        session.push_scroll_notice(format!("tail-{i:03}"));
+    }
+    session.render_now().unwrap();
+
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(
+        session.tui.application_owned_scroll_by(-(notch * 5)),
+        "fixture must be scrollable"
+    );
+    session.render_now().unwrap();
+
+    let (screen_row, region_col) = {
+        let hits = root.borrow();
+        let top = hits.fold_hits().scroll_top;
+        let region = hits
+            .fold_hits()
+            .regions
+            .iter()
+            .find(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "hover-fold-mid"))
+            .cloned()
+            .expect("tool fold region must be registered");
+        (region.content_row.saturating_sub(top), region.col_start)
+    };
+
+    let snapshot = |s: &HostSession<TestTerminal>| -> Vec<String> {
+        s.tui
+            .last_painted_lines()
+            .iter()
+            .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
+            .collect()
+    };
+    let scroll_before = session.tui.application_owned_scroll_top();
+    let before = snapshot(&session);
+
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            region_col as u16 + 1,
+            screen_row as u16,
+        ))))
+        .unwrap();
+    session.render_now().unwrap();
+
+    let after = snapshot(&session);
+    assert_eq!(
+        session.tui.application_owned_scroll_top(),
+        scroll_before,
+        "hovering a fold block must not change scroll_top"
+    );
+    assert_eq!(
+        after,
+        before,
+        "hovering a fold block must not move any row; first difference at {:?}",
+        before
+            .iter()
+            .zip(after.iter())
+            .position(|(a, b)| a != b)
+            .map(|i| (i, before.get(i), after.get(i)))
+    );
+}
+
+#[test]
 fn harness_fold_click_clears_stale_hover() {
     use super::widgets::FoldTarget;
     use crossterm::event::MouseEventKind;
@@ -4274,6 +4465,147 @@ fn client_notice_stack_pins_scrolled_ao_viewport() {
         assert!(
             !plain.contains("✓ Copied"),
             "stack must not cover dock: {plain:?}"
+        );
+    }
+}
+
+#[test]
+fn streaming_append_keeps_scrolled_ao_viewport_anchored() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    for i in 0..120 {
+        session.push_scroll_notice(format!("row-{i:03}"));
+    }
+    session.render_now().unwrap();
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(session.tui.application_owned_scroll_by(-(notch * 10)));
+    session.render_now().unwrap();
+    let anchored = session.tui.application_owned_scroll_top();
+    assert!(anchored > 0, "must be off the content top");
+
+    let top_before = anchored;
+    for i in 0..30 {
+        session.push_scroll_notice(format!("stream-{i:02}"));
+        session.render_now().unwrap();
+        assert_eq!(
+            session.tui.application_owned_scroll_top(),
+            top_before,
+            "appending content while scrolled up must not move scroll_top (row {i})"
+        );
+    }
+}
+
+#[test]
+fn dock_growth_keeps_scrolled_ao_viewport_anchored() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    for i in 0..120 {
+        session.push_scroll_notice(format!("row-{i:03}"));
+    }
+    session.render_now().unwrap();
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(session.tui.application_owned_scroll_by(-(notch * 6)));
+    session.render_now().unwrap();
+    let anchored = session.tui.application_owned_scroll_top();
+    assert!(anchored > 0, "must be off the content top");
+    let top_row = |s: &HostSession<TestTerminal>| {
+        s.tui
+            .application_owned_content_lines()
+            .and_then(|c| c.get(s.tui.application_owned_scroll_top()))
+            .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
+            .unwrap_or_default()
+    };
+    let before_row = top_row(&session);
+
+    for dock in [9usize, 10, 10, 9] {
+        session.tui.set_dock_rows(dock);
+        session.render_now().unwrap();
+        assert_eq!(
+            top_row(&session),
+            before_row,
+            "dock change to {dock} rows must not slide the anchored top row"
+        );
+    }
+}
+
+#[test]
+fn dock_viewport_oscillation_keeps_the_anchored_top_row() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    for i in 0..120 {
+        session.push_scroll_notice(format!("row-{i:03}"));
+    }
+    session.render_now().unwrap();
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(session.tui.application_owned_scroll_by(-(notch * 30)));
+    session.render_now().unwrap();
+
+    let top_row = |s: &HostSession<TestTerminal>| {
+        let lines = s.tui.application_owned_content_lines().unwrap_or_default();
+        let top = s.tui.application_owned_scroll_top();
+        lines
+            .get(top)
+            .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
+            .unwrap_or_default()
+    };
+    let base = top_row(&session);
+    assert!(
+        base.contains("row-"),
+        "anchor must be a content row: {base:?}"
+    );
+
+    for dock in [9usize, 12, 9, 14, 9] {
+        session.tui.set_dock_rows(dock);
+        session.render_now().unwrap();
+        assert_eq!(
+            top_row(&session),
+            base,
+            "dock={dock} rows must not slide the anchored top content row"
+        );
+    }
+}
+
+#[test]
+fn streaming_deltas_do_not_drift_a_scrolled_viewport() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    for i in 0..120 {
+        session.push_scroll_notice(format!("row-{i:03}"));
+    }
+    session.render_now().unwrap();
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(session.tui.application_owned_scroll_by(-(notch * 6)));
+    session.render_now().unwrap();
+    let top_before = session.tui.application_owned_scroll_top();
+    let row_before = session
+        .tui
+        .application_owned_content_lines()
+        .and_then(|c| c.get(top_before))
+        .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
+        .unwrap_or_default();
+    assert!(
+        row_before.contains("row-"),
+        "anchor must be content: {row_before:?}"
+    );
+
+    session.on_run_started("stream");
+    session.sync_dock_rows();
+    session.render_now().unwrap();
+
+    for i in 0..40 {
+        apply_xy_event(
+            session.ui_model_mut(),
+            &XyEvent::TextDelta(format!("chunk-{i} of a long streaming answer. ")),
+        );
+        session.sync_ui_root_from_model();
+        session.sync_dock_rows();
+        session.render_now().unwrap();
+        let top = session.tui.application_owned_scroll_top();
+        let row = session
+            .tui
+            .application_owned_content_lines()
+            .and_then(|c| c.get(top))
+            .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
+            .unwrap_or_default();
+        assert_eq!(
+            row, row_before,
+            "stream chunk {i} must not drift the anchored row (top={top}, was {top_before})"
         );
     }
 }
@@ -6302,6 +6634,65 @@ async fn load_earlier_prepends_page_from_store() {
         ),
         "loaded page must be prepended: {:?}",
         session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn load_earlier_keeps_the_scroll_anchor_on_the_same_content_row() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let mut entries = Vec::new();
+    let mut prev: Option<String> = None;
+    for i in 0..60 {
+        let id = format!("e{i:02}");
+        let body = if i == 30 {
+            "anchored-body".to_string()
+        } else {
+            format!("filler-{i:02}")
+        };
+        entries.push(history_message(&id, prev.as_deref(), &body));
+        prev = Some(id);
+    }
+    session.apply_resume_session("s1", entries, true);
+    session.render_now().unwrap();
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(
+        session.tui.application_owned_scroll_by(-(notch * 6)),
+        "fixture must be scrollable"
+    );
+    session.render_now().unwrap();
+
+    let marker = |s: &HostSession<TestTerminal>| {
+        s.tui
+            .application_owned_content_lines()
+            .map(|lines| {
+                lines
+                    .iter()
+                    .position(|l| xylitol_tui::utils::strip_ansi_codes(l).contains("anchored-body"))
+            })
+            .unwrap_or(None)
+    };
+    let before = marker(&session).expect("anchored row must be rendered");
+    let scroll_before = session.tui.application_owned_scroll_top();
+    assert!(scroll_before > 0, "must be scrolled off the content top");
+
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    driver.set_session_messages(vec![history_message("u1", None, "older-body")]);
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    session.render_now().unwrap();
+
+    let after = marker(&session).expect("anchored row must survive the prepend");
+    let scroll_after = session.tui.application_owned_scroll_top();
+    let offset_before = before as isize - scroll_before as isize;
+    let offset_after = after as isize - scroll_after as isize;
+    assert_eq!(
+        offset_after, offset_before,
+        "prepending a page must keep the anchored row at the same screen offset          (before row={before} top={scroll_before}, after row={after} top={scroll_after})"
     );
 }
 

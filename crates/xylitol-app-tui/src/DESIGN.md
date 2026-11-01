@@ -163,6 +163,10 @@ components:
 
 包内组件收闭包主题；语义 → SGR 在本目录 theme 层（代码真值；`Palette` 为本文件快照）。
 
+**编辑区上边框 chip 行**（`[详情] [侧栏] [重置折叠]`）：未激活 chip 与行内分隔虚线 取当前 thinking 档位的边框色（与编辑区上下边框同源，经 `ThinkingBorderLevel` 派生，off 档为灰阶）；激活 chip 用 `accent` 加粗反色；bash 强调边框生效时整行跟随 `success`。不另立 chip 专用色 token。
+
+**待办栏**：摘要行上方保留 1 行空白分隔，与流式回复文字拉开距离；该行计入下缘固定区占位。
+
 ## Typography
 
 只有终端等宽 + ANSI 属性：

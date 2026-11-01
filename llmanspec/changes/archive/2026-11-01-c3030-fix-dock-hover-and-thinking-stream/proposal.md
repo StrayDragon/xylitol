@@ -2,6 +2,9 @@
 depends_on: []
 title: 修复停靠区悬停、chip 取色与推理摘要通道
 needs_specs_change: true
+branch: sdd/c3030-fix-dock-hover-and-thinking-stream
+base_branch: main
+base_sha: ee8b4d08e7aba116010cbca4337117cb65897bfd
 ---
 
 ## Why

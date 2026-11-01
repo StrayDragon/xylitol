@@ -284,6 +284,20 @@ fn g_mat33_wide_host(host_pump_bdd: &HostPumpBdd) {
     }
 }
 
+fn sgr_rgb_before(line: &str, needle: &str) -> Option<(u8, u8, u8)> {
+    let idx = line.find(needle)?;
+    let prefix = &line[..idx];
+    let marker = "\x1b[38;2;";
+    let start = prefix.rfind(marker)?;
+    let rest = &prefix[start + marker.len()..];
+    let end = rest.find('m')?;
+    let mut parts = rest[..end].split(';');
+    let r = parts.next()?.parse().ok()?;
+    let g = parts.next()?.parse().ok()?;
+    let b = parts.next()?.parse().ok()?;
+    Some((r, g, b))
+}
+
 #[then("右侧栏上屏且内容区让宽且 [侧栏] chip 反色")]
 fn t_mat33_sidebar_chip_active(host_pump_bdd: &HostPumpBdd) {
     assert!(host_root_sidebar_on(host_pump_bdd), "侧栏须上屏");
@@ -308,10 +322,16 @@ fn t_mat33_sidebar_chip_active(host_pump_bdd: &HostPumpBdd) {
         raw.contains(&active),
         "mat33: 开启态 [侧栏] chip 须反色（accent+bold）: {raw:?}"
     );
-    let inactive = xylitol_tui::fg_rgb(palette.muted, "[详情]");
-    assert!(
-        raw.contains(&inactive),
-        "mat33: 未开启 [详情] chip 保持 muted: {raw:?}"
+    let border_rgb = sgr_rgb_before(raw, "─").expect("chip 行虚线取色");
+    let chip_rgb = sgr_rgb_before(raw, "[详情]").expect("chip 取色");
+    assert_eq!(
+        chip_rgb, border_rgb,
+        "mat33: 未开启 chip 须与编辑区边框同色（跟随 thinking 档位）: {raw:?}"
+    );
+    assert_ne!(
+        chip_rgb,
+        (palette.muted.r, palette.muted.g, palette.muted.b),
+        "mat33: chip 行不得写死 muted，须走 thinking 边框档位色: {raw:?}"
     );
     let pump = take_pump(host_pump_bdd);
     let frame = pump

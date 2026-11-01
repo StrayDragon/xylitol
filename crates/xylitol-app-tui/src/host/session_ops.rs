@@ -674,10 +674,41 @@ impl<T: Terminal> HostSession<T> {
             leaf_id: xylitol_plugin_sdk::session::transcript_leaf_anchor(&entries, None),
             editor_text: None,
         };
+        let anchor = self.capture_scroll_anchor();
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
         self.ui_model.mode_strip = mode_strip_for_entries(&entries);
         crate::history_window::show_notice(&mut self.ui_model, has_more);
         self.sync_ui_root_from_model();
+        let _ = self.render_now();
+        if self.restore_scroll_anchor(anchor) {
+            let _ = self.render_now();
+        }
+    }
+
+    fn capture_scroll_anchor(&self) -> Option<(usize, String)> {
+        let lines = self.tui.application_owned_content_lines()?;
+        let top = self.tui.application_owned_scroll_top();
+        let row = lines.get(top)?;
+        Some((top, xylitol_tui::utils::strip_ansi_codes(row)))
+    }
+
+    fn restore_scroll_anchor(&mut self, anchor: Option<(usize, String)>) -> bool {
+        let Some((was_top, was_text)) = anchor else {
+            return false;
+        };
+        if was_top == 0 || was_text.trim().is_empty() {
+            return false;
+        }
+        let Some(lines) = self.tui.application_owned_content_lines() else {
+            return false;
+        };
+        let landed = lines
+            .iter()
+            .position(|l| xylitol_tui::utils::strip_ansi_codes(l) == was_text);
+        match landed {
+            Some(landed) => self.tui.application_owned_set_scroll_top(landed),
+            None => false,
+        }
     }
 
     pub fn expand_history_window(&mut self) {

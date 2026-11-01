@@ -13,7 +13,7 @@
 
   @req:r1498
   规则: openai-responses-adapter
-    System 须提供 OpenAiResponsesAdapter，调用 /v1/responses，对 reasoning items 发出 XyChunk::ThinkingDelta，对 message items 发出 XyChunk::TextDelta。
+    System 须提供 OpenAiResponsesAdapter，调用 /v1/responses，对 reasoning items 发出 XyChunk::ThinkingDelta，对 message items 发出 XyChunk::TextDelta。流式 reasoning 须同时覆盖原始推理通道与推理摘要通道：`response.reasoning_text.delta` 与 `response.reasoning_summary_text.delta` 均 须映射为 XyChunk::ThinkingDelta，不得只消费其中一条。带 `reasoning.effort` 的请求 须置 `reasoning.summary`，否则兼容端可能只回摘要通道而使思考块在端上空缺。
     场景: Responses适配器请求正文
       假如 Responses 组装且 thinking_level 为 medium 且 tools 非空
       当 构建请求体

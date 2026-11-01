@@ -67,6 +67,12 @@ impl ScrollView {
         self.scroll_top != before
     }
 
+    pub fn set_scroll_top(&mut self, top: usize) -> bool {
+        let before = self.scroll_top;
+        self.scroll_top = top.min(self.max_scroll());
+        self.scroll_top != before
+    }
+
     pub fn scroll_to_end(&mut self) {
         self.scroll_top = self.max_scroll();
     }

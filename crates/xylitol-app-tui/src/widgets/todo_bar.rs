@@ -5,6 +5,8 @@ use crate::layout::LayoutTheme;
 use xylitol_plugin_sdk::session::{TodoList, TodoStatus};
 
 pub const TODO_BAR_MAX_ROWS: usize = 6;
+pub const TODO_BAR_SPACER_ROWS: usize = 1;
+const SPACER_ROWS: usize = TODO_BAR_SPACER_ROWS;
 const HANGING_INDENT: usize = 4;
 
 pub fn todo_bar_max_rows(term_rows: usize) -> usize {
@@ -217,20 +219,22 @@ fn layout_todo_bar(glyphs: GlyphSet, params: TodoBarParams<'_>) -> TodoBarLayout
     }
     let summary = summary_line(list, glyphs, width, expanded);
     let summary_hit = TodoBarHit {
-        row: 0,
+        row: SPACER_ROWS,
         col_start: 0,
         col_end: visible_width(&summary.text).max(1),
     };
+    let mut lines = vec![LayoutLine::styled(String::new(), TodoLineStyle::Muted); SPACER_ROWS];
+    lines.push(summary);
     if !expanded {
         return TodoBarLayout {
-            lines: vec![summary],
+            lines,
             hits: vec![summary_hit],
         };
     }
     let body = grouped_entries(list, glyphs, width);
-    let cap = max_rows.max(2);
-    let budget = cap.saturating_sub(1);
-    let mut lines = vec![summary];
+    let budget = max_rows
+        .max(SPACER_ROWS + 2)
+        .saturating_sub(SPACER_ROWS + 1);
     if body.len() <= budget {
         lines.extend(body);
         return TodoBarLayout {
@@ -358,6 +362,13 @@ mod tests {
             .join("\n")
     }
 
+    fn bar_plain(list: &TodoList, expanded: bool, width: usize, max_rows: usize) -> String {
+        let out = plain(list, expanded, width, max_rows);
+        let mut lines: Vec<&str> = out.lines().collect();
+        lines.drain(..SPACER_ROWS.min(lines.len()));
+        lines.join("\n")
+    }
+
     fn fg_at(line: &str, needle: &str) -> (u8, u8, u8) {
         let idx = line
             .find(needle)
@@ -381,6 +392,7 @@ mod tests {
         let empty = TodoList::default();
         assert!(frame(&empty, false, 80, 6).lines.is_empty());
         assert!(frame(&empty, true, 80, 6).lines.is_empty());
+        assert_eq!(TODO_BAR_SPACER_ROWS, 1, "one blank row above the bar");
         assert_eq!(
             todo_bar_line_count(GlyphSet::Unicode, params(&empty, false, 80, 6)),
             0
@@ -389,7 +401,7 @@ mod tests {
 
     #[test]
     fn collapsed_bar_is_a_single_summary_line() {
-        let out = plain(&sample(), false, 80, 6);
+        let out = bar_plain(&sample(), false, 80, 6);
         let lines: Vec<_> = out.lines().collect();
         assert_eq!(lines.len(), 1, "collapsed bar takes one row: {out}");
         assert!(out.contains("待办 2/5"), "done/total summary: {out}");
@@ -518,12 +530,12 @@ mod tests {
     fn summary_row_is_the_only_click_target() {
         let collapsed = frame(&sample(), false, 80, 6);
         assert_eq!(collapsed.hits.len(), 1);
-        assert_eq!(collapsed.hits[0].row, 0);
+        assert_eq!(collapsed.hits[0].row, TODO_BAR_SPACER_ROWS);
         assert_eq!(collapsed.hits[0].col_start, 0);
         assert!(collapsed.hits[0].col_end > 0);
         let expanded = frame(&sample(), true, 80, 8);
         assert_eq!(expanded.hits.len(), 1, "no per-wing hit regions");
-        assert_eq!(expanded.hits[0].row, 0);
+        assert_eq!(expanded.hits[0].row, TODO_BAR_SPACER_ROWS);
     }
 
     #[test]
@@ -540,8 +552,16 @@ mod tests {
         let list = TodoList::new(items);
         let out = plain(&list, true, 80, 6);
         let lines: Vec<_> = out.lines().collect();
-        assert_eq!(lines.len(), 6, "row cap holds: {out}");
-        assert!(lines[0].contains("待办 0/7"), "summary stays first: {out}");
+        assert_eq!(
+            lines.len(),
+            6,
+            "spacer plus cap-compliant bar rows stays at the cap: {out}"
+        );
+        assert!(lines[0].trim().is_empty(), "spacer row comes first: {out}");
+        assert!(
+            lines[1].contains("待办 0/7"),
+            "summary follows spacer: {out}"
+        );
         assert!(
             lines[5].contains("还有") && lines[5].contains("项"),
             "hint row: {out}"

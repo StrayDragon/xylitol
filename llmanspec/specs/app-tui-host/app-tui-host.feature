@@ -208,6 +208,14 @@
   @req:r3005
   规则: hover-stable-across-content-repaint
     产品 TUI 的折叠块 hover 高亮 须跨内容驱动的整帧重绘保持；仅折叠布局变化、resize、overlay 等场景 须清除。整帧渲染后 须用最新命中区重探针，不得让旧坐标贴到移位后的行。由 harness 单测覆盖，不单独扩 BDD step。
+  @req:r3061
+  规则: dock-hover-and-idempotent-tint
+    悬停命中解析 须同时考虑 hover 命中区与点击命中区：命中 hover 区优先，未命中则回落点击区，使只在悬停表中登记的固定区元素（队列条、待办栏摘要行）可获得高亮，同时不丢失仅登记在点击表中的折叠块正文悬停。下缘固定区（dock）命中 须按屏幕绝对行映射到 dock 行并接受悬停染色，不得只对对话区染色。悬停染色 须幂等：对已染色行重复施加不得叠加 SGR，移出后重新渲染 须逐字节还原为未染色样式。由引擎与产品 harness 单测覆盖，不单独扩 BDD step。
+
+    场景: 固定区悬停高亮与幂等
+      假如 以主机泵渲染含待办栏的固定区并武装指针探针
+      当 注入落在待办栏摘要行的鼠标移动
+      那么 摘要行重绘为强调样式且移出后逐字节还原
 
   @req:r1260
   规则: interaction-mode-application-owned-default

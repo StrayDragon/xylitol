@@ -46,6 +46,13 @@ impl UiRoot {
         chips
     }
 
+    fn paint_dock_chip(&self, border: &dyn Fn(&str) -> String, text: &str, active: bool) -> String {
+        if active {
+            return self.theme.paint_chip(text, true);
+        }
+        border(text)
+    }
+
     fn reset_chip_enabled(&self) -> bool {
         let fold = self.fold();
         fold_has_overrides(&fold) || fold_differs_from_defaults(&fold)
@@ -73,10 +80,11 @@ impl UiRoot {
             return (line.to_string(), Vec::new());
         }
         let dash_w = width.saturating_sub(chip_w + 1);
+        let border = self.operation_zone_paint();
         let mut out = if dash_w == 0 {
             String::new()
         } else {
-            self.theme.paint_muted(&"─".repeat(dash_w))
+            border(&"─".repeat(dash_w))
         };
         out.push(' ');
         let mut col = dash_w + 1;
@@ -87,7 +95,7 @@ impl UiRoot {
                 col += 1;
             }
             let w = xylitol_tui::visible_width(text);
-            out.push_str(&self.theme.paint_chip(text, *active));
+            out.push_str(&self.paint_dock_chip(&*border, text, *active));
             hits.push(FooterChipHit {
                 start: col,
                 end: col + w,
@@ -174,6 +182,68 @@ impl UiRoot {
 mod tests {
     use super::*;
     use crate::widgets::ScrollbackFold;
+
+    fn chip_row_for(level: &str) -> String {
+        let mut root = super::super::UiRoot::new();
+        root.set_term_cols(120);
+        root.set_thinking_level_ui(level.to_string());
+        root.append_border_chips("", 120).0
+    }
+
+    const SGR: &str = "\x1b[38;2;";
+
+    fn rgb_after(line: &str, needle: &str) -> (u8, u8, u8) {
+        let at = line.find(needle).expect("needle");
+        let prefix = &line[..at];
+        let start = prefix.rfind(SGR).expect("truecolor SGR");
+        let rest = &prefix[start + SGR.len()..];
+        let end = rest.find('m').expect("SGR terminator");
+        let mut parts = rest[..end].split(';');
+        (
+            parts.next().unwrap().parse().unwrap(),
+            parts.next().unwrap().parse().unwrap(),
+            parts.next().unwrap().parse().unwrap(),
+        )
+    }
+
+    fn first_sgr(line: &str) -> (u8, u8, u8) {
+        let start = line.find(SGR).expect("truecolor SGR");
+        let rest = &line[start + SGR.len()..];
+        let end = rest.find('m').expect("SGR terminator");
+        let mut parts = rest[..end].split(';');
+        (
+            parts.next().unwrap().parse().unwrap(),
+            parts.next().unwrap().parse().unwrap(),
+            parts.next().unwrap().parse().unwrap(),
+        )
+    }
+
+    #[test]
+    fn chip_row_follows_the_thinking_border_level() {
+        let palette = crate::layout::LayoutTheme::product_dark().palette();
+        let off = first_sgr(&chip_row_for("off"));
+        let high = first_sgr(&chip_row_for("high"));
+        assert_ne!(
+            off, high,
+            "chip row must change colour with the thinking level: off={off:?} high={high:?}"
+        );
+        assert_ne!(
+            off,
+            (palette.muted.r, palette.muted.g, palette.muted.b),
+            "off chip row must not be the plain muted token"
+        );
+    }
+
+    #[test]
+    fn inactive_chip_shares_the_border_colour() {
+        let row = chip_row_for("high");
+        let dashes = first_sgr(&row);
+        let chip = rgb_after(&row, "[详情]");
+        assert_eq!(
+            chip, dashes,
+            "inactive chip and border must share one colour"
+        );
+    }
 
     #[test]
     fn default_fold_has_no_overrides_and_matches_defaults() {

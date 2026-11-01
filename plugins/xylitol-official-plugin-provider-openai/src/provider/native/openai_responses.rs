@@ -415,7 +415,7 @@ pub struct ResponsesStreamState {
 pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Vec<XyChunk> {
     let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
     match event_type {
-        "response.reasoning_text.delta" => data
+        "response.reasoning_text.delta" | "response.reasoning_summary_text.delta" => data
             .get("delta")
             .and_then(|v| v.as_str())
             .map(|d| vec![XyChunk::ThinkingDelta(d.to_string())])
@@ -1584,6 +1584,34 @@ mod tests {
             },
         );
         assert_eq!(body["tools"][0]["strict"], false);
+    }
+
+    #[test]
+    fn reasoning_summary_delta_is_a_thinking_delta() {
+        let mut state = ResponsesStreamState::default();
+        let event = serde_json::json!({
+            "type": "response.reasoning_summary_text.delta",
+            "delta": "weigh options",
+        });
+        let chunks = map_responses_sse_event(&event, &mut state);
+        match &chunks[..] {
+            [XyChunk::ThinkingDelta(text)] => assert_eq!(text, "weigh options"),
+            other => panic!("summary delta must stream as thinking, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reasoning_text_delta_is_a_thinking_delta() {
+        let mut state = ResponsesStreamState::default();
+        let event = serde_json::json!({
+            "type": "response.reasoning_text.delta",
+            "delta": "raw chain",
+        });
+        let chunks = map_responses_sse_event(&event, &mut state);
+        match &chunks[..] {
+            [XyChunk::ThinkingDelta(text)] => assert_eq!(text, "raw chain"),
+            other => panic!("reasoning text delta must stream as thinking, got {other:?}"),
+        }
     }
 
     #[test]

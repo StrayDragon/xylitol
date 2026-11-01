@@ -31,6 +31,18 @@ fn key_with_kind(kind: KeyEventKind) -> KeyEvent {
 }
 
 #[test]
+fn pointer_view_uses_declared_dock_until_something_is_painted() {
+    let mut tui = TUI::new(NullTerminal::default());
+    tui.set_dock_rows(4);
+    let view = tui.pointer_view(false);
+    assert_eq!(
+        view.transcript_rows,
+        tui.terminal.rows().saturating_sub(4),
+        "with no painted dock the view falls back to the declared rows"
+    );
+}
+
+#[test]
 fn dispatches_press_and_repeat() {
     let tui = TUI::new(NullTerminal::default());
 
