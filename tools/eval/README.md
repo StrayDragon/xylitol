@@ -126,6 +126,12 @@ When Docker Hub metadata is unreachable, prebuild/tag
 `harbor-prebuilt:harbor-docker-egress-control-sidecar--e9f39ce1643ee690` from a
 local `gogost/gost` image, then rerun.
 
+Pi installs Node via nvm; behind a host proxy pass
+`--ae HTTPS_PROXY=http://host.docker.internal:20171` (and `HTTP_PROXY`).
+Mini-SWE's LiteLLM imports the optional `mcp` package, which Harbor's installer
+does not add; use `mini_swe_agent_mcp:MiniSweAgentWithMcp`, which installs
+`mcp` into the tool venv.
+
 ## Model lock
 
 `model-lock.yaml` pins the model id, API format, context/output limits,
