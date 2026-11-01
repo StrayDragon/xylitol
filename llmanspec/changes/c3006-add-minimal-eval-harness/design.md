@@ -21,6 +21,9 @@ Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强�
 - **N≥3**：每个 task 跑 3 次；报告 pass@1、flip rate、cost、wall time、turns。
 - **Phase 1 只做 xylitol**：先把 xylitol Harbor adapter 与一个 SWE Verified task 跑通；
   Pi/mini-SWE 对照放到 Phase 3。
+- **Model/config lock**：`tools/eval/model-lock.yaml` 固定 model id、API format、
+  context/output、thinking levels、`smoke` / `compare` 的 max_turns/wall_seconds；
+  `doctor --lock` 校验。
 - **快速回归**：golden fixture + mock/replay provider + session snapshot；无模型调用。
 
 ## 架构
@@ -65,6 +68,8 @@ tools/eval/
 - `populate_context_post_run`：后续解析 session JSONL 的 usage；Phase 1 可先留空。
 - 不采 patch/preds：Harbor verifier 在任务环境内直接跑测试，reward 由
   `/logs/verifier/reward.txt|json` 决定。
+- binary：SWE Verified 用 glibc；TB4.0 / DeepSWE 用 static musl（已验证
+  `statically linked`）。
 
 调用形态：
 
@@ -90,7 +95,7 @@ Harbor compose 仍可能尝试 registry metadata，需记录为已知环境问�
 |---|---|---|---|
 | SWE-bench Verified | 25 | 回归/兼容 | Harbor 500 task adapter 有 parity；饱和，不作唯一能力证据 |
 | Terminal-Bench 4.0 | 10 | 能力闸 | 66 task；8h 超时；排除 GPU/多容器 |
-| DeepSWE v1.1 | 10 | 长程能力闸 | 113 task；Harbor task format；v1.1 用 separate verifier；先 spike |
+| DeepSWE v1.1 | 10 | 长程能力闸 | 113 task；Harbor schema 1.3 + separate verifier 已验证单 task；no-network 需 egress sidecar |
 
 Pi 调用：`-a pi -m openai/group/glm-5.3-flash --effort high`，
 `--base-url "$MAGPIE_GATEWAY_URL/v1"`，`--api-key-name MAGPIE_GATEWAY_KEY`，
@@ -99,6 +104,8 @@ mini-SWE baseline 固定版本（如 `--ak version=2.1.0`），同数据同 veri
 
 DeepSWE 使用 Pier 时，官方榜用 mini-SWE on Modal；Pier 当前 agents 不含 Pi，
 因此不得把 Pier 的 xylitol/mini-SWE 结果与 Harbor 的 Pi 结果混成同一张 cross-scaffold 表。
+Phase 2 已验证 Harbor 能跑 DeepSWE v1.1 单 task；no-network task 需要 egress
+sidecar（`gogost/gost`），Docker Hub metadata 不可达时先本地构建并打 tag。
 
 ## 指标
 
@@ -147,5 +154,5 @@ cost、wall time。报告必须写明 scaffold 与 verifier，不写“xylitol �
 - `group/glm-5.3-flash` pricing 未返回；成本以 usage 为准。
 - Docker Hub 不稳定；Harbor compose 可能卡在 registry metadata。
 - TB4.0 含 GPU/多容器任务；本地先排除。
-- DeepSWE Harbor 兼容性未验证；先 spike，失败则只跑 Pier baseline。
-- glibc binary 在非 Ubuntu task 可能不兼容；Phase 2 加 static musl。
+- DeepSWE Harbor 兼容性已验证单 task；10 task 子集仍需验证。
+- glibc binary 在非 Ubuntu task 不兼容；已加 static musl。

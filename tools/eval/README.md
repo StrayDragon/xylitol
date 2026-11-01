@@ -37,6 +37,7 @@ cd tools/eval
 uv run xylitol-eval dry-run --config examples/eval-swebench-mini.yaml
 uv sync --extra harness
 uv run --extra harness xylitol-eval run --config examples/eval-swebench-mini.yaml
+uv run xylitol-eval doctor --config examples/eval-swebench-mini.yaml --lock model-lock.yaml
 uv run --extra dev pytest -m "not integration"
 ```
 
@@ -103,8 +104,40 @@ harbor run -d terminal-bench/terminal-bench@4.0.0 -l 10 -k 3 \
   -a mini-swe-agent -m openai/group/glm-5.3-flash --ak version=2.1.0 ...
 ```
 
-DeepSWE: spike Harbor first; if it cannot run v1.1's separate verifier, use
-Pier for the official mini-SWE baseline only and do not claim a Pi comparison.
+Terminal-Bench 4.0 single task:
+
+```bash
+harbor run -p /tmp/tb4/terminal-bench/layout-config-recreation \
+  -a xylitol_agent:XylitolAgent -m openai/group/glm-5.3-flash \
+  --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
+  --ak max_turns=8 --ak wall_seconds=600 ...
+```
+
+DeepSWE v1.1 single task (Harbor 0.25 runs schema 1.3 + separate verifier):
+
+```bash
+harbor run -p /tmp/deep-swe/tasks/httpx-multipart-response-parsing \
+  -a xylitol_agent:XylitolAgent -m openai/group/glm-5.3-flash \
+  --ak binary=target/eval-bin/xylitol-linux-x86_64-musl ...
+```
+
+DeepSWE `no-network` tasks build a Harbor egress sidecar from `gogost/gost`.
+When Docker Hub metadata is unreachable, prebuild/tag
+`harbor-prebuilt:harbor-docker-egress-control-sidecar--e9f39ce1643ee690` from a
+local `gogost/gost` image, then rerun.
+
+## Model lock
+
+`model-lock.yaml` pins the model id, API format, context/output limits,
+thinking levels, and `smoke` / `compare` profiles. Validate an eval config:
+
+```bash
+cd tools/eval
+uv run xylitol-eval doctor --config examples/eval-swebench-mini.yaml --lock model-lock.yaml
+```
+
+Harbor runs should use the same model id and `--ak max_turns/wall_seconds` from
+the selected profile.
 
 ## Config / fallback
 
@@ -143,4 +176,13 @@ unreachable. Override with `XYLITOL_EVAL_BUILD_IMAGE=<image>`. The manual
 `.github/workflows/eval-bin.yaml` reuses the same cargo command.
 
 Binary: `target/eval-bin/xylitol-linux-x86_64-glibc`; SHA-256 is recorded in
-`run.json`. Phase 2 adds a static musl build for non-Ubuntu Harbor tasks.
+`run.json`.
+
+Static musl build for non-Ubuntu Harbor tasks:
+
+```bash
+source <your-proxy-helper>
+tools/eval/scripts/build_linux_musl.sh
+```
+
+Output: `target/eval-bin/xylitol-linux-x86_64-musl`; verified statically linked.
