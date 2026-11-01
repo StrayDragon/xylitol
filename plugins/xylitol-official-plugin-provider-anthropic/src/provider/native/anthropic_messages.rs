@@ -55,7 +55,7 @@ impl AnthropicMessagesAdapter {
         wire_policy: crate::wire_policy::WirePolicy,
     ) -> Self {
         let client = reqwest::Client::builder()
-            .user_agent(crate::provider::native::DEFAULT_HTTP_USER_AGENT)
+            .user_agent(crate::provider::native::default_user_agent())
             .connect_timeout(crate::provider::native::wait_bounds::CONNECT)
             .build()
             .unwrap_or_else(|_| {

@@ -34,7 +34,7 @@ impl HooksHttpService {
         obs_snapshot: Option<ObsSessionContext>,
     ) -> Self {
         let client = reqwest::Client::builder()
-            .user_agent(crate::provider::native::openai_client::DEFAULT_HTTP_USER_AGENT)
+            .user_agent(crate::provider::native::openai_client::default_user_agent())
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
