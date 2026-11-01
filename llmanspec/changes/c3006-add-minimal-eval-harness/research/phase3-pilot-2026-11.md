@@ -1,6 +1,10 @@
 # Phase 3 pilot（2026-11-01）
 
-> 性质：change 附属调研；只记录 smoke 级对比，不是 25/10/10 全量结论。
+> 性质：change 附属调研；只记录 smoke 级对比，不是全量结论。
+>
+> **2026-11-01 更新**：本 pilot 使用的 SWE-bench Verified 已移出基准集
+> （上游镜像仅 linux/amd64）；当前 baseline 改为 TB4.0 10 + DeepSWE 10，
+> 见 [baseline-2026-11.md](./baseline-2026-11.md)。
 
 ## 目的
 

@@ -5,8 +5,7 @@ feature.
 
 ## Contract
 
-- Scores come only from the official verifier/grader: Harbor task verifier or
-  SWE-bench `run_evaluation`. No self-made judge.
+- Scores come only from the official Harbor task verifier. No self-made judge.
 - Drive the agent only through `xylitol print` (headless). Do not drive the TUI
   or send keystrokes.
 - Pin the model, dataset revision and harness version; record them in the
@@ -23,21 +22,19 @@ feature.
 |---|---|
 | Phase 1 | Harbor + xylitol single task |
 | Phase 2 | TB4.0 / DeepSWE single task + static musl |
-| Phase 3 | xylitol vs Pi vs mini-SWE, 25/10/10, N=3 |
+| Phase 3 | xylitol vs Pi vs mini-SWE, TB4.0 10 + DeepSWE 10, N=3 |
 | Phase 4 | golden + replay + session snapshot |
 | Phase 5 | CI / Langfuse bypass / cloud |
 
-The old official SWE-bench runner remains as a fallback/parity path, not the
-primary capability gate.
+SWE-bench Verified is not part of the benchmark set: its upstream images are
+`linux/amd64` only, and Harbor's Compose build asks for the host platform. The
+remaining benchmarks are Harbor tasks; see `research/baseline-2026-11.md`.
 
 ## Usage
 
 ```bash
 cd tools/eval
-uv run xylitol-eval dry-run --config examples/eval-swebench-mini.yaml
-uv sync --extra harness
-uv run --extra harness xylitol-eval run --config examples/eval-swebench-mini.yaml
-uv run xylitol-eval doctor --config examples/eval-swebench-mini.yaml --lock model-lock.yaml
+uv run xylitol-eval doctor --config examples/eval-terminal-bench.yaml --lock model-lock.yaml
 uv run --extra dev pytest -m "not integration"
 ```
 
@@ -45,7 +42,6 @@ Or from the repo root:
 
 ```bash
 just eval-test
-just eval-dryrun
 just eval-harbor   # needs MAGPIE_GATEWAY_URL/KEY and /tmp/harbor-venv
 ```
 
@@ -65,16 +61,14 @@ umask 077
 printf 'MAGPIE_GATEWAY_URL=%s\nMAGPIE_GATEWAY_KEY=%s\n' "$MAGPIE_GATEWAY_URL" "$MAGPIE_GATEWAY_KEY" > /tmp/magpie-harbor.env
 ```
 
-Run one SWE-bench Verified task with the custom xylitol agent:
+Run one Terminal-Bench 4.0 task with the custom xylitol agent:
 
 ```bash
 PYTHONPATH=tools/eval/harbor harbor run \
-  -d swe-bench/swe-bench-verified \
-  -i '*astropy__astropy-12907*' \
-  -l 1 \
+  -p /tmp/tb4/terminal-bench/layout-config-recreation \
   -a xylitol_agent:XylitolAgent \
   -m openai/group/glm-5.3-flash \
-  --ak binary=target/eval-bin/xylitol-linux-x86_64-glibc \
+  --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
   --ak max_turns=8 --ak wall_seconds=600 \
   --base-url "$MAGPIE_GATEWAY_URL/v1" \
   --api-key-name MAGPIE_GATEWAY_KEY \
@@ -102,11 +96,10 @@ DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 harbor run ...
 Use it when Pi/nvm or mini-SWE/uv installs need network. Do not wire it into
 CI; eval CI is not enabled.
 
-Phase 3 compares Pi and mini-SWE with the same model, dataset and verifier
-(pilot: SWE astropy N=3, all three scaffolds 3/3 reward 1.0):
+Phase 3 compares Pi and mini-SWE with the same model, task and verifier:
 
 ```bash
-harbor run -d swe-bench/swe-bench-verified -l 25 -k 3 \
+harbor run -p /tmp/tb4/terminal-bench/layout-config-recreation -k 3 \
   -a pi -m openai/group/glm-5.3-flash --effort high \
   --base-url "$MAGPIE_GATEWAY_URL/v1" \
   --api-key-name MAGPIE_GATEWAY_KEY --api-format openai_responses \
@@ -114,9 +107,13 @@ harbor run -d swe-bench/swe-bench-verified -l 25 -k 3 \
 ```
 
 ```bash
-harbor run -d terminal-bench/terminal-bench@4.0.0 -l 10 -k 3 \
-  -a mini-swe-agent -m openai/group/glm-5.3-flash --ak version=2.1.0 ...
+harbor run -p /tmp/tb4/terminal-bench/layout-config-recreation -k 3 \
+  -a mini_swe_agent_mcp:MiniSweAgentWithMcp -m openai/group/glm-5.3-flash \
+  --ak version=2.1.0 --agent-setup-timeout-multiplier 3 ...
 ```
+
+The baseline run uses TB4.0 10 + DeepSWE 10, not SWE Verified; see
+`research/baseline-2026-11.md` for task ids, model lock and platform notes.
 
 Terminal-Bench 4.0 single task:
 
@@ -153,16 +150,18 @@ thinking levels, and `smoke` / `compare` profiles. Validate an eval config:
 
 ```bash
 cd tools/eval
-uv run xylitol-eval doctor --config examples/eval-swebench-mini.yaml --lock model-lock.yaml
+uv run xylitol-eval doctor --config examples/eval-terminal-bench.yaml --lock model-lock.yaml
 ```
 
 Harbor runs should use the same model id and `--ak max_turns/wall_seconds` from
 the selected profile.
 
-## Config / fallback
+## Config
 
-`examples/eval-swebench-mini.yaml` is the official SWE-bench fallback. Required
-fields: `version`, `phase`, `dataset.name`, `dataset.revision`,
+`examples/eval-terminal-bench.yaml` is the active legacy config example. The
+Harbor path takes task paths directly and does not use this config.
+
+Required fields: `version`, `phase`, `dataset.name`, `dataset.revision`,
 `model.alias`, `agent.binary`.
 
 `dataset.name` can be a Hugging Face name, local `.parquet`, or local
@@ -174,31 +173,21 @@ from `MAGPIE_GATEWAY_KEY` and `MAGPIE_GATEWAY_URL`.
 
 `model.provider: fake` emits a fake-provider config with no network call.
 
-`grader.run_id` must be unique per run; SWE-bench caches by `run_id`.
-
 ## Outputs
-
-Official fallback: `target/eval-runs/<run_id>/` with `run.json`,
-`summary.md`, `instances.jsonl`, `preds.jsonl`, `logs/`, `reports/`.
 
 Harbor: `jobs/<job-name>/` with `result.json`, per-trial `agent/`,
 `verifier/`, `trial.log`, and task rewards.
 
+## Platform
+
+The remaining Harbor images are single-platform `linux/amd64`. They run:
+
+- natively on Linux x86_64;
+- on macOS arm64 through Docker Desktop's amd64 emulation (Rosetta/QEMU).
+
+Linux arm64 needs amd64 emulation (binfmt/qemu) and is not a supported default.
+
 ## Local Linux binary
-
-```bash
-source <your-proxy-helper>   # for example: proxing on
-tools/eval/scripts/build_linux.sh
-```
-
-The script defaults to an already-pulled SWE-bench image when Docker Hub is
-unreachable. Override with `XYLITOL_EVAL_BUILD_IMAGE=<image>`. The manual
-`.github/workflows/eval-bin.yaml` reuses the same cargo command.
-
-Binary: `target/eval-bin/xylitol-linux-x86_64-glibc`; SHA-256 is recorded in
-`run.json`.
-
-Static musl build for non-Ubuntu Harbor tasks:
 
 ```bash
 source <your-proxy-helper>
@@ -206,3 +195,4 @@ tools/eval/scripts/build_linux_musl.sh
 ```
 
 Output: `target/eval-bin/xylitol-linux-x86_64-musl`; verified statically linked.
+The manual `.github/workflows/eval-bin.yaml` builds it.

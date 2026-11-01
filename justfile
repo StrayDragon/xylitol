@@ -642,21 +642,14 @@ eval-test:
     uv run --extra dev pytest -m "not integration"
 
 # Print the planned eval run (no Docker/model calls).
-eval-dryrun config="examples/eval-swebench-mini.yaml":
+eval-dryrun config="examples/eval-terminal-bench.yaml":
     #!/usr/bin/env bash
     set -euo pipefail
     cd tools/eval
     uv run xylitol-eval dry-run --config "{{config}}"
 
-# Manual eval smoke (requires Docker + model key).
-eval-smoke config="examples/eval-swebench-mini.yaml":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd tools/eval
-    uv run --extra harness xylitol-eval run --config "{{config}}"
-
-# Run one Harbor SWE Verified task with the xylitol adapter.
-eval-harbor filter="*astropy__astropy-12907*":
+# Run one Harbor Terminal-Bench 4.0 task with the xylitol adapter.
+eval-harbor:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${MAGPIE_GATEWAY_URL:?MAGPIE_GATEWAY_URL is required}"
@@ -670,12 +663,10 @@ eval-harbor filter="*astropy__astropy-12907*":
     chmod 600 "${env_file}"
     export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0
     HARBOR_BIN="${harbor_bin}" tools/eval/scripts/harbor_local.sh run \
-      -d swe-bench/swe-bench-verified \
-      -i "{{filter}}" \
-      -l 1 \
+      -p /tmp/tb4/terminal-bench/layout-config-recreation \
       -a xylitol_agent:XylitolAgent \
       -m openai/group/glm-5.3-flash \
-      --ak binary=target/eval-bin/xylitol-linux-x86_64-glibc \
+      --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
       --ak max_turns=8 \
       --ak wall_seconds=600 \
       --base-url "${MAGPIE_GATEWAY_URL}/v1" \

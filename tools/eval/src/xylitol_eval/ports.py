@@ -1,8 +1,8 @@
 """Stable ports for eval adapters.
 
-M0 implements DockerSandbox, XylitolPrintRunner, SwebenchGrader and
-SwebenchDataset. Later phases implement Harbor, Langfuse regression and cloud
-sandboxes against the same shapes.
+The legacy M0 path implements DockerSandbox, XylitolPrintRunner,
+SwebenchGrader and SwebenchDataset. Harbor is the primary eval path; Langfuse
+regression and cloud sandboxes can implement the same shapes.
 """
 
 from __future__ import annotations

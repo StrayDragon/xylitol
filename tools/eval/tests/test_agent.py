@@ -7,7 +7,7 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
 def test_render_config_uses_env_placeholders():
-    cfg = load_config(EXAMPLES / "eval-swebench-mini.yaml")
+    cfg = load_config(EXAMPLES / "eval-terminal-bench.yaml")
     text = render_xylitol_config(cfg)
     assert 'default_model: "group/glm-5.3-flash"' in text
     assert "{{ env.MAGPIE_GATEWAY_URL }}/v1" in text

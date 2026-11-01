@@ -20,9 +20,6 @@ profiles:
     wall_seconds: 1800
 
 benchmarks:
-  swe_verified:
-    dataset: swe-bench/swe-bench-verified
-    tasks: 25
   terminal_bench:
     dataset: terminal-bench/terminal-bench@4.0.0
     tasks: 10

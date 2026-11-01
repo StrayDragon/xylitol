@@ -12,22 +12,21 @@ needs_specs_change: false
 ## Why
 
 换模型、改系统提示或工具策略后，目前只能靠主观感受判断 xylitol 是否进步；没有可复现、
-可审计的 cross-scaffold 对比。社区已有 Harbor verifier / SWE-bench 官方 grader，
-不需要自研判分器。缺的是「固定模型 + 换 harness + 同数据同 verifier + N≥3」这条链路。
+可审计的 cross-scaffold 对比。社区已有 Harbor verifier，不需要自研判分器。缺的是「固定模型 + 换 harness + 同数据同 verifier + N≥3」这条链路。
 
 ## What Changes
 
 - `tools/eval/` 从“官方 SWE-bench 单 scaffold”改为 **Harbor-first**：
   - 固定模型 `group/glm-5.3-flash`；
   - `xylitol` 自定义 Harbor agent；`pi` / `mini-swe-agent` 用 Harbor 内置；
-  - SWE-bench Verified 25（回归/兼容）+ Terminal-Bench 4.0 10 + DeepSWE 10；
+  - Terminal-Bench 4.0 10 + DeepSWE 10；
   - N=3；pass@1 + flip rate + cross_scaffold_flip；
   - Phase 1 只验证 xylitol 在 Harbor 跑通；Pi/mini-SWE 对照放 Phase 3。
 - 新增 `tools/eval/harbor/xylitol_agent.py`：`BaseInstalledAgent`，上传 binary、
   写临时 config、headless `xylitol print`；reward 来自 Harbor task verifier。
 - 保留既有 `tools/eval` 的 config / dataset / print runner / report 作为快速回归与
-  official harness fallback。
-- 新增仅 `workflow_dispatch` 的 Linux binary CI；本地先构建 glibc，Phase 2 加 static musl。
+  legacy fallback；不纳入基准集。
+- 新增仅 `workflow_dispatch` 的 Linux binary CI；只构建 static musl。
 - 新增 `just` 配方（非默认门禁）；快速回归走 golden + replay，无模型调用。
 - 不新增 live spec；工具契约写在 `tools/eval/README.md` 与本 change 的 `design.md`。
 - 不改变产品默认行为；eval 是开发者/CI 后置能力，不进开箱体验。
@@ -38,8 +37,8 @@ needs_specs_change: false
   只跑 Pier baseline，不宣称 Pi 对比。
 - **固定模型**：同一轮对比中 xylitol 与 Pi 使用同一 model id、endpoint、effort、
   temperature、top_p、context、max turns/steps。
-- **主表 B**：SWE Verified 25 + TB4.0 10 + DeepSWE 10；SWE Verified 标为回归/兼容，
-  不作唯一能力证据。
+- **主表 B**：TB4.0 10 + DeepSWE 10；两者都在 Linux amd64 原生与
+  macOS arm64 的 Docker amd64 模拟下运行。
 - **N≥3**：pass@1、flip rate、cross_scaffold_flip、cost、wall、turns 分开报；
   不混不同 scaffold/verifier 的分数。
 - **官方 verifier 为唯一分数源**；Langfuse 只作旁路元数据/失败实例回归，不作分数。
@@ -69,8 +68,8 @@ needs_specs_change: false
 |---|---|---|
 | Phase 0 | `tools/eval` 骨架 + 本地 binary | 单测/dry-run/本地 binary |
 | Phase 1 | Harbor adapter + xylitol 单 task | agent 跑通；verifier 产出 reward |
-| Phase 2 | TB4.0 单 task + DeepSWE spike + musl | 三个基准各 1 task 跑通 |
-| Phase 3 | Pi + mini-SWE + 25/10/10 N=3 | pass@1 + flip rate 表 |
+| Phase 2 | TB4.0 单 task + DeepSWE spike + musl | 两个基准各 1 task 跑通 |
+| Phase 3 | Pi + mini-SWE + 10/10 N=3 | pass@1 + flip rate 表 |
 | Phase 4 | golden + replay + snapshot | PR 门禁可跑 |
 | Phase 5 | CI / Langfuse 旁路 / 云 | 回归与全量可复现 |
 
@@ -82,7 +81,9 @@ needs_specs_change: false
   `DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0`。
 - TB4.0 含 GPU/多容器任务；本地先排除。
 - DeepSWE Harbor 兼容性未验证；先 spike，失败则只跑 Pier baseline。
-- glibc binary 在非 Ubuntu task 可能不兼容；Phase 2 加 static musl。
+- SWE-bench Verified 已移除：上游镜像只有 linux/amd64，Harbor Compose build 在
+  arm64 主机上按宿主平台拉取会失败；保留的 TB4.0 / DeepSWE 镜像同为 amd64，
+  在 macOS arm64 走 Docker amd64 模拟。
 - 官方榜口径与 xylitol 不同；报告必须写明 scaffold 与 verifier。
 
 ## Further Notes

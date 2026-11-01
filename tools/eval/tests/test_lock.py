@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_lock_matches_example():
     lock = load_lock(ROOT / "model-lock.yaml")
-    config = load_config(ROOT / "examples" / "eval-swebench-mini.yaml")
+    config = load_config(ROOT / "examples" / "eval-terminal-bench.yaml")
     validate_eval_config(config, lock, "compare")
     assert lock.model_id == "group/glm-5.3-flash"
     assert len(lock.sha256) == 64
@@ -25,7 +25,7 @@ def test_lock_hash_is_stable():
 
 def test_lock_rejects_mismatch(tmp_path):
     lock = load_lock(ROOT / "model-lock.yaml")
-    config = load_config(ROOT / "examples" / "eval-swebench-mini.yaml")
+    config = load_config(ROOT / "examples" / "eval-terminal-bench.yaml")
     object.__setattr__(config, "agent", config.agent.__class__(
         binary=config.agent.binary,
         max_turns=1,
@@ -38,6 +38,6 @@ def test_lock_rejects_mismatch(tmp_path):
 
 def test_lock_rejects_unknown_profile():
     lock = load_lock(ROOT / "model-lock.yaml")
-    config = load_config(ROOT / "examples" / "eval-swebench-mini.yaml")
+    config = load_config(ROOT / "examples" / "eval-terminal-bench.yaml")
     with pytest.raises(ConfigError):
         validate_eval_config(config, lock, "missing")

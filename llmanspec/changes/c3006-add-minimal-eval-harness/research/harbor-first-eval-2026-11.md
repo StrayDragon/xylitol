@@ -3,11 +3,16 @@
 > 性质：change 附属调研，不是 live spec。
 > 范围：Pi / DSH / OpenCode 的 eval 手段，Harbor、SWE-bench Verified、Terminal-Bench 4.0、
 > DeepSWE 的现状，以及 xylitol 的调整决策。
+>
+> **2026-11-01 更新**：SWE-bench Verified 已移出基准集。上游镜像只有
+> `linux/amd64`；Harbor 在 arm64 主机上按宿主平台做 Compose build，manifest
+> 没有 arm64 条目，直接失败。保留 TB4.0 10 + DeepSWE 10；基线见
+> [baseline-2026-11.md](./baseline-2026-11.md)。
 
 ## 结论
 
-- SWE-bench Verified 已高度饱和（官方头部约 93.9%），不适合作为唯一能力闸；
-  保留 25 task 作回归/兼容。
+- SWE-bench Verified 已高度饱和（官方头部约 93.9%），且镜像只有 linux/amd64；
+  已移出基准集，不再作为回归/兼容集运行。
 - 能力闸改为 Terminal-Bench 4.0（66 task）+ DeepSWE v1.1（113 task）；都用 Harbor
   task/verifier；DeepSWE 先做 Harbor spike。
 - 同一模型 `group/glm-5.3-flash` 分别跑 xylitol 与 Pi；N=3；报 pass@1 与 flip rate。
@@ -108,7 +113,7 @@ thinking 使用 `[low, high]`，默认 high（列表最后一项）。
 
 ## 决策
 
-1. 主表 B：SWE Verified 25（回归）+ TB4.0 10 + DeepSWE 10。
+1. 主表 B：TB4.0 10 + DeepSWE 10（SWE Verified 已移除，见顶部更新）。
 2. 固定模型 `group/glm-5.3-flash`；xylitol 与 Pi 同模型同配置。
 3. Harbor-first；Phase 1 只做 xylitol 单 task。
 4. N=3；pass@1 + flip rate + cross_scaffold_flip；不混 scaffold/verifier。

@@ -7,11 +7,11 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
 def test_dry_run_json(capsys):
-    code = main(["dry-run", "--config", str(EXAMPLES / "eval-swebench-mini.yaml"), "--json"])
+    code = main(["dry-run", "--config", str(EXAMPLES / "eval-terminal-bench.yaml"), "--json"])
     assert code == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["phase"] == "m0"
-    assert out["dataset"]["name"] == "SWE-bench/SWE-bench_Verified"
+    assert out["phase"] == "m3"
+    assert out["dataset"]["name"] == "terminal-bench/terminal-bench@4.0.0"
     assert out["model"]["alias"] == "group/glm-5.3-flash"
     assert out["commands"]["agent"].startswith("xylitol print")
 
@@ -21,7 +21,7 @@ def test_doctor_lock(capsys):
         [
             "doctor",
             "--config",
-            str(EXAMPLES / "eval-swebench-mini.yaml"),
+            str(EXAMPLES / "eval-terminal-bench.yaml"),
             "--lock",
             str(EXAMPLES.parent / "model-lock.yaml"),
         ]
