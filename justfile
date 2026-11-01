@@ -669,7 +669,7 @@ eval-harbor filter="*astropy__astropy-12907*":
     printf 'MAGPIE_GATEWAY_URL=%s\nMAGPIE_GATEWAY_KEY=%s\n' "${MAGPIE_GATEWAY_URL}" "${MAGPIE_GATEWAY_KEY}" > "${env_file}"
     chmod 600 "${env_file}"
     export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0
-    PYTHONPATH=tools/eval/harbor "${harbor_bin}" run \
+    HARBOR_BIN="${harbor_bin}" tools/eval/scripts/harbor_local.sh run \
       -d swe-bench/swe-bench-verified \
       -i "{{filter}}" \
       -l 1 \

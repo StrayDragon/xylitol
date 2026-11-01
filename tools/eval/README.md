@@ -89,6 +89,18 @@ Docker Hub may be unreachable. Locally force the legacy builder:
 DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 harbor run ...
 ```
 
+### Local proxy wrapper (not CI)
+
+`tools/eval/scripts/harbor_local.sh` wraps `harbor run` for local runs:
+
+- rewrites loopback proxy URLs to `host.docker.internal`;
+- appends `NO_PROXY` for the magpie gateway host;
+- refuses proxy URLs containing credentials (they would land in argv);
+- adds `--allow-agent-host host.docker.internal`.
+
+Use it when Pi/nvm or mini-SWE/uv installs need network. Do not wire it into
+CI; eval CI is not enabled.
+
 Phase 3 adds Pi and mini-SWE with the same model, dataset and verifier:
 
 ```bash
