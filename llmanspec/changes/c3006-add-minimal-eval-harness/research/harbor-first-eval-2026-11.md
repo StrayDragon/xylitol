@@ -121,7 +121,7 @@ thinking 使用 `[low, high]`，默认 high（列表最后一项）。
 - 结果：reward 1.0；verifier `PASSED`；12m55s；0 exceptions。
 - 本地 job：`jobs/xylitol-harbor-swe-astropy-4`（ignored）。
 - Docker Hub 不稳；本地用 `DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0`。
-- key 写入容器 0600 config，不在 `exec -e` argv。
+- key 写入容器 0600 `secret.env`，不在 `exec -e` argv。
 
 ## Phase 2 实测
 

@@ -20,19 +20,21 @@ import shlex
 import tempfile
 from pathlib import Path
 
+from harbor.agents.agent_auth_resolution import (
+    ModelConnectionSpec,
+    ProviderAccess,
+)
 from harbor.agents.capabilities import AgentCapabilities
 from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_template
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from harbor.models.model_api_format import ModelApiFormat
-from harbor.agents.agent_auth_resolution import (
-    ModelConnectionSpec,
-    ProviderAccess,
-)
 
 
 _REMOTE_DIR = "/tmp/xylitol-eval"
-_CONFIG_PATH = f"{_REMOTE_DIR}/cfg/config.yaml"
+_CONFIG_DIR = f"{_REMOTE_DIR}/cfg"
+_CONFIG_PATH = f"{_CONFIG_DIR}/config.yaml"
+_SECRET_PATH = f"{_CONFIG_DIR}/secret.env"
 
 
 class XylitolAgent(BaseInstalledAgent):
@@ -89,7 +91,7 @@ class XylitolAgent(BaseInstalledAgent):
         _, model_id = self._parse_model_name(self.model_name)
         return model_id
 
-    def _render_config(self, base_url: str, api_key: str) -> str:
+    def _render_config(self, base_url: str) -> str:
         model = self._model_id()
         return f"""models:
   default_model: "{model}"
@@ -99,7 +101,7 @@ class XylitolAgent(BaseInstalledAgent):
       model: "{model}"
       base_url: "{base_url}"
       api: openai-responses
-      api_key: "{api_key}"
+      api_key: "{{{{ secret.MAGPIE_GATEWAY_KEY }}}}"
       thinking: true
       thinking_levels: [low, high]
       thinking_level_map:
@@ -129,6 +131,8 @@ session:
             raise ValueError("MAGPIE_GATEWAY_URL is required")
         if not api_key:
             raise ValueError("MAGPIE_GATEWAY_KEY is required")
+        if "\n" in api_key or "\r" in api_key:
+            raise ValueError("MAGPIE_GATEWAY_KEY must not contain newlines")
         base_url = base_url.rstrip("/")
         if not base_url.endswith("/v1"):
             base_url = f"{base_url}/v1"
@@ -141,12 +145,20 @@ session:
             ),
         )
         with tempfile.TemporaryDirectory(prefix="xylitol-harbor-") as tmp:
-            path = Path(tmp) / "config.yaml"
-            path.write_text(self._render_config(base_url, api_key), encoding="utf-8")
-            await environment.upload_file(path, _CONFIG_PATH)
+            config_path = Path(tmp) / "config.yaml"
+            config_path.write_text(self._render_config(base_url), encoding="utf-8")
+            secret_path = Path(tmp) / "secret.env"
+            secret_path.write_text(
+                f"MAGPIE_GATEWAY_KEY={api_key}\n", encoding="utf-8"
+            )
+            await environment.upload_file(config_path, _CONFIG_PATH)
+            await environment.upload_file(secret_path, _SECRET_PATH)
         await self.exec_as_root(
             environment,
-            command=f"chmod 600 {shlex.quote(_CONFIG_PATH)}",
+            command=(
+                f"chmod 600 {shlex.quote(_CONFIG_PATH)} "
+                f"{shlex.quote(_SECRET_PATH)}"
+            ),
         )
 
     @with_prompt_template
