@@ -123,6 +123,21 @@ thinking 使用 `[low, high]`，默认 high（列表最后一项）。
 - Docker Hub 不稳；本地用 `DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0`。
 - key 写入容器 0600 config，不在 `exec -e` argv。
 
+## Phase 2 实测
+
+- static musl：`x86_64-unknown-linux-musl`，`ldd` 显示 `statically linked`，无 interpreter；
+  sha256 `9f5c4f04f64bc914fe0cfdd5d5355c4bf28bdada1c69077599f33d1bbaa22fde`。
+- Terminal-Bench 4.0 `layout-config-recreation`（单容器/CPU）：reward 0.0；
+  verifier 11 failed / 1 passed；10m33s；0 exceptions。
+- DeepSWE v1.1 `httpx-multipart-response-parsing`：reward 0.0；F2P 0.0；P2P 1.0；
+  partial 0.912；10m41s；0 exceptions。Harbor 0.25 能跑 schema 1.3 +
+  `environment_mode=separate` + `[[verifier.collect]]`。
+- DeepSWE `agent.network_mode=no-network` 触发 Harbor egress sidecar；Docker Hub
+  metadata 拉取失败时，先用本地 `gogost/gost` 构建并打 tag
+  `harbor-prebuilt:harbor-docker-egress-control-sidecar--e9f39ce1643ee690`，再重跑。
+- model/config lock：`tools/eval/model-lock.yaml`；`doctor --lock` 校验。
+- 结论：三个基准各 1 task 均能跑通 agent + verifier；smoke 不要求通过。
+
 ## 风险
 
 - `group/glm-5.3-flash` pricing 未返回；成本以 usage 为准。

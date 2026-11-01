@@ -29,13 +29,13 @@
 - [x] 1.7 Docker Hub 不可达的本地 workaround：`DOCKER_BUILDKIT=0`
 - [x] 1.8 更新 issue #21：决策、Phase 1 状态、下一阶段
 
-## Phase 2：三基准各 1 task
+## Phase 2：三基准各 1 task（已完成）
 
-- [ ] 2.1 static musl binary（`x86_64-unknown-linux-musl`）
-- [ ] 2.2 Terminal-Bench 4.0 单 task（排除 GPU/多容器）
-- [ ] 2.3 DeepSWE 单 task Harbor spike；失败则只跑 Pier baseline
-- [ ] 2.4 model/config lock：model id、effort、context、max turns、dataset revision
-- [ ] 2.5 验收：三个基准各 1 task 可复现
+- [x] 2.1 static musl binary（`x86_64-unknown-linux-musl`）：statically linked，sha256 记录
+- [x] 2.2 Terminal-Bench 4.0 单 task（`layout-config-recreation`，单容器/CPU）：reward 0.0，verifier 跑通
+- [x] 2.3 DeepSWE 单 task Harbor spike（`httpx-multipart-response-parsing`）：reward 0.0，verifier 跑通
+- [x] 2.4 model/config lock：`tools/eval/model-lock.yaml` + `doctor --lock`
+- [x] 2.5 验收：SWE Verified / TB4.0 / DeepSWE 各 1 task 可复现；smoke 不要求通过
 
 ## Phase 3：Pi + mini-SWE 对比
 
