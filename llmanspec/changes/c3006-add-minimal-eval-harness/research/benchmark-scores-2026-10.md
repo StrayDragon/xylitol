@@ -10,7 +10,7 @@
   76.8%、Gemini 3 Flash high 75.8%、MiniMax M2.5 high 75.8%、GLM 5 high 72.8%。
 - 官方 Terminal-Bench 4.0：Opus 5.5(max) 64.8%、Sonnet 5.5(max) 61.8%、GPT-6 Astra(max)
   58.2%、GLM-5.3(max) 41.8%、GLM-5.3-Flash(none) 35.8%。
-- 候选：`zhipu/glm-5.3-flash` 做 dry-run；`zhipu/glm-5.3` high 做小集终验；
+- 候选：`group/glm-5.3-flash` high 做 dry-run / 小集，最小成本 eval；
   同模型跑 mini-SWE-agent baseline；前沿模型只作外部参照。
 - 聚合站数值互相矛盾，不采用；只取官方榜与厂商文档。
 
@@ -61,9 +61,15 @@ Gemini 3 Pro + live-SWE-agent 77.4%。
 
 来源：本机 magpie 网关 `GET /v1/models`（7 个模型；key 只在本机 env，未写入仓库）。
 
+> 2026-11-01 复核：catalog 不再返回 `zhipu/glm-5.3`；自动路由
+> `group/glm-5.3-flash` 可用（1M / 128000 / low, high, max；pricing 与
+> native_endpoints 未返回；实测 `openai-responses` 可用）。下表保留
+> 2026-10-31 快照，旧 id 仅作历史对照。
+
 | id | context | max output | reasoning levels | 价格（in/out per 1M） | native endpoints |
 |---|---|---|---|---|---|
-| `zhipu/glm-5.3` | 1M | 131072 | low / high / max | $1.19516 / $4.18306 | chat / responses / messages |
+| `group/glm-5.3-flash` | 1M | 128000 | low / high / max | 未返回（按 Flash 量级估算） | 未返回；实测 responses |
+| `zhipu/glm-5.3`（旧 catalog） | 1M | 131072 | low / high / max | $1.19516 / $4.18306 | chat / responses / messages |
 | `zhipu/glm-5.3-flash` | 1M | 131072 | low / high / max | $0.11952 / $0.41831 | chat / responses / messages |
 | `fusionxparks/DeepSeek-V4.1-Flash-1017` | 512K | 32000 | 无（reasoning=false） | $0.15 / $0.60 | chat / responses / messages |
 | 本地 halogen 模型（id 见本地 catalog） | 256K | 32000 | low / medium / xhigh | 本地免费 | chat / responses / messages |
@@ -98,8 +104,9 @@ Gemini 3 Pro + live-SWE-agent 77.4%。
 
 | 模型 | 单实例粗估 | 5 实例 | 50 实例 |
 |---|---|---|---|
-| `zhipu/glm-5.3` high | $0.8–$2.0 | $4–$10 | $40–$100 |
-| `zhipu/glm-5.3-flash` | $0.05–$0.15 | $0.3–$0.8 | $3–$8 |
+| `group/glm-5.3-flash` high | $0.05–$0.15 | $0.3–$0.8 | $3–$8 |
+| `zhipu/glm-5.3` high（旧 catalog） | $0.8–$2.0 | $4–$10 | $40–$100 |
+| `zhipu/glm-5.3-flash`（旧 catalog） | $0.05–$0.15 | $0.3–$0.8 | $3–$8 |
 | `fusionxparks/DeepSeek-V4.1-Flash-1017` | $0.1–$0.3 | $0.5–$1.5 | $5–$15 |
 
 ## 厂商自报
@@ -113,8 +120,9 @@ Gemini 3 Pro + live-SWE-agent 77.4%。
 
 | 模型 | 角色 | 理由 | 风险 |
 |---|---|---|---|
-| `zhipu/glm-5.3` high | 小集终验 | 用户偏好；1M；TB4.0 41.8% | 价格高（约 Flash 10x） |
-| `zhipu/glm-5.3-flash` | dry-run / 工程验证 | 快、便宜；1M；TB4.0 35.8% | 能力较弱 |
+| `group/glm-5.3-flash` high | 小集 / 工程验证 | 自动路由，最小成本；1M；TB4.0 Flash 35.8% | pricing 未返回；能力较弱 |
+| `zhipu/glm-5.3` high（旧 catalog） | 历史对照 | 1M；TB4.0 41.8% | 已不在当前 catalog；价格高 |
+| `zhipu/glm-5.3-flash`（旧 catalog） | 历史对照 | 快、便宜；1M；TB4.0 35.8% | 已不在当前 catalog |
 | `fusionxparks/DeepSeek-V4.1-Flash-1017` | 廉价对照 | 512K；$0.15/$0.60；reasoning=false | 无 thinking |
 | `cursor/claude-sonnet-5-5@300k` | 备选 | 300K；用户偏好 GLM > cursor | 仅 chat；价格未确认 |
 | `cursor/deepseek-v41-flash-1017` | 备选 | 1M；仅 chat | 价格未确认 |

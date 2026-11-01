@@ -120,8 +120,9 @@ dataset:
   instance_ids: [astropy__astropy-12907, django__django-13128, pydata__xarray-3151, sphinx-doc__sphinx-8120, sympy__sympy-15599]
   limit: 5
 model:
-  alias: "zhipu/glm-5.3"
+  alias: "group/glm-5.3-flash"
   thinking_level: high
+  thinking_levels: [low, high]
 agent:
   binary: target/eval-bin/xylitol-linux-x86_64
   max_turns: 80
@@ -148,37 +149,39 @@ xylitol 侧临时模型条目由 driver 从网关 catalog 生成，alias 直接�
 
 ```yaml
 models:
-  default_model: "zhipu/glm-5.3"
+  default_model: "group/glm-5.3-flash"
   models:
-    "zhipu/glm-5.3":
+    "group/glm-5.3-flash":
       provider: openai
-      model: "zhipu/glm-5.3"
+      model: "group/glm-5.3-flash"
       base_url: "{{ env.MAGPIE_GATEWAY_URL }}/v1"
       api: openai-responses
       api_key: "{{ env.MAGPIE_GATEWAY_KEY }}"
       thinking: true
-      thinking_levels: [off, low, high]
+      thinking_levels: [low, high]
       thinking_level_map:
-        off: null
         low: low
         high: high
       context_window: 1000000
-      max_output_tokens: 131072
+      max_output_tokens: 128000
 ```
 
-默认 thinking 档位 = 声明列表最后一项；因此 `[off, low, high]` 默认 high。
+默认 thinking 档位 = 声明列表最后一项；因此 `[low, high]` 默认 high。
 
 ## 模型接入（magpie）
 
 - 只用 magpie 网关模型；不使用 `DEEPSEEK_API_KEY`。
-- catalog id 直接作 alias（如 `zhipu/glm-5.3`）；不手写别名。
-- 当前 catalog：`zhipu/glm-5.3`、`zhipu/glm-5.3-flash`、`fusionxparks/DeepSeek-V4.1-Flash-1017`、
-  本地 halogen 模型（id 见本地 catalog）、`cursor/*`。
-- 首选 `zhipu/glm-5.3` high；dry-run 用 `zhipu/glm-5.3-flash`；cursor 作备选。
-- API 选择：catalog `native_endpoints` 含 `/v1/responses` → `openai-responses`；否则 `openai-completions`。
+- catalog id 直接作 alias（如 `group/glm-5.3-flash`）；不手写别名。
+- 当前 catalog：`group/glm-5.3-flash`、`zcode/GLM-5.3`、`zcode/GLM-5.3-Flash`、
+  `zcode/GLM-5.3-Flash-Trial`、`fusionxparks/DeepSeek-V4.1-Flash-1017`、`cursor/*`、
+  本地 halogen 模型（id 见本地 catalog）。
+- 首选 `group/glm-5.3-flash` high，最小成本 eval；不默认使用更贵模型；最终模型与规模由用户确认。
+- API 选择：`group/glm-5.3-flash` catalog `native_endpoints` 未返回；实测 `openai-responses` 可用，
+  失败再切 `openai-completions`。
 - 当前本机无 xylitol magpie 插件 / `magpie-models.yaml`；driver 读 catalog 生成临时配置，不写仓库或本地配置。
 - 容器内访问网关需 `MAGPIE_GATEWAY_URL` / `MAGPIE_GATEWAY_KEY`；已验证容器可访问并返回 catalog。
-- 价格：GLM-5.3 约 $1.20/$4.18 per 1M；GLM-5.3-Flash 约 $0.12/$0.42；DeepSeek magpie 约 $0.15/$0.60。成本按实际 usage 记录。
+- 价格：catalog 未返回 `group/glm-5.3-flash` pricing；按 Flash 量级估算约 $0.12/$0.42 per 1M；
+  DeepSeek magpie 约 $0.15/$0.60。成本按实际 usage 记录。
 
 ## 实例 id 与镜像名
 
@@ -283,8 +286,8 @@ on:
 ## 模型策略
 
 - 工程链路：fake provider → 1 实例。
-- dry-run 小集：`zhipu/glm-5.3-flash` 跑 1–2 个典型实例。
-- 终验小集：`zhipu/glm-5.3` high 跑 5–10 个实例；最终模型与规模由用户确认。
+- dry-run 小集：`group/glm-5.3-flash` high 跑 1–2 个典型实例。
+- 终验小集：`group/glm-5.3-flash` high 跑 5–10 个实例；最终模型与规模由用户确认。
 - 备选：`cursor/*`（用户偏好 GLM > cursor）；`fusionxparks/DeepSeek-V4.1-Flash-1017` 仅作廉价对照。
 - baseline：同一模型跑 mini-SWE-agent。
 - 前沿分数只作外部参照，不写入 xylitol 报告。

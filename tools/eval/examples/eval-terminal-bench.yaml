@@ -9,11 +9,12 @@ dataset:
   limit: 10
 
 model:
-  alias: "zhipu/glm-5.3"
+  alias: "group/glm-5.3-flash"
   thinking_level: "high"
+  thinking_levels: ["low", "high"]
   api: openai-responses
   context_window: 1000000
-  max_output_tokens: 131072
+  max_output_tokens: 128000
   base_url_env: MAGPIE_GATEWAY_URL
   api_key_env: MAGPIE_GATEWAY_KEY
 

@@ -12,7 +12,7 @@ def test_dry_run_json(capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["phase"] == "m0"
     assert out["dataset"]["name"] == "SWE-bench/SWE-bench_Verified"
-    assert out["model"]["alias"] == "zhipu/glm-5.3"
+    assert out["model"]["alias"] == "group/glm-5.3-flash"
     assert out["commands"]["agent"].startswith("xylitol print")
 
 
@@ -26,7 +26,7 @@ dataset:
   revision: r
   instance_ids: ["a"]
 model:
-  alias: "zhipu/glm-5.3"
+  alias: "group/glm-5.3-flash"
 agent:
   binary: target/eval-bin/missing
 """,

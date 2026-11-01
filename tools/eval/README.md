@@ -61,8 +61,9 @@ a local `.jsonl`/`.json` file. HF datasets are cached under
 `target/eval-cache/`.
 
 The agent config is generated at run time. Use the magpie catalog id as the
-alias (for example `zhipu/glm-5.3`); do not invent aliases. The model key and
-base URL come from `MAGPIE_GATEWAY_KEY` and `MAGPIE_GATEWAY_URL`.
+alias (for example `group/glm-5.3-flash`, the cheap automatic route); do not
+invent aliases. The model key and base URL come from `MAGPIE_GATEWAY_KEY` and
+`MAGPIE_GATEWAY_URL`.
 
 `model.provider: fake` emits a fake-provider config with no network call. Use
 it to validate container orchestration, patch collection and logging without

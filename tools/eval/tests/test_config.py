@@ -13,7 +13,8 @@ def test_load_mini_config():
     assert cfg.phase == "m0"
     assert cfg.dataset.name == "SWE-bench/SWE-bench_Verified"
     assert len(cfg.dataset.instance_ids) == 5
-    assert cfg.model.alias == "zhipu/glm-5.3"
+    assert cfg.model.alias == "group/glm-5.3-flash"
+    assert cfg.model.thinking_levels == ["low", "high"]
     assert len(cfg.sha256) == 64
 
 
@@ -40,7 +41,7 @@ dataset:
   revision: r
   instance_ids: ["a"]
 model:
-  alias: "zhipu/glm-5.3"
+  alias: "group/glm-5.3-flash"
   thinking_level: off
 agent:
   binary: target/eval-bin/xylitol
@@ -49,6 +50,28 @@ agent:
     )
     cfg = load_config(path)
     assert cfg.model.thinking_level == "off"
+
+
+def test_thinking_level_must_be_declared(tmp_path):
+    path = tmp_path / "level.yaml"
+    path.write_text(
+        """version: 1
+phase: m0
+dataset:
+  name: x.jsonl
+  revision: r
+  instance_ids: ["a"]
+model:
+  alias: "group/glm-5.3-flash"
+  thinking_level: max
+  thinking_levels: ["low", "high"]
+agent:
+  binary: target/eval-bin/xylitol
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(path)
 
 
 def test_missing_dataset_rejected(tmp_path):

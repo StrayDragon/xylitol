@@ -31,6 +31,7 @@ class ModelConfig:
     alias: str
     provider: str = "openai"
     thinking_level: str = "high"
+    thinking_levels: list[str] = field(default_factory=list)
     api: str = "openai-responses"
     context_window: int = 1000000
     max_output_tokens: int = 131072
@@ -97,6 +98,7 @@ class EvalConfig:
                 "alias": self.model.alias,
                 "provider": self.model.provider,
                 "thinking_level": self.model.thinking_level,
+                "thinking_levels": list(self.model.thinking_levels),
                 "api": self.model.api,
                 "context_window": self.model.context_window,
                 "max_output_tokens": self.model.max_output_tokens,
@@ -185,10 +187,13 @@ def load_config(path: Path) -> EvalConfig:
         thinking_level = "off" if not raw_level else "high"
     else:
         thinking_level = str(raw_level)
+    raw_levels = model_raw.get("thinking_levels", [])
+    thinking_levels = _string_list(raw_levels, "model.thinking_levels") if raw_levels else []
     model = ModelConfig(
         alias=str(_require(model_raw, "alias", "model")),
         provider=str(model_raw.get("provider", "openai")),
         thinking_level=thinking_level,
+        thinking_levels=thinking_levels,
         api=str(model_raw.get("api", "openai-responses")),
         context_window=_positive_int(model_raw.get("context_window", 1000000), "model.context_window"),
         max_output_tokens=_positive_int(
@@ -197,6 +202,15 @@ def load_config(path: Path) -> EvalConfig:
         base_url_env=str(model_raw.get("base_url_env", "MAGPIE_GATEWAY_URL")),
         api_key_env=str(model_raw.get("api_key_env", "MAGPIE_GATEWAY_KEY")),
     )
+    if (
+        model.provider != "fake"
+        and model.thinking_levels
+        and model.thinking_level not in model.thinking_levels
+    ):
+        raise ConfigError(
+            "model.thinking_level must be one of model.thinking_levels: "
+            + ", ".join(model.thinking_levels)
+        )
 
     agent_raw = raw.get("agent")
     if not isinstance(agent_raw, dict):
@@ -255,6 +269,7 @@ def load_config(path: Path) -> EvalConfig:
             "alias": model.alias,
             "provider": model.provider,
             "thinking_level": model.thinking_level,
+            "thinking_levels": model.thinking_levels,
             "api": model.api,
             "context_window": model.context_window,
             "max_output_tokens": model.max_output_tokens,

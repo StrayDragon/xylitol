@@ -47,7 +47,15 @@ def render_xylitol_config(config: EvalConfig) -> str:
 session:
   max_turns: {config.agent.max_turns}
 """
-    levels = _thinking_levels(config.model.thinking_level)
+    levels = (
+        list(config.model.thinking_levels)
+        if config.model.thinking_levels
+        else _thinking_levels(config.model.thinking_level)
+    )
+    if config.model.thinking_level not in levels:
+        raise InfraError(
+            f"thinking level {config.model.thinking_level} not in {levels}"
+        )
     level_lines = "\n".join(
         f"        {level}: {'null' if level == 'off' else level}" for level in levels
     )

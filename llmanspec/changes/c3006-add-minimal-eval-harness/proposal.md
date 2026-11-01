@@ -36,7 +36,7 @@ needs_specs_change: false
 - **官方 grader 为唯一分数源**；Langfuse 只作旁路元数据/失败实例回归，不作分数。
 - **只经 `print` / headless 驱动**；禁止 PTY / 自动按键驱动 TUI 作为 eval 前置。
 - **Python 编排**，不在 Rust runtime 引入 Docker/benchmark 依赖；Rust 侧只提供稳定 binary。
-- **只用 magpie 提供的模型**；不使用 `DEEPSEEK_API_KEY`。模型 id 直接用网关 catalog 输出（如 `zhipu/glm-5.3`），不手写别名。
+- **只用 magpie 提供的模型**；不使用 `DEEPSEEK_API_KEY`。模型 id 直接用网关 catalog 输出（如 `group/glm-5.3-flash` 自动路由），不手写别名。
 - **一步到位设计 `tools/eval/`**；阶段验收，接口先定，后续适配器不预埋空壳。
 - **数据集 / harness 组合**：`SWE-bench/SWE-bench_Verified` + `swebench==5.0.2` + 数据集自带
   `image` 字段；不再使用 `--cache_level` / `--namespace`（5.0.2 已移除）。

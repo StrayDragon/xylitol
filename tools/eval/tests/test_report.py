@@ -12,7 +12,7 @@ def _report():
         xylitol={"git_commit": "abc", "binary_sha256": "def"},
         harness={"name": "swebench", "version": "5.0.2"},
         dataset={"name": "SWE-bench/SWE-bench_Verified", "revision": "rev"},
-        model={"alias": "zhipu/glm-5.3"},
+        model={"alias": "group/glm-5.3-flash"},
         config={"sha256": "cfg"},
         limits={"max_turns": 80, "wall_seconds": 1800},
         instances=[

@@ -8,7 +8,7 @@ def test_report_file_name_and_parse(tmp_path, monkeypatch):
     report_dir = tmp_path / "reports"
     report_dir.mkdir()
     run_id = "r1"
-    model = "zhipu/glm-5.3"
+    model = "group/glm-5.3-flash"
     report = {
         "schema_version": 2,
         "submitted_instances": 1,

@@ -9,10 +9,11 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 def test_render_config_uses_env_placeholders():
     cfg = load_config(EXAMPLES / "eval-swebench-mini.yaml")
     text = render_xylitol_config(cfg)
-    assert 'default_model: "zhipu/glm-5.3"' in text
+    assert 'default_model: "group/glm-5.3-flash"' in text
     assert "{{ env.MAGPIE_GATEWAY_URL }}/v1" in text
     assert "{{ env.MAGPIE_GATEWAY_KEY }}" in text
-    assert "thinking_levels: [off, low, high]" in text
+    assert "thinking_levels: [low, high]" in text
+    assert "max_output_tokens: 128000" in text
     assert "max_turns: 80" in text
     assert "MAGPIE_GATEWAY_KEY" in text
     assert "sk-" not in text

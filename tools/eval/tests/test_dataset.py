@@ -21,7 +21,7 @@ dataset:
   instance_ids: [{', '.join(instance_ids)}]
   limit: 2
 model:
-  alias: "zhipu/glm-5.3"
+  alias: "group/glm-5.3-flash"
 agent:
   binary: target/eval-bin/xylitol
 """,
