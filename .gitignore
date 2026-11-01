@@ -11,6 +11,8 @@
 
 # Eval harness local artifacts (swebench writes logs/ under its cwd)
 tools/eval/logs/
+# Harbor job artifacts (default jobs/ under cwd)
+/jobs/
 
 # Logs
 *.log

@@ -1,33 +1,34 @@
 # xylitol-eval
 
-Headless SWE-bench eval harness for xylitol. Developer tooling, not a product
+Headless agent eval harness for xylitol. Developer tooling, not a product
 feature.
 
 ## Contract
 
-- Scores come only from the official grader (SWE-bench `run_evaluation` or
-  Harbor verifier). No self-made judge.
+- Scores come only from the official verifier/grader: Harbor task verifier or
+  SWE-bench `run_evaluation`. No self-made judge.
 - Drive the agent only through `xylitol print` (headless). Do not drive the TUI
   or send keystrokes.
-- Pin the dataset revision and record it in `run.json`.
-- Every instance gets its own Docker container and a fresh session.
+- Pin the model, dataset revision and harness version; record them in the
+  result metadata.
+- Every trial gets a fresh container/session.
 - Secrets are injected through the environment. Never commit keys, gateway
-  addresses, or account details.
+  addresses, or account details; Harbor uses `--env-file`, and the xylitol
+  adapter writes the key into a 0600 container config instead of `exec -e`
+  argv.
 
 ## Phases
 
 | phase | scope |
 |---|---|
-| m0 | Docker + Verified 5 + official grader |
-| m1 | wall clock, max_turns, config lock, no ask |
-| m2 | Verified 50 + mini-SWE-agent baseline |
-| m3 | Harbor + Terminal-Bench |
-| m4 | failure -> Dataset; small CI set |
-| m5 | cloud full run |
+| Phase 1 | Harbor + xylitol single task |
+| Phase 2 | TB4.0 / DeepSWE single task + static musl |
+| Phase 3 | xylitol vs Pi vs mini-SWE, 25/10/10, N=3 |
+| Phase 4 | golden + replay + session snapshot |
+| Phase 5 | CI / Langfuse bypass / cloud |
 
-Phase 0 (config, dry-run, doctor, report schema) and Phase 1 (Docker run,
-patch collection, official grader) are implemented. Later phases are
-scaffolded by the config schema and `ports.py`.
+The old official SWE-bench runner remains as a fallback/parity path, not the
+primary capability gate.
 
 ## Usage
 
@@ -36,7 +37,6 @@ cd tools/eval
 uv run xylitol-eval dry-run --config examples/eval-swebench-mini.yaml
 uv sync --extra harness
 uv run --extra harness xylitol-eval run --config examples/eval-swebench-mini.yaml
-uv run xylitol-eval report --run-dir ../../target/eval-runs/<run_id>
 uv run --extra dev pytest -m "not integration"
 ```
 
@@ -45,53 +45,93 @@ Or from the repo root:
 ```bash
 just eval-test
 just eval-dryrun
+just eval-harbor   # needs MAGPIE_GATEWAY_URL/KEY and /tmp/harbor-venv
 ```
 
-`just eval-smoke` runs the real config and needs Docker plus model
-credentials. Prefer a zero-cost `provider: fake` config for container smoke
-tests.
+## Harbor
 
-## Config
+Install Harbor in a temporary venv (do not add it to the repo lock):
 
-See `examples/eval-swebench-mini.yaml`. Required fields: `version`, `phase`,
-`dataset.name`, `dataset.revision`, `model.alias`, `agent.binary`.
+```bash
+uv venv /tmp/harbor-venv --python 3.12
+uv pip install --python /tmp/harbor-venv/bin/python 'harbor>=0.14,<1.0'
+```
 
-`dataset.name` can be a Hugging Face dataset name, a local `.parquet` file, or
-a local `.jsonl`/`.json` file. HF datasets are cached under
-`target/eval-cache/`.
+Put magpie credentials in a 0600 env file:
 
-The agent config is generated at run time. Use the magpie catalog id as the
-alias (for example `group/glm-5.3-flash`, the cheap automatic route); do not
-invent aliases. The model key and base URL come from `MAGPIE_GATEWAY_KEY` and
-`MAGPIE_GATEWAY_URL`.
+```bash
+umask 077
+printf 'MAGPIE_GATEWAY_URL=%s\nMAGPIE_GATEWAY_KEY=%s\n' "$MAGPIE_GATEWAY_URL" "$MAGPIE_GATEWAY_KEY" > /tmp/magpie-harbor.env
+```
 
-`model.provider: fake` emits a fake-provider config with no network call. Use
-it to validate container orchestration, patch collection and logging without
-spending tokens.
+Run one SWE-bench Verified task with the custom xylitol agent:
 
-`grader.run_id` must be unique per run. SWE-bench caches per-instance results
-by `run_id`; reusing it returns stale outcomes.
+```bash
+PYTHONPATH=tools/eval/harbor harbor run \
+  -d swe-bench/swe-bench-verified \
+  -i '*astropy__astropy-12907*' \
+  -l 1 \
+  -a xylitol_agent:XylitolAgent \
+  -m openai/group/glm-5.3-flash \
+  --ak binary=target/eval-bin/xylitol-linux-x86_64-glibc \
+  --ak max_turns=8 --ak wall_seconds=600 \
+  --base-url "$MAGPIE_GATEWAY_URL/v1" \
+  --api-key-name MAGPIE_GATEWAY_KEY \
+  --api-format openai_responses \
+  --env-file /tmp/magpie-harbor.env \
+  -n 1 -y
+```
+
+Docker Hub may be unreachable. Locally force the legacy builder:
+
+```bash
+DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 harbor run ...
+```
+
+Phase 3 adds Pi and mini-SWE with the same model, dataset and verifier:
+
+```bash
+harbor run -d swe-bench/swe-bench-verified -l 25 -k 3 \
+  -a pi -m openai/group/glm-5.3-flash --effort high \
+  --base-url "$MAGPIE_GATEWAY_URL/v1" \
+  --api-key-name MAGPIE_GATEWAY_KEY --api-format openai_responses \
+  --ak model_api=openai-responses --env-file /tmp/magpie-harbor.env
+```
+
+```bash
+harbor run -d terminal-bench/terminal-bench@4.0.0 -l 10 -k 3 \
+  -a mini-swe-agent -m openai/group/glm-5.3-flash --ak version=2.1.0 ...
+```
+
+DeepSWE: spike Harbor first; if it cannot run v1.1's separate verifier, use
+Pier for the official mini-SWE baseline only and do not claim a Pi comparison.
+
+## Config / fallback
+
+`examples/eval-swebench-mini.yaml` is the official SWE-bench fallback. Required
+fields: `version`, `phase`, `dataset.name`, `dataset.revision`,
+`model.alias`, `agent.binary`.
+
+`dataset.name` can be a Hugging Face name, local `.parquet`, or local
+`.jsonl`/`.json`. HF datasets cache under `target/eval-cache/`.
+
+Use the magpie catalog id as the alias (for example
+`group/glm-5.3-flash`); do not invent aliases. The model key and base URL come
+from `MAGPIE_GATEWAY_KEY` and `MAGPIE_GATEWAY_URL`.
+
+`model.provider: fake` emits a fake-provider config with no network call.
+
+`grader.run_id` must be unique per run; SWE-bench caches by `run_id`.
 
 ## Outputs
 
-`target/eval-runs/<run_id>/`:
+Official fallback: `target/eval-runs/<run_id>/` with `run.json`,
+`summary.md`, `instances.jsonl`, `preds.jsonl`, `logs/`, `reports/`.
 
-```text
-run.json
-summary.md
-instances.jsonl
-preds.jsonl
-logs/
-reports/
-```
-
-`run.json` records the binary SHA-256, git commit, config SHA-256, dataset
-revision, harness version, per-instance outcome and summary.
+Harbor: `jobs/<job-name>/` with `result.json`, per-trial `agent/`,
+`verifier/`, `trial.log`, and task rewards.
 
 ## Local Linux binary
-
-Because the repo is not pushed until review, CI is not available. Build the
-Linux binary locally in Docker (glibc 2.35, matching the SWE-bench image):
 
 ```bash
 source <your-proxy-helper>   # for example: proxing on
@@ -102,6 +142,5 @@ The script defaults to an already-pulled SWE-bench image when Docker Hub is
 unreachable. Override with `XYLITOL_EVAL_BUILD_IMAGE=<image>`. The manual
 `.github/workflows/eval-bin.yaml` reuses the same cargo command.
 
-The binary is written to
-`target/eval-bin/xylitol-linux-x86_64-glibc`; its SHA-256 is recorded in
-`run.json`.
+Binary: `target/eval-bin/xylitol-linux-x86_64-glibc`; SHA-256 is recorded in
+`run.json`. Phase 2 adds a static musl build for non-Ubuntu Harbor tasks.

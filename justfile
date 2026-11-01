@@ -654,3 +654,33 @@ eval-smoke config="examples/eval-swebench-mini.yaml":
     set -euo pipefail
     cd tools/eval
     uv run --extra harness xylitol-eval run --config "{{config}}"
+
+# Run one Harbor SWE Verified task with the xylitol adapter.
+eval-harbor filter="*astropy__astropy-12907*":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${MAGPIE_GATEWAY_URL:?MAGPIE_GATEWAY_URL is required}"
+    : "${MAGPIE_GATEWAY_KEY:?MAGPIE_GATEWAY_KEY is required}"
+    harbor_bin="${HARBOR_BIN:-/tmp/harbor-venv/bin/harbor}"
+    [[ -x "${harbor_bin}" ]] || { echo "error: Harbor not found at ${harbor_bin}" >&2; exit 1; }
+    env_file="$(mktemp)"
+    trap 'rm -f "${env_file}"' EXIT
+    umask 077
+    printf 'MAGPIE_GATEWAY_URL=%s\nMAGPIE_GATEWAY_KEY=%s\n' "${MAGPIE_GATEWAY_URL}" "${MAGPIE_GATEWAY_KEY}" > "${env_file}"
+    chmod 600 "${env_file}"
+    export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0
+    PYTHONPATH=tools/eval/harbor "${harbor_bin}" run \
+      -d swe-bench/swe-bench-verified \
+      -i "{{filter}}" \
+      -l 1 \
+      -a xylitol_agent:XylitolAgent \
+      -m openai/group/glm-5.3-flash \
+      --ak binary=target/eval-bin/xylitol-linux-x86_64-glibc \
+      --ak max_turns=8 \
+      --ak wall_seconds=600 \
+      --base-url "${MAGPIE_GATEWAY_URL}/v1" \
+      --api-key-name MAGPIE_GATEWAY_KEY \
+      --api-format openai_responses \
+      --env-file "${env_file}" \
+      --job-name "xylitol-harbor-$(date +%Y%m%d-%H%M%S)" \
+      -n 1 -y
