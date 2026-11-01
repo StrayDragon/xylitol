@@ -39,13 +39,14 @@
 
 ## Phase 3：Pi + mini-SWE 对比
 
-- [ ] 3.1 Pi 单 task：`-a pi` + magpie endpoint + `model_api=openai-responses`
-- [ ] 3.2 mini-SWE baseline 固定版本，同数据同 verifier
-- [ ] 3.3 SWE Verified 25 × N=3
-- [ ] 3.4 TB4.0 10 × N=3
-- [ ] 3.5 DeepSWE 10 × N=3
-- [ ] 3.6 报告 pass@1、flip rate、cross_scaffold_flip、cost、wall、turns
+- [x] 3.1 Pi 单 task：`-a pi` + magpie endpoint + `model_api=openai-responses`
+- [x] 3.2 mini-SWE baseline 固定版本，同数据同 verifier（自定义 mcp 兼容 agent）
+- [ ] 3.3 SWE Verified 25 × N=3（pilot：astropy 1 task × N=3 已完成）
+- [ ] 3.4 TB4.0 10 × N=3（未开始）
+- [ ] 3.5 DeepSWE 10 × N=3（未开始）
+- [ ] 3.6 报告 pass@1、flip rate、cross_scaffold_flip、cost、wall、turns（pilot 报告已完成）
 - [ ] 3.7 验收：每个 scaffold/benchmark 单独一行；不混分
+- [x] 3.8 Phase 3 pilot：SWE astropy 1 task × N=3 × 3 scaffolds
 
 ## Phase 4：快速回归
 
