@@ -1,7 +1,7 @@
 [project]
 name = "xylitol-eval"
 version = "0.1.0"
-description = "Headless SWE-bench eval harness for xylitol"
+description = "Headless Harbor-first eval harness for xylitol"
 requires-python = ">=3.11,<3.13"
 dependencies = [
   "PyYAML>=6.0",

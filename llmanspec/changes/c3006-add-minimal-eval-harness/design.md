@@ -4,7 +4,7 @@
 
 `tools/eval/` 是开发者工具链，不是产品功能。主路径是 **Harbor**：同一模型、同一数据集、
 同一 verifier，分别跑 `xylitol` 与 `pi`，用 pass@1 与 flip rate 做 cross-scaffold 对比。
-SWE-bench Verified 只作回归/兼容；能力闸用 Terminal-Bench 4.0 与 DeepSWE。
+能力闸用 Terminal-Bench 4.0 与 DeepSWE。
 
 不做什么：不自研 judge；不用 TUI/PTY 驱动；不在 Rust runtime 引入 Docker；不把
 Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强”；不在确认前 push/PR。
@@ -14,12 +14,12 @@ Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强�
 - **固定模型**：`group/glm-5.3-flash`（catalog id，1M context，128000 max output，
   low/high/max reasoning；pricing 未返回）。同一轮对比中 xylitol 与 Pi 使用同一 model id、
   endpoint、effort、temperature、top_p、context、max turns/steps。
-- **基准矩阵 B**：SWE-bench Verified 25 + Terminal-Bench 4.0 10 + DeepSWE 10 都进主表；
-  SWE Verified 标为回归/兼容，不作为唯一能力证据。
+- **基准矩阵 B**：Terminal-Bench 4.0 10 + DeepSWE 10 都进主表；
+  两者在 Linux amd64 原生与 macOS arm64 的 Docker amd64 模拟下运行。
 - **Harbor-first**：所有基准统一走 Harbor task/verifier；DeepSWE 先做 Harbor spike，
   不能稳定跑则仅用 Pier 跑官方 baseline，不宣称 Pi 对比。
 - **N≥3**：每个 task 跑 3 次；报告 pass@1、flip rate、cost、wall time、turns。
-- **Phase 1 只做 xylitol**：先把 xylitol Harbor adapter 与一个 SWE Verified task 跑通；
+- **Phase 1 只做 xylitol**：先把 xylitol Harbor adapter 与一个 Terminal-Bench task 跑通；
   Pi/mini-SWE 对照放到 Phase 3。
 - **Model/config lock**：`tools/eval/model-lock.yaml` 固定 model id、API format、
   context/output、thinking levels、`smoke` / `compare` 的 max_turns/wall_seconds；
@@ -31,7 +31,6 @@ Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强�
 ```mermaid
 flowchart TB
   CLI["just eval-harbor"] --> H["Harbor job"]
-  H --> D1["SWE Verified 25"]
   H --> D2["TB4.0 10"]
   H --> D3["DeepSWE 10"]
   H --> A1["xylitol adapter"]
@@ -52,7 +51,7 @@ tools/eval/
   src/xylitol_eval/             # 既有 config / dataset / print runner / report
   fixtures/golden/              # 小 golden task + expected patch/test
   fixtures/replay/              # 录制 session JSONL + mock server 脚本
-  scripts/build_linux.sh        # glibc；后续加 musl static
+  scripts/build_linux_musl.sh   # static musl
 ```
 
 ## Harbor 适配器
@@ -69,17 +68,16 @@ tools/eval/
 - `populate_context_post_run`：后续解析 session JSONL 的 usage；Phase 1 可先留空。
 - 不采 patch/preds：Harbor verifier 在任务环境内直接跑测试，reward 由
   `/logs/verifier/reward.txt|json` 决定。
-- binary：SWE Verified 用 glibc；TB4.0 / DeepSWE 用 static musl（已验证
-  `statically linked`）。
+- binary：TB4.0 / DeepSWE 用 static musl（已验证 `statically linked`）。
 
 调用形态：
 
 ```bash
 PYTHONPATH=tools/eval/harbor harbor run \
-  -d swe-bench/swe-bench-verified -i '*astropy__astropy-12907*' -l 1 \
+  -p /tmp/tb4/terminal-bench/layout-config-recreation \
   -a xylitol_agent:XylitolAgent \
   -m openai/group/glm-5.3-flash \
-  --ak binary=target/eval-bin/xylitol-linux-x86_64-glibc \
+  --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
   --ak max_turns=8 --ak wall_seconds=600 \
   --base-url "$MAGPIE_GATEWAY_URL/v1" \
   --api-key-name MAGPIE_GATEWAY_KEY \
@@ -94,7 +92,6 @@ Harbor compose 仍可能尝试 registry metadata，需记录为已知环境问�
 
 | 基准 | 规模 | 作用 | 备注 |
 |---|---|---|---|
-| SWE-bench Verified | 25 | 回归/兼容 | Harbor 500 task adapter 有 parity；饱和，不作唯一能力证据 |
 | Terminal-Bench 4.0 | 10 | 能力闸 | 66 task；8h 超时；排除 GPU/多容器 |
 | DeepSWE v1.1 | 10 | 长程能力闸 | 113 task；Harbor schema 1.3 + separate verifier 已验证单 task；no-network 需 egress sidecar |
 
@@ -130,8 +127,8 @@ sidecar（`gogost/gost`），Docker Hub metadata 不可达时先本地构建并�
 |---|---|---|
 | Phase 0 | 既有 `tools/eval` 骨架 | 单测/dry-run/本地 binary |
 | Phase 1 | Harbor adapter + xylitol 单 task | agent 跑通；verifier 产出 reward |
-| Phase 2 | TB4.0 单 task + DeepSWE spike + musl | 三个基准各 1 task 跑通 |
-| Phase 3 | Pi + mini-SWE + 25/10/10 N=3 | pass@1 + flip rate 表 |
+| Phase 2 | TB4.0 单 task + DeepSWE spike + musl | 两个基准各 1 task 跑通 |
+| Phase 3 | Pi + mini-SWE + 10/10 N=3 | pass@1 + flip rate 表 |
 | Phase 4 | golden + replay + snapshot | PR 门禁可跑 |
 | Phase 5 | CI / Langfuse 旁路 / 云 | 回归与全量可复现 |
 
@@ -143,7 +140,6 @@ cost、wall time。报告必须写明 scaffold 与 verifier，不写“xylitol �
 
 ## 不做什么
 
-- 不把 SWE-bench Verified 单次全量分当能力结论。
 - 不混不同 scaffold/verifier 的分数。
 - 不用多 LLM judge 做硬判。
 - 不在 Phase 1 跑全量 / 云并行。
@@ -156,4 +152,6 @@ cost、wall time。报告必须写明 scaffold 与 verifier，不写“xylitol �
 - Docker Hub 不稳定；Harbor compose 可能卡在 registry metadata。
 - TB4.0 含 GPU/多容器任务；本地先排除。
 - DeepSWE Harbor 兼容性已验证单 task；10 task 子集仍需验证。
-- glibc binary 在非 Ubuntu task 不兼容；已加 static musl。
+- SWE-bench Verified 已移除：上游镜像只有 linux/amd64，Harbor Compose build 在
+  arm64 主机上按宿主平台拉取会失败；TB4.0 / DeepSWE 镜像同为 amd64，在
+  macOS arm64 走 Docker amd64 模拟。

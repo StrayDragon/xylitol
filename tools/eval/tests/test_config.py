@@ -9,18 +9,18 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
 def test_load_mini_config():
-    cfg = load_config(EXAMPLES / "eval-swebench-mini.yaml")
-    assert cfg.phase == "m0"
-    assert cfg.dataset.name == "SWE-bench/SWE-bench_Verified"
-    assert len(cfg.dataset.instance_ids) == 5
+    cfg = load_config(EXAMPLES / "eval-terminal-bench.yaml")
+    assert cfg.phase == "m3"
+    assert cfg.dataset.name == "terminal-bench/terminal-bench@4.0.0"
+    assert cfg.dataset.limit == 10
     assert cfg.model.alias == "group/glm-5.3-flash"
     assert cfg.model.thinking_levels == ["low", "high"]
     assert len(cfg.sha256) == 64
 
 
 def test_config_hash_is_stable():
-    first = load_config(EXAMPLES / "eval-swebench-mini.yaml")
-    second = load_config(EXAMPLES / "eval-swebench-mini.yaml")
+    first = load_config(EXAMPLES / "eval-terminal-bench.yaml")
+    second = load_config(EXAMPLES / "eval-terminal-bench.yaml")
     assert first.sha256 == second.sha256
 
 

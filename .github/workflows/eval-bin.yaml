@@ -22,22 +22,22 @@ jobs:
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang mold cmake libssl-dev pkg-config perl nasm
+          sudo apt-get install -y clang mold cmake libssl-dev pkg-config perl nasm musl-tools
 
       - name: Build Linux binary
         run: |
-          rustup target add x86_64-unknown-linux-gnu
-          cargo build --release --locked --target x86_64-unknown-linux-gnu
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --locked --target x86_64-unknown-linux-musl
 
       - name: Strip and checksum
         run: |
-          strip target/x86_64-unknown-linux-gnu/release/xylitol
-          sha256sum target/x86_64-unknown-linux-gnu/release/xylitol > target/xylitol-linux-x86_64-glibc.sha256
+          strip target/x86_64-unknown-linux-musl/release/xylitol
+          sha256sum target/x86_64-unknown-linux-musl/release/xylitol > target/xylitol-linux-x86_64-musl.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xylitol-linux-x86_64-glibc
+          name: xylitol-linux-x86_64-musl
           path: |
-            target/x86_64-unknown-linux-gnu/release/xylitol
-            target/xylitol-linux-x86_64-glibc.sha256
+            target/x86_64-unknown-linux-musl/release/xylitol
+            target/xylitol-linux-x86_64-musl.sha256
           retention-days: 30

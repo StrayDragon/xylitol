@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build a static musl Linux binary for Harbor tasks that are not Ubuntu/glibc.
-# Uses an already-pulled SWE-bench image as the amd64 build base when Docker Hub
-# is unreachable.
+# Build a static musl Linux binary for Harbor tasks.
+# The build base is an amd64 Ubuntu image; override with
+# XYLITOL_EVAL_BUILD_IMAGE when Docker Hub is unreachable.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 out_dir="${repo_root}/target/eval-bin"
 mkdir -p "${out_dir}"
 
-base_image="${XYLITOL_EVAL_BUILD_IMAGE:-swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest}"
+base_image="${XYLITOL_EVAL_BUILD_IMAGE:-ubuntu:22.04}"
 
 # The host proxy usually listens on 127.0.0.1; inside Docker that is the
 # container itself. Rewrite loopback to the Docker host gateway.
