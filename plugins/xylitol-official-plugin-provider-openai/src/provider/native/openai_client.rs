@@ -7,7 +7,14 @@ use crate::hooks::HttpHooks;
 use crate::provider::native::openai_hooks_mw::HooksHttpService;
 use crate::provider::obs_session::ObsSessionContext;
 
-pub const DEFAULT_HTTP_USER_AGENT: &str = "Mozilla/5.0 (compatible; xylitol-official-plugin-provider-openai/0.1; +https://github.com/straydragon/xylitol)";
+pub fn default_user_agent() -> String {
+    format!(
+        "xylitol/{} ({}; rust; {})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    )
+}
 
 fn openai_config(api_key: String, base_url: Option<String>) -> OpenAIConfig {
     OpenAIConfig::new()
@@ -61,5 +68,16 @@ pub fn normalize_openai_v1_base(base: &str) -> String {
         trimmed.to_string()
     } else {
         format!("{trimmed}/v1")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn user_agent_identifies_xylitol() {
+        let ua = super::default_user_agent();
+        assert!(ua.starts_with("xylitol/"));
+        assert!(ua.contains(std::env::consts::OS));
+        assert!(ua.contains(std::env::consts::ARCH));
     }
 }
