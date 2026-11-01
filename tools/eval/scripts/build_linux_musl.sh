@@ -23,6 +23,11 @@ https_proxy="$(proxy_url "${HTTPS_PROXY:-}")"
 http_proxy="$(proxy_url "${HTTP_PROXY:-}")"
 all_proxy="$(proxy_url "${ALL_PROXY:-}")"
 
+if [[ "${https_proxy}" == *"@"* || "${http_proxy}" == *"@"* || "${all_proxy}" == *"@"* ]]; then
+  echo "error: proxy URL contains credentials; refusing to pass it via docker argv" >&2
+  exit 2
+fi
+
 docker run --rm \
   --platform linux/amd64 \
   -v "${repo_root}:/src" \
