@@ -23,23 +23,44 @@ jobs:
         with:
           fetch-depth: 0
 
+      # CRAP is Rust-only. Skip the two coverage runs when a PR touches no Rust files.
+      - name: Detect Rust changes
+        id: changes
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" \
+            | grep -Eq '[.]rs$|(^|/)Cargo[.](toml|lock)$|(^|/)rust-toolchain[.]toml$|(^|/)[.]cargo/'; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip CRAP (no Rust changes)
+        if: github.event_name == 'pull_request' && steps.changes.outputs.rust != 'true'
+        run: echo "No Rust changes; skipping coverage and CRAP scoring."
+
       - uses: actions-rust-lang/setup-rust-toolchain@v2
+        if: github.event_name != 'pull_request' || steps.changes.outputs.rust == 'true'
         with:
           components: llvm-tools-preview
 
       - uses: Swatinem/rust-cache@v2
+        if: github.event_name != 'pull_request' || steps.changes.outputs.rust == 'true'
 
       - name: Install rg + fd + clang + mold (test deps / Linux linker)
+        if: github.event_name != 'pull_request' || steps.changes.outputs.rust == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y ripgrep fd-find clang mold
           sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
       - uses: taiki-e/install-action@v2
+        if: github.event_name != 'pull_request' || steps.changes.outputs.rust == 'true'
         with:
           tool: cargo-nextest,cargo-llvm-cov
 
       - uses: minikin/cargo-crap@v1
+        if: github.event_name != 'pull_request' || steps.changes.outputs.rust == 'true'
         with:
           version: "0.9.0"
           args: --workspace
