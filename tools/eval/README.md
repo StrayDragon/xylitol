@@ -14,8 +14,8 @@ feature.
 - Every trial gets a fresh container/session.
 - Secrets are injected through the environment. Never commit keys, gateway
   addresses, or account details; Harbor uses `--env-file`, and the xylitol
-  adapter writes the key into a 0600 container config instead of `exec -e`
-  argv.
+  adapter writes a 0600 `secret.env`; `config.yaml` only references
+  `{{ secret.MAGPIE_GATEWAY_KEY }}`.
 
 ## Phases
 
@@ -96,12 +96,14 @@ DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 harbor run ...
 - rewrites loopback proxy URLs to `host.docker.internal`;
 - appends `NO_PROXY` for the magpie gateway host;
 - refuses proxy URLs containing credentials (they would land in argv);
-- adds `--allow-agent-host host.docker.internal`.
+- adds `--allow-agent-host host.docker.internal`;
+- caps `-n` / `--n-concurrent` at 3 (default 3, rejects larger values).
 
 Use it when Pi/nvm or mini-SWE/uv installs need network. Do not wire it into
 CI; eval CI is not enabled.
 
-Phase 3 adds Pi and mini-SWE with the same model, dataset and verifier:
+Phase 3 compares Pi and mini-SWE with the same model, dataset and verifier
+(pilot: SWE astropy N=3, all three scaffolds 3/3 reward 1.0):
 
 ```bash
 harbor run -d swe-bench/swe-bench-verified -l 25 -k 3 \

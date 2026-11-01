@@ -6,7 +6,8 @@ set -euo pipefail
 # - translates a loopback HTTP(S) proxy to host.docker.internal so Pi/nvm and
 #   mini-SWE/uv installs can reach the network;
 # - adds NO_PROXY for the magpie gateway so model calls stay direct;
-# - refuses proxy URLs with credentials because `--ae` lands in argv.
+# - refuses proxy URLs with credentials because `--ae` lands in argv;
+# - caps local Harbor concurrency at 3 (default 3).
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 harbor_bin="${HARBOR_BIN:-/tmp/harbor-venv/bin/harbor}"
@@ -52,6 +53,57 @@ for host in host.docker.internal 127.0.0.1 localhost "${gateway_host}"; do
 done
 
 args=("$@")
+
+# Local concurrency cap: at most 3 Harbor trials at once.
+normalized=()
+concurrency=""
+i=0
+while (( i < ${#args[@]} )); do
+  arg="${args[i]}"
+  case "${arg}" in
+    -n|--n-concurrent)
+      if (( i + 1 >= ${#args[@]} )); then
+        echo "error: ${arg} requires a value" >&2
+        exit 2
+      fi
+      value="${args[i+1]}"
+      if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+        echo "error: ${arg} must be an integer" >&2
+        exit 2
+      fi
+      if (( value < 1 || value > 3 )); then
+        echo "error: local concurrency is capped at 3 (got ${value})" >&2
+        exit 2
+      fi
+      concurrency="${value}"
+      normalized+=("${arg}" "${value}")
+      (( i += 2 ))
+      ;;
+    --n-concurrent=*)
+      value="${arg#*=}"
+      if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+        echo "error: --n-concurrent must be an integer" >&2
+        exit 2
+      fi
+      if (( value < 1 || value > 3 )); then
+        echo "error: local concurrency is capped at 3 (got ${value})" >&2
+        exit 2
+      fi
+      concurrency="${value}"
+      normalized+=("${arg}")
+      (( i += 1 ))
+      ;;
+    *)
+      normalized+=("${arg}")
+      (( i += 1 ))
+      ;;
+  esac
+done
+if [[ -z "${concurrency}" ]]; then
+  normalized+=("-n" "3")
+fi
+args=("${normalized[@]}")
+
 if [[ -n "${proxy}" ]]; then
   args+=(
     --ae "HTTPS_PROXY=${proxy}"
