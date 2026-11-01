@@ -23,7 +23,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # CRAP is Rust-only. Skip the two coverage runs when a PR touches no Rust files.
       - name: Detect Rust changes
         id: changes
         if: github.event_name == 'pull_request'
