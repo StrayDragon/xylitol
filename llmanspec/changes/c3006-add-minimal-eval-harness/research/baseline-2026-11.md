@@ -2,6 +2,7 @@
 
 > 性质：change 附属基线记录，不是 live spec。
 > 目的：固定这一轮评测集与命令；xylitol 功能改进后按同一命令重跑，比较提升。
+> 复用方法：`xylitol-dev` skill 的 `references/eval-baseline.md`。
 
 ## 范围
 
