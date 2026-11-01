@@ -79,6 +79,21 @@ while (( i < ${#args[@]} )); do
       normalized+=("${arg}" "${value}")
       (( i += 2 ))
       ;;
+    -n[0-9]*|-n=*)
+      value="${arg#-n}"
+      value="${value#=}"
+      if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+        echo "error: -n must be an integer" >&2
+        exit 2
+      fi
+      if (( value < 1 || value > 3 )); then
+        echo "error: local concurrency is capped at 3 (got ${value})" >&2
+        exit 2
+      fi
+      concurrency="${value}"
+      normalized+=("-n" "${value}")
+      (( i += 1 ))
+      ;;
     --n-concurrent=*)
       value="${arg#*=}"
       if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
