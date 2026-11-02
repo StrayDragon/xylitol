@@ -19,7 +19,7 @@ baseline；改完再用同一套命令重跑，比较 pass@1 / flip rate / cross
 - **固定 profile**：compare（`max_turns=80`、`wall_seconds=1800`）；smoke 只做冒烟。
 - **固定 scaffold**：xylitol、Pi、mini-SWE 同 task 同 verifier；每 task × scaffold × N=3。
 - **固定 verifier**：只认 Harbor task verifier；不自研 judge，不混不同 scaffold/verifier。
-- **固定并发**：本地单 job `-n 3`，全局最多 3 个并发 trial；不要并行多个 job 叠并发。
+- **固定并发**：本地单 job `-n 2`，全局最多 2 个并发 trial；不要并行多个 job 叠并发。
 - **固定记录**：baseline 结果写进 change research，不写进 live spec；skill 只讲方法。
 
 ## 平台
@@ -45,7 +45,7 @@ docker run --rm --platform linux/amd64 <image> uname -m   # 期望 x86_64
 本地入口：
 
 ```bash
-tools/eval/scripts/harbor_local.sh run -p <task-dir> -k 3 -n 3 \
+tools/eval/scripts/harbor_local.sh run -p <task-dir> -k 3 -n 2 \
   -a xylitol_agent:XylitolAgent -m openai/group/glm-5.3-flash \
   --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
   --ak max_turns=80 --ak wall_seconds=1800 \
@@ -64,6 +64,26 @@ tools/eval/scripts/harbor_local.sh run -p <task-dir> -k 3 -n 3 \
 - key 只走 `--env-file`；adapter 在容器内写 0600 `secret.env`，不把 key 放进
   `exec -e` argv。
 
+## 短程 smoke（框架维护）
+
+每次改 eval 框架、Harbor adapter、binary 或配置后，先跑短程 smoke：
+
+```bash
+just eval-smoke --check   # 无模型调用；检查 Harbor、binary、env-file、fixture lint
+just eval-smoke           # 1 trial、8 turns、120s；期望 reward=1
+```
+
+- smoke 只证明链路没断，不作为分数；失败先修框架，不跑全量。
+- fixture 在 `tools/eval/fixtures/smoke-task/`，不依赖 `/tmp` 数据集。
+- 模型额度耗尽时报告 `smoke blocked: model quota/rate limit`，不是框架失败。
+- 三 scaffold 的兼容性另跑同 fixture 的 Pi / mini-SWE 各 1 trial；不混分数。
+
+## 长程节奏
+
+- 一周一次全量；全量前 smoke 必须通过。
+- 全量仍用同一 model lock、task 集、profile、verifier；`-n 2`。
+- 每次全量记录 commit、binary SHA、Harbor 版本、task checksums；manifest 不一致就标为新 baseline，不跨版本比较。
+
 ## 记录字段
 
 - xylitol git commit、musl binary SHA-256、Harbor 版本。
@@ -80,7 +100,8 @@ tools/eval/scripts/harbor_local.sh run -p <task-dir> -k 3 -n 3 \
 ## 检查清单
 
 - [ ] model lock 未变；task ids 与上次一致。
-- [ ] N=3；单 job `-n 3`；全局并发 ≤3。
+- [ ] N=3；单 job `-n 2`；全局并发 ≤2。
+- [ ] smoke 通过；失败先修框架再跑全量。
 - [ ] Linux/macOS 平台假设已写明；镜像 `uname -m` 验证过。
 - [ ] key 未进 git/argv；只走 env-file + 0600 secret.env。
 - [ ] 结果写进 change research；未把临时 CI/PR 状态写进 issue。

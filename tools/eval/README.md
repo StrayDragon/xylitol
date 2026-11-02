@@ -42,8 +42,25 @@ Or from the repo root:
 
 ```bash
 just eval-test
+just eval-smoke --check   # no model call; prerequisites only
+just eval-smoke           # one short xylitol trial; expects reward 1
 just eval-harbor   # needs MAGPIE_GATEWAY_URL/KEY and /tmp/harbor-venv
 ```
+
+## Smoke
+
+`just eval-smoke` is the maintenance canary: one repo-local Harbor task,
+one xylitol trial, 8 turns, 120s wall. It checks the binary, Harbor wiring,
+secret injection, proxy, model call, verifier and result parsing. It is not a
+score and does not replace the weekly baseline.
+
+`just eval-smoke --check` validates prerequisites without a model call:
+Harbor version, binary SHA-256, env file, Docker, fixture lint. If the model
+quota is exhausted, the smoke reports `smoke blocked: model quota/rate limit`
+instead of a framework failure.
+
+The fixture lives in `tools/eval/fixtures/smoke-task/`; keep it small and
+deterministic. A smoke failure means fix the framework before a full run.
 
 ## Harbor
 
