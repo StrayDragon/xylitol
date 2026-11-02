@@ -675,3 +675,8 @@ eval-harbor:
       --env-file "${env_file}" \
       --job-name "xylitol-harbor-$(date +%Y%m%d-%H%M%S)" \
       -n 1 -y
+
+eval-smoke mode="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tools/eval/scripts/smoke.sh {{mode}}
