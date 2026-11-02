@@ -335,8 +335,7 @@ pub fn registration_token_with(
     registration_path: Option<std::path::PathBuf>,
 ) -> Option<String> {
     let reg_path = registration_path.unwrap_or_else(xylitol_serve::default_registration_path);
-    let reg = xylitol_serve::read_registration(&reg_path).ok()?;
-    same_url(&reg.url, url).then_some(reg.token).flatten()
+    discover_token(url, &reg_path)
 }
 
 #[cfg(feature = "server")]
@@ -344,6 +343,27 @@ fn registration_token_for(reg: &Option<xylitol_serve::Registration>, url: &str) 
     reg.as_ref()
         .filter(|reg| same_url(&reg.url, url))
         .and_then(|reg| reg.token.clone())
+}
+
+#[cfg(feature = "server")]
+fn discover_token(url: &str, registration_path: &std::path::Path) -> Option<String> {
+    let from_reg = xylitol_serve::read_registration(registration_path)
+        .ok()
+        .and_then(|reg| same_url(&reg.url, url).then_some(reg.token).flatten());
+    if from_reg.is_some() {
+        return from_reg;
+    }
+    if is_loopback_url(url) && registration_path == xylitol_serve::default_registration_path() {
+        return read_existing_credential();
+    }
+    None
+}
+
+#[cfg(feature = "server")]
+fn read_existing_credential() -> Option<String> {
+    let raw = std::fs::read_to_string(xylitol_serve::default_credential_path()).ok()?;
+    let token = raw.trim();
+    (!token.is_empty()).then(|| token.to_string())
 }
 
 #[cfg(feature = "server")]
@@ -478,11 +498,10 @@ pub async fn ensure_host_with(
         .clone()
         .unwrap_or_else(xylitol_serve::default_registration_path);
     let reg = xylitol_serve::read_registration(&reg_path).ok();
-    let token = registration_token_for(&reg, url);
+    let token = discover_token(url, &reg_path);
     match inspect_live(url, token.as_deref()).await {
         LiveHost::Ready(hz) => return finish_running(url, hz, reg),
-        LiveHost::Blocked(msg) => return Err(msg),
-        LiveHost::Starting | LiveHost::Absent => {}
+        LiveHost::Starting | LiveHost::Absent | LiveHost::Unauthorized => {}
     }
     if probe_host(url).is_err() {
         let _ = dead_registration_message(reg.as_ref(), url, &reg_path);
@@ -492,7 +511,7 @@ pub async fn ensure_host_with(
     {
         return Err(spawn_failed_message(url, &err.to_string()));
     }
-    wait_until_ready(url, token.as_deref(), &reg_path, opts.ready_timeout).await
+    wait_until_ready(url, &reg_path, opts.ready_timeout).await
 }
 
 #[cfg(feature = "server")]
@@ -500,7 +519,7 @@ enum LiveHost {
     Ready(HealthzInfo),
     Starting,
     Absent,
-    Blocked(String),
+    Unauthorized,
 }
 
 #[cfg(feature = "server")]
@@ -509,10 +528,7 @@ async fn inspect_live(url: &str, token: Option<&str>) -> LiveHost {
         return LiveHost::Absent;
     }
     match fetch_healthz(url, token).await {
-        HealthzProbe::Unauthorized => LiveHost::Blocked(auth_required_message(
-            url,
-            &xylitol_serve::default_registration_path(),
-        )),
+        HealthzProbe::Unauthorized => LiveHost::Unauthorized,
         HealthzProbe::Info(hz) => LiveHost::Ready(hz),
         HealthzProbe::Starting(_) => LiveHost::Starting,
         HealthzProbe::Unreachable => LiveHost::Absent,
@@ -534,13 +550,13 @@ fn finish_running(
 #[cfg(feature = "server")]
 async fn wait_until_ready(
     url: &str,
-    token: Option<&str>,
     registration_path: &std::path::Path,
     timeout: Duration,
 ) -> Result<(), String> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        match fetch_healthz(url, token).await {
+        let token = discover_token(url, registration_path);
+        match fetch_healthz(url, token.as_deref()).await {
             HealthzProbe::Info(hz) => {
                 return finish_running(
                     url,
@@ -548,16 +564,23 @@ async fn wait_until_ready(
                     xylitol_serve::read_registration(registration_path).ok(),
                 );
             }
-            HealthzProbe::Unauthorized => {
-                return Err(auth_required_message(url, registration_path));
-            }
-            HealthzProbe::Starting(_) | HealthzProbe::Unreachable => {}
+            HealthzProbe::Unauthorized | HealthzProbe::Starting(_) | HealthzProbe::Unreachable => {}
         }
         if tokio::time::Instant::now() >= deadline {
+            let token = discover_token(url, registration_path);
             if probe_host(url).is_ok() {
-                let hz = healthz_for(url, token, registration_path).await?;
-                if let Some(msg) = classify_running(hz, None, url, env!("CARGO_PKG_VERSION")) {
-                    return Err(msg);
+                match fetch_healthz(url, token.as_deref()).await {
+                    HealthzProbe::Unauthorized => {
+                        return Err(auth_required_message(url, registration_path));
+                    }
+                    HealthzProbe::Info(hz) | HealthzProbe::Starting(hz) => {
+                        if let Some(msg) =
+                            classify_running(Some(hz), None, url, env!("CARGO_PKG_VERSION"))
+                        {
+                            return Err(msg);
+                        }
+                    }
+                    HealthzProbe::Unreachable => {}
                 }
             }
             return Err(ready_timeout_message(url));
@@ -871,5 +894,61 @@ mod c2475_tests {
         .expect_err("version mismatch");
         assert!(!spawned.load(std::sync::atomic::Ordering::SeqCst));
         assert!(err.contains("version"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn ensure_host_retries_auth_until_registration_token_appears() {
+        let server = wiremock::MockServer::start().await;
+        let token = "spawn-token";
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                xylitol_protocol::auth::basic_authorization(token),
+            ))
+            .respond_with(healthz_ok())
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(wiremock::ResponseTemplate::new(401))
+            .with_priority(5)
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("serve.json");
+        let url = server.uri();
+        let spawned = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = spawned.clone();
+        let path_for_spawn = path.clone();
+        let url_for_spawn = url.clone();
+        ensure_host_with(
+            &url,
+            EnsureHostOpts {
+                registration_path: Some(path),
+                ready_timeout: Duration::from_millis(800),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            move |_, _, _| {
+                xylitol_serve::write_registration(
+                    &path_for_spawn,
+                    &xylitol_serve::Registration {
+                        url: url_for_spawn.clone(),
+                        pid: 3,
+                        version: env!("CARGO_PKG_VERSION").into(),
+                        token: Some(token.into()),
+                        lifecycle: None,
+                    },
+                )
+                .expect("write");
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .expect("ensure recovers token after spawn");
+        assert!(spawned.load(std::sync::atomic::Ordering::SeqCst));
     }
 }
