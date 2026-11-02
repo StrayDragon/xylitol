@@ -86,11 +86,7 @@ impl RunningListener {
     }
 
     pub async fn last_client_idle(&self) {
-        let mut rx = self.gateway.subscribe_idle();
-        if *rx.borrow() {
-            return;
-        }
-        let _ = rx.changed().await;
+        self.gateway.wait_until_idle().await;
     }
 
     pub fn arm_registration(
@@ -290,6 +286,11 @@ impl Gateway {
 
     pub fn subscribe_idle(&self) -> tokio::sync::watch::Receiver<bool> {
         self.idle_tx.subscribe()
+    }
+
+    pub async fn wait_until_idle(&self) {
+        let mut rx = self.subscribe_idle();
+        let _ = rx.wait_for(|idle| *idle).await;
     }
 
     pub fn mux_opened(&self) {
@@ -1275,5 +1276,21 @@ mod tests {
         gateway.set_lifecycle(ServeLifecycle::LastClient, Duration::from_millis(40));
         tokio::time::sleep(Duration::from_millis(120)).await;
         assert!(!*gateway.subscribe_idle().borrow());
+    }
+
+    #[tokio::test]
+    async fn wait_until_idle_ignores_mux_opened() {
+        let gateway = Gateway::starting();
+        gateway.set_lifecycle(ServeLifecycle::LastClient, Duration::from_millis(80));
+        let waiting = gateway.clone();
+        let wait = tokio::spawn(async move { waiting.wait_until_idle().await });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        gateway.mux_opened();
+        let raced = tokio::time::timeout(Duration::from_millis(50), wait).await;
+        assert!(
+            raced.is_err(),
+            "mux_opened must not look like last-client idle"
+        );
+        gateway.mux_closed();
     }
 }

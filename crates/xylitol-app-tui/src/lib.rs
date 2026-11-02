@@ -134,6 +134,17 @@ pub async fn run(driver: &mut dyn XyDriver, options: TuiRunOptions) -> Result<()
         );
     }
 
+    if let Err(e) = driver.attach_session().await {
+        log::error!(
+            target: "xylitol::tui",
+            "TUI host exited with error error.kind={} detail.kind={} error={}",
+            e.kind(),
+            e.detail_kind(),
+            e
+        );
+        return Err(e);
+    }
+
     let guard = TerminalGuard::enter()?;
     let terminal = guard.take();
 

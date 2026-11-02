@@ -40,7 +40,6 @@ pub async fn run(
             #[cfg(not(unix))]
             let terminate = std::future::pending::<()>();
             let mut evicted_rx = handle.subscribe_evicted();
-            let mut idle_rx = handle.subscribe_idle();
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
                     eprintln!("Shutting down...");
@@ -48,12 +47,7 @@ pub async fn run(
                 _ = evicted_rx.changed() => {
                     eprintln!("Serve registration taken over by a newer daemon; exiting.");
                 }
-                _ = async {
-                    if *idle_rx.borrow() {
-                        return;
-                    }
-                    let _ = idle_rx.changed().await;
-                } => {
+                _ = handle.last_client_idle() => {
                     eprintln!("Last client disconnected; shutting down.");
                 }
                 _ = terminate => {

@@ -26,6 +26,7 @@ pub fn install_lifecycle_hooks() {
 
 pub fn emergency_restore() {
     use std::io::Write;
+    xylitol_tui::drain_pending_input(200, 30);
     let _ = std::io::stdout().write_all(b"\x1b[<8u");
     let _ = crossterm::terminal::disable_raw_mode();
     let _ = crossterm::execute!(

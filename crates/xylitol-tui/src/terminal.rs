@@ -103,6 +103,21 @@ pub fn parse_kitty_flags(seq: &str) -> Option<u32> {
     digits.parse::<u32>().ok()
 }
 
+pub fn drain_pending_input(max_ms: u64, idle_ms: u64) {
+    let deadline = Instant::now() + Duration::from_millis(max_ms);
+    let mut last_seen = Instant::now();
+    while Instant::now() < deadline {
+        let idle_deadline = last_seen + Duration::from_millis(idle_ms);
+        if Instant::now() >= idle_deadline {
+            break;
+        }
+        if crossterm::event::poll(Duration::from_millis(idle_ms)).unwrap_or(false) {
+            let _ = crossterm::event::read();
+            last_seen = Instant::now();
+        }
+    }
+}
+
 pub struct CrosstermTerminal {
     columns: u16,
     rows: u16,
@@ -188,18 +203,7 @@ impl CrosstermTerminal {
     }
 
     fn drain_input(&mut self, max_ms: u64, idle_ms: u64) {
-        let deadline = Instant::now() + Duration::from_millis(max_ms);
-        let mut last_seen = Instant::now();
-        while Instant::now() < deadline {
-            let idle_deadline = last_seen + Duration::from_millis(idle_ms);
-            if Instant::now() >= idle_deadline {
-                break;
-            }
-            if crossterm::event::poll(Duration::from_millis(idle_ms)).unwrap_or(false) {
-                let _ = crossterm::event::read();
-                last_seen = Instant::now();
-            }
-        }
+        drain_pending_input(max_ms, idle_ms);
     }
 
     fn sync_mouse_capture(&mut self) {
@@ -369,6 +373,12 @@ impl Terminal for CrosstermTerminal {
         } else if lines < 0 {
             let _ = execute!(io::stdout(), cursor::MoveUp((-lines) as u16));
         }
+    }
+}
+
+impl Drop for CrosstermTerminal {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 

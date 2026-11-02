@@ -102,7 +102,8 @@ pub use selection::{
     SelectionController, SelectionGranularity, format_osc52,
 };
 pub use terminal::{
-    CrosstermTerminal, NullTerminal, Terminal, env_requests_mouse_capture, parse_kitty_flags,
+    CrosstermTerminal, NullTerminal, Terminal, drain_pending_input, env_requests_mouse_capture,
+    parse_kitty_flags,
 };
 pub use terminal_colors::{
     CSI_COLOR_SCHEME_QUERY, OSC11_BG_QUERY, RgbColor, TerminalColorScheme, ThemeDetectSources,

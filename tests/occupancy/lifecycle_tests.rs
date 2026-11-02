@@ -129,6 +129,45 @@ async fn unary_post_does_not_count_as_client() {
 }
 
 #[tokio::test]
+async fn last_client_ws_open_is_not_idle() {
+    let host = host_state_for_test().expect("host");
+    let (_dir, path) = temp_reg();
+    let (running, port) = serve_registered(
+        ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 0,
+            sessions_dir: None,
+            registration_path: Some(path.clone()),
+            lifecycle: ServeLifecycle::LastClient,
+            idle_timeout: Duration::from_millis(80),
+        },
+        host,
+        path.clone(),
+    )
+    .await
+    .expect("serve");
+    let idle = running.last_client_idle();
+    tokio::pin!(idle);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), idle.as_mut())
+            .await
+            .is_err(),
+        "must still be waiting before any WS"
+    );
+    let ws = open_ws(port).await;
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), idle.as_mut())
+            .await
+            .is_err(),
+        "opening a WS must not look like last-client idle"
+    );
+    let (st, _) = healthz(port).await;
+    assert_eq!(st, 200);
+    drop(ws);
+    running.shutdown();
+}
+
+#[tokio::test]
 async fn last_client_never_connected_stays_up() {
     let host = host_state_for_test().expect("host");
     let (_dir, path) = temp_reg();
