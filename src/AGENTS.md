@@ -159,7 +159,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 
 - **组合根**在 `xylitol-kernel`（根包只做 argv → profile）。靠 review + 行为测守住；**不得**源码 grep 元测试卡 import。
 - **应用端**：Print / TUI 走 `XyDriver::run` → `XyEvent` 流 → 端渲染。不够就扩 seam（`l8ng-write-surface`），不得绕过。
-- **产品角色（client / host）**：TUI 等端是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。print / 库嵌入仍可同进程走同一方法表。**不得**把 host 等同于 HTTP 监听器；**产品 TUI** 默认 attach 本机监听器（未在听失败）。
+- **产品角色（client / host）**：TUI 等端是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。print / 库嵌入仍可同进程走同一方法表。**不得**把 host 等同于 HTTP 监听器；**产品 TUI** 默认确保并 attach 本机监听器（未在听则拉起独立 Host；显式非确保口仍 fail-closed）。
 - **产品信封**：四象限（`POST /rpc` unary + `WS /rpc` 双向 text 帧，同一方法表），载体为 JSON-RPC 2.0 文本（方法按名字寻址）。Command/Event 是载荷。跨进程不跳过信封直调 Driver。
 - **steer / follow-up / abort**：只经 `XyDriver` 队列 API；端不得改 ReAct 内部队列。产品语义：`llmanspec/specs/agent-runtime/`。
 - **会话能力覆盖**：工具 / MCP 的会话级开关只经 `XyDriver` capability API；下一回合边界生效，不写全局配置、不写会话日志。产品语义：`llmanspec/specs/agent-session/`。

@@ -495,6 +495,7 @@ async fn minted_session_subscribe_does_not_require_cli_flag() {
             port: 0,
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         host,
     )
@@ -714,6 +715,7 @@ async fn remote_forwards_bash_output_frames_to_sink() {
             port: 0,
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         host.clone(),
     )
@@ -752,6 +754,7 @@ async fn session_and_host_capabilities_roundtrip_over_host() {
             port: 0,
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         host,
     )
@@ -1431,6 +1434,7 @@ async fn prompt_after_fork_switch_delivers_live_text_http() {
             port: 0,
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         host,
     )

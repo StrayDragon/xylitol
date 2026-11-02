@@ -193,7 +193,7 @@
 
     场景: 产物覆盖当前顶层节
       当 读取仓库配置 schema 的顶层属性
-      那么 含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan 与 tools
+      那么 含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan 与 tools 与 serve
 
   @req:r2959
   规则: feature-plugin-config-sections
@@ -254,3 +254,6 @@
   @req:r3026
   规则: config-include
     配置加载 必须 支持顶层 `include` 列表：每个文件 必须 作为低优先级层在当前文件之前合并，当前文件 必须 覆盖同名字段；相对路径 必须 相对包含文件所在目录解析，`~` 必须 展开为用户主目录；缺失文件 必须 warn 且 跳过，不得 中断加载；include 成环 必须 报错。由配置插件单测覆盖。
+  @req:r3064
+  规则: serve-config
+    运行时配置必须接受可选顶层 serve 块：lifecycle 为 last-client 或 persistent，idle_timeout 为时长或 false。缺省（不写该块）为 last-client 与约 30 秒。idle_timeout 为 false 时自动拉起必须按 persistent。该块仅约束自动拉起的 Host；显式 serve 缺省仍 persistent。由配置插件单测覆盖。

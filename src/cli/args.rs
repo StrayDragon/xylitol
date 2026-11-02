@@ -44,6 +44,8 @@ pub struct TuiSurfaceArgs {
     pub attach: Option<String>,
     #[arg(long)]
     pub port: Option<u16>,
+    #[arg(long)]
+    pub no_ensure_host: bool,
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -96,6 +98,10 @@ pub enum CliCommand {
         host: String,
         #[arg(long, default_value_t = 18790)]
         port: u16,
+        #[arg(long)]
+        lifecycle: Option<String>,
+        #[arg(long)]
+        idle_timeout: Option<String>,
         #[command(subcommand)]
         action: Option<ServeAction>,
     },
@@ -124,4 +130,5 @@ pub struct SurfaceBootstrap {
     pub no_trust: bool,
     pub attach: Option<String>,
     pub port: Option<u16>,
+    pub no_ensure_host: bool,
 }

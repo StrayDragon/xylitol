@@ -59,6 +59,40 @@ pub fn attach_fail_message(url: &str) -> String {
     )
 }
 
+pub fn spawn_failed_message(url: &str, err: &str) -> String {
+    format!(
+        "Failed to start Host at {url}: {err}. \
+         Confirm `{exe} serve` can bind that address, or run: xylitol serve",
+        exe = std::env::current_exe()
+            .ok()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "xylitol".into())
+    )
+}
+
+pub fn ready_timeout_message(url: &str) -> String {
+    format!(
+        "Timed out waiting for Host at {url} to become ready \
+         (/healthz 200). Inspect the serve process logs, or run: xylitol serve"
+    )
+}
+
+pub fn should_ensure_host(attach: Option<&str>, port: Option<u16>, no_ensure: bool) -> bool {
+    if no_ensure {
+        return false;
+    }
+    let url = resolve_attach_url(attach, port);
+    let implied = resolve_attach_url(None, port);
+    same_url(&url, &implied) && is_loopback_url(&url)
+}
+
+fn is_loopback_url(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    matches!(normalize_host(parsed.host_str()), "127.0.0.1")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,6 +116,43 @@ mod tests {
             resolve_attach_url(Some("  "), Some(9)),
             "http://127.0.0.1:9"
         );
+    }
+
+    #[test]
+    fn should_ensure_host_only_loopback_implied_url() {
+        assert!(should_ensure_host(None, None, false));
+        assert!(should_ensure_host(None, Some(9), false));
+        assert!(should_ensure_host(
+            Some("http://127.0.0.1:18790"),
+            None,
+            false
+        ));
+        assert!(should_ensure_host(
+            Some("http://localhost:18790"),
+            None,
+            false
+        ));
+        assert!(!should_ensure_host(
+            Some("http://127.0.0.1:9"),
+            Some(11),
+            false
+        ));
+        assert!(!should_ensure_host(
+            Some("http://example.com:18790"),
+            None,
+            false
+        ));
+        assert!(!should_ensure_host(None, None, true));
+    }
+
+    #[test]
+    fn ensure_diagnostics_are_actionable() {
+        let spawn = spawn_failed_message("http://127.0.0.1:18790", "boom");
+        let timeout = ready_timeout_message("http://127.0.0.1:18790");
+        assert!(spawn.contains("Failed to start Host"), "{spawn}");
+        assert!(spawn.contains("bind"), "{spawn}");
+        assert!(timeout.contains("Timed out"), "{timeout}");
+        assert!(timeout.contains("/healthz"), "{timeout}");
     }
 }
 
@@ -155,10 +226,17 @@ pub fn classify_dead(
 }
 
 #[cfg(feature = "server")]
-fn pid_alive(pid: u32) -> bool {
+pub fn pid_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
-        std::path::Path::new(&format!("/proc/{pid}")).exists()
+        let body = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok();
+        let Some(body) = body else {
+            return false;
+        };
+        let Some((_, rest)) = body.rsplit_once(')') else {
+            return true;
+        };
+        !matches!(rest.trim().chars().next(), Some('Z'))
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -172,6 +250,7 @@ fn pid_alive(pid: u32) -> bool {
 #[cfg(feature = "server")]
 enum HealthzProbe {
     Info(HealthzInfo),
+    Starting(HealthzInfo),
     Unauthorized,
     Unreachable,
 }
@@ -197,6 +276,7 @@ async fn fetch_healthz(url: &str, token: Option<&str>) -> HealthzProbe {
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         return HealthzProbe::Unauthorized;
     }
+    let status = resp.status();
     let Ok(body) = resp.text().await else {
         return HealthzProbe::Unreachable;
     };
@@ -212,13 +292,21 @@ async fn fetch_healthz(url: &str, token: Option<&str>) -> HealthzProbe {
     let Ok(pid) = u32::try_from(pid) else {
         return HealthzProbe::Unreachable;
     };
-    HealthzProbe::Info(HealthzInfo {
+    let info = HealthzInfo {
         pid,
         version: version.to_string(),
-    })
+    };
+    if status == reqwest::StatusCode::OK {
+        HealthzProbe::Info(info)
+    } else if status == reqwest::StatusCode::SERVICE_UNAVAILABLE
+        && v.get("status").and_then(|s| s.as_str()) == Some("starting")
+    {
+        HealthzProbe::Starting(info)
+    } else {
+        HealthzProbe::Unreachable
+    }
 }
 
-#[cfg(feature = "server")]
 fn same_url(left: &str, right: &str) -> bool {
     let (Ok(left), Ok(right)) = (url::Url::parse(left), url::Url::parse(right)) else {
         return left.trim_end_matches('/') == right.trim_end_matches('/');
@@ -228,7 +316,6 @@ fn same_url(left: &str, right: &str) -> bool {
         && normalize_host(left.host_str()) == normalize_host(right.host_str())
 }
 
-#[cfg(feature = "server")]
 fn normalize_host(host: Option<&str>) -> &str {
     match host {
         Some("0.0.0.0" | "::" | "[::]" | "localhost") => "127.0.0.1",
@@ -282,7 +369,7 @@ async fn healthz_for(
 ) -> Result<Option<HealthzInfo>, String> {
     match fetch_healthz(url, token).await {
         HealthzProbe::Unauthorized => Err(auth_required_message(url, registration_path)),
-        HealthzProbe::Info(hz) => Ok(Some(hz)),
+        HealthzProbe::Info(hz) | HealthzProbe::Starting(hz) => Ok(Some(hz)),
         HealthzProbe::Unreachable => Ok(None),
     }
 }
@@ -319,6 +406,217 @@ pub async fn attach_preflight_with(
     Ok(())
 }
 
+#[cfg(feature = "server")]
+const READY_WAIT: Duration = Duration::from_secs(30);
+
+#[cfg(feature = "server")]
+pub struct EnsureHostOpts {
+    pub registration_path: Option<std::path::PathBuf>,
+    pub ready_timeout: Duration,
+    pub lifecycle: xylitol_serve::ServeLifecycle,
+    pub idle_timeout: Duration,
+}
+
+#[cfg(feature = "server")]
+impl Default for EnsureHostOpts {
+    fn default() -> Self {
+        let (lifecycle, idle_timeout) = autostart_policy(None);
+        Self {
+            registration_path: None,
+            ready_timeout: READY_WAIT,
+            lifecycle,
+            idle_timeout,
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn autostart_policy(
+    config_path: Option<&std::path::Path>,
+) -> (xylitol_serve::ServeLifecycle, Duration) {
+    let serve = crate::config::loader::load_app_config(config_path)
+        .map(|cfg| cfg.serve)
+        .unwrap_or_default();
+    let lifecycle = if serve.autostart_last_client() {
+        xylitol_serve::ServeLifecycle::LastClient
+    } else {
+        xylitol_serve::ServeLifecycle::Persistent
+    };
+    (lifecycle, serve.idle_duration())
+}
+
+#[cfg(feature = "server")]
+pub async fn ensure_host(url: &str) -> Result<(), String> {
+    ensure_host_from_config(url, None).await
+}
+
+pub async fn ensure_host_from_config(
+    url: &str,
+    config_path: Option<&std::path::Path>,
+) -> Result<(), String> {
+    let (lifecycle, idle_timeout) = autostart_policy(config_path);
+    ensure_host_with(
+        url,
+        EnsureHostOpts {
+            lifecycle,
+            idle_timeout,
+            ..EnsureHostOpts::default()
+        },
+        spawn_detached_serve,
+    )
+    .await
+}
+
+#[cfg(feature = "server")]
+pub async fn ensure_host_with(
+    url: &str,
+    opts: EnsureHostOpts,
+    spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<()>,
+) -> Result<(), String> {
+    let reg_path = opts
+        .registration_path
+        .clone()
+        .unwrap_or_else(xylitol_serve::default_registration_path);
+    let reg = xylitol_serve::read_registration(&reg_path).ok();
+    let token = registration_token_for(&reg, url);
+    match inspect_live(url, token.as_deref()).await {
+        LiveHost::Ready(hz) => return finish_running(url, hz, reg),
+        LiveHost::Blocked(msg) => return Err(msg),
+        LiveHost::Starting | LiveHost::Absent => {}
+    }
+    if probe_host(url).is_err() {
+        let _ = dead_registration_message(reg.as_ref(), url, &reg_path);
+    }
+    if let Err(err) = spawn(url, opts.lifecycle, opts.idle_timeout)
+        && err.kind() != std::io::ErrorKind::AddrInUse
+    {
+        return Err(spawn_failed_message(url, &err.to_string()));
+    }
+    wait_until_ready(url, token.as_deref(), &reg_path, opts.ready_timeout).await
+}
+
+#[cfg(feature = "server")]
+enum LiveHost {
+    Ready(HealthzInfo),
+    Starting,
+    Absent,
+    Blocked(String),
+}
+
+#[cfg(feature = "server")]
+async fn inspect_live(url: &str, token: Option<&str>) -> LiveHost {
+    if probe_host(url).is_err() {
+        return LiveHost::Absent;
+    }
+    match fetch_healthz(url, token).await {
+        HealthzProbe::Unauthorized => LiveHost::Blocked(auth_required_message(
+            url,
+            &xylitol_serve::default_registration_path(),
+        )),
+        HealthzProbe::Info(hz) => LiveHost::Ready(hz),
+        HealthzProbe::Starting(_) => LiveHost::Starting,
+        HealthzProbe::Unreachable => LiveHost::Absent,
+    }
+}
+
+#[cfg(feature = "server")]
+fn finish_running(
+    url: &str,
+    hz: HealthzInfo,
+    reg: Option<xylitol_serve::Registration>,
+) -> Result<(), String> {
+    match classify_running(Some(hz), reg, url, env!("CARGO_PKG_VERSION")) {
+        Some(msg) => Err(msg),
+        None => Ok(()),
+    }
+}
+
+#[cfg(feature = "server")]
+async fn wait_until_ready(
+    url: &str,
+    token: Option<&str>,
+    registration_path: &std::path::Path,
+    timeout: Duration,
+) -> Result<(), String> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        match fetch_healthz(url, token).await {
+            HealthzProbe::Info(hz) => {
+                return finish_running(
+                    url,
+                    hz,
+                    xylitol_serve::read_registration(registration_path).ok(),
+                );
+            }
+            HealthzProbe::Unauthorized => {
+                return Err(auth_required_message(url, registration_path));
+            }
+            HealthzProbe::Starting(_) | HealthzProbe::Unreachable => {}
+        }
+        if tokio::time::Instant::now() >= deadline {
+            if probe_host(url).is_ok() {
+                let hz = healthz_for(url, token, registration_path).await?;
+                if let Some(msg) = classify_running(hz, None, url, env!("CARGO_PKG_VERSION")) {
+                    return Err(msg);
+                }
+            }
+            return Err(ready_timeout_message(url));
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn spawn_detached_serve(
+    url: &str,
+    lifecycle: xylitol_serve::ServeLifecycle,
+    idle_timeout: Duration,
+) -> std::io::Result<()> {
+    let parsed = url::Url::parse(url).map_err(std::io::Error::other)?;
+    let host = parsed.host_str().unwrap_or("127.0.0.1");
+    let port = parsed.port_or_known_default().unwrap_or(18790);
+    let exe = std::env::current_exe()?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("serve")
+        .arg("--host")
+        .arg(host)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--lifecycle")
+        .arg(lifecycle.as_str())
+        .arg("--idle-timeout")
+        .arg(xylitol_serve::format_idle_timeout(idle_timeout))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+    }
+    let child = cmd.spawn()?;
+    std::thread::spawn(move || {
+        let mut child = child;
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
 #[cfg(all(test, feature = "server"))]
 mod c2475_tests {
     use super::*;
@@ -329,6 +627,7 @@ mod c2475_tests {
             pid,
             version: "0.0.0-dev".into(),
             token: None,
+            lifecycle: None,
         })
     }
 
@@ -406,6 +705,7 @@ mod c2475_tests {
                 pid: 1,
                 version: "0.0.0-dev".into(),
                 token: Some("secret-token".into()),
+                lifecycle: None,
             },
         )
         .expect("write registration");
@@ -426,6 +726,7 @@ mod c2475_tests {
             pid: 2_147_483_647,
             version: "0.0.0-dev".into(),
             token: None,
+            lifecycle: None,
         };
         xylitol_serve::write_registration(&path, &reg).expect("write");
         let msg = dead_registration_message(Some(&reg), "http://127.0.0.1:1", &path);
@@ -470,5 +771,105 @@ mod c2475_tests {
             Some("secret-token"),
             "wildcard bind and loopback must be equivalent"
         );
+    }
+
+    fn healthz_ok() -> wiremock::ResponseTemplate {
+        wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": "ok",
+            "pid": 3,
+            "version": env!("CARGO_PKG_VERSION"),
+        }))
+    }
+
+    #[tokio::test]
+    async fn ensure_host_skips_spawn_when_ready() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(healthz_ok())
+            .mount(&server)
+            .await;
+        let spawned = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = spawned.clone();
+        let dir = tempfile::tempdir().expect("tempdir");
+        ensure_host_with(
+            &server.uri(),
+            EnsureHostOpts {
+                registration_path: Some(dir.path().join("serve.json")),
+                ready_timeout: Duration::from_millis(200),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            move |_, _, _| {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .expect("ready host");
+        assert!(
+            !spawned.load(std::sync::atomic::Ordering::SeqCst),
+            "must not spawn when already ready"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_host_spawns_when_absent_then_times_out() {
+        let spawned = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = spawned.clone();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = ensure_host_with(
+            "http://127.0.0.1:1",
+            EnsureHostOpts {
+                registration_path: Some(dir.path().join("serve.json")),
+                ready_timeout: Duration::from_millis(80),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            move |_, _, _| {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .expect_err("absent host times out");
+        assert!(spawned.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(err.contains("Timed out"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn ensure_host_does_not_spawn_on_version_mismatch() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "status": "ok",
+                    "pid": 3,
+                    "version": "0.0.0-other",
+                })),
+            )
+            .mount(&server)
+            .await;
+        let spawned = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = spawned.clone();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = ensure_host_with(
+            &server.uri(),
+            EnsureHostOpts {
+                registration_path: Some(dir.path().join("serve.json")),
+                ready_timeout: Duration::from_millis(200),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            move |_, _, _| {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .expect_err("version mismatch");
+        assert!(!spawned.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(err.contains("version"), "{err}");
     }
 }

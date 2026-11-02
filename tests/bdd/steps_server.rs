@@ -145,6 +145,7 @@ pub async fn start_host(t: &ServerTest) {
                     port: 0,
                     sessions_dir: None,
                     registration_path: None,
+                    ..Default::default()
                 },
                 host,
             )
@@ -387,6 +388,7 @@ async fn w_second_bind(server_test: &ServerTest) {
             port: server_test.port.get(),
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         host2,
     )
@@ -675,6 +677,7 @@ fn t_sr7(_server_test: &ServerTest) {
         port: 0,
         sessions_dir: None,
         registration_path: None,
+        ..Default::default()
     };
 }
 
@@ -694,6 +697,7 @@ async fn w_start_18790(server_test: &ServerTest) {
             port: 18790,
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         host,
     )
@@ -2208,6 +2212,7 @@ async fn g_rdy_starting(server_test: &ServerTest) {
             port: 0,
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         gateway.clone(),
     )
@@ -2291,6 +2296,7 @@ async fn g_rdy_failed(server_test: &ServerTest) {
             port: 0,
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         gateway,
     )
@@ -2330,6 +2336,7 @@ async fn g_reg_serving(server_test: &ServerTest) {
             port: 0,
             sessions_dir: None,
             registration_path: None,
+            ..Default::default()
         },
         host,
         reg_path.clone(),
@@ -2391,6 +2398,7 @@ async fn g_reg_stale(server_test: &ServerTest) {
         pid: 2_147_483_647,
         version: "0.0.0-dev".into(),
         token: None,
+        lifecycle: None,
     };
     write_registration(&reg_path, &reg).expect("write stale registration");
     *server_test.reg_path.borrow_mut() = Some(reg_path);
@@ -2447,6 +2455,7 @@ async fn w_reg_takeover_new(server_test: &ServerTest) {
         pid: 2_147_483_646,
         version: "0.0.0-dev".into(),
         token: None,
+        lifecycle: None,
     };
     write_registration(&reg_path, &newcomer).expect("takeover write");
 }
@@ -2829,6 +2838,7 @@ async fn start_host_with_default_model(t: &ServerTest, model_id: &str) {
                     port: 0,
                     sessions_dir: None,
                     registration_path: None,
+                    ..Default::default()
                 },
                 host,
             )
@@ -4274,4 +4284,196 @@ fn t_capability_methods_registered(server_test: &ServerTest) {
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
     let problems = v["problems"].as_array().expect("problems list");
     assert!(problems.is_empty(), "c2998: 能力方法登记不符：{problems:?}");
+}
+
+pub struct LifecycleBdd {
+    pub running: RefCell<Option<RunningServer>>,
+    pub port: Cell<u16>,
+    pub path: RefCell<Option<std::path::PathBuf>>,
+    pub _dir: RefCell<Option<tempfile::TempDir>>,
+    pub still_up: Cell<bool>,
+    pub lifecycle: RefCell<Option<xylitol_serve::ServeLifecycle>>,
+}
+
+impl LifecycleBdd {
+    fn new() -> Self {
+        Self {
+            running: RefCell::new(None),
+            port: Cell::new(0),
+            path: RefCell::new(None),
+            _dir: RefCell::new(None),
+            still_up: Cell::new(false),
+            lifecycle: RefCell::new(None),
+        }
+    }
+}
+
+#[fixture]
+pub fn lifecycle_bdd() -> LifecycleBdd {
+    LifecycleBdd::new()
+}
+
+async fn boot_lifecycle(
+    t: &LifecycleBdd,
+    lifecycle: xylitol_serve::ServeLifecycle,
+    idle: Duration,
+) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("serve.json");
+    let host = xylitol_kernel::occupancy::host_state_for_test().expect("host");
+    let (running, port) = xylitol_kernel::occupancy::runtime::serve_registered(
+        ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 0,
+            sessions_dir: None,
+            registration_path: Some(path.clone()),
+            lifecycle,
+            idle_timeout: idle,
+        },
+        host,
+        path.clone(),
+    )
+    .await
+    .expect("serve");
+    t.running.replace(Some(running));
+    t.port.set(port);
+    t.path.replace(Some(path));
+    t._dir.replace(Some(dir));
+}
+
+#[given("Host 以 last-client 与短 idle 启动")]
+async fn g_life_last_client(lifecycle_bdd: &LifecycleBdd) {
+    boot_lifecycle(
+        lifecycle_bdd,
+        xylitol_serve::ServeLifecycle::LastClient,
+        Duration::from_millis(1500),
+    )
+    .await;
+}
+
+#[given("Host 以 persistent 启动")]
+async fn g_life_persistent(lifecycle_bdd: &LifecycleBdd) {
+    boot_lifecycle(
+        lifecycle_bdd,
+        xylitol_serve::ServeLifecycle::Persistent,
+        Duration::from_millis(40),
+    )
+    .await;
+}
+
+async fn open_plain_ws(
+    port: u16,
+) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>> {
+    let url = format!("ws://127.0.0.1:{port}/rpc");
+    let (ws, _) = tokio_tungstenite::connect_async(url).await.expect("ws");
+    ws
+}
+
+#[when("超过 idle 且从未有 WS 连接")]
+async fn w_life_never_connected(lifecycle_bdd: &LifecycleBdd) {
+    let running = lifecycle_bdd.running.take().expect("running");
+    let idle = tokio::time::timeout(Duration::from_millis(2000), running.last_client_idle()).await;
+    lifecycle_bdd.still_up.set(idle.is_err());
+    running.shutdown();
+    lifecycle_bdd.running.replace(Some(running));
+}
+
+#[when("唯一 WS 连接关闭且 idle 到期")]
+async fn w_life_disconnect_idle(lifecycle_bdd: &LifecycleBdd) {
+    drop(open_plain_ws(lifecycle_bdd.port.get()).await);
+    let running = lifecycle_bdd.running.take().expect("running");
+    tokio::time::timeout(Duration::from_millis(3000), running.last_client_idle())
+        .await
+        .expect("idle");
+    running.shutdown();
+    drop(running);
+}
+
+#[when("唯一 WS 连接关闭后在 idle 内重新连接")]
+async fn w_life_reconnect(lifecycle_bdd: &LifecycleBdd) {
+    drop(open_plain_ws(lifecycle_bdd.port.get()).await);
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let mux = open_plain_ws(lifecycle_bdd.port.get()).await;
+    let running = lifecycle_bdd.running.take().expect("running");
+    let idle = tokio::time::timeout(Duration::from_millis(2200), running.last_client_idle()).await;
+    lifecycle_bdd.still_up.set(idle.is_err());
+    drop(mux);
+    running.shutdown();
+    lifecycle_bdd.running.replace(Some(running));
+}
+
+#[when("唯一 WS 连接关闭且超过 idle")]
+async fn w_life_disconnect_past_idle(lifecycle_bdd: &LifecycleBdd) {
+    drop(open_plain_ws(lifecycle_bdd.port.get()).await);
+    let running = lifecycle_bdd.running.take().expect("running");
+    let idle = tokio::time::timeout(Duration::from_millis(200), running.last_client_idle()).await;
+    lifecycle_bdd.still_up.set(idle.is_err());
+    running.shutdown();
+    lifecycle_bdd.running.replace(Some(running));
+}
+
+#[then("Host 已退出且注册文件不残留")]
+fn t_life_exited(lifecycle_bdd: &LifecycleBdd) {
+    let path = lifecycle_bdd.path.borrow().clone().expect("path");
+    assert!(!path.exists(), "registration must be gone");
+}
+
+#[then("Host 仍在听")]
+fn t_life_alive(lifecycle_bdd: &LifecycleBdd) {
+    assert!(lifecycle_bdd.still_up.get());
+}
+
+#[when("读取无 lifecycle 字段的注册文件")]
+fn w_life_missing_field(lifecycle_bdd: &LifecycleBdd) {
+    let json = r#"{"url":"http://127.0.0.1:18790","pid":1,"version":"0.0.0-dev"}"#;
+    let reg: xylitol_serve::Registration = serde_json::from_str(json).expect("parse");
+    lifecycle_bdd
+        .lifecycle
+        .replace(Some(reg.effective_lifecycle()));
+}
+
+#[then("生命周期视为 persistent")]
+fn t_life_default_persistent(lifecycle_bdd: &LifecycleBdd) {
+    assert_eq!(
+        lifecycle_bdd.lifecycle.borrow().as_ref().copied(),
+        Some(xylitol_serve::ServeLifecycle::Persistent)
+    );
+}
+
+#[given("Host 已写入注册文件并在听")]
+async fn g_life_stop_target(lifecycle_bdd: &LifecycleBdd) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("serve.json");
+    let child = std::process::Command::new("sleep")
+        .arg("30")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("sleep");
+    let pid = child.id();
+    let mut reg = xylitol_serve::Registration::own("http://127.0.0.1:1".into());
+    reg.pid = pid;
+    write_registration(&path, &reg).expect("write");
+    lifecycle_bdd.path.replace(Some(path));
+    lifecycle_bdd._dir.replace(Some(dir));
+    lifecycle_bdd.port.set(pid as u16);
+    lifecycle_bdd.running.replace(None);
+    let _ = child;
+}
+
+#[when("执行 serve stop")]
+async fn w_life_stop(lifecycle_bdd: &LifecycleBdd) {
+    let path = lifecycle_bdd.path.borrow().clone().expect("path");
+    xylitol_kernel::occupancy::subcommand::stop_registered_host(Some(path))
+        .await
+        .expect("stop");
+}
+
+#[then("该 pid 已退出且注册文件不残留")]
+fn t_life_stopped(lifecycle_bdd: &LifecycleBdd) {
+    let path = lifecycle_bdd.path.borrow().clone().expect("path");
+    assert!(!path.exists());
+    let pid = u32::from(lifecycle_bdd.port.get());
+    assert!(!xylitol_kernel::attach::pid_alive(pid) || pid == 0);
 }

@@ -40,6 +40,7 @@ fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> Tui
         no_trust: run.no_trust || parent.no_trust,
         attach: run.attach.clone().or_else(|| parent.attach.clone()),
         port: run.port.or(parent.port),
+        no_ensure_host: run.no_ensure_host || parent.no_ensure_host,
     }
 }
 
@@ -58,6 +59,7 @@ pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
                 no_trust: s.no_trust,
                 attach: s.attach,
                 port: s.port,
+                no_ensure_host: s.no_ensure_host,
             }
         }
         Some(CliCommand::Print { surface, .. }) => SurfaceBootstrap {
@@ -71,6 +73,7 @@ pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
             no_trust: surface.no_trust,
             attach: None,
             port: None,
+            no_ensure_host: false,
         },
         _ => SurfaceBootstrap::default(),
     }

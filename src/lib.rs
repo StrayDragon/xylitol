@@ -6,7 +6,8 @@ pub mod cli;
 #[cfg(feature = "server")]
 pub use xylitol_kernel::attach::attach_preflight_with;
 pub use xylitol_kernel::attach::{
-    DEFAULT_ATTACH_URL, attach_fail_message, probe_host, resolve_attach_url,
+    DEFAULT_ATTACH_URL, attach_fail_message, probe_host, ready_timeout_message, resolve_attach_url,
+    should_ensure_host, spawn_failed_message,
 };
 pub use xylitol_kernel::driver::SessionExporter;
 pub use xylitol_kernel::driver::{XyDriver, XyDriverError, XyInProcessDriver};

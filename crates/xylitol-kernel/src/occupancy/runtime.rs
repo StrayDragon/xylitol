@@ -2,7 +2,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use xylitol_serve::{Gateway, ListenConfig, OccupiedHost, RunningListener};
+use xylitol_serve::{
+    DEFAULT_IDLE_GRACE, Gateway, ListenConfig, OccupiedHost, RunningListener, ServeLifecycle,
+};
 
 use crate::boot::{BootOptions, Profile, boot_ctx};
 use crate::bootstrap::{BootstrapError, BootstrapInput, resolve_assembly};
@@ -17,6 +19,8 @@ pub struct ServerConfig {
     pub port: u16,
     pub sessions_dir: Option<std::path::PathBuf>,
     pub registration_path: Option<PathBuf>,
+    pub lifecycle: ServeLifecycle,
+    pub idle_timeout: Duration,
 }
 
 impl Default for ServerConfig {
@@ -26,6 +30,8 @@ impl Default for ServerConfig {
             port: 18790,
             sessions_dir: None,
             registration_path: None,
+            lifecycle: ServeLifecycle::Persistent,
+            idle_timeout: DEFAULT_IDLE_GRACE,
         }
     }
 }
@@ -66,6 +72,7 @@ async fn finish_start(
     match assemble(&config).await {
         Ok(host) => {
             gateway.set_host(occupy(host));
+            running.set_lifecycle(config.lifecycle, config.idle_timeout);
             let registration_path = config
                 .registration_path
                 .clone()
@@ -209,7 +216,9 @@ pub async fn serve(
     config: ServerConfig,
     host: Arc<HostState>,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
-    xylitol_serve::serve(config.listen(), occupy(host)).await
+    let (running, port) = xylitol_serve::serve(config.listen(), occupy(host)).await?;
+    running.set_lifecycle(config.lifecycle, config.idle_timeout);
+    Ok((running, port))
 }
 
 #[allow(dead_code)]
@@ -218,7 +227,16 @@ pub async fn serve_registered(
     host: Arc<HostState>,
     registration_path: PathBuf,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
-    xylitol_serve::serve_registered(config.listen(), occupy(host), registration_path).await
+    let (mut running, port) = xylitol_serve::serve(config.listen(), occupy(host)).await?;
+    running.set_lifecycle(config.lifecycle, config.idle_timeout);
+    running
+        .arm_registration(
+            format!("http://{}:{port}", config.host),
+            registration_path,
+            Duration::from_secs(5),
+        )
+        .map_err(Box::new)?;
+    Ok((running, port))
 }
 
 pub async fn bind_serve(
@@ -279,6 +297,7 @@ mod tests {
                 port: 0,
                 sessions_dir: None,
                 registration_path: None,
+                ..Default::default()
             },
             host,
         )
@@ -292,6 +311,7 @@ mod tests {
                 port: occupied,
                 sessions_dir: None,
                 registration_path: None,
+                ..Default::default()
             },
             host2,
         )

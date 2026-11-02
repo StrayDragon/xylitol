@@ -58,6 +58,81 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub subagent: Option<SubagentConfig>,
+
+    #[serde(default)]
+    pub serve: ServeConfig,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ServeLifecycleConfig {
+    #[default]
+    LastClient,
+    Persistent,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum ServeIdleTimeout {
+    Flag(bool),
+    Spec(String),
+}
+
+impl Default for ServeIdleTimeout {
+    fn default() -> Self {
+        Self::Spec("30s".into())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ServeConfig {
+    pub lifecycle: ServeLifecycleConfig,
+    pub idle_timeout: ServeIdleTimeout,
+}
+
+impl Default for ServeConfig {
+    fn default() -> Self {
+        Self {
+            lifecycle: ServeLifecycleConfig::LastClient,
+            idle_timeout: ServeIdleTimeout::default(),
+        }
+    }
+}
+
+impl ServeConfig {
+    pub fn autostart_last_client(&self) -> bool {
+        if matches!(self.idle_timeout, ServeIdleTimeout::Flag(false)) {
+            return false;
+        }
+        matches!(self.lifecycle, ServeLifecycleConfig::LastClient)
+    }
+
+    pub fn idle_duration(&self) -> std::time::Duration {
+        match &self.idle_timeout {
+            ServeIdleTimeout::Spec(raw) => {
+                parse_serve_idle(raw).unwrap_or(std::time::Duration::from_secs(30))
+            }
+            ServeIdleTimeout::Flag(_) => std::time::Duration::from_secs(30),
+        }
+    }
+}
+
+fn parse_serve_idle(raw: &str) -> Option<std::time::Duration> {
+    let raw = raw.trim();
+    if let Some(n) = raw.strip_suffix("ms") {
+        return n.parse().ok().map(std::time::Duration::from_millis);
+    }
+    if let Some(n) = raw.strip_suffix('s') {
+        return n.parse().ok().map(std::time::Duration::from_secs);
+    }
+    if let Some(n) = raw.strip_suffix('m') {
+        return n
+            .parse::<u64>()
+            .ok()
+            .map(|m| std::time::Duration::from_secs(m.saturating_mul(60)));
+    }
+    None
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -1153,5 +1228,48 @@ tools: [read, -grep, +ffgrep]
         };
         cfg.validate_tools_selection()
             .expect("unknown names warn later");
+    }
+}
+
+#[cfg(test)]
+mod serve_config_tests {
+    use super::*;
+
+    #[test]
+    fn omitted_serve_block_is_last_client_with_30s() {
+        let cfg: AppConfig = yaml_serde::from_str("models: {}\n").expect("parse");
+        assert!(cfg.serve.autostart_last_client());
+        assert_eq!(
+            cfg.serve.idle_duration(),
+            std::time::Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn idle_timeout_false_forces_persistent_autostart() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+serve:
+  lifecycle: last-client
+  idle_timeout: false
+"#,
+        )
+        .expect("parse");
+        assert!(!cfg.serve.autostart_last_client());
+        assert_eq!(cfg.serve.lifecycle, ServeLifecycleConfig::LastClient);
+    }
+
+    #[test]
+    fn explicit_persistent_lifecycle() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+serve:
+  lifecycle: persistent
+  idle_timeout: 5s
+"#,
+        )
+        .expect("parse");
+        assert!(!cfg.serve.autostart_last_client());
+        assert_eq!(cfg.serve.idle_duration(), std::time::Duration::from_secs(5));
     }
 }

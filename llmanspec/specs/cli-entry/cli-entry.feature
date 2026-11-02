@@ -52,7 +52,7 @@
       那么 装配 infra 运行时并按 session 槽注入 Driver，供 unary 处理器调用
   @req:r1393
   规则: serve-subcommand
-    CLI 须提供顶层动词 serve：无子命令时直接监听（默认 127.0.0.1:18790）；须接受 --host 与 --port（--port 0 让操作系统分配并打印实际端口）；叶子含 stop。不得提供 install、server 或 serve run 作为产品入口。
+    CLI 须提供顶层动词 serve：无子命令时直接监听（默认 127.0.0.1:18790）；须接受 --host 与 --port（--port 0 让操作系统分配并打印实际端口）、--lifecycle 与 --idle-timeout；叶子含 stop。不得提供 install、server 或 serve run 作为产品入口。
 
     场景: 服务操作动词
       假如 CLI 已解析
@@ -130,7 +130,7 @@
       那么 展示为 fake-model 而非 NOT-SET
   @req:r1388
   规则: surface-owned-flags
-    CLI 须将表面旗标挂在表面动词下：`xylitol tui`（含可选 `run`）须接受 --session/--model/--list-models/--trust/--no-trust/--config/--no-color/--attach/--port；`xylitol print` 须接受 --session/--model/--config/--no-color/--trust/--no-trust 且 不得接受 --list-models/--attach/--port；顶层 不得再提供上述旗标（解析 须失败）。print 的 --trust/--no-trust 须经 bootstrap trust_override 生效（interactive=false，不得弹出 ChoicePrompt）。`tui --session` 与 `tui run --session` 须等价生效。TUI 的 --attach 指定 Host URL（默认 http://127.0.0.1:18790）；仅 --port 时 须连 http://127.0.0.1:<port>；二者都给时 --attach 胜。
+    CLI 须将表面旗标挂在表面动词下：`xylitol tui`（含可选 `run`）须接受 --session/--model/--list-models/--trust/--no-trust/--config/--no-color/--attach/--port/--no-ensure-host；`xylitol print` 须接受 --session/--model/--config/--no-color/--trust/--no-trust 且 不得接受 --list-models/--attach/--port/--no-ensure-host；顶层 不得再提供上述旗标（解析 须失败）。print 的 --trust/--no-trust 须经 bootstrap trust_override 生效（interactive=false，不得弹出 ChoicePrompt）。`tui --session` 与 `tui run --session` 须等价生效。TUI 的 --attach 指定 Host URL（默认 http://127.0.0.1:18790）；仅 --port 时 须连 http://127.0.0.1:<port>；二者都给时 --attach 胜。
 
     场景: 表面开关时TUI
       假如 表面旗标上下文就绪
@@ -166,6 +166,11 @@
       假如 表面旗标上下文就绪
       当 xylitol --session sid
       那么 解析失败
+
+    场景: 表面开关TUInoEnsure
+      假如 表面旗标上下文就绪
+      当 xylitol tui --no-ensure-host
+      那么 解析成功且表面旗标生效
   @req:r1390
   规则: resume-hint-on-exit
     TUI 与 print 正常退出后，若当前 session_id 出现在 Command::ListSessions（或等价已持久化判定）中，CLI 须向 stderr 打印恰好一行 `Resume by $ xylitol tui --session <uuid>`；未持久化或无 session_id 时 不得打印该行。
@@ -180,10 +185,19 @@
       当 TUI 或 print 正常退出
       那么 stderr 不含 resume 提示行
   @req:r1391
-  规则: tui-attach-fail-closed
-    产品 TUI（含 TTY 默认进入 TUI 表面与 debug 构建的 tui designing）在 attach 目标 Host 未在听时 须非零退出，并提示用 xylitol serve 启动 Host。不得静默改走同进程直握操作器。print 与库嵌入 不得适用本条。
+  规则: tui-ensure-host
+    产品 TUI（含 TTY 默认进入 TUI 表面与 debug 构建的 tui designing）在 attach 目标为本机回环默认口或仅 --port 指定的回环口、且 Host 未在听时，必须确保一个独立 Host 进程并在就绪后 attach；已有健康 Host 则直接 attach。不得静默改走同进程直握操作器。显式 --attach 指向非该确保口时，未在听必须非零退出且不得拉起 Host。`--no-ensure-host` 时未在听必须非零退出。print 与库嵌入不得适用本条。`server` feature 关闭时未在听必须非零退出。
 
-    场景: TUIattachHost向下
-      假如 本机 Host 未在听
+    场景: 关闭确保时未在听失败
+      假如 本机 Host 未在听且关闭确保
       当 产品 TUI 尝试 attach
       那么 非零退出并提示用 xylitol serve 启动 Host
+
+    场景: 显式非默认口未在听不拉起
+      假如 显式 attach 非本机确保口且该口未在听
+      当 产品 TUI 尝试 attach
+      那么 非零退出且未拉起 Host
+
+    场景: 本机默认口判定为确保目标
+      当 解析本机默认 attach URL 的确保策略
+      那么 该 URL 为确保目标且不改走同进程直握

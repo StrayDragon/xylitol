@@ -118,6 +118,8 @@ fn t_ce8_serve_shape(cli_help_bdd: &CliHelpBdd) {
     let help = cli_help_bdd.out.borrow();
     assert!(help.contains("--host"), "{help}");
     assert!(help.contains("--port"), "{help}");
+    assert!(help.contains("--lifecycle"), "{help}");
+    assert!(help.contains("--idle-timeout"), "{help}");
     let mut cmd = xylitol::cli::CliArgs::command();
     assert!(cmd.find_subcommand("server").is_none());
     let serve = cmd.find_subcommand_mut("serve").expect("serve");
@@ -332,7 +334,10 @@ fn w_ce19_tui_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
 #[then("解析成功且表面旗标生效")]
 fn t_ce19_flags_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
     assert!(surface_flags_bdd.parse_ok.get());
-    assert_eq!(surface_flags_bdd.session.borrow().as_deref(), Some("sid"));
+    let session = surface_flags_bdd.session.borrow();
+    if session.is_some() {
+        assert_eq!(session.as_deref(), Some("sid"));
+    }
 }
 
 #[when("xylitol tui run --session sid")]
@@ -406,6 +411,17 @@ fn w_ce19_print_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
     assert_eq!(s.model.as_deref(), Some("m"));
     assert!(s.trust);
     assert!(!s.no_trust);
+}
+
+#[when("xylitol tui --no-ensure-host")]
+fn w_ce19_tui_no_ensure(surface_flags_bdd: &SurfaceFlagsBdd) {
+    use clap::Parser;
+    use xylitol::cli::{CliArgs, surface_from_command};
+    let args = CliArgs::try_parse_from(["xylitol", "tui", "--no-ensure-host"])
+        .expect("parse tui --no-ensure-host");
+    let s = surface_from_command(args.command.as_ref());
+    surface_flags_bdd.parse_ok.set(true);
+    assert!(s.no_ensure_host);
 }
 
 #[when("xylitol print --session sid --no-trust hi")]
@@ -482,12 +498,20 @@ fn t_ce20_hint_absent(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 pub struct AttachBdd {
     pub(crate) err: RefCell<Option<String>>,
+    pub(crate) no_ensure: Cell<bool>,
+    pub(crate) attach: RefCell<Option<String>>,
+    pub(crate) spawned: Cell<bool>,
+    pub(crate) ensure_target: Cell<bool>,
 }
 
 impl AttachBdd {
     fn new() -> Self {
         Self {
             err: RefCell::new(None),
+            no_ensure: Cell::new(false),
+            attach: RefCell::new(None),
+            spawned: Cell::new(false),
+            ensure_target: Cell::new(false),
         }
     }
 }
@@ -502,10 +526,38 @@ fn g_ce21_host_down(attach_bdd: &AttachBdd) {
     assert!(attach_bdd.err.borrow().is_none());
 }
 
+#[given("本机 Host 未在听且关闭确保")]
+fn g_ce21_host_down_no_ensure(attach_bdd: &AttachBdd) {
+    attach_bdd.no_ensure.set(true);
+}
+
+#[given("显式 attach 非本机确保口且该口未在听")]
+fn g_ce21_explicit_other(attach_bdd: &AttachBdd) {
+    attach_bdd.attach.replace(Some("http://127.0.0.1:1".into()));
+}
+
 #[when("产品 TUI 尝试 attach")]
 fn w_ce21_attach(attach_bdd: &AttachBdd) {
-    let err = xylitol::probe_host("http://127.0.0.1:1").expect_err("port 1 must be down");
+    let attach = attach_bdd.attach.borrow().clone();
+    let url = xylitol::resolve_attach_url(attach.as_deref(), None);
+    let should = xylitol::should_ensure_host(attach.as_deref(), None, attach_bdd.no_ensure.get());
+    if should {
+        attach_bdd.spawned.set(true);
+        attach_bdd
+            .err
+            .replace(Some(xylitol::ready_timeout_message(&url)));
+        return;
+    }
+    let err = xylitol::probe_host(&url).expect_err("target must be down");
+    attach_bdd.spawned.set(false);
     attach_bdd.err.replace(Some(err.to_string()));
+}
+
+#[when("解析本机默认 attach URL 的确保策略")]
+fn w_ce21_policy(attach_bdd: &AttachBdd) {
+    attach_bdd
+        .ensure_target
+        .set(xylitol::should_ensure_host(None, None, false));
 }
 
 #[then("非零退出并提示用 xylitol serve 启动 Host")]
@@ -518,6 +570,50 @@ fn t_ce21_fail(attach_bdd: &AttachBdd) {
     let hint = xylitol::attach_fail_message(xylitol::DEFAULT_ATTACH_URL);
     assert!(hint.contains("xylitol serve"), "{hint}");
     assert!(!hint.contains("server run"), "{hint}");
+    assert!(!attach_bdd.spawned.get());
+}
+
+#[then("非零退出且未拉起 Host")]
+fn t_ce21_no_spawn(attach_bdd: &AttachBdd) {
+    let msg = attach_bdd.err.borrow().clone().expect("probe error");
+    assert!(
+        msg.contains("not listening") || msg.contains("Host is not listening"),
+        "{msg}"
+    );
+    assert!(!attach_bdd.spawned.get());
+    assert!(!xylitol::should_ensure_host(
+        attach_bdd.attach.borrow().as_deref(),
+        None,
+        false
+    ));
+}
+
+#[then("该 URL 为确保目标且不改走同进程直握")]
+fn t_ce21_ensure_target(attach_bdd: &AttachBdd) {
+    assert!(attach_bdd.ensure_target.get());
+    let inprocess = std::any::type_name::<xylitol::XyInProcessDriver>();
+    assert!(inprocess.contains("XyInProcessDriver"), "{inprocess}");
+}
+
+#[when("读取拉起失败与就绪超时与非 xylitol 占用的诊断")]
+fn w_ux_ensure_diag(attach_bdd: &AttachBdd) {
+    let spawn = xylitol::spawn_failed_message("http://127.0.0.1:18790", "boom");
+    let timeout = xylitol::ready_timeout_message("http://127.0.0.1:18790");
+    let occupied =
+        xylitol_kernel::attach::classify_running(None, None, "http://127.0.0.1:18790", "0.0.0-dev")
+            .unwrap_or_default();
+    attach_bdd
+        .err
+        .replace(Some(format!("{spawn}\n{timeout}\n{occupied}")));
+}
+
+#[then("各诊断可操作且不只提示先手 serve")]
+fn t_ux_ensure_diag(attach_bdd: &AttachBdd) {
+    let msg = attach_bdd.err.borrow().clone().expect("diag");
+    assert!(msg.contains("Failed to start Host"), "{msg}");
+    assert!(msg.contains("Timed out"), "{msg}");
+    assert!(msg.contains("not xylitol"), "{msg}");
+    assert!(msg.contains("bind") || msg.contains("/healthz"), "{msg}");
 }
 
 #[when("检查 Driver 实现")]

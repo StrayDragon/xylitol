@@ -246,6 +246,10 @@ hooks:
 #     headers:
 #       CONTEXT7_API_KEY: "{{ secret.CONTEXT7_API_KEY }}"
 
+# serve:  # optional; only auto-started Host reads this. Explicit `xylitol serve` stays persistent.
+#   lifecycle: last-client   # or persistent
+#   idle_timeout: 30s        # or false → auto-start is persistent (local always-on)
+
 # Optional remote traces (OTLP/HTTP → Langfuse / Collector).
 # Code defaults (omit keys or leave commented):
 #   exporter: none

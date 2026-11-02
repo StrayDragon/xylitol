@@ -1,6 +1,7 @@
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use crate::bdd::steps_c2827::{C2827Bdd, c2827_bdd};
+use crate::bdd::steps_cli_surface::{AttachBdd, attach_bdd};
 use crate::bdd::steps_package_tui_tree_selector::{TreeSelBdd, tree_sel_bdd};
 use rstest_bdd_macros::scenario;
 use serial_test::serial;
@@ -393,6 +394,12 @@ fn test_ux_unset() {}
     name = "无API键名称厂商"
 )]
 fn test_ux_no_key() {}
+
+#[scenario(
+    path = "llmanspec/specs/user-experience/user-experience.feature",
+    name = "确保失败诊断可操作"
+)]
+fn test_ux_ensure_diag(attach_bdd: AttachBdd) {}
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",

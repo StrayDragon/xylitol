@@ -26,7 +26,7 @@ xylitol 是一个实验性 Coding Agent。默认界面是终端界面（TUI）�
 xylitol TUI（客户端） ⇄ JSON-RPC 2.0（HTTP POST /rpc、WebSocket WS /rpc） ⇄ xylitol serve（宿主进程 host） ⇄ 模型服务商 / MCP / 项目文件
 ```
 
-TUI 只负责键盘输入、界面渲染和终端（TTY）适配等端侧能力。模型、会话、工具执行、MCP 和项目信任（trust）由 host 承担。TUI 默认连接本机 host（`127.0.0.1:18790`）；host 未运行时，TUI 启动失败。关闭 TUI 不会中断 host 上的会话。Print 和库嵌入在同一进程内直接调用运行时（runtime），不经过跨进程线协议（wire protocol）。
+TUI 只负责键盘输入、界面渲染和终端（TTY）适配等端侧能力。模型、会话、工具执行、MCP 和项目信任（trust）由 host 承担。TUI 默认连接本机 host（`127.0.0.1:18790`）；若该口未在听，会自动拉起一个独立 Host（最后客户端断开后约 30 秒退出）。显式 `xylitol serve` 保持常驻。关闭 TUI 不会立刻杀掉自动拉起的 host。Print 和库嵌入在同一进程内直接调用运行时（runtime），不经过跨进程线协议（wire protocol）。
 
 ## 快速开始
 
@@ -131,27 +131,25 @@ tools:
 - 想回到内置检索：写 `-ffgrep -fffind`，或编译时关闭 `fff` feature。
 - 也可以走 MCP 旁路：配置 `fff-mcp` 后工具名为 `mcp__fff__grep` / `mcp__fff__find_files`；与本插件二选一即可。fff 索引按会话工作区惰性建立，不写入仓库。
 
-### 3. 启动 host 与 TUI
+### 3. 启动 TUI
 
-在终端 A 启动 host：
-
-```bash
-xylitol serve
-```
-
-默认监听 `127.0.0.1:18790`。按 Ctrl-C 停止；在后台运行时，向该进程发送 SIGTERM。
-
-Host 首次启动会在 `~/.xylitol/serve.token`（0600）生成随机凭据，并写入
-`~/.xylitol/serve.json`（0600）供本机客户端发现；`/rpc` 与 `/healthz` 默认要求
-Basic 鉴权。TUI 会自动读取凭据，无需手工配置。不要把凭据复制到环境变量、日志或会话。
-
-在终端 B 启动 TUI：
+TTY 环境下直接运行即可进入 TUI。若本机默认口还没有 Host，会自动拉起一个：
 
 ```bash
 xylitol
 ```
 
-TTY 环境下，直接运行 `xylitol` 进入 TUI，并连接本机 host。
+自动拉起的 Host 在最后一个 TUI 断开后约 30 秒退出。需要常驻时再显式启动：
+
+```bash
+xylitol serve
+```
+
+默认监听 `127.0.0.1:18790`。按 Ctrl-C 停止；或 `xylitol serve stop`。`--no-ensure-host` 恢复「未在听即失败」。
+
+Host 首次启动会在 `~/.xylitol/serve.token`（0600）生成随机凭据，并写入
+`~/.xylitol/serve.json`（0600）供本机客户端发现；`/rpc` 与 `/healthz` 默认要求
+Basic 鉴权。TUI 会自动读取凭据，无需手工配置。不要把凭据复制到环境变量、日志或会话。
 
 ### 4. 常用命令
 

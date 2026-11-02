@@ -1,5 +1,7 @@
 use crate::bdd::steps_c2827::{T2EstBdd, t2_est_bdd};
-use crate::bdd::steps_server::{ServerTest, approval_test, server_test};
+use crate::bdd::steps_server::{
+    LifecycleBdd, ServerTest, approval_test, lifecycle_bdd, server_test,
+};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -570,3 +572,39 @@ async fn test_sr_get_messages_paging(server_test: ServerTest) {}
     name = "完成事件前已落库"
 )]
 async fn test_sr_persist_before_end(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "last-client零连接到期退出"
+)]
+async fn test_sr_last_client_idle_exit(lifecycle_bdd: LifecycleBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "last-client从未连接不退出"
+)]
+async fn test_sr_last_client_never_connected(lifecycle_bdd: LifecycleBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "last-client宽限内重连存活"
+)]
+async fn test_sr_last_client_reconnect(lifecycle_bdd: LifecycleBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "persistent零连接仍存活"
+)]
+async fn test_sr_persistent_survives(lifecycle_bdd: LifecycleBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "缺省注册lifecycle视为persistent"
+)]
+fn test_sr_default_lifecycle(lifecycle_bdd: LifecycleBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "stop终止注册进程"
+)]
+async fn test_sr_serve_stop(lifecycle_bdd: LifecycleBdd) {}

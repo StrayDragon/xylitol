@@ -86,9 +86,27 @@ fn test_ce20_hint_no(surface_flags_bdd: SurfaceFlagsBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/cli-entry/cli-entry.feature",
-    name = "TUIattachHost向下"
+    name = "表面开关TUInoEnsure"
 )]
-fn test_ce21_attach_down(attach_bdd: AttachBdd) {}
+fn test_ce19_no_ensure(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "关闭确保时未在听失败"
+)]
+fn test_ce21_no_ensure_down(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "显式非默认口未在听不拉起"
+)]
+fn test_ce21_explicit_no_spawn(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "本机默认口判定为确保目标"
+)]
+fn test_ce21_ensure_target(attach_bdd: AttachBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/cli-entry/cli-entry.feature",

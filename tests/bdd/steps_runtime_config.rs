@@ -532,7 +532,7 @@ pub(crate) fn w_config_schema_top_level(rc_snap: &RcSnap) {
 }
 
 #[then(
-    "含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan 与 tools"
+    "含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan 与 tools 与 serve"
 )]
 pub(crate) fn t_config_schema_covers_sections(rc_snap: &RcSnap) {
     let joined = rc_snap
@@ -552,6 +552,7 @@ pub(crate) fn t_config_schema_covers_sections(rc_snap: &RcSnap) {
         "workflow",
         "plan",
         "tools",
+        "serve",
     ] {
         assert!(
             joined.split(',').any(|k| k == key),

@@ -51,8 +51,21 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.command {
         #[cfg(feature = "server")]
-        Some(CliCommand::Serve { host, port, action }) => {
-            return xylitol_kernel::occupancy::subcommand::run(host, port, action).await;
+        Some(CliCommand::Serve {
+            host,
+            port,
+            lifecycle,
+            idle_timeout,
+            action,
+        }) => {
+            return xylitol_kernel::occupancy::subcommand::run(
+                host,
+                port,
+                lifecycle,
+                idle_timeout,
+                action,
+            )
+            .await;
         }
         Some(CliCommand::Tui { .. } | CliCommand::Print { .. }) | None => {}
     }
@@ -79,7 +92,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if want_tui {
         let url =
             xylitol_kernel::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
-        if let Err(msg) = xylitol_kernel::attach::attach_preflight(&url).await {
+        let preflight = if xylitol_kernel::attach::should_ensure_host(
+            surface.attach.as_deref(),
+            surface.port,
+            surface.no_ensure_host,
+        ) {
+            xylitol_kernel::attach::ensure_host_from_config(
+                &url,
+                surface.config.as_ref().map(std::path::Path::new),
+            )
+            .await
+        } else {
+            xylitol_kernel::attach::attach_preflight(&url).await
+        };
+        if let Err(msg) = preflight {
             eprintln!("{msg}");
             return Err("host not listening".into());
         }
@@ -696,7 +722,8 @@ mod tests {
             tui_help.contains("--session")
                 && tui_help.contains("--trust")
                 && tui_help.contains("--attach")
-                && tui_help.contains("--port"),
+                && tui_help.contains("--port")
+                && tui_help.contains("--no-ensure-host"),
             "tui must own surface flags:\n{tui_help}"
         );
     }
@@ -710,6 +737,7 @@ mod tests {
                 host,
                 port,
                 action: None,
+                ..
             }) => {
                 assert_eq!(host, "127.0.0.1");
                 assert_eq!(port, 18790);
@@ -725,6 +753,7 @@ mod tests {
                 host,
                 port,
                 action: None,
+                ..
             }) => {
                 assert_eq!(host, "0.0.0.0");
                 assert_eq!(port, 0);
@@ -753,6 +782,28 @@ mod tests {
             CliArgs::try_parse_from(["xylitol", "serve", "run"]).is_err(),
             "serve run must not parse"
         );
+
+        let life = CliArgs::try_parse_from([
+            "xylitol",
+            "serve",
+            "--lifecycle",
+            "last-client",
+            "--idle-timeout",
+            "5s",
+        ])
+        .unwrap();
+        match life.command {
+            Some(CliCommand::Serve {
+                lifecycle,
+                idle_timeout,
+                action: None,
+                ..
+            }) => {
+                assert_eq!(lifecycle.as_deref(), Some("last-client"));
+                assert_eq!(idle_timeout.as_deref(), Some("5s"));
+            }
+            other => panic!("expected lifecycle flags, got {other:?}"),
+        }
     }
 
     #[test]
@@ -794,7 +845,12 @@ mod tests {
                 .is_err()
         );
         assert!(CliArgs::try_parse_from(["xylitol", "print", "--port", "9", "hi"]).is_err());
+        assert!(CliArgs::try_parse_from(["xylitol", "print", "--no-ensure-host", "hi"]).is_err());
         assert!(CliArgs::try_parse_from(["xylitol", "--attach", "http://127.0.0.1:9"]).is_err());
         assert!(CliArgs::try_parse_from(["xylitol", "--port", "9"]).is_err());
+
+        let e = CliArgs::try_parse_from(["xylitol", "tui", "--no-ensure-host"]).unwrap();
+        let s = surface_from_command(e.command.as_ref());
+        assert!(s.no_ensure_host);
     }
 }

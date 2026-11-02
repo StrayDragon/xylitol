@@ -632,6 +632,37 @@
       },
       "type": "object"
     },
+    "ServeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "idle_timeout": {
+          "$ref": "#/$defs/ServeIdleTimeout",
+          "default": "30s"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/ServeLifecycleConfig",
+          "default": "last-client"
+        }
+      },
+      "type": "object"
+    },
+    "ServeIdleTimeout": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "ServeLifecycleConfig": {
+      "enum": [
+        "last-client",
+        "persistent"
+      ],
+      "type": "string"
+    },
     "SessionConfig": {
       "properties": {
         "max_turns": {
@@ -1182,6 +1213,13 @@
       "default": {
         "enabled": false,
         "permission": null
+      }
+    },
+    "serve": {
+      "$ref": "#/$defs/ServeConfig",
+      "default": {
+        "idle_timeout": "30s",
+        "lifecycle": "last-client"
       }
     },
     "session": {

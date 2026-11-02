@@ -714,3 +714,40 @@
       假如 Host 已启用回环凭据门禁
       当 读取鉴权注册文件
       那么 文件含 token 且与启动凭据一致
+
+  @req:r3062
+  规则: host-lifecycle
+    Host 必须支持生命周期策略 persistent 与 last-client。显式 xylitol serve 缺省 persistent：已认证 WS /rpc 连接数为 0 时不得因此退出。last-client：必须在已认证 WS /rpc 从 1 降到 0 后启动 idle grace，到期后必须优雅退出并删除注册文件；从未有过连接不得因 idle 退出；grace 内新连接必须取消退出。存活判据是已认证 WS 连接本身，不得依赖应用层请求或轮询心跳。短 unary POST /rpc 不得计入连接数。注册文件可携带可选 lifecycle 字段；缺省视为 persistent。
+
+    场景: last-client零连接到期退出
+      假如 Host 以 last-client 与短 idle 启动
+      当 唯一 WS 连接关闭且 idle 到期
+      那么 Host 已退出且注册文件不残留
+
+    场景: last-client从未连接不退出
+      假如 Host 以 last-client 与短 idle 启动
+      当 超过 idle 且从未有 WS 连接
+      那么 Host 仍在听
+
+    场景: last-client宽限内重连存活
+      假如 Host 以 last-client 与短 idle 启动
+      当 唯一 WS 连接关闭后在 idle 内重新连接
+      那么 Host 仍在听
+
+    场景: persistent零连接仍存活
+      假如 Host 以 persistent 启动
+      当 唯一 WS 连接关闭且超过 idle
+      那么 Host 仍在听
+
+    场景: 缺省注册lifecycle视为persistent
+      当 读取无 lifecycle 字段的注册文件
+      那么 生命周期视为 persistent
+
+  @req:r3063
+  规则: serve-stop
+    xylitol serve stop 必须读取注册文件中的 pid 并请求该进程退出；进程退出后注册文件必须不残留。pid 不存在时必须给出可操作错误且不得误杀其他进程。
+
+    场景: stop终止注册进程
+      假如 Host 已写入注册文件并在听
+      当 执行 serve stop
+      那么 该 pid 已退出且注册文件不残留

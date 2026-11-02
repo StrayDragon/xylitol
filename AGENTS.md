@@ -25,7 +25,7 @@ Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成�
 
 - **Trust / 配置后置**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP / LSP / DAP / subagent / 外进程插件均配置驱动、未配置零装配；外进程插件须显式 `trusted: true`。产品规则：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`、`infra-plugin/`、`infra-lsp/`、`infra-dap/`、`agent-subagent/`；实现边界：`src/AGENTS.md`。
 - **Loop 参与**：官方插件经 rutis 生命周期注册 loop 中间件（七阶段、控制枚举）**参与** ReAct 决策；core 持 turn 边界 / 取消 / 权限终裁，插件不得整段替换 loop。外进程插件只贡献工具，不参与 loop。产品规则：`llmanspec/specs/agent-runtime/`；实现边界：`src/AGENTS.md`「Loop 中间件」。
-- **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`llmanspec/specs/protocol-app/`、`server-core/`。
+- **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认确保并 attach 本机 Host（未在听则拉起 last-client；显式 `xylitol serve` 仍常驻）；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`llmanspec/specs/protocol-app/`、`server-core/`。
 - **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（JSON-RPC 2.0 文本：`POST /rpc` unary + `WS /rpc` 双向 text 帧；Command/Event 是载荷）。硬边界：`src/AGENTS.md`。
 - **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `llmanspec/specs/protocol-app/` 与 `user-experience/`。未开放端（gpui 等）见 GitHub feature request，不得写成现行必须。
 - 未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个）；第三方插件市场 / 签名 / dylib / 同进程静态链入（[#29](https://github.com/StrayDragon/xylitol/issues/29) 的最小切片已交付）。文档落点：`xylitol-dev` skill `references/docs-loop.md`。
@@ -60,7 +60,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 
 `plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。`wire` → protocol + sdk。runtime → sdk。插件 → sdk。kernel → runtime + 插件 + sdk + loader + protocol + serve + app-print。serve → runtime + protocol + wire。app-tui → protocol + wire + tui。根包 → kernel + 端。插件之间不得 `use`（只经服务 / 事件）。
 
-开箱 vs 配置后置：产品 TUI 默认 attach 本机监听（`server` feature 可关，default 仍开）；产品 `serve` 默认回环 Basic 凭据门禁（凭据文件 0600，经 `serve.json` 发现；保留凭据环境变量不进工具子进程；规则见 `server-core/`、`domain-security/`）。MCP 有配置才装配（`mcp` feature 可关，default 仍开）。LSP / DAP / subagent / 外进程插件有配置才装配（未配置零装配、不 spawn 子进程）。`otel` feature default 开，配置默认 none。fff 检索工具源 default 开（`fff` feature 可关）；模型可见工具集由配置 `tools` 列表选择，替换工具默认优先、内置 `grep` / `find` 回落。
+开箱 vs 配置后置：产品 TUI 默认确保并 attach 本机监听（`server` feature 可关，default 仍开；`--no-ensure-host` 恢复未在听即失败）；产品 `serve` 默认回环 Basic 凭据门禁（凭据文件 0600，经 `serve.json` 发现；保留凭据环境变量不进工具子进程；规则见 `server-core/`、`domain-security/`）。自动拉起缺省 last-client（idle 从最后一条已认证 WS 断开计时，从未连接不因 idle 退出；`serve.idle_timeout: false` 可切成本机常驻）；显式 `xylitol serve` 缺省 persistent。MCP 有配置才装配（`mcp` feature 可关，default 仍开）。LSP / DAP / subagent / 外进程插件有配置才装配（未配置零装配、不 spawn 子进程）。`otel` feature default 开，配置默认 none。fff 检索工具源 default 开（`fff` feature 可关）；模型可见工具集由配置 `tools` 列表选择，替换工具默认优先、内置 `grep` / `find` 回落。
 
 ## 编码规则
 

@@ -28,3 +28,11 @@
 
     场景: 无API键名称厂商
       那么 无 api key 提示含 provider 名
+
+  @req:r3065
+  规则: ensure-host-diagnostics
+    确保 Host 失败时必须给出可操作诊断，区分拉起失败、就绪超时、端口被非 xylitol 占用与版本不符；不得只提示先手 xylitol serve。
+
+    场景: 确保失败诊断可操作
+      当 读取拉起失败与就绪超时与非 xylitol 占用的诊断
+      那么 各诊断可操作且不只提示先手 serve

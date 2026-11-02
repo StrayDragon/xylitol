@@ -4,6 +4,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::credential::write_private_file;
+use crate::lifecycle::ServeLifecycle;
 
 pub const REGISTRATION_FILE_NAME: &str = "serve.json";
 
@@ -14,6 +15,8 @@ pub struct Registration {
     pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<ServeLifecycle>,
 }
 
 impl Registration {
@@ -27,7 +30,17 @@ impl Registration {
             pid: std::process::id(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
+            lifecycle: None,
         }
+    }
+
+    pub fn with_lifecycle(mut self, lifecycle: ServeLifecycle) -> Self {
+        self.lifecycle = Some(lifecycle);
+        self
+    }
+
+    pub fn effective_lifecycle(&self) -> ServeLifecycle {
+        self.lifecycle.unwrap_or(ServeLifecycle::Persistent)
     }
 }
 
@@ -128,6 +141,55 @@ mod tests {
     #[test]
     fn read_missing_is_err() {
         assert!(read_registration(&temp_dir().join("serve.json")).is_err());
+    }
+
+    #[test]
+    fn missing_lifecycle_field_is_persistent() {
+        let dir = temp_dir();
+        let path = dir.join("serve.json");
+        std::fs::create_dir_all(&dir).expect("dir");
+        std::fs::write(
+            &path,
+            r#"{
+  "url": "http://127.0.0.1:18790",
+  "pid": 7,
+  "version": "0.0.0-dev"
+}"#,
+        )
+        .expect("write");
+        let reg = read_registration(&path).expect("read");
+        assert_eq!(reg.lifecycle, None);
+        assert_eq!(
+            reg.effective_lifecycle(),
+            crate::lifecycle::ServeLifecycle::Persistent
+        );
+        assert!(
+            !std::fs::read_to_string(&path)
+                .expect("body")
+                .contains("lifecycle")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lifecycle_field_roundtrips_and_counts_in_equality() {
+        let dir = temp_dir();
+        let path = dir.join("serve.json");
+        let last_client = Registration::own("http://127.0.0.1:18790".into())
+            .with_lifecycle(crate::lifecycle::ServeLifecycle::LastClient);
+        write_registration(&path, &last_client).expect("write");
+        let read = read_registration(&path).expect("read");
+        assert_eq!(read, last_client);
+        assert_eq!(
+            read.effective_lifecycle(),
+            crate::lifecycle::ServeLifecycle::LastClient
+        );
+        let persistent = Registration {
+            lifecycle: Some(crate::lifecycle::ServeLifecycle::Persistent),
+            ..last_client.clone()
+        };
+        assert_ne!(persistent, last_client);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 use xylitol_protocol::Notification;
 use xylitol_protocol::auth;
 
+use crate::lifecycle::{DEFAULT_IDLE_GRACE, ServeLifecycle};
 use crate::occupancy::downlink_text;
 use crate::registration::{self, Registration};
 use crate::wire::{CONTENT_TYPE, MAX_BODY_BYTES, Reply};
@@ -68,8 +69,28 @@ impl RunningListener {
         self.handle.stop_graceful(Duration::from_secs(30));
     }
 
+    pub fn set_lifecycle(&self, lifecycle: ServeLifecycle, idle_timeout: Duration) {
+        self.gateway.set_lifecycle(lifecycle, idle_timeout);
+    }
+
     pub async fn evicted(&mut self) {
         let _ = self.evicted.changed().await;
+    }
+
+    pub fn subscribe_evicted(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.evicted.clone()
+    }
+
+    pub fn subscribe_idle(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.gateway.subscribe_idle()
+    }
+
+    pub async fn last_client_idle(&self) {
+        let mut rx = self.gateway.subscribe_idle();
+        if *rx.borrow() {
+            return;
+        }
+        let _ = rx.changed().await;
     }
 
     pub fn arm_registration(
@@ -78,7 +99,8 @@ impl RunningListener {
         registration_path: PathBuf,
         interval: Duration,
     ) -> std::io::Result<()> {
-        let own = Registration::own_with_token(url, self.credential.clone());
+        let own = Registration::own_with_token(url, self.credential.clone())
+            .with_lifecycle(self.gateway.lifecycle());
         registration::write_registration(&registration_path, &own)?;
         self.registration_path = Some(registration_path.clone());
         let (tx, rx) = tokio::sync::watch::channel(false);
@@ -218,19 +240,102 @@ pub struct Gateway {
     phase: AtomicU8,
     host: OnceLock<Arc<dyn OccupiedHost>>,
     auth: OnceLock<String>,
+    mux_clients: AtomicUsize,
+    idle_gen: AtomicU64,
+    lifecycle: AtomicU8,
+    idle_timeout_ms: AtomicU64,
+    idle_tx: tokio::sync::watch::Sender<bool>,
 }
 
 impl Gateway {
     const STARTING: u8 = 0;
     const READY: u8 = 1;
     const FAILED: u8 = 2;
+    const LIFE_PERSISTENT: u8 = 0;
+    const LIFE_LAST_CLIENT: u8 = 1;
 
     pub fn starting() -> Arc<Self> {
+        let (idle_tx, _) = tokio::sync::watch::channel(false);
         Arc::new(Self {
             phase: AtomicU8::new(Self::STARTING),
             host: OnceLock::new(),
             auth: OnceLock::new(),
+            mux_clients: AtomicUsize::new(0),
+            idle_gen: AtomicU64::new(0),
+            lifecycle: AtomicU8::new(Self::LIFE_PERSISTENT),
+            idle_timeout_ms: AtomicU64::new(DEFAULT_IDLE_GRACE.as_millis() as u64),
+            idle_tx,
         })
+    }
+
+    pub fn set_lifecycle(&self, lifecycle: ServeLifecycle, idle_timeout: Duration) {
+        let flag = match lifecycle {
+            ServeLifecycle::Persistent => Self::LIFE_PERSISTENT,
+            ServeLifecycle::LastClient => Self::LIFE_LAST_CLIENT,
+        };
+        self.lifecycle.store(flag, Ordering::SeqCst);
+        self.idle_timeout_ms
+            .store(idle_timeout.as_millis() as u64, Ordering::SeqCst);
+        if lifecycle.is_persistent() {
+            let _ = self.idle_tx.send(false);
+        }
+    }
+
+    pub fn lifecycle(&self) -> ServeLifecycle {
+        match self.lifecycle.load(Ordering::SeqCst) {
+            Self::LIFE_LAST_CLIENT => ServeLifecycle::LastClient,
+            _ => ServeLifecycle::Persistent,
+        }
+    }
+
+    pub fn subscribe_idle(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.idle_tx.subscribe()
+    }
+
+    pub fn mux_opened(&self) {
+        self.mux_clients.fetch_add(1, Ordering::SeqCst);
+        self.idle_gen.fetch_add(1, Ordering::SeqCst);
+        let _ = self.idle_tx.send(false);
+    }
+
+    pub fn mux_closed(self: &Arc<Self>) {
+        let mut current = self.mux_clients.load(Ordering::SeqCst);
+        loop {
+            if current == 0 {
+                return;
+            }
+            match self.mux_clients.compare_exchange(
+                current,
+                current - 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
+        if current == 1 {
+            self.schedule_idle();
+        }
+    }
+
+    fn schedule_idle(self: &Arc<Self>) {
+        if self.lifecycle() != ServeLifecycle::LastClient {
+            return;
+        }
+        let timeout = Duration::from_millis(self.idle_timeout_ms.load(Ordering::SeqCst));
+        let generation = self.idle_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        let this = Arc::clone(self);
+        tokio::spawn(async move {
+            if !timeout.is_zero() {
+                tokio::time::sleep(timeout).await;
+            }
+            if this.idle_gen.load(Ordering::SeqCst) == generation
+                && this.mux_clients.load(Ordering::SeqCst) == 0
+            {
+                let _ = this.idle_tx.send(true);
+            }
+        });
     }
 
     pub fn set_auth(&self, credential: Option<String>) {
@@ -465,10 +570,21 @@ async fn mux_upgrade(
     let Some(host) = gateway.host() else {
         return Err(StatusError::internal_server_error());
     };
+    let gateway = gateway.clone();
     WebSocketUpgrade::new()
         .check_origin(mux_origin_allowed)
         .max_message_size(MAX_BODY_BYTES)
-        .upgrade(req, res, move |ws| handle_mux(ws, host))
+        .upgrade(req, res, move |ws| async move {
+            gateway.mux_opened();
+            struct IdleGuard(Arc<Gateway>);
+            impl Drop for IdleGuard {
+                fn drop(&mut self) {
+                    self.0.mux_closed();
+                }
+            }
+            let _guard = IdleGuard(gateway);
+            handle_mux(ws, host).await;
+        })
         .await
 }
 
@@ -496,6 +612,7 @@ async fn handle_mux(ws: WebSocket, host: Arc<dyn OccupiedHost>) {
 enum FrameKind {
     Text,
     Unsupported,
+    Ping,
     Control,
 }
 
@@ -504,6 +621,8 @@ fn frame_kind(frame: &Message) -> FrameKind {
         FrameKind::Text
     } else if frame.is_binary() {
         FrameKind::Unsupported
+    } else if frame.is_ping() {
+        FrameKind::Ping
     } else {
         FrameKind::Control
     }
@@ -516,6 +635,7 @@ where
 {
     let (tx, mut rx) = mpsc::channel::<Notification>(MUX_CHAN_CAP);
     let (reply_tx, mut reply_rx) = mpsc::channel::<String>(MUX_CHAN_CAP);
+    let (pong_tx, mut pong_rx) = mpsc::channel::<Vec<u8>>(8);
     let mux_id = host.register_unbound_mux(tx).await;
     let clean_close = AtomicBool::new(false);
     let unsupported = AtomicBool::new(false);
@@ -533,6 +653,12 @@ where
                 text = reply_rx.recv() => {
                     let Some(text) = text else { break };
                     if outbound.send(Message::text(text)).await.is_err() {
+                        break;
+                    }
+                }
+                payload = pong_rx.recv() => {
+                    let Some(payload) = payload else { break };
+                    if outbound.send(Message::pong(payload)).await.is_err() {
                         break;
                     }
                 }
@@ -566,6 +692,11 @@ where
                 FrameKind::Unsupported => {
                     unsupported.store(true, Ordering::SeqCst);
                     break;
+                }
+                FrameKind::Ping => {
+                    if pong_tx.send(frame.as_bytes().to_vec()).await.is_err() {
+                        break;
+                    }
                 }
                 FrameKind::Control => {}
             }
@@ -980,12 +1111,25 @@ mod tests {
         );
         assert_eq!(
             frame_kind(&Message::ping(Vec::<u8>::new())),
-            FrameKind::Control
+            FrameKind::Ping
         );
         assert_eq!(
             frame_kind(&Message::pong(Vec::<u8>::new())),
             FrameKind::Control
         );
+    }
+
+    #[tokio::test]
+    async fn ws_ping_is_answered_with_pong() {
+        let mut h = ws_harness();
+        h.to_server
+            .unbounded_send(Ok(Message::ping(vec![7u8, 9])))
+            .unwrap();
+        let frame = next_frame(&mut h.from_server).await;
+        assert!(frame.is_pong(), "{frame:?}");
+        assert_eq!(frame.as_bytes(), &[7u8, 9]);
+        drop(h.to_server);
+        h.task.await.unwrap();
     }
 
     #[tokio::test]
@@ -1087,5 +1231,49 @@ mod tests {
         h.to_server.unbounded_send(Ok(Message::close())).unwrap();
         h.task.await.unwrap();
         assert_eq!(*h.host.last_prune.lock().unwrap(), Some(true));
+    }
+
+    #[tokio::test]
+    async fn last_client_idle_fires_after_grace() {
+        let gateway = Gateway::starting();
+        gateway.set_lifecycle(ServeLifecycle::LastClient, Duration::from_millis(40));
+        gateway.mux_opened();
+        let mut idle = gateway.subscribe_idle();
+        gateway.mux_closed();
+        let _ = tokio::time::timeout(Duration::from_millis(400), idle.changed())
+            .await
+            .expect("idle signal");
+        assert!(*idle.borrow());
+    }
+
+    #[tokio::test]
+    async fn last_client_reconnect_cancels_idle() {
+        let gateway = Gateway::starting();
+        gateway.set_lifecycle(ServeLifecycle::LastClient, Duration::from_millis(80));
+        gateway.mux_opened();
+        gateway.mux_closed();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        gateway.mux_opened();
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert!(!*gateway.subscribe_idle().borrow());
+        gateway.mux_closed();
+    }
+
+    #[tokio::test]
+    async fn persistent_zero_clients_does_not_idle() {
+        let gateway = Gateway::starting();
+        gateway.set_lifecycle(ServeLifecycle::Persistent, Duration::from_millis(20));
+        gateway.mux_opened();
+        gateway.mux_closed();
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert!(!*gateway.subscribe_idle().borrow());
+    }
+
+    #[tokio::test]
+    async fn last_client_never_connected_does_not_idle() {
+        let gateway = Gateway::starting();
+        gateway.set_lifecycle(ServeLifecycle::LastClient, Duration::from_millis(40));
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert!(!*gateway.subscribe_idle().borrow());
     }
 }
