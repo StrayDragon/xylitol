@@ -36,8 +36,11 @@ use super::session_tree::FilterMode;
 use super::slots::{AskSlot, EditorSlot, EditorSlotKind, ImportSlot, ThemesSlot, TreeSlot};
 use super::theme::LayoutTheme;
 use super::{WidthTier, width_tier};
-use crate::activity_fold::{ActivityFoldState, AutoTrigger, ingest_rebuild_clocks};
-use crate::bridge::UiModel;
+use crate::activity_fold::{
+    ActivityFoldState, AutoTrigger, cluster_is_thought_only, ingest_rebuild_clocks,
+    partition_segments,
+};
+use crate::bridge::{STREAMING_THINK_ID, UiEntry, UiModel};
 use crate::driver::LoadedResourcesSnapshot;
 use crate::session_resume::SessionResumePanel;
 use crate::widgets::{
@@ -1207,6 +1210,7 @@ impl UiRoot {
     }
 
     pub fn apply_ui_model(&mut self, model: &UiModel) {
+        let prev_live_think = self.ui_model.streaming_think_id.clone();
         let upper_changed = self.ui_model.entries != model.entries
             || self.ui_model.streaming_assistant != model.streaming_assistant
             || self.ui_model.streaming_thinking != model.streaming_thinking
@@ -1215,6 +1219,11 @@ impl UiRoot {
         self.ui_model = model.clone();
         if upper_changed {
             self.bump_upper_gen();
+        }
+        if prev_live_think.as_deref() == Some(STREAMING_THINK_ID)
+            && model.streaming_think_id.is_none()
+        {
+            self.promote_streaming_think_fold();
         }
 
         match model.status.as_ref() {
@@ -1229,6 +1238,29 @@ impl UiRoot {
         self.refresh_mcp_short_cue();
 
         self.refresh_footer();
+    }
+
+    fn promote_streaming_think_fold(&mut self) {
+        let Some(expanded) = self.fold.thinking_overrides.remove(STREAMING_THINK_ID) else {
+            return;
+        };
+        let Some(id) = self.ui_model.entries.iter().rev().find_map(|e| match e {
+            UiEntry::Thinking { id, .. } => Some(id.clone()),
+            _ => None,
+        }) else {
+            return;
+        };
+        self.fold.thinking_overrides.insert(id, expanded);
+        if expanded {
+            let segs = partition_segments(&self.ui_model.entries);
+            if let Some(seg) = segs.last()
+                && let Some(cl) = seg.clusters.last()
+                && cluster_is_thought_only(&self.ui_model.entries, cl)
+            {
+                let _ = self.activity.expand_live_cluster(&self.ui_model.entries);
+            }
+        }
+        self.fold_dirty = true;
     }
 
     fn bump_upper_gen(&mut self) {

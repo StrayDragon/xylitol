@@ -47,6 +47,12 @@ fn test_att33_live_window(transcript_bdd: TranscriptBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "流式思考可点击折叠无头"
+)]
+fn test_att33_streaming_thinking_fold(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
     name = "在线回滚无截断无头"
 )]
 fn test_att1_scrollback_no_truncation(transcript_bdd: TranscriptBdd) {}

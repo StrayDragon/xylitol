@@ -66,6 +66,85 @@ fn when_mount_think_tool(tui_interaction: &TuiInteraction) {
     *tui_interaction.fx.borrow_mut() = Some(fx);
 }
 
+#[when("以场景构建器渲染流式思考并挂载交互面")]
+fn when_mount_streaming_thinking(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.thinking("consider next edit");
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.open_hit_viewport(200);
+    let plain = fx.render_plain(80);
+    *tui_interaction.mounted_frame.borrow_mut() = plain;
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[then("流式思考正文可见")]
+fn then_streaming_thought_body_visible(tui_interaction: &TuiInteraction) {
+    let plain = tui_interaction.mounted_frame.borrow();
+    assert!(
+        plain.contains("consider next edit"),
+        "streaming thinking body must be visible:\n{plain}"
+    );
+    assert!(
+        plain.contains("Thinking"),
+        "streaming thinking header must be Thinking:\n{plain}"
+    );
+}
+
+#[when("左键单击流式思考块头")]
+fn when_click_streaming_thinking_header(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    let _ = fx.render_plain(80);
+    let (col, row) = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find_map(|r| match &r.target {
+            FoldTarget::Thinking(_) => Some((r.col_start as u16, r.content_row as u16)),
+            _ => None,
+        })
+        .expect("streaming thinking header must be registered");
+    assert!(
+        fx.left_click(col, row),
+        "streaming thinking click must consume"
+    );
+    *tui_interaction.mounted_frame.borrow_mut() = fx.render_plain(80);
+}
+
+#[then("流式思考正文收起且 Thinking 头仍在")]
+fn then_streaming_thought_body_folded(tui_interaction: &TuiInteraction) {
+    let plain = tui_interaction.mounted_frame.borrow();
+    assert!(
+        plain.contains("Thinking"),
+        "collapsed stream must keep Thinking header:\n{plain}"
+    );
+    assert!(
+        !plain.contains("consider next edit"),
+        "collapsed stream must hide thinking body:\n{plain}"
+    );
+}
+
+#[when("再追加流式思考增量")]
+fn when_append_streaming_thinking_delta(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    fx.push_xy(XyEvent::ThinkingDelta(" plus more".into()));
+    *tui_interaction.mounted_frame.borrow_mut() = fx.render_plain(80);
+}
+
+#[then("流式思考正文保持收起")]
+fn then_streaming_thought_stays_folded(tui_interaction: &TuiInteraction) {
+    let plain = tui_interaction.mounted_frame.borrow();
+    assert!(
+        !plain.contains("consider next edit") && !plain.contains("plus more"),
+        "later deltas must not reopen collapsed streaming thinking:\n{plain}"
+    );
+    assert!(
+        plain.contains("Thinking"),
+        "collapsed stream must keep Thinking header after delta:\n{plain}"
+    );
+}
+
 #[then("簇即为折叠收纳态且无内层块登记")]
 fn then_storage_collapsed_no_inner_hits(tui_interaction: &TuiInteraction) {
     let fx = tui_interaction.fx.borrow();

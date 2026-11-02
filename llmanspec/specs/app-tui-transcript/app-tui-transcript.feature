@@ -52,7 +52,7 @@
       那么 收起块保留摘要行且折叠三角可见
   @req:r1372
   规则: expandable-key-hints
-    可展开块旁 不得提示组合键名。thinking 块外显标签 须为 Title Case：思考通道流式期间为 Thinking；思考通道结束后为 Thought，有可靠思考通道起止墙钟时 须写 Thought {Ns}（如 Thought 17s）；起止 须为思考开始到思考通道切走（先到的正文、工具意图或 ThinkingEnd），不得计入随后正文或工具流；不得在思考流式过程中每帧刷新时长。流式 thinking 正文 须在流式期间保持展开（ActivityFold 开关同），结束后可折叠。agent_demo 允许保留组合键演示（非产品文案）。
+    可展开块旁 不得提示组合键名。thinking 块外显标签 须为 Title Case：思考通道流式期间为 Thinking；思考通道结束后为 Thought，有可靠思考通道起止墙钟时 须写 Thought {Ns}（如 Thought 17s）；起止 须为思考开始到思考通道切走（先到的正文、工具意图或 ThinkingEnd），不得计入随后正文或工具流；不得在思考流式过程中每帧刷新时长。流式 thinking 正文 须在流式期间默认展开，用户可折；折叠只影响呈现，不得丢弃已累积增量，新增量 不得把用户收起的块重新展开。结束后可按有效态折叠。agent_demo 允许保留组合键演示（非产品文案）。
 
     场景: 思考标签时长与无键名旁注无头
       当 以场景构建器回放思考加工具并结算 7 秒封轮挂载交互面
@@ -170,7 +170,7 @@
       那么 工具族默认展开态翻转且块级覆盖清空
   @req:r1351
   规则: thinking-per-id-fold
-    产品 Thinking 块 须支持 per-id 展开态（默认 thinking 展开态加 per-id 覆盖，覆盖优先）；每条 Thinking 须有稳定 id，且 live 与 travel/fork/resume 重建路径 须对同一逻辑块使用同一 id。左键单击该块折叠三角列 须仅翻转该 Thinking 的覆盖。翻转 thinking 默认展开态并清空全部 thinking 覆盖 须由 app.thinking.toggle 动作提供（默认无和弦，见 app-tui-mouse-actions default-binding-contraction）。思考通道流式期间外显 须为 Thinking；思考通道结束后 须为 Thought（有可靠思考通道起止墙钟则 Thought {Ns}）。resume / rebuild 须优先用落地的 thinkingElapsedSecs；否则用落盘思考通道起止节点 unix-ms 相减；缺任一端 须省略时长，不得用相邻条目墙钟冒充思考时长，禁止伪造。流式 thinking 正文 须在流式期间保持展开（ActivityFold 开关同，与 att8 一致），结束后可按有效态折叠。
+    产品 Thinking 块 须支持 per-id 展开态（默认 thinking 展开态加 per-id 覆盖，覆盖优先）；每条 Thinking 须有稳定 id，且 live 与 travel/fork/resume 重建路径 须对同一逻辑块使用同一 id。左键单击该块折叠三角列 须仅翻转该 Thinking 的覆盖。翻转 thinking 默认展开态并清空全部 thinking 覆盖 须由 app.thinking.toggle 动作提供（默认无和弦，见 app-tui-mouse-actions default-binding-contraction）。思考通道流式期间外显 须为 Thinking；思考通道结束后 须为 Thought（有可靠思考通道起止墙钟则 Thought {Ns}）。resume / rebuild 须优先用落地的 thinkingElapsedSecs；否则用落盘思考通道起止节点 unix-ms 相减；缺任一端 须省略时长，不得用相邻条目墙钟冒充思考时长，禁止伪造。流式 thinking 使用稳定 live id；无覆盖时默认展开（与已封 Thought 默认折叠不同），覆盖优先。点该块头 须收起或展开正文；结束后覆盖 须迁到落地 id，未触碰则按已封默认折叠。
 
     场景: 思考每标识折叠点击与全量重置无头
       当 以场景构建器回放思考加工具并封轮挂载交互面
@@ -220,7 +220,7 @@
       并且 全帧不出现 Worked for 与 Planning next moves
   @req:r1355
   规则: activity-fold-layered-with-l1
-    信封或簇折叠时：被收纳的内层块 不得进入渲染（流式 thinking 正文例外，须以 live 行保持可见）；Alt+E、Ctrl+T、Ctrl+O 与 per-id 块级覆盖 不得改变该折叠外观；被收纳块的折叠三角 不得登记。信封与簇均展开时：既有块级默认态、覆盖表与三角命中 须照常生效。折叠态切换 须遵守 ath25：禁止因此对全部历史助手正文重做 Markdown 解析。
+    信封或簇折叠时：被收纳的内层块 不得进入渲染；流式 thinking 块例外：须仍以 live 头行呈现，正文是否可见 须服从该块折叠有效态（流式默认展开、用户可折），不得因簇折叠而强制展开或强制收起。Alt+E、Ctrl+T、Ctrl+O 与其它 per-id 块级覆盖 不得改变该折叠外观；被收纳块的折叠三角 不得登记（该 live thinking 头例外，须可点）。信封与簇均展开时：既有块级默认态、覆盖表与三角命中 须照常生效。折叠态切换 须遵守 ath25：禁止因此对全部历史助手正文重做 Markdown 解析。
 
     场景: 活动折叠分层折叠隐藏块无头
       当 以场景构建器回放读后改写序列并封轮挂载交互面
@@ -316,7 +316,7 @@
       那么 Compaction、输出提示带与块级三角登记于同一命中表且定点可点
   @req:r1364
   规则: activity-live-window
-    流式当前轮 须使用 live window，不得整轮收成 Worked for 信封。不得画 Planning next moves 占位行；尚无可展示助手正文且无 thinking/Ask/工具时 不得画空助手气泡，busy 短词走状态条 Working 或 Running {name}。Thinking 流 须画 Thinking 簇头且正文可见（流式期间默认展开，无时长；与工具同簇且簇折叠时 须以独立 Thinking 行呈现正文）；思考通道结束后 须更新为 Thought，有可靠思考通道起止墙钟 须写 Thought {Ns}（如 Thought 17s）；起止 须不含随后正文或工具流；已封 Thought 簇 不得因后续 Thinking 流改回 Thinking；resume 优先落地 thinkingElapsedSecs，否则思考通道节点 unix-ms 相减，缺戳则省略时长；不得用相邻条目墙钟冒充思考时长；不得流式每帧刷新时长。仅 thinking 的簇 不得同时画 Thinking/Thought 簇头与 thinking L1 头（合并为一行）。与工具同簇时簇头走 att24 真实活动，L1 仍可 Thought {Ns}。Ask 等待 须显示 Asking questions，且 Ask 块 须可交互、不得折没。打开簇有进行中或已结束的工具时 须画带折叠三角的簇头（att24 进行时 Editing / Exploring / Running）；流式工具块 须作为该簇子项，默认折叠，点簇头三角 须可展开（含流式）。同一打开簇内工具结束或多次调用归并 不得自动收起已展开的子项。paint 不得每帧改折叠态。不得把进行中工具只画成无三角的 live 尾行而藏起块。不得把无改写的读文件写成 Editing；不得虚构 Explored。助手正文 不得被收进簇。已封簇与更早内容 不得因打开簇更新而重算。点 Asking questions 须揭开已算好的 sealed 细账。状态条短词 须仍为 Working 或 Running {name}。已结束轮何时套 Worked for 信封见 att26，不在 live window 内提前套。
+    流式当前轮 须使用 live window，不得整轮收成 Worked for 信封。不得画 Planning next moves 占位行；尚无可展示助手正文且无 thinking/Ask/工具时 不得画空助手气泡，busy 短词走状态条 Working 或 Running {name}。Thinking 流 须画 Thinking 簇头且正文默认可见（流式期间默认展开、用户可折，无时长；与工具同簇且簇折叠时 须以独立 Thinking 行呈现，正文服从该块折叠有效态）；思考通道结束后 须更新为 Thought，有可靠思考通道起止墙钟 须写 Thought {Ns}（如 Thought 17s）；起止 须不含随后正文或工具流；已封 Thought 簇 不得因后续 Thinking 流改回 Thinking；resume 优先落地 thinkingElapsedSecs，否则思考通道节点 unix-ms 相减，缺戳则省略时长；不得用相邻条目墙钟冒充思考时长；不得流式每帧刷新时长。仅 thinking 的簇 不得同时画 Thinking/Thought 簇头与 thinking L1 头（合并为一行）。与工具同簇时簇头走 att24 真实活动，L1 仍可 Thought {Ns}。Ask 等待 须显示 Asking questions，且 Ask 块 须可交互、不得折没。打开簇有进行中或已结束的工具时 须画带折叠三角的簇头（att24 进行时 Editing / Exploring / Running）；流式工具块 须作为该簇子项，默认折叠，点簇头三角 须可展开（含流式）。同一打开簇内工具结束或多次调用归并 不得自动收起已展开的子项。paint 不得每帧改折叠态。不得把进行中工具只画成无三角的 live 尾行而藏起块。不得把无改写的读文件写成 Editing；不得虚构 Explored。助手正文 不得被收进簇。已封簇与更早内容 不得因打开簇更新而重算。点 Asking questions 须揭开已算好的 sealed 细账。状态条短词 须仍为 Working 或 Running {name}。已结束轮何时套 Worked for 信封见 att26，不在 live window 内提前套。
 
     场景: 在线窗口无信封无头
       当 以场景构建器渲染流式思考中的 live window
@@ -324,6 +324,14 @@
       当 以场景构建器渲染含助手正文的 live window
       那么 助手正文可见且仍无信封封套
       并且 全帧不出现 Worked for 与 Planning next moves
+
+    场景: 流式思考可点击折叠无头
+      当 以场景构建器渲染流式思考并挂载交互面
+      那么 流式思考正文可见
+      当 左键单击流式思考块头
+      那么 流式思考正文收起且 Thinking 头仍在
+      当 再追加流式思考增量
+      那么 流式思考正文保持收起
   @req:r1365
   规则: cluster-split-assistant-body
     簇边界 须以已可展示的助手正文划分：正文第一个非空白字符 须封口上一打开簇。Thinking、工具、Ask、Diff 不得单独切簇；Compaction 例外：须封口当前打开簇并自成单例簇独立成块（簇头呈现遵守 att23），其后中间活动 须另起新簇；连续多条 Compaction 各自成块。同一轮中途再思考仍留在打开簇内，簇头措辞见 att24。同一条目序下 live 与 resume/rebuild 切分 须同构。待办栏不在对话条目中，不得参与切簇。

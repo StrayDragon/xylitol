@@ -5892,15 +5892,43 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         "MUST NOT paint Planning placeholder: {plain}"
     );
 
-    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
-    let opened = strip_ansi(&root.render(100).join("\n"));
     assert!(
-        opened.contains("consider next edit"),
-        "opening Thinking reveals the stream: {opened}"
+        root.fold_hits().regions.iter().any(|r| matches!(
+            &r.target,
+            FoldTarget::Thinking(id) if id.as_str() == super::bridge::STREAMING_THINK_ID
+        )),
+        "live thought-only header must register Thinking fold: {:?}",
+        root.fold_hits().regions
+    );
+
+    root.toggle_fold_target(FoldTarget::Thinking(
+        super::bridge::STREAMING_THINK_ID.into(),
+    ));
+    let folded = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        folded.contains("Thinking") && !folded.contains("Thought"),
+        "collapsed stream is still Thinking: {folded}"
     );
     assert!(
-        opened.contains("Thinking") && !opened.contains("Thought"),
-        "expanded stream is still Thinking: {opened}"
+        !folded.contains("consider next edit"),
+        "clicking Thinking hides the stream: {folded}"
+    );
+
+    apply_xy_event(&mut model, &XyEvent::ThinkingDelta(" plus more".into()));
+    root.apply_ui_model(&model);
+    let still = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        !still.contains("consider next edit") && !still.contains("plus more"),
+        "later deltas must not reopen a user-collapsed stream: {still}"
+    );
+
+    root.toggle_fold_target(FoldTarget::Thinking(
+        super::bridge::STREAMING_THINK_ID.into(),
+    ));
+    let opened = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("consider next edit") && opened.contains("plus more"),
+        "re-expand shows the full buffer: {opened}"
     );
 
     let expect_dur = model
@@ -5922,8 +5950,8 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         "flushed thought-only cluster MUST NOT keep Thinking: {flushed}"
     );
     assert!(
-        flushed.contains("consider next edit"),
-        "expand survives flush: {flushed}"
+        flushed.contains("consider next edit") && flushed.contains("plus more"),
+        "explicit expand survives flush: {flushed}"
     );
 }
 
@@ -5990,14 +6018,20 @@ fn activity_fold_live_thinking_stream_keeps_own_bar_in_tool_cluster() {
     root.toggle_fold_target(FoldTarget::Thinking(
         super::bridge::STREAMING_THINK_ID.into(),
     ));
-    let revealed = strip_ansi(&root.render(100).join("\n"));
+    let folded = strip_ansi(&root.render(100).join("\n"));
     assert!(
-        revealed.contains("weigh results"),
-        "clicking the Thinking bar reveals the stream: {revealed}"
+        !folded.contains("weigh results"),
+        "clicking the Thinking bar hides the stream: {folded}"
     );
     assert!(
-        revealed.contains("Running 1 command"),
-        "cluster header keeps the real activity wording: {revealed}"
+        folded.contains("Running 1 command"),
+        "cluster header keeps the real activity wording: {folded}"
+    );
+    assert!(
+        folded
+            .lines()
+            .any(|l| l.contains("Thinking") && !l.contains('(')),
+        "collapsed live thinking keeps its L1 bar: {folded}"
     );
 
     apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });

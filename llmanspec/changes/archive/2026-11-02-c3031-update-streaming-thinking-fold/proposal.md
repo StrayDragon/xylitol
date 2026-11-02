@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 流式思考块可折叠且增量不丢失
+branch: sdd/c3031-update-streaming-thinking-fold
+base_branch: main
+base_sha: df562ba5888bd110063d2480c6f94fc43efdc15d
 ---
 
 ## Why

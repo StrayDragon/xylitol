@@ -11,6 +11,7 @@ use crate::layout::LayoutTheme;
 
 use super::super::fold_hit::{FoldHitTable, FoldTarget};
 use super::super::glyphs::GlyphSet;
+use super::ScrollbackFold;
 use super::paint::{inter_block_spacer, push_wrapped};
 
 #[allow(clippy::too_many_arguments)]
@@ -55,6 +56,7 @@ pub(super) fn paint_cluster_header_row(
     ci: usize,
     model: &UiModel,
     activity: &ActivityFoldState,
+    fold: &ScrollbackFold,
     live_seg_idx: Option<usize>,
     glyphs: GlyphSet,
     theme: LayoutTheme,
@@ -67,12 +69,19 @@ pub(super) fn paint_cluster_header_row(
         lines.push(inter_block_spacer(width));
     }
     let live_seg = live_seg_idx == Some(si);
-    let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
     let progressive = is_open_live_cluster(seg, ci, live_seg);
     let mut counts = count_cluster(&model.entries, cl);
-    if let Some(id) = live_think_id_for_cluster(model, cl, progressive) {
+    let live_think = live_think_id_for_cluster(model, cl, progressive);
+    if let Some(id) = live_think.as_deref() {
         counts = counts.with_live_think(id);
     }
+    let thought_only_live =
+        counts.is_thought_only() && live_think.as_deref() == Some(STREAMING_THINK_ID);
+    let expanded = if thought_only_live {
+        fold.thinking_effective(STREAMING_THINK_ID)
+    } else {
+        activity.cluster_kids_visible(&seg.id, &cl.id)
+    };
     let thought_dur = counts
         .is_thought_only()
         .then(|| thought_duration_label(model, cl))
@@ -87,12 +96,12 @@ pub(super) fn paint_cluster_header_row(
     let painted = theme.paint_muted(&plain);
     let row_start = lines.len();
     push_wrapped(lines, &painted, width);
-    fold_hits.push(
-        row_start,
-        0,
-        width.max(1),
-        FoldTarget::Cluster(cl.id.clone()),
-    );
+    let target = if thought_only_live {
+        FoldTarget::Thinking(STREAMING_THINK_ID.to_string())
+    } else {
+        FoldTarget::Cluster(cl.id.clone())
+    };
+    fold_hits.push(row_start, 0, width.max(1), target);
     *need_spacer = true;
 }
 
@@ -100,45 +109,47 @@ pub(super) fn paint_cluster_header_row(
 pub(super) fn paint_folded_streaming_thought(
     lines: &mut Vec<String>,
     fold_hits: &mut FoldHitTable,
-    activity: &ActivityFoldState,
-    model: &UiModel,
-    segments: &[crate::activity_fold::ActivitySegment],
+    fold: &ScrollbackFold,
+    text: &str,
     live_open_cluster: bool,
     live_open_cluster_thought_only: bool,
-    text: &str,
     glyphs: GlyphSet,
     theme: LayoutTheme,
     width: usize,
 ) {
-    if live_open_cluster {
-        if live_open_cluster_thought_only {
+    let expanded = fold.thinking_effective(STREAMING_THINK_ID);
+    if live_open_cluster && live_open_cluster_thought_only {
+        if expanded {
             push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
-            return;
         }
-        let marker = glyphs.unfold();
-        let header = theme.paint_muted(&format!("{marker} Thinking"));
-        let row_start = lines.len();
-        push_wrapped(lines, &header, width);
-        push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
-        fold_hits.push_rect(
-            row_start,
-            0,
-            width.max(1),
-            lines.len().saturating_sub(row_start).max(1),
-            FoldTarget::Thinking(STREAMING_THINK_ID.to_string()),
-        );
         return;
     }
 
-    let (env_id, cluster_id) = next_live_thought_cluster_id(&model.entries, segments);
-    let expanded = activity.cluster_kids_visible(&env_id, &cluster_id);
-    let counts = streaming_thought_counts();
-    let plain = format_cluster_header(glyphs, &counts, expanded, true, None);
-    let painted = theme.paint_muted(&plain);
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let header = if live_open_cluster {
+        theme.paint_muted(&format!("{marker} Thinking"))
+    } else {
+        let counts = streaming_thought_counts();
+        theme.paint_muted(&format_cluster_header(
+            glyphs, &counts, expanded, true, None,
+        ))
+    };
     let row_start = lines.len();
-    push_wrapped(lines, &painted, width);
-    fold_hits.push(row_start, 0, width.max(1), FoldTarget::Cluster(cluster_id));
-    push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
+    push_wrapped(lines, &header, width);
+    if expanded {
+        push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
+    }
+    fold_hits.push_rect(
+        row_start,
+        0,
+        width.max(1),
+        lines.len().saturating_sub(row_start).max(1),
+        FoldTarget::Thinking(STREAMING_THINK_ID.to_string()),
+    );
 }
 
 fn thought_duration_label(
@@ -156,22 +167,6 @@ fn thought_duration_label(
         }
     }
     (secs > 0).then(|| format_elapsed_secs(secs))
-}
-
-fn next_live_thought_cluster_id(
-    entries: &[UiEntry],
-    segments: &[crate::activity_fold::ActivitySegment],
-) -> (String, String) {
-    if let Some(seg) = segments.last() {
-        let id = format!("{}:c{}", seg.id, seg.clusters.len());
-        return (seg.id.clone(), id);
-    }
-    let user_idx = entries
-        .iter()
-        .rposition(|e| matches!(e, UiEntry::User { .. }))
-        .unwrap_or(0);
-    let env = format!("seg-{user_idx}");
-    (env.clone(), format!("{env}:c0"))
 }
 
 pub(super) fn is_open_live_cluster(

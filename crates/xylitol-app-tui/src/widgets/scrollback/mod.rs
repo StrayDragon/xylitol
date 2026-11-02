@@ -17,7 +17,7 @@ use crate::activity_fold::{
     ActivityFoldState, ActivitySegment, SegmentLevel, cluster_is_thought_only,
     cluster_middle_indices, cluster_omits_header, middle_entry_indices, partition_segments,
 };
-use crate::bridge::{StreamingTailKind, UiEntry, UiModel, UiPhase};
+use crate::bridge::{STREAMING_THINK_ID, StreamingTailKind, UiEntry, UiModel, UiPhase};
 use crate::layout::LayoutTheme;
 
 use super::fold_hit::{FoldHitTable, FoldTarget};
@@ -75,10 +75,13 @@ impl ScrollbackFold {
     }
 
     pub fn thinking_effective(&self, id: &str) -> bool {
-        self.thinking_overrides
-            .get(id)
-            .copied()
-            .unwrap_or(self.thinking_expanded)
+        self.thinking_overrides.get(id).copied().unwrap_or_else(|| {
+            if id == STREAMING_THINK_ID {
+                true
+            } else {
+                self.thinking_expanded
+            }
+        })
     }
 
     pub fn toggle_tools(&mut self, id: &str) {
@@ -274,6 +277,7 @@ pub fn render_scrollback(
                     ci,
                     model,
                     activity,
+                    fold,
                     live_seg_idx,
                     glyphs,
                     theme,
@@ -292,6 +296,7 @@ pub fn render_scrollback(
                 ci,
                 model,
                 activity,
+                fold,
                 live_seg_idx,
                 glyphs,
                 theme,
@@ -413,26 +418,17 @@ pub fn render_scrollback(
         need_spacer = true;
         match kind {
             StreamingTailKind::Thinking => {
-                if activity.settings.enabled {
-                    paint_folded_streaming_thought(
-                        &mut lines,
-                        fold_hits,
-                        activity,
-                        model,
-                        &segments,
-                        plan.live_open_cluster,
-                        plan.live_open_cluster_thought_only,
-                        text,
-                        glyphs,
-                        theme,
-                        width,
-                    );
-                } else {
-                    let marker = glyphs.unfold();
-                    let header = theme.paint_muted(&format!("{marker} Thinking"));
-                    push_wrapped(&mut lines, &header, width);
-                    push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
-                }
+                paint_folded_streaming_thought(
+                    &mut lines,
+                    fold_hits,
+                    fold,
+                    text,
+                    activity.settings.enabled && plan.live_open_cluster,
+                    activity.settings.enabled && plan.live_open_cluster_thought_only,
+                    glyphs,
+                    theme,
+                    width,
+                );
             }
             StreamingTailKind::Assistant => {
                 lines.extend(paint_streaming_assistant(
