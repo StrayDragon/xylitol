@@ -225,6 +225,17 @@ pub fn classify_dead(
     )
 }
 
+#[cfg(all(feature = "server", target_os = "macos"))]
+unsafe extern "C" {
+    fn proc_pidinfo(
+        pid: libc::c_int,
+        flavor: libc::c_int,
+        arg: u64,
+        buffer: *mut libc::c_void,
+        buffersize: libc::c_int,
+    ) -> libc::c_int;
+}
+
 #[cfg(feature = "server")]
 pub fn pid_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
@@ -238,7 +249,36 @@ pub fn pid_alive(pid: u32) -> bool {
         };
         !matches!(rest.trim().chars().next(), Some('Z'))
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        let Ok(pid) = i32::try_from(pid) else {
+            return false;
+        };
+        const PROC_PIDTBSDINFO: libc::c_int = 3;
+        const PROC_BSDINFO_SIZE: usize = 136;
+        const PBI_STATUS_OFFSET: usize = 4;
+        let mut info = [0u8; PROC_BSDINFO_SIZE];
+        let filled = unsafe {
+            proc_pidinfo(
+                pid,
+                PROC_PIDTBSDINFO,
+                0,
+                info.as_mut_ptr().cast(),
+                PROC_BSDINFO_SIZE as libc::c_int,
+            )
+        };
+        if filled < (PBI_STATUS_OFFSET + size_of::<u32>()) as libc::c_int {
+            return false;
+        }
+        let status = u32::from_ne_bytes([
+            info[PBI_STATUS_OFFSET],
+            info[PBI_STATUS_OFFSET + 1],
+            info[PBI_STATUS_OFFSET + 2],
+            info[PBI_STATUS_OFFSET + 3],
+        ]);
+        status != libc::SZOMB
+    }
+    #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
     {
         let Ok(pid) = i32::try_from(pid) else {
             return false;
