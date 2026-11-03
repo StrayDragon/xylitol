@@ -13,7 +13,7 @@
 
 # 仓库级 Agent 指南
 
-`xylitol` 是一个 **coding agent** 实现
+**XYlitol**（命令 / crate：`xylitol`）是一个 **coding agent** 实现
 
 Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成员以根 `Cargo.toml` 为准。开发由 llman SDD 驱动。
 

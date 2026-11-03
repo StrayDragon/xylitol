@@ -82,6 +82,12 @@ fn test_c2826_atc_loaded_resources(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "头部卡含产品名"
+)]
+fn test_header_card_product_name(fixed_zone_bdd: FixedZoneBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "页脚派生百分比来自API用量"
 )]
 async fn test_c2826_atc_footer_percent(fixed_zone_bdd: FixedZoneBdd) {}

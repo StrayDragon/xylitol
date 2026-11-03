@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: 用户体验 — 鉴权引导消息、错误消息与启动诊断。
+# purpose: 用户体验 — 鉴权引导消息、错误消息、启动诊断与产品展示名。
 
 功能: user-experience
 
@@ -36,3 +36,9 @@
     场景: 确保失败诊断可操作
       当 读取拉起失败与就绪超时与非 xylitol 占用的诊断
       那么 各诊断可操作且不只提示先手 serve
+  @req:r3066
+  规则: product-display-identity
+    产品给人看的名字必须是 XYlitol（前两字母大写、其余小写）；命令名、crate、配置目录、数据目录与环境变量必须保持 xylitol 或 XYLITOL_*。面向人的文案（TUI 头卡、README 标题、CLI about）必须用 XYlitol，不得把 xylitol 当作产品展示名，不得展示木糖醇中文标签。
+    场景: CLI帮助展示产品名
+      当 xylitol --help
+      那么 帮助文案含 XYlitol 且命令名为 xylitol

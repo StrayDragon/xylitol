@@ -146,6 +146,15 @@ fn w_ce16_top_help(cli_help_bdd: &CliHelpBdd) {
     cli_help_bdd.ok.set(true);
 }
 
+#[then("帮助文案含 XYlitol 且命令名为 xylitol")]
+fn t_help_product_identity(cli_help_bdd: &CliHelpBdd) {
+    use clap::CommandFactory;
+    let help = cli_help_bdd.out.borrow();
+    assert!(help.contains("XYlitol"), "CLI about 须含 XYlitol：{help}");
+    let cmd = xylitol::cli::CliArgs::command();
+    assert_eq!(cmd.get_name(), "xylitol");
+}
+
 #[then("Commands 含 serve 为顶层且不含 tokenizer 与 resources")]
 fn t_ce16_ops_toplevel_legacy(cli_help_bdd: &CliHelpBdd) {
     t_ce16_ops_toplevel(cli_help_bdd);

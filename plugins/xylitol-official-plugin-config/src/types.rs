@@ -834,7 +834,7 @@ otel:
   endpoint: "http://127.0.0.1:3000/api/public/otel"
   protocol: http-binary
   environment: dev
-  service_name: xylitol
+  service_name: XYlitol
 "#,
         )
         .expect("otel section");
@@ -845,6 +845,7 @@ otel:
         );
         assert_eq!(cfg.otel.protocol, OtelHttpProtocol::HttpBinary);
         assert_eq!(cfg.otel.environment.as_deref(), Some("dev"));
+        assert_eq!(cfg.otel.service_name.as_deref(), Some("XYlitol"));
         assert_eq!(cfg.otel.export_timeout_secs, 60);
     }
 

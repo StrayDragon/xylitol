@@ -2,6 +2,9 @@
 depends_on: []
 title: 产品对外身份改为 XYlitol
 needs_specs_change: true
+branch: sdd/c3046-update-product-identity
+base_branch: main
+base_sha: 63fafb8d90e32dc4d4d6fa31b737e8173d64c6c4
 ---
 
 # 产品对外身份改为 XYlitol

@@ -223,3 +223,6 @@
     场景: 已跳过压缩单一估算
       当 以观测闸开启并触发一次会话压缩
       那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane
+  @req:r3068
+  规则: otel-default-service-name
+    未配置 otel.service_name（缺省、空或仅空白）时，OTLP resource 的 service.name 必须为 XYlitol；显式配置必须原样使用。不得把 instrumentation scope 或日志 target 改成产品展示名。由单测覆盖，不得单独扩 BDD step。

@@ -9,7 +9,7 @@ use crate::provider::obs_session::ObsSessionContext;
 
 pub fn default_user_agent() -> String {
     format!(
-        "xylitol/{} ({}; rust; {})",
+        "XYlitol/{} ({}; rust; {})",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         std::env::consts::ARCH
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn user_agent_identifies_xylitol() {
         let ua = super::default_user_agent();
-        assert!(ua.starts_with("xylitol/"));
+        assert!(ua.starts_with("XYlitol/"));
         assert!(ua.contains(std::env::consts::OS));
         assert!(ua.contains(std::env::consts::ARCH));
     }

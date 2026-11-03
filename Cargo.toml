@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
 repository = "https://github.com/straydragon/xylitol"
-description = "Out-of-the-box personal coding agent (LLM-augmented dev toolkit)"
+description = "XYlitol — out-of-the-box personal coding agent (LLM-augmented dev toolkit)"
 keywords = []
 categories = []
 

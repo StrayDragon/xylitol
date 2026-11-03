@@ -155,6 +155,12 @@ fn test_c2826_unset_display(cli_entry_bdd: CliEntryBdd) {}
     name = "CLI为独立表面"
 )]
 fn test_ce_surface_independent(cli_help_bdd: CliHelpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/user-experience/user-experience.feature",
+    name = "CLI帮助展示产品名"
+)]
+fn test_ux_help_product_name(cli_help_bdd: CliHelpBdd) {}
 #[scenario(
     path = "llmanspec/specs/cli-entry/cli-entry.feature",
     name = "应用表面到达agent经Driver缝"

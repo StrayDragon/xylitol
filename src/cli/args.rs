@@ -111,7 +111,7 @@ pub enum CliCommand {
 #[command(
     name = "xylitol",
     version,
-    about = "Personal coding agent — default entry is the interactive TUI"
+    about = "XYlitol — personal coding agent; default entry is the interactive TUI"
 )]
 pub struct CliArgs {
     #[command(subcommand)]

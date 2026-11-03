@@ -7054,7 +7054,7 @@ mod slice_tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(
-            content.contains("xylitol")
+            content.contains("XYlitol")
                 && content.contains("skills")
                 && content.contains("demo")
                 && !content.contains("..."),
@@ -7107,7 +7107,7 @@ mod slice_tests {
         session.refresh_loaded_resources(&driver).await;
 
         let frame = root.borrow_mut().render(80).join("\n");
-        assert!(frame.contains("xylitol"), "brand must remain: {frame}");
+        assert!(frame.contains("XYlitol"), "brand must remain: {frame}");
         assert!(!frame.contains("木糖醇"), "must not show 木糖醇: {frame}");
         assert!(
             !frame.contains("Skills") && !frame.contains("MCP"),

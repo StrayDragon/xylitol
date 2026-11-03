@@ -13,7 +13,7 @@ pub fn render_loaded_resources(
 ) -> Vec<String> {
     let w = width.max(1);
     if w < 8 {
-        return vec![truncate_to_width("xylitol", w, "", true)];
+        return vec![truncate_to_width("XYlitol", w, "", true)];
     }
 
     let inner = w.saturating_sub(2);
@@ -118,7 +118,7 @@ pub fn render_loaded_resources(
 fn title_line(theme: LayoutTheme, version: &str, inner_w: usize) -> String {
     let (r, g, b) = ACCENT_RGB;
     let prompt = fg_rgb(xylitol_tui::terminal_colors::RgbColor { r, g, b }, ">_");
-    let name = fg_rgb(theme.palette().on_surface, " xylitol");
+    let name = fg_rgb(theme.palette().on_surface, " XYlitol");
     let ver = theme.paint_muted(&format!(" ({version})"));
     truncate_to_width(&format!("{prompt}{name}{ver}"), inner_w, "", true)
 }
@@ -178,7 +178,7 @@ mod tests {
         );
         let joined = lines.join("\n");
         assert!(joined.contains("╭") && joined.contains("╰"), "{joined}");
-        assert!(joined.contains("xylitol"), "{joined}");
+        assert!(joined.contains("XYlitol"), "{joined}");
         assert!(!joined.contains("木糖醇"), "{joined}");
         assert!(
             joined.contains("directory") && joined.contains("~/proj"),

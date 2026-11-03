@@ -139,11 +139,15 @@
       那么 footer 含该档位标签
   @req:r1223
   规则: loaded-resources-slot
-    产品 UiRoot 须在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ xylitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MCP 连接进行中时 mcp 行 须显示可区分的 connecting 进度（含已配置数或 i/n 与当前 server id 或等价），完成后 须收敛为 connected 摘要（已连接 id 与工具数或等价）。Host 侧已有成功连接时 不得把头卡停在仅 `N configured · 0 connected` 且无 connecting 进度、无失败诊断。失败诊断 须可感且 不得用逐步滚动提示刷墙。不得展示木糖醇中文标签；不得渲染 ASCII logo 艺术字；不得用省略号截断资源名；不得列出或暗示存在 prompt templates（产品无此能力）；不得展示密钥或完整 env。snapshot 携带 obs_diag（观测通道短诊断）时卡 须追加一行 obs 诊断（与 mcp 失败诊断同形：单短行、无密钥、无完整 env）；absent 时 不得占行。
+    产品 UiRoot 须在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ XYlitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MCP 连接进行中时 mcp 行 须显示可区分的 connecting 进度（含已配置数或 i/n 与当前 server id 或等价），完成后 须收敛为 connected 摘要（已连接 id 与工具数或等价）。Host 侧已有成功连接时 不得把头卡停在仅 `N configured · 0 connected` 且无 connecting 进度、无失败诊断。失败诊断 须可感且 不得用逐步滚动提示刷墙。不得展示木糖醇中文标签；不得渲染 ASCII logo 艺术字；不得用省略号截断资源名；不得列出或暗示存在 prompt templates（产品无此能力）；不得展示密钥或完整 env。snapshot 携带 obs_diag（观测通道短诊断）时卡 须追加一行 obs 诊断（与 mcp 失败诊断同形：单短行、无密钥、无完整 env）；absent 时 不得占行。
 
     场景: 已加载资源卡片渲染技能与MCP
       当 以含 skills 与 connecting MCP 的资源快照渲染头部卡
       那么 卡含 skills 行与 mcp 行且展示连接进度
+
+    场景: 头部卡含产品名
+      当 以含 skills 与 connecting MCP 的资源快照渲染头部卡
+      那么 卡含 XYlitol 且不含木糖醇
   @req:r1226
   规则: footer-derived-context-percent
     当 footer 已展示 ContextTokenEstimate 且当前模型 context_window > 0 时，须在 used 字段后追加派生占用比：percent = tokens/context_window*100（展示 1 位小数）与紧凑 window（如 128k），形如 ` · 32.8%/128k`（used 侧紧凑例：`used 42k tokens · 32.8%/128k`）；Heuristic 须为 ` · ~p%/W`；Unknown 且有窗 须为 ` · ?%/W`；context_window 为 0 或不展示 used 字段时 不得追加 %；该百分比 须仅作展示，不得作为 should_compact / reserve 触发 SSOT，不得恢复 compaction_threshold 或百分比闸配置。

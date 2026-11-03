@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="assets/logo.svg" alt="xylitol" width="160" height="160"/>
+  <img src="assets/logo.svg" alt="XYlitol" width="160" height="160"/>
 
-  # xylitol
+  # XYlitol
 
   [![](https://img.shields.io/github/actions/workflow/status/straydragon/xylitol/ci.yaml?style=flat-square&logo=github&label=CI)](https://github.com/straydragon/xylitol/actions)
   [![](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
@@ -10,7 +10,7 @@
 
 ---
 
-xylitol 是一个实验性 Coding Agent。默认界面是终端界面（TUI），另提供一次性输出模式（Print）。支持 OpenAI 兼容接口与 Anthropic Messages 接口两类模型服务。内置工具执行和 MCP（Model Context Protocol）。
+XYlitol 是一个实验性 Coding Agent。默认界面是终端界面（TUI），另提供一次性输出模式（Print）。支持 OpenAI 兼容接口与 Anthropic Messages 接口两类模型服务。内置工具执行和 MCP（Model Context Protocol）。
 
 > [!WARNING]
 > **警告：预发布阶段（0.0.0-pre）**
@@ -23,7 +23,7 @@ xylitol 是一个实验性 Coding Agent。默认界面是终端界面（TUI）�
 ## 工作原理
 
 ```text
-xylitol TUI（客户端） ⇄ JSON-RPC 2.0（HTTP POST /rpc、WebSocket WS /rpc） ⇄ xylitol serve（宿主进程 host） ⇄ 模型服务商 / MCP / 项目文件
+XYlitol TUI（客户端） ⇄ JSON-RPC 2.0（HTTP POST /rpc、WebSocket WS /rpc） ⇄ xylitol serve（宿主进程 host） ⇄ 模型服务商 / MCP / 项目文件
 ```
 
 TUI 只负责键盘输入、界面渲染和终端（TTY）适配等端侧能力。模型、会话、工具执行、MCP 和项目信任（trust）由 host 承担。TUI 默认连接本机 host（`127.0.0.1:18790`）；若该口未在听，会自动拉起一个独立 Host（最后客户端断开后约 30 秒退出）。显式 `xylitol serve` 保持常驻。关闭 TUI 不会立刻杀掉自动拉起的 host。Print 和库嵌入在同一进程内直接调用运行时（runtime），不经过跨进程线协议（wire protocol）。
@@ -160,7 +160,7 @@ xylitol tui --trust          # 本次运行信任当前项目，加载 .xylitol/
 xylitol print "解释这个仓库的目录结构"   # 一次性输出，不开 TUI
 ```
 
-TUI 首次进入包含 `.xylitol/` 或 `.agents/skills/` 的项目时，会询问是否信任该项目。选择不信任时，xylitol 跳过项目本地资源。工具默认允许执行（allow-all）。Trust 门禁只决定项目资源是否加载，不逐个审批工具调用。会话内可用 `/trust` 持久化信任决定。
+TUI 首次进入包含 `.xylitol/` 或 `.agents/skills/` 的项目时，会询问是否信任该项目。选择不信任时，XYlitol 跳过项目本地资源。工具默认允许执行（allow-all）。Trust 门禁只决定项目资源是否加载，不逐个审批工具调用。会话内可用 `/trust` 持久化信任决定。
 
 
 ## 开发

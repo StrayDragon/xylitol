@@ -121,3 +121,6 @@
   @req:r3024
   规则: structured-output-parallel-tools
     OpenAI Responses 与 Completions 方言 必须 在生成选项要求结构化输出且工具列表非空时写 `parallel_tool_calls: false`；未要求结构化输出时 不得 改变该字段。由插件单测覆盖。
+  @req:r3067
+  规则: http-user-agent-identity
+    OpenAI 兼容与 Anthropic Messages 方言发出的 HTTP User-Agent 产品段必须为 XYlitol/<cargo 包版本>（随后可跟 OS、rust、arch 注释），大小写必须与字面量 XYlitol 一致，不得使用 xylitol/ 前缀，不得为旧前缀保留别名。由插件单测覆盖，不得单独扩 BDD step。

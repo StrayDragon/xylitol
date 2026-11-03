@@ -2049,7 +2049,7 @@ fn idle_editor_operation_zone_is_compact() {
     root.apply_ui_model(&UiModel::new());
     let lines = root.render(80);
     assert!(
-        lines.iter().any(|l| l.contains("xylitol")),
+        lines.iter().any(|l| l.contains("XYlitol")),
         "idle must show startup resources card: {lines:?}"
     );
     let border_rows = lines.iter().filter(|l| l.contains('─')).count();

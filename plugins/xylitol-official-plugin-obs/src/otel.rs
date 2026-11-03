@@ -2,6 +2,15 @@ use xylitol_official_plugin_config::types::{OtelConfig, OtelExporterKind};
 
 /// `install` caller is `cfg(feature = "otel")`.
 #[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
+pub(crate) fn resolve_service_name(cfg: &OtelConfig) -> &str {
+    cfg.service_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("XYlitol")
+}
+
+#[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 pub(crate) fn resolve_otlp_http_target(
     cfg: &OtelConfig,
 ) -> Option<(String, std::collections::HashMap<String, String>)> {
@@ -228,12 +237,7 @@ pub mod install {
         let exporter = builder.build().map_err(|e| format!("span exporter: {e}"))?;
         let exporter = ForceSampledExporter { inner: exporter };
 
-        let service_name = cfg
-            .service_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .unwrap_or("xylitol");
+        let service_name = super::resolve_service_name(cfg);
         let mut attrs = vec![KeyValue::new("service.name", service_name.to_string())];
         if let Some(env) = cfg
             .environment
@@ -310,6 +314,22 @@ mod tests {
     fn none_exporter_resolves_off() {
         let cfg = OtelConfig::default();
         assert!(resolve_otlp_http_target(&cfg).is_none());
+    }
+
+    #[test]
+    fn default_service_name_is_product_identity() {
+        let cfg = OtelConfig::default();
+        assert_eq!(resolve_service_name(&cfg), "XYlitol");
+        let blank = OtelConfig {
+            service_name: Some("  ".into()),
+            ..OtelConfig::default()
+        };
+        assert_eq!(resolve_service_name(&blank), "XYlitol");
+        let custom = OtelConfig {
+            service_name: Some("my-agent".into()),
+            ..OtelConfig::default()
+        };
+        assert_eq!(resolve_service_name(&custom), "my-agent");
     }
 
     #[test]

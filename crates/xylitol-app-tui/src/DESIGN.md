@@ -1,7 +1,7 @@
 ---
 version: "alpha"
-name: "Xylitol Terminal"
-description: "Minimal terminal design system for the xylitol product TUI — clean, copy-friendly, scrollback-native."
+name: "XYlitol Terminal"
+description: "Minimal terminal design system for the XYlitol product TUI — clean, copy-friendly, scrollback-native."
 colors:
   on-surface: "#cdd6f4"
   muted: "#7f849c"
@@ -117,7 +117,7 @@ components:
     backgroundColor: "{colors.diff-removed-word-bg}"
 ---
 
-# Design System — Xylitol Terminal
+# Design System — XYlitol Terminal
 
 > 规范：遵循 `common-design-md-zh`（中文正文 + YAML frontmatter tokens，值一律双引号）。
 > **Token SSOT**：本文件 frontmatter；运行时快照 = `crates/xylitol-tui` `Palette`（`just qa-check-tui-tokens`）。

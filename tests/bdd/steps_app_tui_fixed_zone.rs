@@ -364,6 +364,13 @@ fn w_c2826_loaded_resources(fixed_zone_bdd: &FixedZoneBdd) {
     stash(fixed_zone_bdd, vec![root.render(100).join("\n")]);
 }
 
+#[then("卡含 XYlitol 且不含木糖醇")]
+fn t_header_card_product_name(fixed_zone_bdd: &FixedZoneBdd) {
+    let frame = fixed_zone_bdd.frame.borrow().clone().expect("frame");
+    assert!(frame.contains("XYlitol"), "头卡须含 XYlitol：{frame}");
+    assert!(!frame.contains("木糖醇"), "头卡不得含木糖醇：{frame}");
+}
+
 #[then("卡含 skills 行与 mcp 行且展示连接进度")]
 fn t_c2826_loaded_resources(fixed_zone_bdd: &FixedZoneBdd) {
     let frame = fixed_zone_bdd.frame.borrow().clone().expect("frame");
