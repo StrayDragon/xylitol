@@ -119,6 +119,12 @@ async fn w_boot(infra_plugin_bdd: &InfraPluginBdd) {
         .borrow()
         .clone()
         .expect("config prepared");
+    if let Some(parent) = config_path.parent() {
+        unsafe {
+            std::env::set_var("XYLITOL_CONFIG_DIR", parent.join(".config").join("xylitol"));
+            std::env::set_var("HOME", parent);
+        }
+    }
     let opts = BootOptions {
         profile: Profile::Print,
         config_path: Some(config_path),

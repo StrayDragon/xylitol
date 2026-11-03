@@ -138,6 +138,17 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
         .map_err(|e| kernel_failed(format!("loader reconcile: {e}")))?;
 
     wait_active(&ctx, &loader).await?;
+    if let Some(config) = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>() {
+        let external_keys = config
+            .external_config_keys
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        config
+            .app
+            .validate_unknown_keys(&external_keys)
+            .map_err(|error| kernel_failed(error.to_string()))?;
+    }
     Ok((ctx, loader))
 }
 
@@ -191,7 +202,14 @@ fn default_rows(
     let config = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>();
     let mcp_servers = config
         .as_ref()
-        .and_then(|cfg| cfg.app.mcp_servers.clone())
+        .and_then(|cfg| {
+            cfg.app
+                .section::<Vec<xylitol_official_plugin_config::types::McpServerConfig>>(
+                    "mcp_servers",
+                )
+                .ok()
+                .flatten()
+        })
         .unwrap_or_default();
     let mut insert = base_rows(opts, mcp_servers);
     #[cfg(feature = "fff")]
@@ -227,7 +245,11 @@ fn external_plugin_specs(ctx: &Ctx) -> Vec<ExternalPluginConfig> {
     };
     let mut seen = std::collections::HashSet::new();
     let mut specs = Vec::new();
-    for spec in &config.app.external_plugins {
+    let specs_config: Vec<xylitol_official_plugin_config::types::ExternalPluginConfig> = config
+        .app
+        .section_or_default("external_plugins")
+        .unwrap_or_default();
+    for spec in &specs_config {
         if !spec.trusted {
             log::warn!(
                 "external plugin `{}`: not trusted (`trusted: true` required); skipped",
@@ -288,32 +310,44 @@ fn optional_plugin_rows(
         return Vec::new();
     };
     let mut rows = Vec::new();
-    if config.app.loop_policies.is_active() {
+    let loop_policies: xylitol_official_plugin_config::types::LoopPoliciesConfig = config
+        .app
+        .section_or_default("loop_policies")
+        .unwrap_or_default();
+    if loop_policies.is_active() {
         rows.push(serde_json::json!({
             "id": "loop-policies",
             "name": "loop-policies",
-            "config": config.app.loop_policies,
+            "config": loop_policies,
         }));
     }
-    if config.app.todo.is_active() {
+    let todo: xylitol_official_plugin_config::types::TodoConfig =
+        config.app.section_or_default("todo").unwrap_or_default();
+    if todo.is_active() {
         rows.push(serde_json::json!({
             "id": "todo",
             "name": "todo",
-            "config": config.app.todo,
+            "config": todo,
         }));
     }
-    if config.app.workflow.is_active() {
+    let workflow: xylitol_official_plugin_config::types::WorkflowConfig = config
+        .app
+        .section_or_default("workflow")
+        .unwrap_or_default();
+    if workflow.is_active() {
         rows.push(serde_json::json!({
             "id": "workflow",
             "name": "workflow",
-            "config": config.app.workflow,
+            "config": workflow,
         }));
     }
-    if config.app.plan.is_active() {
+    let plan: xylitol_official_plugin_config::types::PlanConfig =
+        config.app.section_or_default("plan").unwrap_or_default();
+    if plan.is_active() {
         rows.push(serde_json::json!({
             "id": "plan",
             "name": "plan",
-            "config": config.app.plan,
+            "config": plan,
         }));
     }
     rows.extend(lsp_dap_rows(config));
@@ -324,14 +358,18 @@ fn lsp_dap_rows(
     config: &xylitol_official_plugin_config::plugin::ConfigService,
 ) -> Vec<serde_json::Value> {
     let mut rows = Vec::new();
-    if let Some(lsp) = config.app.lsp.as_ref() {
+    let lsp: Option<xylitol_official_plugin_config::types::LspPluginConfig> =
+        config.app.section("lsp").ok().flatten();
+    if let Some(lsp) = lsp.as_ref() {
         rows.push(serde_json::json!({
             "id": "lsp",
             "name": "lsp",
             "config": lsp,
         }));
     }
-    if let Some(dap) = config.app.dap.as_ref() {
+    let dap: Option<xylitol_official_plugin_config::types::DapPluginConfig> =
+        config.app.section("dap").ok().flatten();
+    if let Some(dap) = dap.as_ref() {
         rows.push(serde_json::json!({
             "id": "dap",
             "name": "dap",
@@ -516,6 +554,12 @@ for line in sys.stdin:
     }
 
     fn boot_opts(config_path: std::path::PathBuf) -> BootOptions {
+        if let Some(parent) = config_path.parent() {
+            unsafe {
+                std::env::set_var("XYLITOL_CONFIG_DIR", parent.join(".config").join("xylitol"));
+                std::env::set_var("HOME", parent);
+            }
+        }
         BootOptions {
             profile: Profile::Print,
             config_path: Some(config_path),
@@ -833,6 +877,13 @@ for line in sys.stdin:
     #[tokio::test(flavor = "multi_thread")]
     async fn boot_with_self_check_print_profile() {
         let dir = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var(
+                "XYLITOL_CONFIG_DIR",
+                dir.path().join(".config").join("xylitol"),
+            );
+            std::env::set_var("HOME", dir.path());
+        }
         let config_path = dir.path().join("config.yaml");
         std::fs::write(
             &config_path,

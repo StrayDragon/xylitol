@@ -47,3 +47,7 @@
   @req:r3027
   规则: external-plugin-commands
     外部插件 必须 可声明 `commands` 能力与命令列表；内核 必须 把每个声明该能力的插件注册为 `plugin:<plugin-name>`；`plugin_command` 调用 必须 经 `commands/call` 透传参数并以文本回传结果；未注册命令、进程退出与超时 必须 返回可观察错误，不得 崩溃或静默成功。由内核单测覆盖。
+
+  @req:r3074
+  规则: external-plugin-config-section
+    外进程插件 须 可在 initialize 中声明 `config_key` 与 `config_schema`；配置中对应顶层节 须 在插件装配后由插件按 rutis 依赖顺序校验；未声明 `config_key` 的插件 不得 认领任何顶层节；多个插件声明同一 `config_key` 须 可观察失败。由内核单测覆盖。

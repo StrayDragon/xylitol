@@ -130,12 +130,7 @@ test verbosity=verbosity_default:
 test-changed:
     $XYLITOL_PY scripts/dev_test_changed.py
 
-# Generate configs/example.yaml (maintenance; not in qa).
-# Edit scripts/gen_config_example.py TEMPLATE, then re-run this recipe.
-gen-config-example:
-    $XYLITOL_PY scripts/gen_config_example.py
-
-# Regenerate configs/config.schema.json from schema_for!(AppConfig).
+# Regenerate configs/config.schema.json from the plugin section registry.
 # Drift gate lives in config-crate unit tests (via `just test`), not in qa-check-scripts.
 gen-config-schema:
     cargo run -q -p xylitol-official-plugin-config --bin gen-config-schema

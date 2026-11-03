@@ -60,13 +60,20 @@ impl Default for ToolFeatures {
 
 impl ToolFeatures {
     pub fn from_config(config: &xylitol_official_plugin_config::types::AppConfig) -> Self {
+        let todo: xylitol_official_plugin_config::types::TodoConfig =
+            config.section_or_default("todo").unwrap_or_default();
+        let plan: xylitol_official_plugin_config::types::PlanConfig =
+            config.section_or_default("plan").unwrap_or_default();
+        let workflow: xylitol_official_plugin_config::types::WorkflowConfig =
+            config.section_or_default("workflow").unwrap_or_default();
+        let tool_selection: Vec<String> = config.section_or_default("tools").unwrap_or_default();
         Self {
-            todo: config.todo.is_active(),
-            plan: config.plan.is_active(),
-            workflow: config.workflow.is_active(),
-            workflow_max_depth: config.workflow.max_depth,
-            workflow_max_total_steps: config.workflow.max_total_steps,
-            tool_selection: config.tools.clone(),
+            todo: todo.is_active(),
+            plan: plan.is_active(),
+            workflow: workflow.is_active(),
+            workflow_max_depth: workflow.max_depth,
+            workflow_max_total_steps: workflow.max_total_steps,
+            tool_selection,
         }
     }
 }

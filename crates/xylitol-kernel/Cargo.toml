@@ -37,6 +37,7 @@ async-trait = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 dirs = { workspace = true }
 futures = { workspace = true }
+jsonschema = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

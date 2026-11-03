@@ -1,4 +1,5 @@
 mod args;
+mod config_cmd;
 mod intent;
 pub use xylitol_official_plugin_obs as logging;
 mod print;
@@ -34,7 +35,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let early_otel = xylitol_kernel::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     )
-    .map(|c| c.otel)
+    .map(|c| {
+        c.section_or_default::<xylitol_kernel::config::types::OtelConfig>("otel")
+            .unwrap_or_default()
+    })
     .unwrap_or_default();
 
     logging::init_logging(
@@ -66,6 +70,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 action,
             )
             .await;
+        }
+        Some(CliCommand::Config { action }) => {
+            crate::cli::config_cmd::run(action)?;
+            return Ok(());
         }
         Some(CliCommand::Tui { .. } | CliCommand::Print { .. }) | None => {}
     }
@@ -294,10 +302,14 @@ async fn run_product_tui_attached(
     let (seed_n, activity_fold) = match xylitol_kernel::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     ) {
-        Ok(c) => (
-            c.tui.editor_history_seed_sessions,
-            crate::cli::activity_fold_settings(c.tui.activity_fold),
-        ),
+        Ok(c) => {
+            let tui: xylitol_kernel::config::types::TuiConfig =
+                c.section_or_default("tui").unwrap_or_default();
+            (
+                tui.editor_history_seed_sessions,
+                crate::cli::activity_fold_settings(tui.activity_fold),
+            )
+        }
         Err(_) => (1, xylitol_app_tui::ActivityFoldSettings::default()),
     };
     let tui_result = xylitol_app_tui::run(

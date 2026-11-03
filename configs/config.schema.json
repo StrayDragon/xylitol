@@ -1,13 +1,6 @@
 {
   "$defs": {
-    "ActivityFoldStreamCollapse": {
-      "enum": [
-        "envelope",
-        "clusters"
-      ],
-      "type": "string"
-    },
-    "AgentProfile": {
+    "agents_AgentProfile": {
       "additionalProperties": false,
       "properties": {
         "model": {
@@ -41,871 +34,7 @@
       },
       "type": "object"
     },
-    "AgentsConfig": {
-      "properties": {
-        "default_profile": {
-          "default": "default",
-          "type": "string"
-        },
-        "profiles": {
-          "additionalProperties": {
-            "$ref": "#/$defs/AgentProfile"
-          },
-          "default": {},
-          "type": "object"
-        }
-      },
-      "type": "object"
-    },
-    "DapPluginConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "backend": {
-          "default": "python3 -m debugpy.adapter",
-          "type": "string"
-        },
-        "compression": {
-          "default": true,
-          "type": "boolean"
-        },
-        "cwd": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "ExecutionConfig": {
-      "properties": {
-        "model": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "system_prompt": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "ExternalPluginConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "args": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "command": {
-          "default": "",
-          "type": "string"
-        },
-        "cwd": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "name": {
-          "default": "",
-          "type": "string"
-        },
-        "timeout_ms": {
-          "default": 30000,
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "trusted": {
-          "default": false,
-          "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
-    "GeneratorCriticConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "max_rounds": {
-          "default": 1,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "rubric": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "HookEntry": {
-      "properties": {
-        "command": {
-          "type": "string"
-        },
-        "env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "events": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "phase": {
-          "default": "",
-          "type": "string"
-        },
-        "requires_approval": {
-          "default": false,
-          "type": "boolean"
-        },
-        "timeout_secs": {
-          "default": null,
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "command"
-      ],
-      "type": "object"
-    },
-    "HooksConfig": {
-      "properties": {
-        "global": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/HookEntry"
-          },
-          "type": "array"
-        },
-        "project": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/HookEntry"
-          },
-          "type": "array"
-        },
-        "user": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/HookEntry"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "LoopPoliciesConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "deny_bash_patterns": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "generator_critic": {
-          "$ref": "#/$defs/GeneratorCriticConfig",
-          "default": {
-            "enabled": false,
-            "max_rounds": 1,
-            "rubric": []
-          }
-        },
-        "max_settles": {
-          "default": null,
-          "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "self_heal": {
-          "$ref": "#/$defs/SelfHealConfig",
-          "default": {
-            "enabled": false,
-            "max_attempts": 3,
-            "signatures": []
-          }
-        },
-        "tool_exposure": {
-          "$ref": "#/$defs/ToolExposureConfig",
-          "default": {
-            "allow": [],
-            "deny": [],
-            "enabled": false,
-            "read_only": false,
-            "write_tools": []
-          }
-        }
-      },
-      "type": "object"
-    },
-    "LspPluginConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "backend": {
-          "default": "basedpyright-langserver --stdio",
-          "type": "string"
-        },
-        "compression": {
-          "default": true,
-          "type": "boolean"
-        },
-        "language": {
-          "default": "python",
-          "type": "string"
-        },
-        "workspace_root": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "McpServerConfig": {
-      "properties": {
-        "args": {
-          "default": null,
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "command": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": null,
-          "type": [
-            "object",
-            "null"
-          ]
-        },
-        "headers": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": null,
-          "type": [
-            "object",
-            "null"
-          ]
-        },
-        "name": {
-          "type": "string"
-        },
-        "transport": {
-          "$ref": "#/$defs/McpTransportKind",
-          "default": "stdio"
-        },
-        "url": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "McpTransportKind": {
-      "enum": [
-        "stdio",
-        "sse"
-      ],
-      "type": "string"
-    },
-    "ModelsConfig": {
-      "properties": {
-        "default_model": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "models": {
-          "additionalProperties": {
-            "$ref": "#/$defs/XyModelEntryConfig"
-          },
-          "default": {},
-          "type": "object"
-        }
-      },
-      "type": "object"
-    },
-    "OtelConfig": {
-      "properties": {
-        "endpoint": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "environment": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "export_timeout_secs": {
-          "default": 60,
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "exporter": {
-          "$ref": "#/$defs/OtelExporterKind",
-          "default": "none"
-        },
-        "headers": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "observation_io": {
-          "$ref": "#/$defs/OtelObservationIo",
-          "default": "none"
-        },
-        "protocol": {
-          "$ref": "#/$defs/OtelHttpProtocol",
-          "default": "http-json"
-        },
-        "service_name": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "tool_observation_io": {
-          "$ref": "#/$defs/OtelObservationIo",
-          "default": "none"
-        }
-      },
-      "type": "object"
-    },
-    "OtelExporterKind": {
-      "enum": [
-        "none",
-        "otlp-http"
-      ],
-      "type": "string"
-    },
-    "OtelHttpProtocol": {
-      "enum": [
-        "http-binary",
-        "http-json"
-      ],
-      "type": "string"
-    },
-    "OtelObservationIo": {
-      "enum": [
-        "none",
-        "truncated",
-        "full"
-      ],
-      "type": "string"
-    },
-    "PermissionBackend": {
-      "enum": [
-        "glob"
-      ],
-      "type": "string"
-    },
-    "PermissionConfig": {
-      "properties": {
-        "backend": {
-          "$ref": "#/$defs/PermissionBackend",
-          "default": "glob"
-        },
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "filesystem": {
-          "$ref": "#/$defs/PermissionFilesystemConfig",
-          "default": {
-            "read_allowed": [],
-            "write_allowed": [],
-            "write_denied": []
-          }
-        },
-        "network": {
-          "$ref": "#/$defs/PermissionNetworkConfig",
-          "default": {
-            "allowed_domains": [],
-            "denied_domains": []
-          }
-        },
-        "process": {
-          "$ref": "#/$defs/PermissionProcessConfig",
-          "default": {
-            "allowed_paths": []
-          }
-        }
-      },
-      "type": "object"
-    },
-    "PermissionFilesystemConfig": {
-      "properties": {
-        "read_allowed": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "write_allowed": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "write_denied": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "PermissionNetworkConfig": {
-      "properties": {
-        "allowed_domains": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "denied_domains": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "PermissionProcessConfig": {
-      "properties": {
-        "allowed_paths": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "PlanConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "allowed_tools": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "enabled": {
-          "default": true,
-          "type": "boolean"
-        },
-        "read_only": {
-          "default": true,
-          "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
-    "SecurityConfig": {
-      "properties": {
-        "enabled": {
-          "default": true,
-          "type": "boolean"
-        },
-        "permission": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PermissionConfig"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "SelfHealConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "max_attempts": {
-          "default": 3,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "signatures": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "ServeConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "idle_timeout": {
-          "$ref": "#/$defs/ServeIdleTimeout",
-          "default": "30s"
-        },
-        "lifecycle": {
-          "$ref": "#/$defs/ServeLifecycleConfig",
-          "default": "last-client"
-        }
-      },
-      "type": "object"
-    },
-    "ServeIdleTimeout": {
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string"
-        }
-      ]
-    },
-    "ServeLifecycleConfig": {
-      "enum": [
-        "last-client",
-        "persistent"
-      ],
-      "type": "string"
-    },
-    "SessionConfig": {
-      "properties": {
-        "max_turns": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "SubagentConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "tools": {
-          "default": [
-            "read",
-            "grep",
-            "find",
-            "ls",
-            "ffgrep",
-            "fffind"
-          ],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "TodoConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "checkpoint": {
-          "default": false,
-          "type": "boolean"
-        },
-        "enabled": {
-          "default": true,
-          "type": "boolean"
-        },
-        "max_settles": {
-          "default": null,
-          "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "progress": {
-          "default": false,
-          "type": "boolean"
-        },
-        "reminder": {
-          "default": false,
-          "type": "boolean"
-        },
-        "reminder_stale_after": {
-          "default": 3,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
-    "ToolBatchConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "mode": {
-          "$ref": "#/$defs/ToolBatchMode",
-          "default": "barrier_parallel"
-        }
-      },
-      "type": "object"
-    },
-    "ToolBatchMode": {
-      "enum": [
-        "sequential",
-        "barrier_parallel"
-      ],
-      "type": "string"
-    },
-    "ToolExposureConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "allow": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "deny": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "read_only": {
-          "default": false,
-          "type": "boolean"
-        },
-        "write_tools": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "TuiActivityFoldConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "auto_on_rebuild": {
-          "default": true,
-          "type": "boolean"
-        },
-        "auto_on_turn_end": {
-          "default": true,
-          "type": "boolean"
-        },
-        "enabled": {
-          "default": true,
-          "type": "boolean"
-        },
-        "keep_recent_turns": {
-          "default": 2,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "stream_collapse": {
-          "$ref": "#/$defs/ActivityFoldStreamCollapse",
-          "default": "envelope"
-        }
-      },
-      "type": "object"
-    },
-    "TuiConfig": {
-      "properties": {
-        "activity_fold": {
-          "$ref": "#/$defs/TuiActivityFoldConfig",
-          "default": {
-            "auto_on_rebuild": true,
-            "auto_on_turn_end": true,
-            "enabled": true,
-            "keep_recent_turns": 2,
-            "stream_collapse": "envelope"
-          }
-        },
-        "editor_history_seed_sessions": {
-          "default": 1,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
-    "WorkflowConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "max_depth": {
-          "default": 2,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "max_replans": {
-          "default": 3,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "max_total_steps": {
-          "default": 100,
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
-    "XyCompactionSettingsConfig": {
-      "properties": {
-        "enabled": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "keepRecentTokens": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "model": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/XyModelEntryConfig"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "reserveTokens": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "thinkingLevel": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "XyModality": {
+    "compaction_XyModality": {
       "enum": [
         "text",
         "image",
@@ -914,7 +43,7 @@
       ],
       "type": "string"
     },
-    "XyModelEntryConfig": {
+    "compaction_XyModelEntryConfig": {
       "properties": {
         "api": {
           "default": null,
@@ -960,7 +89,7 @@
         "input_modalities": {
           "default": null,
           "items": {
-            "$ref": "#/$defs/XyModality"
+            "$ref": "#/$defs/compaction_XyModality"
           },
           "type": [
             "array",
@@ -982,7 +111,7 @@
         "prompt_cache": {
           "anyOf": [
             {
-              "$ref": "#/$defs/XyPromptCacheConfig"
+              "$ref": "#/$defs/compaction_XyPromptCacheConfig"
             },
             {
               "type": "null"
@@ -1027,7 +156,7 @@
       ],
       "type": "object"
     },
-    "XyPromptCacheConfig": {
+    "compaction_XyPromptCacheConfig": {
       "properties": {
         "enabled": {
           "type": [
@@ -1038,7 +167,7 @@
         "retention": {
           "anyOf": [
             {
-              "$ref": "#/$defs/XyPromptCacheRetention"
+              "$ref": "#/$defs/compaction_XyPromptCacheRetention"
             },
             {
               "type": "null"
@@ -1048,7 +177,7 @@
         "ttl": {
           "anyOf": [
             {
-              "$ref": "#/$defs/XyPromptCacheTtl"
+              "$ref": "#/$defs/compaction_XyPromptCacheTtl"
             },
             {
               "type": "null"
@@ -1058,237 +187,1134 @@
       },
       "type": "object"
     },
-    "XyPromptCacheRetention": {
+    "compaction_XyPromptCacheRetention": {
       "enum": [
         "in_memory",
         "24h"
       ],
       "type": "string"
     },
-    "XyPromptCacheTtl": {
+    "compaction_XyPromptCacheTtl": {
       "enum": [
         "5m",
         "1h"
       ],
       "type": "string"
+    },
+    "external_plugins_ExternalPluginConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "default": "",
+          "type": "string"
+        },
+        "cwd": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "default": 30000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trusted": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "hooks_HookEntry": {
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "events": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "phase": {
+          "default": "",
+          "type": "string"
+        },
+        "requires_approval": {
+          "default": false,
+          "type": "boolean"
+        },
+        "timeout_secs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "loop_policies_GeneratorCriticConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_rounds": {
+          "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rubric": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "loop_policies_SelfHealConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_attempts": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "signatures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "loop_policies_ToolExposureConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deny": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "read_only": {
+          "default": false,
+          "type": "boolean"
+        },
+        "write_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "mcp_servers_McpServerConfig": {
+      "properties": {
+        "args": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "command": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "transport": {
+          "$ref": "#/$defs/mcp_servers_McpTransportKind",
+          "default": "stdio"
+        },
+        "url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "mcp_servers_McpTransportKind": {
+      "enum": [
+        "stdio",
+        "sse"
+      ],
+      "type": "string"
+    },
+    "models_XyModality": {
+      "enum": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "type": "string"
+    },
+    "models_XyModelEntryConfig": {
+      "properties": {
+        "api": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "api_key": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "compat": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "context_window": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fallback": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_modalities": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/models_XyModality"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "max_output_tokens": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "prompt_cache": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/models_XyPromptCacheConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "provider": {
+          "type": "string"
+        },
+        "thinking": {
+          "default": true,
+          "type": "boolean"
+        },
+        "thinking_level_map": {
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "thinking_levels": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "provider",
+        "model"
+      ],
+      "type": "object"
+    },
+    "models_XyPromptCacheConfig": {
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "retention": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/models_XyPromptCacheRetention"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ttl": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/models_XyPromptCacheTtl"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "models_XyPromptCacheRetention": {
+      "enum": [
+        "in_memory",
+        "24h"
+      ],
+      "type": "string"
+    },
+    "models_XyPromptCacheTtl": {
+      "enum": [
+        "5m",
+        "1h"
+      ],
+      "type": "string"
+    },
+    "otel_OtelExporterKind": {
+      "enum": [
+        "none",
+        "otlp-http"
+      ],
+      "type": "string"
+    },
+    "otel_OtelHttpProtocol": {
+      "enum": [
+        "http-binary",
+        "http-json"
+      ],
+      "type": "string"
+    },
+    "otel_OtelObservationIo": {
+      "enum": [
+        "none",
+        "truncated",
+        "full"
+      ],
+      "type": "string"
+    },
+    "security_PermissionBackend": {
+      "enum": [
+        "glob"
+      ],
+      "type": "string"
+    },
+    "security_PermissionConfig": {
+      "properties": {
+        "backend": {
+          "$ref": "#/$defs/security_PermissionBackend",
+          "default": "glob"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "filesystem": {
+          "$ref": "#/$defs/security_PermissionFilesystemConfig",
+          "default": {
+            "read_allowed": [],
+            "write_allowed": [],
+            "write_denied": []
+          }
+        },
+        "network": {
+          "$ref": "#/$defs/security_PermissionNetworkConfig",
+          "default": {
+            "allowed_domains": [],
+            "denied_domains": []
+          }
+        },
+        "process": {
+          "$ref": "#/$defs/security_PermissionProcessConfig",
+          "default": {
+            "allowed_paths": []
+          }
+        }
+      },
+      "type": "object"
+    },
+    "security_PermissionFilesystemConfig": {
+      "properties": {
+        "read_allowed": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "write_allowed": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "write_denied": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "security_PermissionNetworkConfig": {
+      "properties": {
+        "allowed_domains": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "denied_domains": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "security_PermissionProcessConfig": {
+      "properties": {
+        "allowed_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "serve_ServeIdleTimeout": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "serve_ServeLifecycleConfig": {
+      "enum": [
+        "last-client",
+        "persistent"
+      ],
+      "type": "string"
+    },
+    "tool_batch_ToolBatchMode": {
+      "enum": [
+        "sequential",
+        "barrier_parallel"
+      ],
+      "type": "string"
+    },
+    "tui_ActivityFoldStreamCollapse": {
+      "enum": [
+        "envelope",
+        "clusters"
+      ],
+      "type": "string"
+    },
+    "tui_TuiActivityFoldConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "auto_on_rebuild": {
+          "default": true,
+          "type": "boolean"
+        },
+        "auto_on_turn_end": {
+          "default": true,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "keep_recent_turns": {
+          "default": 2,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stream_collapse": {
+          "$ref": "#/$defs/tui_ActivityFoldStreamCollapse",
+          "default": "envelope"
+        }
+      },
+      "type": "object"
+    },
+    "xylitol_UnknownKeyPolicy": {
+      "enum": [
+        "error",
+        "warn"
+      ],
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
   "properties": {
     "agents": {
-      "$ref": "#/$defs/AgentsConfig",
-      "default": {
-        "default_profile": "",
-        "profiles": {}
-      }
+      "properties": {
+        "default_profile": {
+          "default": "default",
+          "type": "string"
+        },
+        "profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/agents_AgentProfile"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "title": "AgentsConfig",
+      "type": "object"
     },
     "compaction": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/XyCompactionSettingsConfig"
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
-        {
-          "type": "null"
+        "keepRecentTokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/compaction_XyModelEntryConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reserveTokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "thinkingLevel": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      ],
-      "default": null
+      },
+      "title": "XyCompactionSettingsConfig",
+      "type": "object"
     },
     "dap": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/DapPluginConfig"
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "default": "python3 -m debugpy.adapter",
+          "type": "string"
         },
-        {
-          "type": "null"
+        "compression": {
+          "default": true,
+          "type": "boolean"
+        },
+        "cwd": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      ],
-      "default": null
+      },
+      "title": "DapPluginConfig",
+      "type": "object"
     },
     "execution": {
-      "$ref": "#/$defs/ExecutionConfig",
-      "default": {
-        "model": null,
-        "system_prompt": null
-      }
+      "properties": {
+        "model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "system_prompt": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ExecutionConfig",
+      "type": "object"
     },
     "external_plugins": {
-      "default": [],
       "items": {
-        "$ref": "#/$defs/ExternalPluginConfig"
+        "$ref": "#/$defs/external_plugins_ExternalPluginConfig"
       },
+      "title": "Array_of_ExternalPluginConfig",
       "type": "array"
     },
     "hooks": {
-      "$ref": "#/$defs/HooksConfig",
-      "default": {
-        "global": [],
-        "project": [],
-        "user": []
-      }
-    },
-    "include": {
-      "default": [],
-      "items": {
-        "type": "string"
+      "properties": {
+        "global": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/hooks_HookEntry"
+          },
+          "type": "array"
+        },
+        "project": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/hooks_HookEntry"
+          },
+          "type": "array"
+        },
+        "user": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/hooks_HookEntry"
+          },
+          "type": "array"
+        }
       },
-      "type": "array"
+      "title": "HooksConfig",
+      "type": "object"
     },
     "loop_policies": {
-      "$ref": "#/$defs/LoopPoliciesConfig",
-      "default": {
-        "deny_bash_patterns": [],
-        "enabled": false,
-        "generator_critic": {
-          "enabled": false,
-          "max_rounds": 1,
-          "rubric": []
+      "additionalProperties": false,
+      "properties": {
+        "deny_bash_patterns": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
-        "max_settles": null,
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "generator_critic": {
+          "$ref": "#/$defs/loop_policies_GeneratorCriticConfig",
+          "default": {
+            "enabled": false,
+            "max_rounds": 1,
+            "rubric": []
+          }
+        },
+        "max_settles": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "self_heal": {
-          "enabled": false,
-          "max_attempts": 3,
-          "signatures": []
+          "$ref": "#/$defs/loop_policies_SelfHealConfig",
+          "default": {
+            "enabled": false,
+            "max_attempts": 3,
+            "signatures": []
+          }
         },
         "tool_exposure": {
-          "allow": [],
-          "deny": [],
-          "enabled": false,
-          "read_only": false,
-          "write_tools": []
+          "$ref": "#/$defs/loop_policies_ToolExposureConfig",
+          "default": {
+            "allow": [],
+            "deny": [],
+            "enabled": false,
+            "read_only": false,
+            "write_tools": []
+          }
         }
-      }
+      },
+      "title": "LoopPoliciesConfig",
+      "type": "object"
     },
     "lsp": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/LspPluginConfig"
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "default": "basedpyright-langserver --stdio",
+          "type": "string"
         },
-        {
-          "type": "null"
+        "compression": {
+          "default": true,
+          "type": "boolean"
+        },
+        "language": {
+          "default": "python",
+          "type": "string"
+        },
+        "workspace_root": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      ],
-      "default": null
+      },
+      "title": "LspPluginConfig",
+      "type": "object"
     },
     "mcp_servers": {
-      "default": null,
       "items": {
-        "$ref": "#/$defs/McpServerConfig"
+        "$ref": "#/$defs/mcp_servers_McpServerConfig"
       },
-      "type": [
-        "array",
-        "null"
-      ]
+      "title": "Array_of_McpServerConfig",
+      "type": "array"
     },
     "models": {
-      "$ref": "#/$defs/ModelsConfig",
-      "default": {
-        "default_model": null,
-        "models": {}
-      }
+      "properties": {
+        "default_model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "models": {
+          "additionalProperties": {
+            "$ref": "#/$defs/models_XyModelEntryConfig"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "title": "ModelsConfig",
+      "type": "object"
     },
     "otel": {
-      "$ref": "#/$defs/OtelConfig",
-      "default": {
-        "endpoint": null,
-        "environment": null,
-        "export_timeout_secs": 60,
-        "exporter": "none",
-        "headers": {},
-        "observation_io": "none",
-        "protocol": "http-json",
-        "service_name": null,
-        "tool_observation_io": "none"
-      }
+      "properties": {
+        "endpoint": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environment": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "export_timeout_secs": {
+          "default": 60,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exporter": {
+          "$ref": "#/$defs/otel_OtelExporterKind",
+          "default": "none"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "observation_io": {
+          "$ref": "#/$defs/otel_OtelObservationIo",
+          "default": "none"
+        },
+        "protocol": {
+          "$ref": "#/$defs/otel_OtelHttpProtocol",
+          "default": "http-json"
+        },
+        "service_name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_observation_io": {
+          "$ref": "#/$defs/otel_OtelObservationIo",
+          "default": "none"
+        }
+      },
+      "title": "OtelConfig",
+      "type": "object"
     },
     "plan": {
-      "$ref": "#/$defs/PlanConfig",
-      "default": {
-        "allowed_tools": [],
-        "enabled": true,
-        "read_only": true
-      }
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "read_only": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "title": "PlanConfig",
+      "type": "object"
     },
     "security": {
-      "$ref": "#/$defs/SecurityConfig",
-      "default": {
-        "enabled": false,
-        "permission": null
-      }
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "permission": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/security_PermissionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "SecurityConfig",
+      "type": "object"
     },
     "serve": {
-      "$ref": "#/$defs/ServeConfig",
-      "default": {
-        "idle_timeout": "30s",
-        "lifecycle": "last-client"
-      }
+      "additionalProperties": false,
+      "properties": {
+        "idle_timeout": {
+          "$ref": "#/$defs/serve_ServeIdleTimeout",
+          "default": "30s"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/serve_ServeLifecycleConfig",
+          "default": "last-client"
+        }
+      },
+      "title": "ServeConfig",
+      "type": "object"
     },
     "session": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/SessionConfig"
-        },
-        {
-          "type": "null"
+      "properties": {
+        "max_turns": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
-      ],
-      "default": null
+      },
+      "title": "SessionConfig",
+      "type": "object"
     },
     "subagent": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/SubagentConfig"
-        },
-        {
-          "type": "null"
+      "additionalProperties": false,
+      "properties": {
+        "tools": {
+          "default": [
+            "read",
+            "grep",
+            "find",
+            "ls",
+            "ffgrep",
+            "fffind"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
-      ],
-      "default": null
+      },
+      "title": "SubagentConfig",
+      "type": "object"
     },
     "todo": {
-      "$ref": "#/$defs/TodoConfig",
-      "default": {
-        "checkpoint": false,
-        "enabled": true,
-        "max_settles": null,
-        "progress": false,
-        "reminder": false,
-        "reminder_stale_after": 3
-      }
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint": {
+          "default": false,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "max_settles": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "progress": {
+          "default": false,
+          "type": "boolean"
+        },
+        "reminder": {
+          "default": false,
+          "type": "boolean"
+        },
+        "reminder_stale_after": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "TodoConfig",
+      "type": "object"
     },
     "tool_batch": {
-      "$ref": "#/$defs/ToolBatchConfig",
-      "default": {
-        "mode": "barrier_parallel"
-      }
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/tool_batch_ToolBatchMode",
+          "default": "barrier_parallel"
+        }
+      },
+      "title": "ToolBatchConfig",
+      "type": "object"
     },
     "tools": {
-      "default": [],
       "items": {
         "type": "string"
       },
+      "title": "Array_of_string",
       "type": "array"
     },
     "tui": {
-      "$ref": "#/$defs/TuiConfig",
-      "default": {
+      "properties": {
         "activity_fold": {
-          "auto_on_rebuild": true,
-          "auto_on_turn_end": true,
-          "enabled": true,
-          "keep_recent_turns": 2,
-          "stream_collapse": "envelope"
+          "$ref": "#/$defs/tui_TuiActivityFoldConfig",
+          "default": {
+            "auto_on_rebuild": true,
+            "auto_on_turn_end": true,
+            "enabled": true,
+            "keep_recent_turns": 2,
+            "stream_collapse": "envelope"
+          }
         },
-        "editor_history_seed_sessions": 1
-      }
+        "editor_history_seed_sessions": {
+          "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "TuiConfig",
+      "type": "object"
     },
     "workflow": {
-      "$ref": "#/$defs/WorkflowConfig",
-      "default": {
-        "enabled": false,
-        "max_depth": 2,
-        "max_replans": 3,
-        "max_total_steps": 100
-      }
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_depth": {
+          "default": 2,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_replans": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_total_steps": {
+          "default": 100,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "WorkflowConfig",
+      "type": "object"
+    },
+    "xylitol": {
+      "additionalProperties": false,
+      "properties": {
+        "plugins": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "unknown_keys": {
+          "$ref": "#/$defs/xylitol_UnknownKeyPolicy",
+          "default": "error"
+        }
+      },
+      "title": "BootstrapConfig",
+      "type": "object"
     }
   },
   "title": "AppConfig",

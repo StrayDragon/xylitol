@@ -10,6 +10,7 @@ pub struct ConfigService {
     pub agent_dir: PathBuf,
     pub cwd: PathBuf,
     pub from_yaml_layers: bool,
+    pub external_config_keys: std::sync::Mutex<Vec<String>>,
 }
 
 pub struct ConfigPlugin {
@@ -34,6 +35,7 @@ impl Plugin for ConfigPlugin {
             agent_dir,
             cwd,
             from_yaml_layers: loaded.from_yaml_layers,
+            external_config_keys: std::sync::Mutex::new(Vec::new()),
         })?;
         Ok(())
     }

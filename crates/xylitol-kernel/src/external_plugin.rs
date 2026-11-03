@@ -42,7 +42,7 @@ pub struct ExternalCommandSpec {
     pub argument_hint: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct ExternalManifest {
     #[serde(default)]
     pub protocol_version: u64,
@@ -56,6 +56,10 @@ pub struct ExternalManifest {
     pub tools: Vec<ExternalToolSpec>,
     #[serde(default)]
     pub commands: Vec<ExternalCommandSpec>,
+    #[serde(default)]
+    pub config_key: Option<String>,
+    #[serde(default)]
+    pub config_schema: Option<Value>,
 }
 
 impl ExternalManifest {
@@ -269,6 +273,63 @@ impl Plugin for ExternalPlugin {
             );
             client.shutdown().await;
             return Ok(());
+        }
+        if let (Some(config_key), Some(config_schema)) = (
+            manifest.config_key.as_deref(),
+            manifest.config_schema.as_ref(),
+        ) {
+            let Some(config_service) =
+                ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>()
+            else {
+                log::error!(
+                    "external plugin `{}`: ConfigService missing; cannot validate config section `{config_key}`",
+                    self.config.name
+                );
+                client.shutdown().await;
+                return Ok(());
+            };
+            if let Some(value) = config_service.app.sections.get(config_key) {
+                match jsonschema::Validator::new(config_schema) {
+                    Ok(validator) => {
+                        if let Err(error) = validator.validate(value) {
+                            log::error!(
+                                "external plugin `{}`: config section `{config_key}` violates config_schema: {error}",
+                                self.config.name
+                            );
+                            client.shutdown().await;
+                            return Ok(());
+                        }
+                    }
+                    Err(error) => {
+                        log::error!(
+                            "external plugin `{}`: invalid config_schema for `{config_key}`: {error}",
+                            self.config.name
+                        );
+                        client.shutdown().await;
+                        return Ok(());
+                    }
+                }
+            }
+            let duplicate = {
+                let mut keys = config_service
+                    .external_config_keys
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if keys.iter().any(|key| key == config_key) {
+                    true
+                } else {
+                    keys.push(config_key.to_string());
+                    false
+                }
+            };
+            if duplicate {
+                log::error!(
+                    "external plugin `{}`: config_key `{config_key}` already claimed by another plugin",
+                    self.config.name
+                );
+                client.shutdown().await;
+                return Ok(());
+            }
         }
         let has_commands = manifest.has_commands();
         let command_description = manifest

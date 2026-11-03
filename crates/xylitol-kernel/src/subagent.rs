@@ -144,7 +144,9 @@ pub fn register_subagent_tool(ctx: &xylitol_plugin_sdk::rt::Ctx, opts: &BootOpti
     let Some(config) = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>() else {
         return;
     };
-    let Some(subagent) = config.app.subagent.as_ref() else {
+    let subagent: Option<xylitol_official_plugin_config::types::SubagentConfig> =
+        config.app.section("subagent").ok().flatten();
+    let Some(subagent) = subagent else {
         return;
     };
     let Some(registries) = ctx.get::<xylitol_plugin_sdk::HostRegistries>() else {
@@ -202,6 +204,13 @@ mod tests {
     #[serial_test::serial(fake_provider)]
     async fn subagent_readonly_runs_fake_model() {
         let dir = tempfile::tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var(
+                "XYLITOL_CONFIG_DIR",
+                dir.path().join(".config").join("xylitol"),
+            );
+            std::env::set_var("HOME", dir.path());
+        }
         let config_path = dir.path().join("config.yaml");
         std::fs::write(
             &config_path,

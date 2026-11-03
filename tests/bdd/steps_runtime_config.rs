@@ -242,7 +242,10 @@ fn w_rc_check_settings_no_prompts(rc_snap: &RcSnap) {
 #[when("加载配置并解析为运行时 settings")]
 fn w_rc_load_compaction(rc_snap: &RcSnap) {
     let cfg = rc_snap.app_config.borrow().clone().expect("app config");
-    let comp = cfg.compaction.expect("compaction section");
+    let comp = cfg
+        .section::<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>("compaction")
+        .unwrap()
+        .expect("compaction section");
     rc_snap.compaction.replace(Some(
         xylitol_official_plugin_compaction::CompactionSettings::from(comp),
     ));
@@ -371,11 +374,11 @@ fn t_rc_no_prompts_field(rc_snap: &RcSnap) {
 #[then("compaction 任务模型条目与该锚点条目字段一致")]
 fn t_rc_compaction_anchor(rc_snap: &RcSnap) {
     let cfg = rc_snap.app_config.borrow().clone().expect("app config");
-    let entry = cfg
-        .compaction
-        .as_ref()
-        .and_then(|c| c.model.as_ref())
-        .expect("compaction model");
+    let comp = cfg
+        .section::<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>("compaction")
+        .unwrap()
+        .expect("compaction");
+    let entry = comp.model.as_ref().expect("compaction model");
     assert_eq!(entry.model, "anchor-model");
 }
 #[then("两键被忽略且不进入运行时 CompactionSettings")]
@@ -399,7 +402,11 @@ fn t_rc_compaction(rc_snap: &RcSnap) {
 fn t_rc_mcp(rc_snap: &RcSnap) {
     let cfg = rc_snap.app_config.borrow();
     let cfg = cfg.as_ref().expect("app config");
-    assert!(cfg.mcp_servers.is_none());
+    assert!(
+        cfg.section::<Vec<xylitol_kernel::config::types::McpServerConfig>>("mcp_servers")
+            .unwrap()
+            .is_none()
+    );
     assert!(serde_json::to_value(cfg).is_ok());
 }
 #[then("XyModelMeta.thinking_levels 与列表一致")]
@@ -467,7 +474,12 @@ fn t_rc_empty_map(tokenizer_bdd: &TokenizerBdd) {
 #[then("该字段不生效（local 被忽略）")]
 fn t_rc_local(rc_snap: &RcSnap) {
     let cfg = xylitol_kernel::config::types::AppConfig::default();
-    assert!(cfg.model.default_model.is_none());
+    assert!(
+        cfg.section_or_default::<xylitol_kernel::config::types::ModelsConfig>("models")
+            .unwrap()
+            .default_model
+            .is_none()
+    );
     let local = rc_snap
         .local_yaml
         .borrow()
@@ -475,18 +487,39 @@ fn t_rc_local(rc_snap: &RcSnap) {
         .or_else(|| rc_load_flag::LOCAL_YAML.with(|l| l.borrow().clone()))
         .expect("local yaml");
     let local_cfg = parse_app_config_yaml(&local).expect("local yaml parses");
-    assert_eq!(local_cfg.model.default_model.as_deref(), Some("from-local"));
+    assert_eq!(
+        local_cfg
+            .section_or_default::<xylitol_kernel::config::types::ModelsConfig>("models")
+            .unwrap()
+            .default_model
+            .as_deref(),
+        Some("from-local")
+    );
 }
 #[then("全局 config.yaml 生效且不经 config.local.yaml 合并")]
 fn t_rc_docs(rc_snap: &RcSnap) {
     let cfg = rc_snap.app_config.borrow();
     let cfg = cfg.as_ref().expect("app config");
-    assert_eq!(cfg.model.default_model.as_deref(), Some("from-yaml"));
+    assert_eq!(
+        cfg.section_or_default::<xylitol_kernel::config::types::ModelsConfig>("models")
+            .unwrap()
+            .default_model
+            .as_deref(),
+        Some("from-yaml")
+    );
     let local = rc_snap.local_yaml.borrow();
     let local = local.as_ref().expect("local yaml");
     let local_cfg = parse_app_config_yaml(local).expect("local yaml");
+    let global_default = cfg
+        .section_or_default::<xylitol_kernel::config::types::ModelsConfig>("models")
+        .unwrap()
+        .default_model;
+    let local_default = local_cfg
+        .section_or_default::<xylitol_kernel::config::types::ModelsConfig>("models")
+        .unwrap()
+        .default_model;
     assert_ne!(
-        cfg.model.default_model, local_cfg.model.default_model,
+        global_default, local_default,
         "config.local.yaml must not be merged"
     );
 }
@@ -598,7 +631,10 @@ fn t_rc_tools_list(tokenizer_bdd: &TokenizerBdd) {
         tokenizer_bdd.cfg_err.borrow()
     );
     let cfg = tokenizer_bdd.config.borrow();
-    assert_eq!(cfg.tools, vec!["read", "-grep", "+ffgrep"]);
+    assert_eq!(
+        cfg.section_or_default::<Vec<String>>("tools").unwrap(),
+        vec!["read", "-grep", "+ffgrep"]
+    );
 }
 
 #[then("成功且 tools 列表含 no-such-tool")]
@@ -609,7 +645,12 @@ fn t_rc_tools_unknown(tokenizer_bdd: &TokenizerBdd) {
         tokenizer_bdd.cfg_err.borrow()
     );
     let cfg = tokenizer_bdd.config.borrow();
-    assert!(cfg.tools.iter().any(|entry| entry == "+no-such-tool"));
+    assert!(
+        cfg.section_or_default::<Vec<String>>("tools")
+            .unwrap()
+            .iter()
+            .any(|entry| entry == "+no-such-tool")
+    );
 }
 
 #[given("YAML 模型条目含 preset opencode-zen")]
@@ -664,7 +705,7 @@ fn t_rc_legacy_preset(tokenizer_bdd: &TokenizerBdd) {
     let err = tokenizer_bdd.cfg_err.borrow();
     assert!(err.contains("preset"), "error must name preset: {err}");
     assert!(
-        err.contains("configs/example.yaml"),
-        "error must point at migration example: {err}"
+        err.contains("xylitol config schema"),
+        "error must point at config schema: {err}"
     );
 }

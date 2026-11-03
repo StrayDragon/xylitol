@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 配置插件自持与 schema-first 重构
+branch: sdd/c3047-update-config-plugin-ownership
+base_branch: main
+base_sha: 6b92eca85ddbc1782a4ac85a8b518a3c4cc623da
 ---
 
 # 配置插件自持与 schema-first 重构
@@ -41,4 +44,4 @@ title: 配置插件自持与 schema-first 重构
 
 ## Further Notes
 
-设计与逐组审计：`_HANDOFF/config-audit-2026-11-03.md`（本地记录，不入库）。
+逐组审计与能力实测：`research/config-audit.md`（随本 change 归档）。

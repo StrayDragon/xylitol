@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::error::LoadError;
 use super::paths::ConfigPaths;
 use super::secret_env::SecretMap;
-use super::types::AppConfig;
+use super::types::{AppConfig, ModelsConfig};
 
 #[derive(Debug, Clone)]
 pub struct LoadedAppConfig {
@@ -90,6 +90,7 @@ fn merge_config_layers(
 }
 
 fn validate_app_config(config: &AppConfig) -> Result<(), LoadError> {
+    config.validate_schema_version()?;
     config.validate_thinking_levels()?;
     config.validate_session_max_turns()?;
     config.validate_tools_selection()?;
@@ -119,75 +120,66 @@ fn merge_layer(
     path: &Path,
     secrets: &super::secret_env::SecretMap,
 ) -> Result<(), LoadError> {
-    let mut stack = Vec::new();
-    merge_layer_rec(merged, from_yaml_layers, path, secrets, &mut stack)
-}
-
-fn merge_layer_rec(
-    merged: &mut Value,
-    from_yaml_layers: &mut bool,
-    path: &Path,
-    secrets: &super::secret_env::SecretMap,
-    stack: &mut Vec<std::path::PathBuf>,
-) -> Result<(), LoadError> {
-    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    if stack.contains(&canonical) {
-        return Err(LoadError::validation(format!(
-            "config include cycle: {}",
-            path.display()
-        )));
-    }
-    stack.push(canonical);
-
-    let value = load_and_render(path, secrets)?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    for raw in include_paths(&value) {
-        let include_path = resolve_include_path(&raw, base_dir);
-        if !include_path.exists() {
-            log::warn!(
-                target: "xylitol::config",
-                "config include not found: {}",
-                include_path.display()
-            );
-            continue;
-        }
-        merge_layer_rec(merged, from_yaml_layers, &include_path, secrets, stack)?;
-    }
-
-    stack.pop();
+    let mut value = load_and_render(path, secrets)?;
+    expand_merge_keys(&mut value)?;
     deep_merge(merged, value);
     *from_yaml_layers = true;
     Ok(())
 }
 
-fn include_paths(value: &Value) -> Vec<String> {
-    value
-        .get("include")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn resolve_include_path(raw: &str, base_dir: &Path) -> std::path::PathBuf {
-    let expanded = if raw == "~" {
-        dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(raw))
-    } else if let Some(rest) = raw.strip_prefix("~/") {
-        dirs::home_dir()
-            .map(|home| home.join(rest))
-            .unwrap_or_else(|| std::path::PathBuf::from(raw))
-    } else {
-        std::path::PathBuf::from(raw)
-    };
-    if expanded.is_absolute() {
-        expanded
-    } else {
-        base_dir.join(expanded)
+fn expand_merge_keys(value: &mut Value) -> Result<(), LoadError> {
+    match value {
+        Value::Object(map) => {
+            let keys: Vec<String> = map.keys().cloned().collect();
+            for key in keys {
+                if let Some(child) = map.get_mut(&key) {
+                    expand_merge_keys(child)?;
+                }
+            }
+            let Some(merge_value) = map.remove("<<") else {
+                return Ok(());
+            };
+            let sources = match merge_value {
+                Value::Object(source) => vec![source],
+                Value::Array(items) => {
+                    let mut sources = Vec::with_capacity(items.len());
+                    for item in items {
+                        match item {
+                            Value::Object(source) => sources.push(source),
+                            other => {
+                                return Err(LoadError::validation(format!(
+                                    "config merge key `<<` expects mappings, got {other}"
+                                )));
+                            }
+                        }
+                    }
+                    sources
+                }
+                other => {
+                    return Err(LoadError::validation(format!(
+                        "config merge key `<<` expects a mapping or list of mappings, got {other}"
+                    )));
+                }
+            };
+            let mut merged = serde_json::Map::new();
+            for source in sources.into_iter().rev() {
+                for (key, value) in source {
+                    merged.insert(key, value);
+                }
+            }
+            for (key, value) in map.clone() {
+                merged.insert(key, value);
+            }
+            *map = merged;
+            Ok(())
+        }
+        Value::Array(items) => {
+            for item in items {
+                expand_merge_keys(item)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
     }
 }
 
@@ -214,6 +206,20 @@ fn load_from_paths(
 
     reject_legacy_config_keys(&merged)?;
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
+    config.unknown_keys = merged
+        .as_object()
+        .map(|map| {
+            map.keys()
+                .filter(|key| key.as_str() != "xylitol")
+                .filter(|key| {
+                    !super::sections::sections()
+                        .iter()
+                        .any(|section| section.key == key.as_str())
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
     super::validate::validate_merged_config(&merged)?;
     validate_app_config(&config)?;
     expand_model_config_expressions(&mut config)?;
@@ -224,6 +230,12 @@ fn load_from_paths(
 }
 
 fn reject_legacy_config_keys(merged: &Value) -> Result<(), LoadError> {
+    if merged.get("include").is_some() {
+        return Err(LoadError::validation(
+            "config `include` is no longer supported; inline the fragment into config.yaml \
+             (or use `models.d/` for generated model catalogs)",
+        ));
+    }
     reject_legacy_loop_example_section(merged)?;
     reject_legacy_loop_policies_keys(merged)?;
     reject_legacy_provider_preset(merged)?;
@@ -235,7 +247,7 @@ fn reject_legacy_loop_example_section(merged: &Value) -> Result<(), LoadError> {
         return Err(LoadError::validation(
             "loop_example is no longer supported; use `loop_policies`; \
              todo/workflow/plan keys moved to top-level `todo`/`workflow`/`plan` \
-             (see configs/example.yaml)",
+             (see `xylitol config schema`)",
         ));
     }
     Ok(())
@@ -256,7 +268,7 @@ fn reject_legacy_loop_policies_keys(merged: &Value) -> Result<(), LoadError> {
     for (old, new) in legacy {
         if loop_policies.contains_key(old) {
             return Err(LoadError::validation(format!(
-                "loop_policies.{old} is no longer supported; use `{new}` (see configs/example.yaml)"
+                "loop_policies.{old} is no longer supported; use `{new}` (see `xylitol config schema`)"
             )));
         }
     }
@@ -268,7 +280,7 @@ fn reject_legacy_provider_preset(merged: &Value) -> Result<(), LoadError> {
         return Err(LoadError::validation(
             "provider_presets is no longer supported; configure each model entry explicitly \
              with `provider` / `model` / `base_url` / `api` (and optional `compat`), \
-             or point the model at a gateway (see configs/example.yaml)",
+             or point the model at a gateway (see `xylitol config schema`)",
         ));
     }
     let Some(models) = merged
@@ -283,7 +295,7 @@ fn reject_legacy_provider_preset(merged: &Value) -> Result<(), LoadError> {
             return Err(LoadError::validation(format!(
                 "models.{alias}.preset is no longer supported after the provider preset rollback; \
                  set `provider` / `model` / `base_url` / `api` (and optional `compat`) explicitly, \
-                 or point the model at a gateway (see configs/example.yaml)"
+                 or point the model at a gateway (see `xylitol config schema`)"
             )));
         }
     }
@@ -291,7 +303,12 @@ fn reject_legacy_provider_preset(merged: &Value) -> Result<(), LoadError> {
 }
 
 fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadError> {
-    for (alias, entry) in config.model.models.iter_mut() {
+    let Some(raw) = config.sections.get("models").cloned() else {
+        return Ok(());
+    };
+    let mut models: ModelsConfig = serde_json::from_value(raw)
+        .map_err(|e| LoadError::validation(format!("config section `models`: {e}")))?;
+    for (alias, entry) in models.models.iter_mut() {
         if let Some(v) = entry.api_key.as_mut() {
             *v = expand_config_value(alias, "api_key", v)?;
         }
@@ -307,6 +324,11 @@ fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadErr
             *v = expand_config_value(alias, "compat", v)?;
         }
     }
+    config.sections.insert(
+        "models".to_string(),
+        serde_json::to_value(&models)
+            .map_err(|e| LoadError::validation(format!("config section `models`: {e}")))?,
+    );
     Ok(())
 }
 
@@ -393,93 +415,32 @@ mod tests {
     }
 
     #[test]
-    #[serial(env_global)]
-    fn include_merges_before_current_layer() {
-        let home = tempfile::tempdir().unwrap();
-        let global = home.path().join(".config").join("xylitol");
-        std::fs::create_dir_all(&global).unwrap();
-        std::fs::write(
-            global.join("magpie-models.yaml"),
-            "models:\n  models:\n    magpie-model:\n      provider: openai\n      model: from-include\n",
-        )
-        .unwrap();
-        std::fs::write(
-            global.join("config.yaml"),
-            "include:\n  - magpie-models.yaml\nmodels:\n  models:\n    magpie-model:\n      model: override\n",
-        )
-        .unwrap();
-        let home_s = home.path().to_str().unwrap();
-        let global_s = global.to_str().unwrap();
-        let entries = [("HOME", home_s), ("XYLITOL_CONFIG_DIR", global_s)];
-        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
-        let entry = cfg
-            .model
-            .models
-            .get("magpie-model")
-            .expect("included model");
-        assert_eq!(entry.model, "override");
+    fn expand_merge_keys_parent_wins() {
+        let mut value = serde_json::json!({
+            "base": {"a": 1, "b": 2},
+            "child": {"<<": {"a": 10, "c": 3}, "b": 20}
+        });
+        expand_merge_keys(&mut value).unwrap();
         assert_eq!(
-            entry.provider,
-            xylitol_plugin_sdk::model::XyModelKind::OpenAi
+            value["child"],
+            serde_json::json!({"a": 10, "b": 20, "c": 3})
         );
     }
 
     #[test]
-    #[serial(env_global)]
-    fn include_resolves_relative_to_including_file() {
-        let home = tempfile::tempdir().unwrap();
-        let global = home.path().join(".config").join("xylitol");
-        let sub = global.join("generated");
-        std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(
-            sub.join("models.yaml"),
-            "models:\n  models:\n    sub-model:\n      provider: anthropic\n      model: sub\n",
-        )
-        .unwrap();
-        std::fs::write(
-            global.join("config.yaml"),
-            "include:\n  - generated/models.yaml\n",
-        )
-        .unwrap();
-        let home_s = home.path().to_str().unwrap();
-        let global_s = global.to_str().unwrap();
-        let entries = [("HOME", home_s), ("XYLITOL_CONFIG_DIR", global_s)];
-        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
-        assert!(cfg.model.models.contains_key("sub-model"));
+    fn expand_merge_keys_list_order() {
+        let mut value = serde_json::json!({
+            "child": {"<<": [{"a": 1, "b": 2}, {"b": 3, "c": 4}]}
+        });
+        expand_merge_keys(&mut value).unwrap();
+        assert_eq!(value["child"], serde_json::json!({"a": 1, "b": 2, "c": 4}));
     }
 
     #[test]
-    #[serial(env_global)]
-    fn include_missing_file_is_skipped() {
-        let home = tempfile::tempdir().unwrap();
-        let global = home.path().join(".config").join("xylitol");
-        std::fs::create_dir_all(&global).unwrap();
-        std::fs::write(
-            global.join("config.yaml"),
-            "include:\n  - not-yet-generated.yaml\nmodels:\n  models:\n    local-model:\n      provider: openai\n      model: local\n",
-        )
-        .unwrap();
-        let home_s = home.path().to_str().unwrap();
-        let global_s = global.to_str().unwrap();
-        let entries = [("HOME", home_s), ("XYLITOL_CONFIG_DIR", global_s)];
-        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
-        assert!(cfg.model.models.contains_key("local-model"));
-    }
-
-    #[test]
-    #[serial(env_global)]
-    fn include_cycle_errors() {
-        let home = tempfile::tempdir().unwrap();
-        let global = home.path().join(".config").join("xylitol");
-        std::fs::create_dir_all(&global).unwrap();
-        std::fs::write(global.join("a.yaml"), "include:\n  - b.yaml\n").unwrap();
-        std::fs::write(global.join("b.yaml"), "include:\n  - a.yaml\n").unwrap();
-        std::fs::write(global.join("config.yaml"), "include:\n  - a.yaml\n").unwrap();
-        let home_s = home.path().to_str().unwrap();
-        let global_s = global.to_str().unwrap();
-        let entries = [("HOME", home_s), ("XYLITOL_CONFIG_DIR", global_s)];
-        let err = load_app_config_with(None, env_map(&entries), None).expect_err("cycle");
-        assert!(err.to_string().contains("cycle"), "unexpected error: {err}");
+    fn expand_merge_keys_rejects_scalar() {
+        let mut value = serde_json::json!({"child": {"<<": 1}});
+        let err = expand_merge_keys(&mut value).expect_err("scalar");
+        assert!(err.to_string().contains("merge key"), "unexpected: {err}");
     }
 
     #[test]
@@ -518,7 +479,11 @@ mod tests {
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
         let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
-        let servers = cfg.mcp_servers.expect("mcp_servers");
+        let servers = cfg
+            .section::<Option<Vec<crate::types::McpServerConfig>>>("mcp_servers")
+            .unwrap()
+            .expect("mcp_servers")
+            .expect("servers");
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].name, "demo");
         let headers = servers[0].headers.as_ref().expect("headers");
@@ -544,7 +509,12 @@ compaction:
 ",
         )
         .expect("inline compaction model");
-        let comp = cfg.compaction.expect("compaction section");
+        let comp = cfg
+            .section::<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>(
+                "compaction",
+            )
+            .unwrap()
+            .expect("compaction section");
         let model = comp.model.expect("task model entry");
         assert_eq!(model.model, "inline-summary");
         assert_eq!(comp.thinking_level.as_deref(), Some("high"));
@@ -568,7 +538,14 @@ compaction:
 ",
         )
         .expect("snake_case anchor compaction model");
-        let model = cfg.compaction.expect("compaction").model.expect("model");
+        let model = cfg
+            .section::<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>(
+                "compaction",
+            )
+            .unwrap()
+            .expect("compaction")
+            .model
+            .expect("model");
         assert_eq!(model.model, "anchor-wire");
         assert_eq!(
             model.base_url.as_deref(),
@@ -594,11 +571,14 @@ compaction:
         )
         .expect("anchor alias compaction model");
         assert_eq!(
-            cfg.compaction
-                .expect("compaction")
-                .model
-                .expect("model")
-                .model,
+            cfg.section::<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>(
+                "compaction",
+            )
+            .unwrap()
+            .expect("compaction")
+            .model
+            .expect("model")
+            .model,
             "anchor-wire"
         );
     }
@@ -629,12 +609,15 @@ compaction:
         );
         let cfg: AppConfig = yaml_serde::from_str(&rendered).expect("parse rendered yaml");
         assert_eq!(
-            cfg.compaction
-                .expect("compaction")
-                .model
-                .expect("model")
-                .api_key
-                .as_deref(),
+            cfg.section::<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>(
+                "compaction",
+            )
+            .unwrap()
+            .expect("compaction")
+            .model
+            .expect("model")
+            .api_key
+            .as_deref(),
             Some("sk-summary")
         );
     }
@@ -664,7 +647,10 @@ compaction:
         ];
         let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
         assert!(
-            cfg.model.default_model.is_none(),
+            cfg.section_or_default::<crate::types::ModelsConfig>("models")
+                .unwrap()
+                .default_model
+                .is_none(),
             "config.local.yaml must not be merged"
         );
 
@@ -674,7 +660,13 @@ compaction:
         )
         .unwrap();
         let cfg = load_app_config_with(None, env_map(&entries), None).expect("load with yaml");
-        assert_eq!(cfg.model.default_model.as_deref(), Some("from-yaml"));
+        assert_eq!(
+            cfg.section_or_default::<crate::types::ModelsConfig>("models")
+                .unwrap()
+                .default_model
+                .as_deref(),
+            Some("from-yaml")
+        );
     }
 
     fn write_model_config(global: &std::path::Path, body: &str) {
@@ -707,7 +699,8 @@ compaction:
             "    x:\n      provider: openai\n      model: m1\n      api_key: sk-anchor\n",
         );
         let cfg = load_with(&global).expect("load");
-        let e = cfg.model.models.get("x").unwrap();
+        let models: crate::types::ModelsConfig = cfg.section_or_default("models").unwrap();
+        let e = models.models.get("x").unwrap();
         assert_eq!(e.api_key.as_deref(), Some("sk-anchor"), "字面量 MUST 原样");
         assert_eq!(e.model, "m1");
     }
@@ -728,7 +721,8 @@ compaction:
             "    x:\n      provider: openai\n      model: m1\n      api_key: $XYLITOL_A1_SECRET_9f3b\n",
         );
         let cfg = load_with(&global).expect("load");
-        let e = cfg.model.models.get("x").unwrap();
+        let models: crate::types::ModelsConfig = cfg.section_or_default("models").unwrap();
+        let e = models.models.get("x").unwrap();
         assert_eq!(
             e.api_key.as_deref(),
             Some("resolved-key"),
@@ -747,7 +741,8 @@ compaction:
             "    x:\n      provider: openai\n      model: m1\n      api_key: ${XYLITOL_A1_UNDEF_9f3b:-fallback-key}\n",
         );
         let cfg = load_with(&global).expect("load");
-        let e = cfg.model.models.get("x").unwrap();
+        let models: crate::types::ModelsConfig = cfg.section_or_default("models").unwrap();
+        let e = models.models.get("x").unwrap();
         assert_eq!(
             e.api_key.as_deref(),
             Some("fallback-key"),
@@ -766,7 +761,8 @@ compaction:
             "    x:\n      provider: openai\n      model: \"!printf evalm\"\n",
         );
         let cfg = load_with(&global).expect("load");
-        let e = cfg.model.models.get("x").unwrap();
+        let models: crate::types::ModelsConfig = cfg.section_or_default("models").unwrap();
+        let e = models.models.get("x").unwrap();
         assert_eq!(e.model, "evalm", "shell-command syntax MUST 展开为 stdout");
     }
 
@@ -792,13 +788,23 @@ compaction:
     #[test]
     fn feature_plugin_defaults_are_stable() {
         let config = AppConfig::default();
-        assert!(config.todo.is_active(), "todo plugin is default-on");
-        assert!(!config.workflow.is_active(), "workflow plugin is opt-in");
         assert!(
-            config.plan.is_active(),
-            "plan plugin keeps the c2973 default"
+            config
+                .section_or_default::<crate::types::TodoConfig>("todo")
+                .unwrap()
+                .is_active(),
+            "todo plugin is default-on"
         );
-        assert!(config.plan.read_only, "plan mode is read-only by default");
+        assert!(
+            !config
+                .section_or_default::<crate::types::WorkflowConfig>("workflow")
+                .unwrap()
+                .is_active(),
+            "workflow plugin is opt-in"
+        );
+        let plan: crate::types::PlanConfig = config.section_or_default("plan").unwrap();
+        assert!(plan.is_active(), "plan plugin keeps the c2973 default");
+        assert!(plan.read_only, "plan mode is read-only by default");
     }
 
     #[test]
@@ -846,7 +852,7 @@ compaction:
         let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("models.zen.preset"), "got: {msg}");
-        assert!(msg.contains("configs/example.yaml"), "got: {msg}");
+        assert!(msg.contains("xylitol config schema"), "got: {msg}");
     }
 
     #[test]
@@ -870,7 +876,7 @@ compaction:
         let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("provider_presets"), "got: {msg}");
-        assert!(msg.contains("configs/example.yaml"), "got: {msg}");
+        assert!(msg.contains("xylitol config schema"), "got: {msg}");
     }
 
     #[test]

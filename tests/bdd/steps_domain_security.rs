@@ -530,10 +530,11 @@ fn t_ds_perm_yaml_ok() {
     xs_sec::PARSED_CFG.with(|c| {
         let cfg = c.borrow();
         let cfg = cfg.as_ref().expect("parsed config");
-        let perm = cfg
-            .security
-            .permission
+        let security: Option<xylitol_kernel::config::types::SecurityConfig> =
+            cfg.section("security").unwrap();
+        let perm = security
             .as_ref()
+            .and_then(|s| s.permission.as_ref())
             .expect("security.permission");
         assert!(
             perm.filesystem
@@ -543,7 +544,10 @@ fn t_ds_perm_yaml_ok() {
             "write_denied must contain .env"
         );
         assert!(
-            cfg.security.permission.is_some(),
+            security
+                .as_ref()
+                .and_then(|s| s.permission.as_ref())
+                .is_some(),
             "config must use security.permission path"
         );
     });

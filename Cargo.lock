@@ -6783,6 +6783,7 @@ dependencies = [
  "clap",
  "dirs 7.0.0",
  "futures",
+ "jsonschema",
  "libc",
  "log",
  "reqwest",

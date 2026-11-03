@@ -1,66 +1,46 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::error::LoadError;
 
+pub const CONFIG_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UnknownKeyPolicy {
+    #[default]
+    Error,
+    Warn,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct BootstrapConfig {
+    pub schema_version: Option<u32>,
+    pub unknown_keys: UnknownKeyPolicy,
+    pub plugins: Vec<String>,
+}
+
+impl Default for BootstrapConfig {
+    fn default() -> Self {
+        Self {
+            schema_version: None,
+            unknown_keys: UnknownKeyPolicy::Error,
+            plugins: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct AppConfig {
-    #[serde(default)]
-    pub include: Vec<String>,
-
-    #[serde(rename = "models")]
-    #[schemars(rename = "models")]
-    pub model: ModelsConfig,
-    pub agents: AgentsConfig,
-    pub execution: ExecutionConfig,
-    pub hooks: HooksConfig,
-    pub security: SecurityConfig,
-    pub session: Option<SessionConfig>,
-    pub compaction: Option<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>,
-
-    pub mcp_servers: Option<Vec<McpServerConfig>>,
-
-    #[serde(default)]
-    pub otel: OtelConfig,
-
-    #[serde(default)]
-    pub tui: TuiConfig,
-
-    #[serde(default)]
-    pub tool_batch: ToolBatchConfig,
-
-    #[serde(default)]
-    pub tools: Vec<String>,
-
-    #[serde(default)]
-    pub loop_policies: LoopPoliciesConfig,
-
-    #[serde(default)]
-    pub todo: TodoConfig,
-
-    #[serde(default)]
-    pub workflow: WorkflowConfig,
-
-    #[serde(default)]
-    pub plan: PlanConfig,
-
-    #[serde(default)]
-    pub external_plugins: Vec<ExternalPluginConfig>,
-
-    #[serde(default)]
-    pub lsp: Option<LspPluginConfig>,
-
-    #[serde(default)]
-    pub dap: Option<DapPluginConfig>,
-
-    #[serde(default)]
-    pub subagent: Option<SubagentConfig>,
-
-    #[serde(default)]
-    pub serve: ServeConfig,
+    pub xylitol: BootstrapConfig,
+    #[serde(flatten)]
+    pub sections: BTreeMap<String, serde_json::Value>,
+    #[serde(skip)]
+    pub unknown_keys: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -407,8 +387,68 @@ fn compose_profile_prompt(profile: &AgentProfile, fallback: Option<&String>) -> 
 }
 
 impl AppConfig {
+    pub fn section<T: serde::de::DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, LoadError> {
+        self.sections
+            .get(key)
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|e| LoadError::validation(format!("config section `{key}`: {e}")))
+    }
+
+    pub fn section_or_default<T: serde::de::DeserializeOwned + Default>(
+        &self,
+        key: &str,
+    ) -> Result<T, LoadError> {
+        Ok(self.section(key)?.unwrap_or_default())
+    }
+
+    pub fn validate_schema_version(&self) -> Result<(), LoadError> {
+        match self.xylitol.schema_version {
+            Some(version) if version > CONFIG_SCHEMA_VERSION => {
+                Err(LoadError::validation(format!(
+                    "config schema_version {version} is newer than supported {CONFIG_SCHEMA_VERSION}"
+                )))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub fn validate_unknown_keys(&self, extra_keys: &[String]) -> Result<(), LoadError> {
+        let known: HashSet<&str> = super::sections::sections()
+            .iter()
+            .map(|section| section.key)
+            .collect();
+        let unknown: Vec<&String> = self
+            .unknown_keys
+            .iter()
+            .filter(|key| !known.contains(key.as_str()))
+            .filter(|key| !extra_keys.iter().any(|extra| extra == *key))
+            .collect();
+        if unknown.is_empty() {
+            return Ok(());
+        }
+        let list = unknown
+            .iter()
+            .map(|key| format!("`{key}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let message = format!("unknown config keys: {list}");
+        match self.xylitol.unknown_keys {
+            UnknownKeyPolicy::Error => Err(LoadError::validation(message)),
+            UnknownKeyPolicy::Warn => {
+                log::warn!(target: "xylitol::config", "{message}");
+                Ok(())
+            }
+        }
+    }
+
     pub fn validate_thinking_levels(&self) -> Result<(), LoadError> {
-        for (alias, entry) in &self.model.models {
+        let models: ModelsConfig = self.section_or_default("models")?;
+        for (alias, entry) in &models.models {
             entry
                 .resolve_thinking_config()
                 .map_err(|e| LoadError::validation(format!("models.{alias}: {e}")))?;
@@ -417,7 +457,8 @@ impl AppConfig {
     }
 
     pub fn validate_session_max_turns(&self) -> Result<(), LoadError> {
-        match self.session.as_ref().and_then(|s| s.max_turns) {
+        let session: Option<SessionConfig> = self.section("session")?;
+        match session.as_ref().and_then(|s| s.max_turns) {
             None => Ok(()),
             Some(0) => Err(LoadError::validation(
                 "session.max_turns must be a positive integer (got 0)",
@@ -427,7 +468,8 @@ impl AppConfig {
     }
 
     pub fn validate_tools_selection(&self) -> Result<(), LoadError> {
-        for (index, raw) in self.tools.iter().enumerate() {
+        let tools: Vec<String> = self.section_or_default("tools")?;
+        for (index, raw) in tools.iter().enumerate() {
             let entry = raw.trim();
             if entry.is_empty() {
                 return Err(LoadError::validation(format!(
@@ -458,7 +500,8 @@ impl AppConfig {
         &self,
         model_id: &str,
     ) -> Result<xylitol_plugin_sdk::model::XyModelConfig, LoadError> {
-        let entry = self.model.models.get(model_id).ok_or_else(|| {
+        let models: ModelsConfig = self.section_or_default("models")?;
+        let entry = models.models.get(model_id).ok_or_else(|| {
             LoadError::validation(format!(
                 "unknown model alias `{model_id}`: add it under models.models in config.yaml"
             ))
@@ -470,7 +513,8 @@ impl AppConfig {
         &self,
         model_id: &str,
     ) -> Result<xylitol_plugin_sdk::model::XyModelMeta, LoadError> {
-        let entry = self.model.models.get(model_id).ok_or_else(|| {
+        let models: ModelsConfig = self.section_or_default("models")?;
+        let entry = models.models.get(model_id).ok_or_else(|| {
             LoadError::validation(format!(
                 "unknown model alias `{model_id}`: add it under models.models in config.yaml"
             ))
@@ -482,20 +526,23 @@ impl AppConfig {
         &self,
         name: &str,
     ) -> Result<xylitol_plugin_sdk::model::ResolvedProfile, LoadError> {
-        let profile = self.agents.profiles.get(name);
+        let agents: AgentsConfig = self.section_or_default("agents")?;
+        let execution: ExecutionConfig = self.section_or_default("execution")?;
+        let models: ModelsConfig = self.section_or_default("models")?;
+        let profile = agents.profiles.get(name);
 
         let (model_ref, system_prompt, tools) = match profile {
             Some(p) => (
                 p.model.as_deref(),
-                compose_profile_prompt(p, self.execution.system_prompt.as_ref()),
+                compose_profile_prompt(p, execution.system_prompt.as_ref()),
                 p.tools.clone(),
             ),
-            None => (None, self.execution.system_prompt.clone(), Vec::new()),
+            None => (None, execution.system_prompt.clone(), Vec::new()),
         };
 
         let model_id = model_ref
-            .or(self.execution.model.as_deref())
-            .or(self.model.default_model.as_deref())
+            .or(execution.model.as_deref())
+            .or(models.default_model.as_deref())
             .ok_or_else(|| {
                 LoadError::validation(
                     "no model configured: set `--model`, `execution.model`, `model.default_model`, \
@@ -515,10 +562,11 @@ impl AppConfig {
     pub fn resolve_default_profile(
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ResolvedProfile, LoadError> {
-        let name = if self.agents.default_profile.is_empty() {
+        let agents: AgentsConfig = self.section_or_default("agents")?;
+        let name = if agents.default_profile.is_empty() {
             "default"
         } else {
-            &self.agents.default_profile
+            &agents.default_profile
         };
         self.resolve_profile(name)
     }
@@ -655,7 +703,24 @@ tools: [read, -bash]
 }
 
 #[cfg(test)]
+mod test_support {
+    use super::*;
+
+    pub fn get<T: serde::de::DeserializeOwned + Default>(cfg: &AppConfig, key: &str) -> T {
+        cfg.section_or_default(key).expect("config section")
+    }
+
+    pub fn set<T: serde::Serialize>(cfg: &mut AppConfig, key: &str, value: T) {
+        cfg.sections.insert(
+            key.to_string(),
+            serde_json::to_value(value).expect("section value"),
+        );
+    }
+}
+
+#[cfg(test)]
 mod session_max_turns_tests {
+    use super::test_support::*;
     use super::*;
 
     #[test]
@@ -667,7 +732,10 @@ session:
 "#,
         )
         .expect("valid session.max_turns");
-        assert_eq!(cfg.session.as_ref().and_then(|s| s.max_turns), Some(12));
+        assert_eq!(
+            get::<Option<SessionConfig>>(&cfg, "session").and_then(|s| s.max_turns),
+            Some(12)
+        );
         cfg.validate_session_max_turns().expect("12 is valid");
     }
 
@@ -690,12 +758,13 @@ session:
     fn session_max_turns_absent_is_ok() {
         let cfg = AppConfig::default();
         cfg.validate_session_max_turns().expect("absent is ok");
-        assert!(cfg.session.as_ref().and_then(|s| s.max_turns).is_none());
+        assert!(get::<Option<SessionConfig>>(&cfg, "session").is_none());
     }
 }
 
 #[cfg(test)]
 mod thinking_levels_tests {
+    use super::test_support::*;
     use super::*;
     use xylitol_plugin_sdk::model::XyModelKind;
 
@@ -721,7 +790,9 @@ mod thinking_levels_tests {
     #[test]
     fn resolve_model_meta_default_levels_are_off_only() {
         let mut cfg = AppConfig::default();
-        cfg.model.models.insert("f".into(), fake_entry(true, None));
+        let mut models = get::<ModelsConfig>(&cfg, "models");
+        models.models.insert("f".into(), fake_entry(true, None));
+        set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert_eq!(meta.thinking_levels, vec!["off".to_string()]);
     }
@@ -729,9 +800,11 @@ mod thinking_levels_tests {
     #[test]
     fn resolve_model_meta_explicit_hole() {
         let mut cfg = AppConfig::default();
-        cfg.model
+        let mut models = get::<ModelsConfig>(&cfg, "models");
+        models
             .models
             .insert("f".into(), fake_entry(true, Some(vec!["high", "max"])));
+        set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert_eq!(
             meta.thinking_levels,
@@ -742,9 +815,11 @@ mod thinking_levels_tests {
     #[test]
     fn resolve_model_meta_thinking_false() {
         let mut cfg = AppConfig::default();
-        cfg.model
+        let mut models = get::<ModelsConfig>(&cfg, "models");
+        models
             .models
             .insert("f".into(), fake_entry(false, Some(vec!["high"])));
+        set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert_eq!(meta.thinking_levels, vec!["off".to_string()]);
     }
@@ -752,9 +827,11 @@ mod thinking_levels_tests {
     #[test]
     fn validate_thinking_levels_accepts_freeform_names() {
         let mut cfg = AppConfig::default();
-        cfg.model
+        let mut models = get::<ModelsConfig>(&cfg, "models");
+        models
             .models
             .insert("f".into(), fake_entry(true, Some(vec!["bogon"])));
+        set(&mut cfg, "models", models);
         cfg.validate_thinking_levels().unwrap();
     }
 
@@ -766,7 +843,9 @@ mod thinking_levels_tests {
         map.insert("high".into(), Some("max".into()));
         map.insert("off".into(), None);
         entry.thinking_level_map = Some(map);
-        cfg.model.models.insert("f".into(), entry);
+        let mut models = get::<ModelsConfig>(&cfg, "models");
+        models.models.insert("f".into(), entry);
+        set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert_eq!(
             meta.thinking_level_map
@@ -786,7 +865,9 @@ mod thinking_levels_tests {
         let mut map = std::collections::HashMap::new();
         map.insert("max".into(), Some("x".into()));
         entry.thinking_level_map = Some(map);
-        cfg.model.models.insert("f".into(), entry);
+        let mut models = get::<ModelsConfig>(&cfg, "models");
+        models.models.insert("f".into(), entry);
+        set(&mut cfg, "models", models);
         let err = cfg.validate_thinking_levels().unwrap_err();
         assert!(err.to_string().contains("max"));
     }
@@ -794,7 +875,9 @@ mod thinking_levels_tests {
     #[test]
     fn resolve_model_meta_absent_map_ok() {
         let mut cfg = AppConfig::default();
-        cfg.model.models.insert("f".into(), fake_entry(true, None));
+        let mut models = get::<ModelsConfig>(&cfg, "models");
+        models.models.insert("f".into(), fake_entry(true, None));
+        set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert!(meta.thinking_level_map.is_empty());
     }
@@ -820,8 +903,11 @@ tokenizers:
     #[test]
     fn otel_config_default_is_none() {
         let cfg: AppConfig = yaml_serde::from_str("models: {}").unwrap();
-        assert_eq!(cfg.otel.exporter, OtelExporterKind::None);
-        assert!(!cfg.otel.wants_otlp_http());
+        assert_eq!(
+            get::<OtelConfig>(&cfg, "otel").exporter,
+            OtelExporterKind::None
+        );
+        assert!(!get::<OtelConfig>(&cfg, "otel").wants_otlp_http());
     }
 
     #[test]
@@ -838,15 +924,27 @@ otel:
 "#,
         )
         .expect("otel section");
-        assert_eq!(cfg.otel.exporter, OtelExporterKind::OtlpHttp);
         assert_eq!(
-            cfg.otel.endpoint.as_deref(),
+            get::<OtelConfig>(&cfg, "otel").exporter,
+            OtelExporterKind::OtlpHttp
+        );
+        assert_eq!(
+            get::<OtelConfig>(&cfg, "otel").endpoint.as_deref(),
             Some("http://127.0.0.1:3000/api/public/otel")
         );
-        assert_eq!(cfg.otel.protocol, OtelHttpProtocol::HttpBinary);
-        assert_eq!(cfg.otel.environment.as_deref(), Some("dev"));
-        assert_eq!(cfg.otel.service_name.as_deref(), Some("XYlitol"));
-        assert_eq!(cfg.otel.export_timeout_secs, 60);
+        assert_eq!(
+            get::<OtelConfig>(&cfg, "otel").protocol,
+            OtelHttpProtocol::HttpBinary
+        );
+        assert_eq!(
+            get::<OtelConfig>(&cfg, "otel").environment.as_deref(),
+            Some("dev")
+        );
+        assert_eq!(
+            get::<OtelConfig>(&cfg, "otel").service_name.as_deref(),
+            Some("XYlitol")
+        );
+        assert_eq!(get::<OtelConfig>(&cfg, "otel").export_timeout_secs, 60);
     }
 
     #[test]
@@ -860,7 +958,7 @@ otel:
 "#,
         )
         .expect("otel timeout");
-        assert_eq!(cfg.otel.export_timeout_secs, 90);
+        assert_eq!(get::<OtelConfig>(&cfg, "otel").export_timeout_secs, 90);
     }
 
     #[test]
@@ -875,26 +973,37 @@ otel:
 "#,
         )
         .expect("otel io");
-        assert_eq!(cfg.otel.observation_io, OtelObservationIo::Truncated);
-        assert_eq!(cfg.otel.tool_observation_io, OtelObservationIo::Full);
+        assert_eq!(
+            get::<OtelConfig>(&cfg, "otel").observation_io,
+            OtelObservationIo::Truncated
+        );
+        assert_eq!(
+            get::<OtelConfig>(&cfg, "otel").tool_observation_io,
+            OtelObservationIo::Full
+        );
     }
 
     #[test]
     fn otel_config_rejects_unknown_exporter() {
-        let err = yaml_serde::from_str::<AppConfig>(
+        let value: serde_json::Value = yaml_serde::from_str(
             r#"
 models: {}
 otel:
   exporter: grpc
 "#,
-        );
-        assert!(err.is_err(), "unknown exporter must fail load");
+        )
+        .expect("yaml shape");
+        let err = crate::validate::validate_merged_config(&value).unwrap_err();
+        assert!(err.to_string().contains("otel"), "unexpected: {err}");
     }
 
     #[test]
     fn tui_editor_history_seed_sessions_defaults_to_one() {
         let cfg: AppConfig = yaml_serde::from_str("models: {}").expect("minimal");
-        assert_eq!(cfg.tui.editor_history_seed_sessions, 1);
+        assert_eq!(
+            get::<TuiConfig>(&cfg, "tui").editor_history_seed_sessions,
+            1
+        );
     }
 
     #[test]
@@ -907,20 +1016,28 @@ tui:
 "#,
         )
         .expect("tui section");
-        assert_eq!(cfg.tui.editor_history_seed_sessions, 3);
+        assert_eq!(
+            get::<TuiConfig>(&cfg, "tui").editor_history_seed_sessions,
+            3
+        );
     }
 
     #[test]
     fn tui_activity_fold_defaults() {
         let cfg: AppConfig = yaml_serde::from_str("models: {}").expect("minimal");
-        assert!(cfg.tui.activity_fold.enabled);
-        assert_eq!(cfg.tui.activity_fold.keep_recent_turns, 2);
+        assert!(get::<TuiConfig>(&cfg, "tui").activity_fold.enabled);
         assert_eq!(
-            cfg.tui.activity_fold.stream_collapse,
+            get::<TuiConfig>(&cfg, "tui")
+                .activity_fold
+                .keep_recent_turns,
+            2
+        );
+        assert_eq!(
+            get::<TuiConfig>(&cfg, "tui").activity_fold.stream_collapse,
             ActivityFoldStreamCollapse::Envelope
         );
-        assert!(cfg.tui.activity_fold.auto_on_rebuild);
-        assert!(cfg.tui.activity_fold.auto_on_turn_end);
+        assert!(get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_rebuild);
+        assert!(get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_turn_end);
     }
 
     #[test]
@@ -938,35 +1055,45 @@ tui:
 "#,
         )
         .expect("activity_fold");
-        assert!(!cfg.tui.activity_fold.enabled);
-        assert_eq!(cfg.tui.activity_fold.keep_recent_turns, 4);
+        assert!(!get::<TuiConfig>(&cfg, "tui").activity_fold.enabled);
         assert_eq!(
-            cfg.tui.activity_fold.stream_collapse,
+            get::<TuiConfig>(&cfg, "tui")
+                .activity_fold
+                .keep_recent_turns,
+            4
+        );
+        assert_eq!(
+            get::<TuiConfig>(&cfg, "tui").activity_fold.stream_collapse,
             ActivityFoldStreamCollapse::Clusters
         );
-        assert!(!cfg.tui.activity_fold.auto_on_rebuild);
-        assert!(!cfg.tui.activity_fold.auto_on_turn_end);
+        assert!(!get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_rebuild);
+        assert!(!get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_turn_end);
     }
 
     #[test]
     fn tui_activity_fold_invalid_stream_collapse_fails() {
-        let err = yaml_serde::from_str::<AppConfig>(
+        let value: serde_json::Value = yaml_serde::from_str(
             r#"
 models: {}
 tui:
   activity_fold:
     stream_collapse: envelope_please
 "#,
-        );
-        assert!(err.is_err(), "illegal stream_collapse must fail load");
+        )
+        .expect("yaml shape");
+        let err = crate::validate::validate_merged_config(&value).unwrap_err();
+        assert!(err.to_string().contains("tui"), "unexpected: {err}");
     }
 
     #[test]
     fn tool_batch_default_barrier_parallel() {
         let cfg: AppConfig = yaml_serde::from_str("models: {}").expect("minimal");
-        assert_eq!(cfg.tool_batch.mode, ToolBatchMode::BarrierParallel);
         assert_eq!(
-            xylitol_plugin_sdk::XyBatchMode::from(cfg.tool_batch.mode),
+            get::<ToolBatchConfig>(&cfg, "tool_batch").mode,
+            ToolBatchMode::BarrierParallel
+        );
+        assert_eq!(
+            xylitol_plugin_sdk::XyBatchMode::from(get::<ToolBatchConfig>(&cfg, "tool_batch").mode),
             xylitol_plugin_sdk::XyBatchMode::BarrierParallel
         );
     }
@@ -981,7 +1108,10 @@ tool_batch:
 "#,
         )
         .expect("tool_batch sequential");
-        assert_eq!(cfg.tool_batch.mode, ToolBatchMode::Sequential);
+        assert_eq!(
+            get::<ToolBatchConfig>(&cfg, "tool_batch").mode,
+            ToolBatchMode::Sequential
+        );
     }
 
     #[test]
@@ -994,34 +1124,41 @@ tool_batch:
 "#,
         )
         .expect("tool_batch section");
-        assert_eq!(cfg.tool_batch.mode, ToolBatchMode::BarrierParallel);
+        assert_eq!(
+            get::<ToolBatchConfig>(&cfg, "tool_batch").mode,
+            ToolBatchMode::BarrierParallel
+        );
     }
 
     #[test]
     fn tool_batch_invalid_mode_fails() {
-        let err = yaml_serde::from_str::<AppConfig>(
+        let value: serde_json::Value = yaml_serde::from_str(
             r#"
 models: {}
 tool_batch:
   mode: parallel
 "#,
-        );
-        assert!(err.is_err(), "invalid mode must fail load");
+        )
+        .expect("yaml shape");
+        let err = crate::validate::validate_merged_config(&value).unwrap_err();
+        assert!(err.to_string().contains("tool_batch"), "unexpected: {err}");
     }
 
     #[test]
     fn tool_batch_rejects_patterns_field() {
-        let err = yaml_serde::from_str::<AppConfig>(
+        let value: serde_json::Value = yaml_serde::from_str(
             r#"
 models: {}
 tool_batch:
   mode: sequential
   parallel_safe_patterns: ["mcp:*"]
 "#,
-        );
+        )
+        .expect("yaml shape");
+        let err = crate::validate::validate_merged_config(&value).unwrap_err();
         assert!(
-            err.is_err(),
-            "MCP allowlist / patterns fields must not be accepted"
+            err.to_string().contains("tool_batch"),
+            "MCP allowlist / patterns fields must not be accepted: {err}"
         );
     }
 }
@@ -1087,6 +1224,7 @@ agents:
 
 #[cfg(test)]
 mod external_plugins_tests {
+    use super::test_support::*;
     use super::*;
 
     #[test]
@@ -1102,8 +1240,11 @@ external_plugins:
 "#,
         )
         .expect("external plugin config");
-        assert_eq!(cfg.external_plugins.len(), 1);
-        let plugin = &cfg.external_plugins[0];
+        assert_eq!(
+            get::<Vec<ExternalPluginConfig>>(&cfg, "external_plugins").len(),
+            1
+        );
+        let plugin = &get::<Vec<ExternalPluginConfig>>(&cfg, "external_plugins")[0];
         assert_eq!(plugin.name, "bun-demo");
         assert_eq!(plugin.command, "bun");
         assert_eq!(plugin.args, vec!["plugin.ts".to_string()]);
@@ -1124,11 +1265,11 @@ dap:
 "#,
         )
         .expect("lsp/dap config");
-        let lsp = cfg.lsp.expect("lsp");
+        let lsp = get::<Option<LspPluginConfig>>(&cfg, "lsp").expect("lsp");
         assert_eq!(lsp.backend, "basedpyright-langserver --stdio");
         assert_eq!(lsp.language, "python");
         assert!(lsp.compression);
-        let dap = cfg.dap.expect("dap");
+        let dap = get::<Option<DapPluginConfig>>(&cfg, "dap").expect("dap");
         assert_eq!(dap.backend, "python3 -m debugpy.adapter");
         assert_eq!(dap.cwd.as_deref(), Some("/tmp/project"));
         assert!(dap.compression);
@@ -1143,7 +1284,7 @@ subagent:
 "#,
         )
         .expect("subagent config");
-        let subagent = cfg.subagent.expect("subagent");
+        let subagent = get::<Option<SubagentConfig>>(&cfg, "subagent").expect("subagent");
         assert_eq!(subagent.tools, vec!["read".to_string(), "ls".to_string()]);
 
         let cfg: AppConfig = yaml_serde::from_str(
@@ -1151,7 +1292,7 @@ subagent:
 ",
         )
         .expect("empty subagent");
-        let subagent = cfg.subagent.expect("subagent");
+        let subagent = get::<Option<SubagentConfig>>(&cfg, "subagent").expect("subagent");
         assert!(subagent.tools.contains(&"read".to_string()));
         assert!(subagent.tools.contains(&"ffgrep".to_string()));
     }
@@ -1163,8 +1304,8 @@ subagent:
 ",
         )
         .expect("minimal config");
-        assert!(cfg.lsp.is_none());
-        assert!(cfg.dap.is_none());
+        assert!(get::<Option<LspPluginConfig>>(&cfg, "lsp").is_none());
+        assert!(get::<Option<DapPluginConfig>>(&cfg, "dap").is_none());
     }
 
     #[test]
@@ -1177,13 +1318,17 @@ external_plugins:
 "#,
         )
         .expect("external plugin config");
-        assert_eq!(cfg.external_plugins[0].timeout_ms, 30_000);
-        assert!(!cfg.external_plugins[0].trusted);
+        assert_eq!(
+            get::<Vec<ExternalPluginConfig>>(&cfg, "external_plugins")[0].timeout_ms,
+            30_000
+        );
+        assert!(!get::<Vec<ExternalPluginConfig>>(&cfg, "external_plugins")[0].trusted);
     }
 }
 
 #[cfg(test)]
 mod tools_selection_tests {
+    use super::test_support::*;
     use super::*;
 
     #[test]
@@ -1195,16 +1340,17 @@ tools: [read, -grep, +ffgrep]
         )
         .expect("valid tools list");
         cfg.validate_tools_selection().expect("valid");
-        assert_eq!(cfg.tools, vec!["read", "-grep", "+ffgrep"]);
+        assert_eq!(
+            get::<Vec<String>>(&cfg, "tools"),
+            vec!["read", "-grep", "+ffgrep"]
+        );
     }
 
     #[test]
     fn rejects_empty_and_prefix_only_entries() {
         for entry in ["", "   ", "+", "-"] {
-            let cfg = AppConfig {
-                tools: vec![entry.into()],
-                ..Default::default()
-            };
+            let mut cfg = AppConfig::default();
+            set(&mut cfg, "tools", vec![entry.to_string()]);
             assert!(
                 cfg.validate_tools_selection().is_err(),
                 "must reject {entry:?}"
@@ -1214,19 +1360,15 @@ tools: [read, -grep, +ffgrep]
 
     #[test]
     fn rejects_whitespace_inside_tool_name() {
-        let cfg = AppConfig {
-            tools: vec!["read write".into()],
-            ..Default::default()
-        };
+        let mut cfg = AppConfig::default();
+        set(&mut cfg, "tools", vec!["read write".to_string()]);
         assert!(cfg.validate_tools_selection().is_err());
     }
 
     #[test]
     fn unknown_tool_names_are_not_load_errors() {
-        let cfg = AppConfig {
-            tools: vec!["+no-such-tool".into()],
-            ..Default::default()
-        };
+        let mut cfg = AppConfig::default();
+        set(&mut cfg, "tools", vec!["+no-such-tool".to_string()]);
         cfg.validate_tools_selection()
             .expect("unknown names warn later");
     }
@@ -1234,14 +1376,15 @@ tools: [read, -grep, +ffgrep]
 
 #[cfg(test)]
 mod serve_config_tests {
+    use super::test_support::*;
     use super::*;
 
     #[test]
     fn omitted_serve_block_is_last_client_with_30s() {
         let cfg: AppConfig = yaml_serde::from_str("models: {}\n").expect("parse");
-        assert!(cfg.serve.autostart_last_client());
+        assert!(get::<ServeConfig>(&cfg, "serve").autostart_last_client());
         assert_eq!(
-            cfg.serve.idle_duration(),
+            get::<ServeConfig>(&cfg, "serve").idle_duration(),
             std::time::Duration::from_secs(30)
         );
     }
@@ -1256,8 +1399,11 @@ serve:
 "#,
         )
         .expect("parse");
-        assert!(!cfg.serve.autostart_last_client());
-        assert_eq!(cfg.serve.lifecycle, ServeLifecycleConfig::LastClient);
+        assert!(!get::<ServeConfig>(&cfg, "serve").autostart_last_client());
+        assert_eq!(
+            get::<ServeConfig>(&cfg, "serve").lifecycle,
+            ServeLifecycleConfig::LastClient
+        );
     }
 
     #[test]
@@ -1270,7 +1416,10 @@ serve:
 "#,
         )
         .expect("parse");
-        assert!(!cfg.serve.autostart_last_client());
-        assert_eq!(cfg.serve.idle_duration(), std::time::Duration::from_secs(5));
+        assert!(!get::<ServeConfig>(&cfg, "serve").autostart_last_client());
+        assert_eq!(
+            get::<ServeConfig>(&cfg, "serve").idle_duration(),
+            std::time::Duration::from_secs(5)
+        );
     }
 }

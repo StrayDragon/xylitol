@@ -495,7 +495,10 @@ pub fn autostart_policy(
     config_path: Option<&std::path::Path>,
 ) -> (xylitol_serve::ServeLifecycle, Duration) {
     let serve = crate::config::loader::load_app_config(config_path)
-        .map(|cfg| cfg.serve)
+        .map(|cfg| {
+            cfg.section_or_default::<xylitol_official_plugin_config::types::ServeConfig>("serve")
+                .unwrap_or_default()
+        })
         .unwrap_or_default();
     let lifecycle = if serve.autostart_last_client() {
         xylitol_serve::ServeLifecycle::LastClient

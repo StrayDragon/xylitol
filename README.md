@@ -44,18 +44,15 @@ cargo build --release --locked
 配置文件可以放在全局配置目录（默认 `~/.config/xylitol/config.yaml`）或项目的 `.xylitol/config.yaml`。项目配置覆盖全局配置。
 
 ```bash
-mkdir -p .xylitol
-cp configs/example.yaml .xylitol/config.yaml
+xylitol config init
 cp configs/secret.env.example .xylitol/secret.env
 ```
 
-然后按顺序修改 `.xylitol/config.yaml`：
+`xylitol config init` 生成全局最小配置（`~/.config/xylitol/config.yaml`）；项目级配置放 `.xylitol/config.yaml`，覆盖全局配置。
 
-1. 把 `models: {}` 改成 `models:`。
-2. 取消注释 `default_model`。
-3. 取消注释至少一个完整模型条目。
+然后在 `models.models` 下添加至少一个模型条目，并设置 `models.default_model`。
 
-API 密钥（API key）用 `{{ secret.DEEPSEEK_API_KEY }}` 这样的模板从 `secret.env` 引用。不要把密钥写进 YAML。`configs/example.yaml` 是带注释的样例，覆盖多模型、MCP 和 OTEL。
+API 密钥（API key）用 `{{ secret.DEEPSEEK_API_KEY }}` 这样的模板从 `secret.env` 引用。不要把密钥写进 YAML。`xylitol config schema` 输出完整配置 schema。
 
 #### Provider preset 迁移
 

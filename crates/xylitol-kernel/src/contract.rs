@@ -32,6 +32,11 @@ mod tests {
 
     #[tokio::test]
     async fn boot_ctx_self_check_print_profile() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("XYLITOL_CONFIG_DIR", dir.path());
+            std::env::set_var("HOME", dir.path());
+        }
         let opts = BootOptions {
             profile: Profile::Print,
             config_path: None,
@@ -64,6 +69,11 @@ mod tests {
 
     #[tokio::test]
     async fn boot_ctx_self_check_host_profile() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("XYLITOL_CONFIG_DIR", dir.path());
+            std::env::set_var("HOME", dir.path());
+        }
         let opts = BootOptions {
             profile: Profile::Host,
             config_path: None,
@@ -297,6 +307,11 @@ mod tests {
 
     #[tokio::test]
     async fn boot_ctx_does_not_mkdir_crate_xylitol() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("XYLITOL_CONFIG_DIR", dir.path());
+            std::env::set_var("HOME", dir.path());
+        }
         let crate_xy = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".xylitol");
         let existed = crate_xy.exists();
         let opts = BootOptions {

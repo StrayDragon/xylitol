@@ -7,6 +7,10 @@ pub struct ConfigPaths {
 }
 
 impl ConfigPaths {
+    pub fn global_config_path(&self) -> PathBuf {
+        self.global_dir.join("config.yaml")
+    }
+
     pub fn discover() -> Self {
         Self::discover_with(
             |k| {

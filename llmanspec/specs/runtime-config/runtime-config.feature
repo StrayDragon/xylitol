@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: 运行时配置 — 核心 config 插件分层加载（global → project → --config）、深合并、secret.env、settings；仅 config.yaml + secret.env，不支持 config.local。
+# purpose: 运行时配置 — 分层加载（global → project → --config）、深合并、secret.env、settings；配置节由插件声明（core 只做 loader + 注册表），引导段 xylitol，未知键两阶段校验，schema-first。仅 config.yaml + secret.env，不支持 config.local。
 
 功能: runtime-config
 
@@ -185,7 +185,7 @@
 
   @req:r2928
   规则: schema-artifact-same-source
-    配置的 JSON Schema 契约产物 须与运行时校验同一来源生成，不得手维护：产物内容 须等于由 AppConfig 结构导出的 schema 的稳定渲染（键序确定、可重复生成字节相同），且 须覆盖当前全部顶层配置节。产物与代码不一致时 门禁 须失败并指向再生成入口；产物 不得作为加载期校验来源（加载仍按结构导出即时校验）。
+    配置的 JSON Schema 契约产物 须与运行时校验同一来源生成，不得手维护：产物内容 须等于由插件 section 注册表聚合导出的 schema 的稳定渲染（键序确定、可重复生成字节相同），且 须覆盖当前全部顶层配置节。产物与代码不一致时 门禁 须失败并指向再生成入口；产物 不得作为加载期校验来源（加载仍按结构导出即时校验）。
 
     场景: 产物与代码一致
       当 生成配置 schema 并与仓库产物比较
@@ -251,9 +251,46 @@
   @req:r3018
   规则: model-entry-prompt-cache-config
     配置 必须 接受 models.*.prompt_cache（`enabled` 可选布尔、`ttl` 可选 `5m` / `1h`、`retention` 可选 `in_memory` / `24h`）并进入配置 schema 产物；显式字段 必须 覆盖 compat 命名档提供的默认，不得 改变 compat 档自身的语义。
-  @req:r3026
-  规则: config-include
-    配置加载 必须 支持顶层 `include` 列表：每个文件 必须 作为低优先级层在当前文件之前合并，当前文件 必须 覆盖同名字段；相对路径 必须 相对包含文件所在目录解析，`~` 必须 展开为用户主目录；缺失文件 必须 warn 且 跳过，不得 中断加载；include 成环 必须 报错。由配置插件单测覆盖。
+  @req:r3069
+  规则: config-include-removed
+    配置加载 不得 支持顶层 `include` 列表，也不得 提供通用 include / presets / import 机制；配置中出现 `include` 键 须 加载期硬失败并给出移除提示。由配置插件单测覆盖。
   @req:r3064
   规则: serve-config
     运行时配置必须接受可选顶层 serve 块：lifecycle 为 last-client 或 persistent，idle_timeout 为时长或 false。缺省（不写该块）为 last-client 与约 30 秒。idle_timeout 为 false 时自动拉起必须按 persistent。该块仅约束自动拉起的 Host；显式 serve 缺省仍 persistent。由配置插件单测覆盖。
+
+  @req:r3070
+  规则: plugin-owned-config-sections
+    所有顶层配置节 须由其所属插件声明（键名、schema、默认值）；核心 须仅承担加载、合并与注册表聚合，不得 维护手写字段清单。顶层未知键 须 两阶段校验：加载期先收集，插件装配后由插件按 rutis 依赖顺序认领自己的节，剩余未知键 须 硬失败；`xylitol.unknown_keys: warn` 时 须 降级为警告。节内未知键 须 由插件 schema 决定，默认拒绝；未知枚举值 须 硬失败。
+
+    场景: 未知顶层键硬失败
+      假如 配置含注册表未声明的顶层键
+      当 加载并装配配置
+      那么 硬失败并指出该键
+
+    场景: 未知键放宽为警告
+      假如 配置含未知顶层键且 xylitol.unknown_keys 为 warn
+      当 加载并装配配置
+      那么 装配成功且产生警告
+
+  @req:r3071
+  规则: bootstrap-section
+    配置 须支持可选顶层 `xylitol` 引导段，含 `schema_version`、`unknown_keys`（error / warn，缺省 error）与 `plugins` 启用清单；`schema_version` 缺失时 须按当前版本处理，显式版本高于当前 须 硬失败。引导段 不得 承载插件专属字段。
+
+    场景: 引导段缺省
+      假如 配置不含 xylitol 引导段
+      当 加载配置
+      那么 按当前 schema 版本与 error 策略处理
+
+  @req:r3072
+  规则: yaml-merge-key
+    配置 YAML 的 merge key `<<` 须在 `Value` 层展开：值为 mapping 或 mapping 列表时，父 mapping 的键 须 优先于合并来源，来源按列表顺序后者覆盖前者；值为非法类型 须 使加载失败；anchor / alias 原生语义 须 保持不变。
+
+    场景: 合并键父键优先
+      假如 YAML 含 base 锚点与 `<<: *base` 且父键覆盖同名字段
+      当 加载配置
+      那么 父键生效
+
+    场景: 合并键非法值失败
+      假如 YAML 的 `<<` 值为标量
+      当 加载配置
+      那么 失败

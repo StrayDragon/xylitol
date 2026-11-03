@@ -42,3 +42,11 @@
     场景: CLI帮助展示产品名
       当 xylitol --help
       那么 帮助文案含 XYlitol 且命令名为 xylitol
+
+  @req:r3075
+  规则: config-unknown-key-errors
+    配置未知顶层键或旧键导致硬失败时，错误 须 指出键名与所属配置节，并给出迁移方向；`xylitol.unknown_keys: warn` 时 须 以警告列出同一信息。不得 仅输出泛化解析错误。
+
+    场景: 未知键错误可操作
+      当 加载含未知顶层键的配置
+      那么 错误含键名与迁移提示

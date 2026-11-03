@@ -273,7 +273,7 @@ impl BootstrapError {
             BootstrapError::ConfigLoadFailed(e) => format!("config load failed: {e}"),
             BootstrapError::ConfigLoadedZeroModels => {
                 "config file present but loaded 0 models (check `models:` vs `model:` typo; \
-                 see configs/example.yaml)"
+                 see `xylitol config schema`)"
                     .to_string()
             }
             BootstrapError::NoModelsAvailable => "no models available".to_string(),
@@ -309,7 +309,10 @@ fn resolve_profile_assembly(
             let Some(cfg) = app_config else {
                 return Err(BootstrapError::AgentProfileNotFound(name.to_string()));
             };
-            if !cfg.agents.profiles.contains_key(name) {
+            let agents: xylitol_official_plugin_config::types::AgentsConfig = cfg
+                .section_or_default("agents")
+                .map_err(|e| BootstrapError::ConfigLoadFailed(e.to_string()))?;
+            if !agents.profiles.contains_key(name) {
                 return Err(BootstrapError::AgentProfileNotFound(name.to_string()));
             }
             Some(
@@ -340,7 +343,15 @@ pub(crate) fn build_model_registry(
         return model_registry;
     };
     let mut missing_key_providers = std::collections::BTreeSet::new();
-    for (alias, entry) in &cfg.model.models {
+    let models: xylitol_official_plugin_config::types::ModelsConfig =
+        match cfg.section_or_default("models") {
+            Ok(models) => models,
+            Err(e) => {
+                warnings.push(BootstrapWarning::ModelEntrySkipped(format!("models: {e}")));
+                return model_registry;
+            }
+        };
+    for (alias, entry) in &models.models {
         let api_key = entry.normalized_api_key();
         if api_key.is_empty() {
             missing_key_providers.insert(entry.provider.provider_name().to_string());
@@ -485,9 +496,15 @@ fn load_runtime_settings(
     );
     let compaction = {
         let from_settings = settings_mgr.get_settings().compaction.as_ref();
-        let from_config = app_config.and_then(|c| c.compaction.as_ref());
+        let from_config = app_config.and_then(|c| {
+            c.section::<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>(
+                "compaction",
+            )
+            .ok()
+            .flatten()
+        });
         Some(xylitol_plugin_sdk::merge_compaction_runtime(
-            from_config,
+            from_config.as_ref(),
             from_settings,
         ))
     };
@@ -601,11 +618,14 @@ pub fn resolve_assembly_with(
     let thinking_budgets = settings.thinking_budgets;
 
     let permission_engine = app_config.as_ref().and_then(|cfg| {
-        cfg.security
-            .permission
-            .as_ref()
-            .filter(|sc| sc.enabled)
-            .map(|sc| sc.to_permission())
+        let security: Option<xylitol_official_plugin_config::types::SecurityConfig> =
+            cfg.section("security").ok().flatten();
+        security.and_then(|sc| {
+            sc.permission
+                .as_ref()
+                .filter(|pc| pc.enabled)
+                .map(|pc| pc.to_permission())
+        })
     });
 
     let system_prompt = loader_system_prompt.or(config_system_prompt);
@@ -615,23 +635,37 @@ pub fn resolve_assembly_with(
         .clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    let mcp_servers = crate::mcp_spec::McpServerSpec::from_infra_list(
-        app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
-    );
+    let mcp_servers =
+        crate::mcp_spec::McpServerSpec::from_infra_list(app_config.as_ref().and_then(|c| {
+            c.section::<Vec<xylitol_official_plugin_config::types::McpServerConfig>>("mcp_servers")
+                .ok()
+                .flatten()
+        }));
 
     let hooks_config = app_config
         .as_ref()
-        .map(|c| c.hooks.clone())
+        .map(|c| {
+            c.section_or_default::<xylitol_official_plugin_config::types::HooksConfig>("hooks")
+                .unwrap_or_default()
+        })
         .unwrap_or_default();
 
     let batch_mode = app_config
         .as_ref()
-        .map(|c| xylitol_plugin_sdk::XyBatchMode::from(c.tool_batch.mode))
+        .map(|c| {
+            let tool_batch: xylitol_official_plugin_config::types::ToolBatchConfig =
+                c.section_or_default("tool_batch").unwrap_or_default();
+            xylitol_plugin_sdk::XyBatchMode::from(tool_batch.mode)
+        })
         .unwrap_or_default();
 
     let max_turns = app_config
         .as_ref()
-        .and_then(|c| c.session.as_ref())
+        .and_then(|c| {
+            c.section::<xylitol_official_plugin_config::types::SessionConfig>("session")
+                .ok()
+                .flatten()
+        })
         .and_then(|s| s.max_turns);
 
     Ok(ResolvedAssembly {

@@ -76,6 +76,32 @@ pub struct PrintSurfaceArgs {
     pub no_trust: bool,
 }
 
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum ConfigAction {
+    Schema {
+        #[arg(long)]
+        domain: Option<String>,
+        #[arg(long)]
+        ts: bool,
+    },
+    Check {
+        #[arg(value_name = "PATH")]
+        path: Option<String>,
+        #[arg(long)]
+        warn: bool,
+    },
+    Show {
+        #[arg(long)]
+        resolved: bool,
+    },
+    Init {
+        #[arg(long)]
+        preset: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
+}
+
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
     Tui {
@@ -91,6 +117,10 @@ pub enum CliCommand {
         prompt: Option<String>,
         #[arg(short = 'p', long = "prompt", value_name = "TEXT")]
         prompt_flag: Option<String>,
+    },
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
     },
     #[cfg(feature = "server")]
     Serve {

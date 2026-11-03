@@ -201,3 +201,11 @@
     场景: 本机默认口判定为确保目标
       当 解析本机默认 attach URL 的确保策略
       那么 该 URL 为确保目标且不改走同进程直握
+
+  @req:r3073
+  规则: config-subcommands
+    CLI 须提供顶层管理动词 config，叶子仅 schema / check / show / init；不得 提供 set / import / migrate / build 等未交付动词。config schema 须 输出 JSON Schema（可按域过滤）；config check 须 校验配置并报告未知键与迁移提示；config show 须 输出生效配置并可标注来源；config init 须 生成最小可运行配置。
+
+    场景: 配置子命令表面
+      当 xylitol config --help
+      那么 可见 schema check show init 且无 set import migrate
