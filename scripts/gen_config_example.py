@@ -165,10 +165,6 @@ hooks:
 
 # Feature-gated sections (require corresponding feature flag):
 
-# planning:
-#   max_steps: 10
-#   reasoning_depth: 2
-
 # session:
 #   storage:
 #     backend: file
@@ -265,7 +261,7 @@ hooks:
 #   # endpoint: "http://localhost:3000/api/public/otel"
 #   # (or set LANGFUSE_BASE_URL in secret.env → …/api/public/otel)
 #   environment: dev
-#   service_name: xylitol
+#   service_name: XYlitol
 #   # export_timeout_secs: 60
 #   # observation_io: truncated   # none | truncated | full  (default none)
 #   # tool_observation_io: truncated

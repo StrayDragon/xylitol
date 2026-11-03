@@ -145,10 +145,6 @@ hooks:
 
 # Feature-gated sections (require corresponding feature flag):
 
-# planning:
-#   max_steps: 10
-#   reasoning_depth: 2
-
 # session:
 #   storage:
 #     backend: file
