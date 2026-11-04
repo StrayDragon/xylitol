@@ -117,6 +117,9 @@ pub(super) fn paint_folded_streaming_thought(
     theme: LayoutTheme,
     width: usize,
 ) {
+    if !fold.thinking_visible {
+        return;
+    }
     let expanded = fold.thinking_effective(STREAMING_THINK_ID);
     if live_open_cluster && live_open_cluster_thought_only {
         if expanded {

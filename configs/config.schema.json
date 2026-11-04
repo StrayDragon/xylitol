@@ -787,6 +787,15 @@
       ],
       "type": "string"
     },
+    "tui_ActivityDisplayLevel": {
+      "enum": [
+        "quiet",
+        "summary",
+        "recent",
+        "full"
+      ],
+      "type": "string"
+    },
     "tui_ActivityFoldStreamCollapse": {
       "enum": [
         "envelope",
@@ -805,6 +814,10 @@
           "default": true,
           "type": "boolean"
         },
+        "display_level": {
+          "$ref": "#/$defs/tui_ActivityDisplayLevel",
+          "default": "summary"
+        },
         "enabled": {
           "default": true,
           "type": "boolean"
@@ -818,6 +831,39 @@
         "stream_collapse": {
           "$ref": "#/$defs/tui_ActivityFoldStreamCollapse",
           "default": "envelope"
+        },
+        "visible_items": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/tui_TuiVisibleItems"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "tui_TuiVisibleItems": {
+      "additionalProperties": false,
+      "properties": {
+        "diff": {
+          "default": false,
+          "type": "boolean"
+        },
+        "thinking": {
+          "default": false,
+          "type": "boolean"
+        },
+        "tool_header": {
+          "default": false,
+          "type": "boolean"
+        },
+        "tool_output": {
+          "default": false,
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -1302,9 +1348,11 @@
           "default": {
             "auto_on_rebuild": true,
             "auto_on_turn_end": true,
+            "display_level": "summary",
             "enabled": true,
             "keep_recent_turns": 2,
-            "stream_collapse": "envelope"
+            "stream_collapse": "envelope",
+            "visible_items": null
           }
         },
         "editor_history_seed_sessions": {

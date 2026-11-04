@@ -383,7 +383,25 @@ impl UiRoot {
     }
 
     pub fn set_activity_settings(&mut self, settings: crate::activity_fold::ActivityFoldSettings) {
+        self.fold.apply_visible_items(settings.visible_items);
         self.activity.settings = settings;
+    }
+
+    pub fn cycle_display_level(&mut self) {
+        let mut settings = self.activity.settings.clone();
+        settings.apply_display_level(settings.display_level.next());
+        self.set_activity_settings(settings);
+        self.bump_upper_gen();
+    }
+
+    pub fn reset_fold_overrides(&mut self) {
+        self.fold.clear_output_overrides();
+        self.fold.clear_tools_overrides();
+        self.fold.clear_thinking_overrides();
+        let mut settings = self.activity.settings.clone();
+        settings.apply_display_level(crate::activity_fold::DisplayLevel::Summary);
+        self.set_activity_settings(settings);
+        self.bump_upper_gen();
     }
 
     pub fn touch_activity(&mut self) {

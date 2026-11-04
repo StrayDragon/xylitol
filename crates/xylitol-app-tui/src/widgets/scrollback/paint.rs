@@ -410,6 +410,9 @@ pub(super) fn paint_thinking_block(
     } = ctx;
     let mut lines = Vec::new();
     let mut block_hits = Vec::new();
+    if !fold.thinking_visible {
+        return (lines, block_hits);
+    }
     if thought_only {
         push_wrapped(&mut lines, &theme.paint_muted(text), width);
         return (lines, block_hits);
@@ -461,6 +464,9 @@ pub(super) fn paint_tool_block(
         width,
     } = ctx;
     let inner = rail_inner_width(width);
+    if !fold.tool_header_visible {
+        return (Vec::new(), Vec::new());
+    }
     let expanded = fold.tools_effective(id);
     let marker = if expanded {
         glyphs.unfold()
@@ -505,7 +511,7 @@ pub(super) fn paint_tool_block(
             );
         }
 
-        if !output.is_empty() {
+        if fold.tool_output_visible && !output.is_empty() {
             let painted = paint_output_with_full_footer(output, theme, is_error);
             let hard = output_is_hard_truncated(output);
             let opts = ExpandableOutputOptions {
@@ -533,7 +539,8 @@ pub(super) fn paint_tool_block(
             );
         }
 
-        if let Some(diff) = display_diff
+        if fold.diff_visible
+            && let Some(diff) = display_diff
             && !diff.is_empty()
         {
             if !block.is_empty() {
@@ -576,6 +583,9 @@ pub(super) fn paint_diff_block(
         width,
     } = ctx;
     let inner = rail_inner_width(width);
+    if !fold.diff_visible {
+        return (Vec::new(), Vec::new());
+    }
     let key = diff_fold_key(summary, display_diff);
     let expanded = fold.tools_effective(&key);
     let marker = if expanded {

@@ -13,7 +13,7 @@
       那么 思维块与工具块可展开可收纳且详情弹层与侧栏可开关
   @req:r3032
   规则: default-binding-contraction
-    以下动作 id 必须保留注册与分发，但默认和弦必须为空：app.thinking.toggle、app.tools.expand、app.tools.blocks、app.activity.expandNearest、app.activity.collapseNearest、app.session.popup、app.session.sidebar、app.session.detailsCycle、app.session.sidebarWidth。空默认和弦时这些动作 不得响应任何按键；用户经 keybindings.json 重绑后 必须恢复响应。绑定目录 不得因默认和弦为空而移除这些 id。
+    以下动作 id 必须保留注册与分发，但默认和弦必须为空：app.thinking.toggle、app.tools.expand、app.tools.blocks、app.activity.expandNearest、app.activity.collapseNearest、app.activity.displayLevel、app.session.popup、app.session.sidebar、app.session.detailsCycle、app.session.sidebarWidth。空默认和弦时这些动作 不得响应任何按键；用户经 keybindings.json 重绑后 必须恢复响应。绑定目录 不得因默认和弦为空而移除这些 id。
 
     场景: 收缩后默认和弦不触发动作
       假如 产品绑定目录使用默认配置

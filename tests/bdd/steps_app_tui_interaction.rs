@@ -2,7 +2,7 @@ use crate::bdd::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
-use xylitol_app_tui::{FoldTarget, InteractionBdd, SceneBuilder, UiModel};
+use xylitol_app_tui::{ActivityFoldSettings, FoldTarget, InteractionBdd, SceneBuilder, UiModel};
 use xylitol_tui::TreeNode;
 
 pub struct TuiInteraction {
@@ -71,18 +71,19 @@ fn when_mount_streaming_thinking(tui_interaction: &TuiInteraction) {
     let mut sb = SceneBuilder::begin();
     sb.thinking("consider next edit");
     let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.set_activity_settings(ActivityFoldSettings::default());
     fx.open_hit_viewport(200);
     let plain = fx.render_plain(80);
     *tui_interaction.mounted_frame.borrow_mut() = plain;
     *tui_interaction.fx.borrow_mut() = Some(fx);
 }
 
-#[then("流式思考正文可见")]
-fn then_streaming_thought_body_visible(tui_interaction: &TuiInteraction) {
+#[then("流式思考正文默认收起且 Thinking 头仍在")]
+fn then_streaming_thought_body_folded_by_default(tui_interaction: &TuiInteraction) {
     let plain = tui_interaction.mounted_frame.borrow();
     assert!(
-        plain.contains("consider next edit"),
-        "streaming thinking body must be visible:\n{plain}"
+        !plain.contains("consider next edit"),
+        "streaming thinking body must be collapsed by default:\n{plain}"
     );
     assert!(
         plain.contains("Thinking"),
@@ -111,16 +112,16 @@ fn when_click_streaming_thinking_header(tui_interaction: &TuiInteraction) {
     *tui_interaction.mounted_frame.borrow_mut() = fx.render_plain(80);
 }
 
-#[then("流式思考正文收起且 Thinking 头仍在")]
-fn then_streaming_thought_body_folded(tui_interaction: &TuiInteraction) {
+#[then("流式思考正文展开且 Thinking 头仍在")]
+fn then_streaming_thought_body_expanded(tui_interaction: &TuiInteraction) {
     let plain = tui_interaction.mounted_frame.borrow();
     assert!(
         plain.contains("Thinking"),
-        "collapsed stream must keep Thinking header:\n{plain}"
+        "expanded stream must keep Thinking header:\n{plain}"
     );
     assert!(
-        !plain.contains("consider next edit"),
-        "collapsed stream must hide thinking body:\n{plain}"
+        plain.contains("consider next edit"),
+        "expanded stream must show thinking body:\n{plain}"
     );
 }
 
@@ -132,16 +133,16 @@ fn when_append_streaming_thinking_delta(tui_interaction: &TuiInteraction) {
     *tui_interaction.mounted_frame.borrow_mut() = fx.render_plain(80);
 }
 
-#[then("流式思考正文保持收起")]
-fn then_streaming_thought_stays_folded(tui_interaction: &TuiInteraction) {
+#[then("流式思考正文保持展开")]
+fn then_streaming_thought_stays_expanded(tui_interaction: &TuiInteraction) {
     let plain = tui_interaction.mounted_frame.borrow();
     assert!(
-        !plain.contains("consider next edit") && !plain.contains("plus more"),
-        "later deltas must not reopen collapsed streaming thinking:\n{plain}"
+        plain.contains("consider next edit") && plain.contains("plus more"),
+        "later deltas must keep expanded streaming thinking:\n{plain}"
     );
     assert!(
         plain.contains("Thinking"),
-        "collapsed stream must keep Thinking header after delta:\n{plain}"
+        "expanded stream must keep Thinking header after delta:\n{plain}"
     );
 }
 

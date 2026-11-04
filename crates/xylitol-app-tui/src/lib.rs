@@ -71,7 +71,7 @@ pub use self::host::{
 pub use self::layout::UiRoot;
 pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
 pub use self::widgets::{FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold};
-pub use activity_fold::{ActivityFoldSettings, SegmentLevel};
+pub use activity_fold::{ActivityFoldSettings, DisplayLevel, SegmentLevel, VisibleItems};
 pub use bridge::TODO_EMPTY_BODY_HINT;
 pub use bridge::human_tool_args_preview;
 pub use bridge::trailing_aborted_note;

@@ -7,18 +7,40 @@ use xylitol_kernel::occupancy::subcommand::ServeAction;
 pub fn activity_fold_settings(
     c: xylitol_kernel::config::types::TuiActivityFoldConfig,
 ) -> xylitol_app_tui::ActivityFoldSettings {
-    use xylitol_app_tui::SegmentLevel;
-    use xylitol_kernel::config::types::ActivityFoldStreamCollapse;
+    use xylitol_app_tui::{DisplayLevel, SegmentLevel, VisibleItems};
+    use xylitol_kernel::config::types::{ActivityDisplayLevel, ActivityFoldStreamCollapse};
     let collapse_floor = match c.stream_collapse {
         ActivityFoldStreamCollapse::Envelope => SegmentLevel::L3,
         ActivityFoldStreamCollapse::Clusters => SegmentLevel::L2,
     };
+    let display_level = match c.display_level {
+        ActivityDisplayLevel::Quiet => DisplayLevel::Quiet,
+        ActivityDisplayLevel::Summary => DisplayLevel::Summary,
+        ActivityDisplayLevel::Recent => DisplayLevel::Recent,
+        ActivityDisplayLevel::Full => DisplayLevel::Full,
+    };
+    let visible_items = c.visible_items.map_or_else(
+        || display_level.visible_items(),
+        |v| VisibleItems {
+            thinking: v.thinking,
+            tool_header: v.tool_header,
+            tool_output: v.tool_output,
+            diff: v.diff,
+        },
+    );
+    let keep_recent_turns = if display_level == DisplayLevel::Recent {
+        c.keep_recent_turns.max(display_level.keep_recent_turns())
+    } else {
+        c.keep_recent_turns
+    };
     xylitol_app_tui::ActivityFoldSettings {
         enabled: c.enabled,
-        keep_recent_turns: c.keep_recent_turns,
+        keep_recent_turns,
         auto_on_rebuild: c.auto_on_rebuild,
         auto_on_turn_end: c.auto_on_turn_end,
         collapse_floor,
+        display_level,
+        visible_items,
     }
 }
 

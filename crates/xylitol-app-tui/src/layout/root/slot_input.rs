@@ -350,6 +350,10 @@ impl UiRoot {
             let _ = self.collapse_nearest_activity();
             return true;
         }
+        if matches_binding(key, "app.activity.displayLevel") {
+            self.cycle_display_level();
+            return true;
+        }
         false
     }
 

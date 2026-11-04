@@ -4493,6 +4493,52 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn h35c_fold_slash_cycles_display_levels() {
+        use crate::activity_fold::DisplayLevel;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/fold full");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            root.borrow().activity().settings.display_level,
+            DisplayLevel::Full
+        );
+        assert!(root.borrow().fold_view().thinking_visible);
+        assert!(root.borrow().fold_view().tool_output_visible);
+
+        root.borrow_mut().set_editor_text("/fold quiet");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            root.borrow().activity().settings.display_level,
+            DisplayLevel::Quiet
+        );
+        assert!(!root.borrow().fold_view().thinking_visible);
+        assert!(!root.borrow().fold_view().tool_header_visible);
+
+        root.borrow_mut().set_editor_text("/fold");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|note| note.contains("display level")),
+            "expected /fold view note: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
     async fn h36_slash_fuzzy_enter_applies_before_host_parse() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();

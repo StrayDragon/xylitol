@@ -48,6 +48,11 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         Some("Collapse nearest activity segment"),
     ),
     (
+        "app.activity.displayLevel",
+        &[],
+        Some("Cycle activity display level"),
+    ),
+    (
         "app.tree.filter.default",
         &["ctrl+d"],
         Some("Tree filter: default"),

@@ -1,6 +1,6 @@
 use xylitol_tui::Terminal;
 
-use crate::commands::StageNameAction;
+use crate::commands::{FoldAction, FoldItem, StageNameAction};
 use crate::dispatch::{DispatchOutcome, dispatch};
 use crate::driver::XyDriver;
 use crate::host::HostSession;
@@ -246,6 +246,58 @@ pub(super) async fn clone_session<T: Terminal>(
                 }
             }
         }
+    }
+    let _ = session.render_now();
+}
+
+pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction) {
+    let mut notice = String::new();
+    if let Some(root) = session.ui_root() {
+        let mut root = root.borrow_mut();
+        match action {
+            FoldAction::View => {
+                let settings = &root.activity().settings;
+                notice = format!(
+                    "display level: {:?}; thinking={} tools={} output={} diff={}",
+                    settings.display_level,
+                    settings.visible_items.thinking,
+                    settings.visible_items.tool_header,
+                    settings.visible_items.tool_output,
+                    settings.visible_items.diff,
+                );
+            }
+            FoldAction::Set(level) => {
+                let mut settings = root.activity().settings.clone();
+                settings.apply_display_level(level);
+                root.set_activity_settings(settings);
+                notice = format!("display level: {level:?}");
+            }
+            FoldAction::Reset => {
+                root.reset_fold_overrides();
+                notice = "fold reset: display level Summary, overrides cleared".into();
+            }
+            FoldAction::Toggle(item) => {
+                let mut settings = root.activity().settings.clone();
+                let field = match item {
+                    FoldItem::Thinking => &mut settings.visible_items.thinking,
+                    FoldItem::Tools => &mut settings.visible_items.tool_header,
+                    FoldItem::Output => &mut settings.visible_items.tool_output,
+                    FoldItem::Diff => &mut settings.visible_items.diff,
+                };
+                *field = !*field;
+                let label = match item {
+                    FoldItem::Thinking => "thinking",
+                    FoldItem::Tools => "tools",
+                    FoldItem::Output => "output",
+                    FoldItem::Diff => "diff",
+                };
+                notice = format!("fold {label}: {}", if *field { "on" } else { "off" });
+                root.set_activity_settings(settings);
+            }
+        }
+    }
+    if !notice.is_empty() {
+        session.push_scroll_notice(notice);
     }
     let _ = session.render_now();
 }

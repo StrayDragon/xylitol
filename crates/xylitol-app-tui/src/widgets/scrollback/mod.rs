@@ -14,7 +14,7 @@ pub use paint::{StreamingAssistantPaint, find_stable_markdown_prefix_end};
 use std::collections::{HashMap, HashSet};
 
 use crate::activity_fold::{
-    ActivityFoldState, ActivitySegment, SegmentLevel, cluster_is_thought_only,
+    ActivityFoldState, ActivitySegment, SegmentLevel, VisibleItems, cluster_is_thought_only,
     cluster_middle_indices, cluster_omits_header, middle_entry_indices, partition_segments,
 };
 use crate::bridge::{STREAMING_THINK_ID, StreamingTailKind, UiEntry, UiModel, UiPhase};
@@ -38,8 +38,13 @@ use paint::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScrollbackFold {
     pub thinking_expanded: bool,
+    pub thinking_visible: bool,
+    pub streaming_thinking_expanded: bool,
     pub tools_expanded: bool,
+    pub tool_header_visible: bool,
     pub tools_output_expanded: bool,
+    pub tool_output_visible: bool,
+    pub diff_visible: bool,
     pub output_overrides: HashMap<String, bool>,
     pub compaction_expanded: bool,
     pub tools_overrides: HashMap<String, bool>,
@@ -50,8 +55,13 @@ impl Default for ScrollbackFold {
     fn default() -> Self {
         Self {
             thinking_expanded: false,
+            thinking_visible: true,
+            streaming_thinking_expanded: true,
             tools_expanded: true,
+            tool_header_visible: true,
             tools_output_expanded: false,
+            tool_output_visible: true,
+            diff_visible: true,
             output_overrides: HashMap::new(),
             compaction_expanded: false,
             tools_overrides: HashMap::new(),
@@ -75,13 +85,14 @@ impl ScrollbackFold {
     }
 
     pub fn thinking_effective(&self, id: &str) -> bool {
-        self.thinking_overrides.get(id).copied().unwrap_or_else(|| {
-            if id == STREAMING_THINK_ID {
-                true
-            } else {
-                self.thinking_expanded
-            }
-        })
+        self.thinking_visible
+            && self.thinking_overrides.get(id).copied().unwrap_or_else(|| {
+                if id == STREAMING_THINK_ID {
+                    self.streaming_thinking_expanded
+                } else {
+                    self.thinking_expanded
+                }
+            })
     }
 
     pub fn toggle_tools(&mut self, id: &str) {
@@ -95,10 +106,22 @@ impl ScrollbackFold {
     }
 
     pub fn output_effective(&self, id: &str) -> bool {
-        self.output_overrides
-            .get(id)
-            .copied()
-            .unwrap_or(self.tools_output_expanded)
+        self.tool_output_visible
+            && self
+                .output_overrides
+                .get(id)
+                .copied()
+                .unwrap_or(self.tools_output_expanded)
+    }
+
+    pub fn apply_visible_items(&mut self, items: VisibleItems) {
+        self.thinking_visible = items.thinking;
+        self.tool_header_visible = items.tool_header;
+        self.tool_output_visible = items.tool_output;
+        self.diff_visible = items.diff;
+        self.thinking_expanded = items.tool_output;
+        self.streaming_thinking_expanded = items.tool_output;
+        self.tools_expanded = items.tool_output;
     }
 
     pub fn toggle_output(&mut self, id: &str) {

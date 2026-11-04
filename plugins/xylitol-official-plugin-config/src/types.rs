@@ -200,6 +200,10 @@ pub struct TuiActivityFoldConfig {
     pub auto_on_rebuild: bool,
     #[serde(default = "default_true")]
     pub auto_on_turn_end: bool,
+    #[serde(default)]
+    pub display_level: ActivityDisplayLevel,
+    #[serde(default)]
+    pub visible_items: Option<TuiVisibleItems>,
 }
 
 impl Default for TuiActivityFoldConfig {
@@ -210,6 +214,8 @@ impl Default for TuiActivityFoldConfig {
             stream_collapse: ActivityFoldStreamCollapse::Envelope,
             auto_on_rebuild: true,
             auto_on_turn_end: true,
+            display_level: ActivityDisplayLevel::Summary,
+            visible_items: None,
         }
     }
 }
@@ -220,6 +226,25 @@ pub enum ActivityFoldStreamCollapse {
     #[default]
     Envelope,
     Clusters,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityDisplayLevel {
+    Quiet,
+    #[default]
+    Summary,
+    Recent,
+    Full,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct TuiVisibleItems {
+    pub thinking: bool,
+    pub tool_header: bool,
+    pub tool_output: bool,
+    pub diff: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -1190,6 +1215,16 @@ tui:
         );
         assert!(get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_rebuild);
         assert!(get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_turn_end);
+        assert_eq!(
+            get::<TuiConfig>(&cfg, "tui").activity_fold.display_level,
+            ActivityDisplayLevel::Summary
+        );
+        assert!(
+            get::<TuiConfig>(&cfg, "tui")
+                .activity_fold
+                .visible_items
+                .is_none()
+        );
     }
 
     #[test]
@@ -1204,6 +1239,12 @@ tui:
     stream_collapse: clusters
     auto_on_rebuild: false
     auto_on_turn_end: false
+    display_level: full
+    visible_items:
+      thinking: false
+      tool_header: true
+      tool_output: true
+      diff: false
 "#,
         )
         .expect("activity_fold");
@@ -1220,6 +1261,18 @@ tui:
         );
         assert!(!get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_rebuild);
         assert!(!get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_turn_end);
+        assert_eq!(
+            get::<TuiConfig>(&cfg, "tui").activity_fold.display_level,
+            ActivityDisplayLevel::Full
+        );
+        let visible = get::<TuiConfig>(&cfg, "tui")
+            .activity_fold
+            .visible_items
+            .expect("visible_items");
+        assert!(!visible.thinking);
+        assert!(visible.tool_header);
+        assert!(visible.tool_output);
+        assert!(!visible.diff);
     }
 
     #[test]

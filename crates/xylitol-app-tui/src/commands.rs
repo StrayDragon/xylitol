@@ -28,6 +28,9 @@ pub enum PendingSlash {
     StageName {
         action: StageNameAction,
     },
+    Fold {
+        action: FoldAction,
+    },
     Reload,
     Trust {
         mode: crate::driver::ProjectTrustMode,
@@ -52,6 +55,22 @@ pub enum StageNameAction {
     View,
     Set(String),
     Refresh,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FoldItem {
+    Thinking,
+    Tools,
+    Output,
+    Diff,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FoldAction {
+    View,
+    Set(crate::activity_fold::DisplayLevel),
+    Reset,
+    Toggle(FoldItem),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +132,9 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
         },
-        PendingSlash::SessionName { .. } | PendingSlash::StageName { .. } => SlashAllowances {
+        PendingSlash::SessionName { .. }
+        | PendingSlash::StageName { .. }
+        | PendingSlash::Fold { .. } => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
         },
@@ -187,6 +208,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::SessionDump => "/session",
         PendingSlash::SessionName { .. } => "/session-name",
         PendingSlash::StageName { .. } => "/stage-name",
+        PendingSlash::Fold { .. } => "/fold",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
         PendingSlash::OpenMcp => "/mcp",
         PendingSlash::OpenCapabilities => "/capabilities",
@@ -245,6 +267,17 @@ pub fn parse_bang_command(text: &str) -> BangParse {
     }
 }
 
+pub fn parse_fold_level(text: &str) -> Option<crate::activity_fold::DisplayLevel> {
+    use crate::activity_fold::DisplayLevel;
+    match text {
+        "quiet" => Some(DisplayLevel::Quiet),
+        "summary" => Some(DisplayLevel::Summary),
+        "recent" => Some(DisplayLevel::Recent),
+        "full" => Some(DisplayLevel::Full),
+        _ => None,
+    }
+}
+
 pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
     let trimmed = text.trim();
     let rest = trimmed.strip_prefix('/')?;
@@ -300,6 +333,27 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         }
         ("stage-name", Some(name)) => Some(PendingSlash::StageName {
             action: StageNameAction::Set(name),
+        }),
+        ("fold", None) => Some(PendingSlash::Fold {
+            action: FoldAction::View,
+        }),
+        ("fold", Some(arg)) if arg == "reset" => Some(PendingSlash::Fold {
+            action: FoldAction::Reset,
+        }),
+        ("fold", Some(arg)) if arg == "thinking" => Some(PendingSlash::Fold {
+            action: FoldAction::Toggle(FoldItem::Thinking),
+        }),
+        ("fold", Some(arg)) if arg == "tools" => Some(PendingSlash::Fold {
+            action: FoldAction::Toggle(FoldItem::Tools),
+        }),
+        ("fold", Some(arg)) if arg == "output" => Some(PendingSlash::Fold {
+            action: FoldAction::Toggle(FoldItem::Output),
+        }),
+        ("fold", Some(arg)) if arg == "diff" => Some(PendingSlash::Fold {
+            action: FoldAction::Toggle(FoldItem::Diff),
+        }),
+        ("fold", Some(level)) => parse_fold_level(&level).map(|level| PendingSlash::Fold {
+            action: FoldAction::Set(level),
         }),
         ("reload", None) => Some(PendingSlash::Reload),
         ("reload", Some(_)) => Some(PendingSlash::Usage("usage: /reload (no arguments)")),

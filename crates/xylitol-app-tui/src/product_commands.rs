@@ -73,6 +73,11 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             argument_hint: Some("[name|refresh]"),
         },
         ProductSlashCommand {
+            name: "fold",
+            description: "Show or change activity display level",
+            argument_hint: Some("[quiet|summary|recent|full|reset|thinking|tools|output|diff]"),
+        },
+        ProductSlashCommand {
             name: "reload",
             description: "Hot-reload keybindings, skills, MCP, themes, context",
             argument_hint: None,

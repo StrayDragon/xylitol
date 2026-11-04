@@ -177,7 +177,7 @@
 
   @req:r1739
   规则: tui-activity-fold
-    AppConfig 须支持可选顶层 tui.activity_fold：enabled（缺省 true）、keep_recent_turns（缺省 2，非负整数）、stream_collapse（envelope 或 clusters，缺省 envelope）、auto_on_rebuild（缺省 true）、auto_on_turn_end（缺省 true）。非法 stream_collapse 须使配置加载失败。enabled 为 false 须使 ActivityFold 不套信封（全细账，块级折叠仍可用）。由配置单测覆盖，不得为静态字段形状单独扩 BDD step。
+    AppConfig 须支持可选顶层 tui.activity_fold：enabled（缺省 true）、keep_recent_turns（缺省 2，非负整数）、stream_collapse（envelope 或 clusters，缺省 envelope）、auto_on_rebuild（缺省 true）、auto_on_turn_end（缺省 true）、display_level（quiet/summary/recent/full，缺省 summary）、visible_items（可选，含 thinking/tool_header/tool_output/diff）。非法 stream_collapse 或 display_level 须使配置加载失败。enabled 为 false 须使 ActivityFold 不套信封（全细账，块级折叠仍可用）。由配置单测覆盖，不得为静态字段形状单独扩 BDD step。
     场景: 活动折叠词法契约
       当 读取配置节字段缺省
       那么 活动折叠启用且保留两回合与信封折叠

@@ -31,6 +31,7 @@ pub(super) async fn handle_slash<T: Terminal>(
         | PendingSlash::SessionClone => handle_plain_session_slash(session, driver, slash).await,
         PendingSlash::SessionName { name } => session::name(session, driver, name).await,
         PendingSlash::StageName { action } => session::stage_name(session, driver, action).await,
+        PendingSlash::Fold { action } => session::fold(session, action),
         PendingSlash::PluginCommand { plugin, args } => {
             misc::plugin_command(session, driver, plugin, args).await
         }

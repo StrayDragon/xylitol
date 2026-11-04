@@ -2,6 +2,9 @@
 depends_on: []
 title: TUI 活动折叠等级预设与子项可见性
 needs_specs_change: true
+branch: sdd/c3120-update-tui-activity-display
+base_branch: main
+base_sha: f0a68877ddfb6fb9b2aa8bd38fc111caeedf8bd6
 ---
 
 # TUI 活动折叠等级预设与子项可见性

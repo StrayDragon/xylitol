@@ -184,3 +184,7 @@
   @req:r3081
   规则: slash-stage-name
     产品 TUI 须解析 `/stage-name`：无参 须显示当前阶段名或未生成提示；`/stage-name <text>` 须经 `set_session_name` 显式改名并钉住；`/stage-name refresh` 须经 `generate_session_name(force=true)` 强制重生成；结果与失败 须以滚动提示呈现，不得写入模型上下文；`SlashCommandSource` 须列出 `stage-name`；busy 时 须按 `SessionName` 同档 Allow。由 harness 覆盖，不扩 BDD step。
+
+  @req:r3082
+  规则: slash-fold
+    产品 TUI 须解析 `/fold`：无参 须显示当前 display level 与可见项；`/fold quiet|summary|recent|full` 须切换预设；`/fold reset` 须清逐项覆盖并回 summary；`/fold thinking|tools|output|diff` 须逐项切换；结果 须以滚动提示呈现，不得写入模型上下文；`SlashCommandSource` 须列出 `fold`；busy 时 须 Allow。由 harness 覆盖，不扩 BDD step。
