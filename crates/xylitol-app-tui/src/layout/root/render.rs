@@ -147,51 +147,6 @@ impl UiRoot {
         vec![truncate_to_width(&painted, width, "…", false)]
     }
 
-    pub(super) fn overlay_session_popup(
-        &self,
-        lines: &mut [String],
-        width: usize,
-        transcript_rows: usize,
-    ) {
-        if !self.session_popup_open || width == 0 {
-            return;
-        }
-        let box_w = Self::SESSION_POPUP_W.min(width.saturating_sub(2));
-        if box_w == 0 {
-            return;
-        }
-        let cap = transcript_rows.min(lines.len());
-        let title = "┌ 会话详情";
-        let title_w = xylitol_tui::visible_width(title);
-        let title_paint = self.theme.paint_muted(&format!(
-            "{title} {}",
-            "─".repeat(box_w.saturating_sub(title_w + 1))
-        ));
-        let fields: [(&str, &String); 4] = [
-            ("会话", &self.session_popup_id),
-            ("模型", &self.model),
-            ("思考", &self.thinking_level),
-            ("目录", &self.cwd),
-        ];
-        let mut body: Vec<String> = vec![title_paint];
-        for (label, value) in fields {
-            body.push(format!("{} {}", self.theme.paint_muted(label), value));
-        }
-        for (i, row) in body.iter().enumerate() {
-            if i >= cap {
-                break;
-            }
-            let block = truncate_to_width(row, box_w, "…", false);
-            let bw = xylitol_tui::visible_width(&block);
-            let budget = width.saturating_sub(box_w);
-            let left = truncate_to_width(&lines[i], budget, "…", false);
-            let lw = xylitol_tui::visible_width(&left);
-            let pad = " ".repeat(budget.saturating_sub(lw));
-            let right_pad = " ".repeat(box_w.saturating_sub(bw));
-            lines[i] = format!("{left}{pad}{block}{right_pad}");
-        }
-    }
-
     pub(super) fn overlay_client_notices(
         &self,
         lines: &mut [String],
@@ -409,7 +364,7 @@ impl Component for UiRoot {
     fn overlay_viewport(&self, lines: &mut [String], width: usize, transcript_rows: usize) {
         let (sidebar_on, sidebar_w, content_w) = self.session_sidebar_layout(width);
         let eff = if sidebar_on { content_w } else { width };
-        self.overlay_session_popup(lines, eff, transcript_rows);
+
         self.overlay_client_notices(lines, eff, transcript_rows);
         if sidebar_on {
             let sep = self.theme.paint_muted("│");

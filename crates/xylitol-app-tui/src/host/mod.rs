@@ -1117,12 +1117,6 @@ impl<T: Terminal> HostSession<T> {
 
     fn dispatch_overlay_chrome_click(&mut self, id: xylitol_tui::HitId) {
         match id {
-            crate::layout::UiRoot::SESSION_POPUP_HIT_ID => {
-                if let Some(root) = self.ui_root.as_ref() {
-                    root.borrow_mut().close_session_popup();
-                }
-                self.tui.request_render(false);
-            }
             crate::layout::UiRoot::SESSION_SIDEBAR_HIT_ID => {
                 if let Some(root) = self.ui_root.as_ref() {
                     root.borrow_mut().close_session_sidebar();

@@ -926,9 +926,6 @@ impl UiRoot {
     pub const SESSION_SIDEBAR_WIDTHS: [usize; 3] = [24, 32, 40];
     pub const SESSION_SIDEBAR_MIN_CONTENT: usize = 40;
     pub const SESSION_SIDEBAR_CONTENT_ROWS: usize = 3;
-    pub const SESSION_POPUP_W: usize = 30;
-    pub const SESSION_POPUP_ROWS: usize = 5;
-    pub const SESSION_POPUP_HIT_ID: HitId = 1 << 61;
     pub const SESSION_SIDEBAR_HIT_ID: HitId = 1 << 61 | 1;
     pub const SESSION_SIDEBAR_SEPARATOR_HIT_ID: HitId = 1 << 61 | 2;
     pub const QUEUE_STRIP_HIT_ID: HitId = 1 << 61 | 3;
@@ -959,29 +956,10 @@ impl UiRoot {
 
     pub fn overlay_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
         let mut hits = Vec::new();
-        hits.extend(self.popup_hit(width, transcript_rows));
+
         hits.extend(self.queue_strip_hit(width));
         hits.extend(self.sidebar_hits(width, transcript_rows));
         hits
-    }
-
-    fn popup_hit(&self, width: usize, transcript_rows: usize) -> Option<Hit> {
-        let (_, _, content_w) = self.session_sidebar_layout(width);
-        if !self.session_popup_open || content_w == 0 {
-            return None;
-        }
-        let box_w = Self::SESSION_POPUP_W.min(content_w.saturating_sub(2));
-        if box_w == 0 {
-            return None;
-        }
-        let start = content_w.saturating_sub(box_w);
-        Some(
-            Hit::at_cell(Self::SESSION_POPUP_HIT_ID, start as u16, 0)
-                .cols(start, content_w)
-                .tall(transcript_rows.min(Self::SESSION_POPUP_ROWS))
-                .capturing()
-                .space(HitSpace::Chrome),
-        )
     }
 
     fn queue_strip_hit(&self, width: usize) -> Option<Hit> {
@@ -1922,14 +1900,12 @@ mod tests {
     }
 
     #[test]
-    fn overlay_hits_cover_popup_sidebar_and_separator() {
+    fn overlay_hits_cover_sidebar_and_separator() {
         let mut root = UiRoot::new();
         root.set_term_cols(120);
-        root.show_session_popup("s1");
         root.show_session_sidebar("s1");
         let hits = root.overlay_hits(120, 40);
         let ids: Vec<_> = hits.iter().map(|hit| (*hit).into_region().id).collect();
-        assert!(ids.contains(&UiRoot::SESSION_POPUP_HIT_ID));
         assert!(ids.contains(&UiRoot::SESSION_SIDEBAR_HIT_ID));
         assert!(ids.contains(&UiRoot::SESSION_SIDEBAR_SEPARATOR_HIT_ID));
         for hit in &hits {
