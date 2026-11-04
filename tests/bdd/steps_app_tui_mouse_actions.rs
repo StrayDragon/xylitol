@@ -1,8 +1,8 @@
 use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_host::{
-    HostPump, HostPumpBdd, c2826_slot, c2911_click, click_footer_chip_label, editor_text,
-    fresh_pump, open_busy, open_tree_ready, pump_once, put_pump, render_frame, set_editor, stats,
-    step_key, take_pump,
+    HostPump, HostPumpBdd, c2826_slot, c2911_click, click_footer_chip_label,
+    close_session_popup_via_action, editor_text, fresh_pump, open_busy, open_tree_ready, pump_once,
+    put_pump, render_frame, request_session_popup_via_action, set_editor, stats, step_key, take_pump,
 };
 use crate::bdd::steps_app_tui_interaction::TuiInteraction;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
@@ -112,14 +112,12 @@ async fn w_mat31_pointer_only(tui_interaction: &TuiInteraction, host_pump_bdd: &
         assert!(fx.left_click(thinking.0, thinking.1), "思维块点击须被消费");
     }
     assert!(
-        click_footer_chip_label(host_pump_bdd, "详情").await,
-        "[详情] chip"
+        !click_footer_chip_label(host_pump_bdd, "详情").await,
+        "[详情] chip must not be painted"
     );
+    request_session_popup_via_action(host_pump_bdd).await;
     SAW_POPUP_OPEN.with(|s| *s.borrow_mut() = host_root_popup_open(host_pump_bdd));
-    assert!(
-        click_footer_chip_label(host_pump_bdd, "详情").await,
-        "[详情] chip 复点"
-    );
+    close_session_popup_via_action(host_pump_bdd).await;
     assert!(
         click_footer_chip_label(host_pump_bdd, "侧栏").await,
         "[侧栏] chip"
