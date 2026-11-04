@@ -21,9 +21,9 @@ MCP 工具当前进全局 `HostRegistries.tools`；adapter 忽略 `XyToolCtx`。
 ## Preset 变更处理
 
 - 选择 Option B：resume 使用当前 preset，不冻结旧 preset。理由：冻结的 preset 下一次 resume 可能不存在或已变化。
-- 独立 change：`c3100-add-agent-preset-resume-diff` 负责 session header preset metadata、resume diff、delta 注入。
+- 独立 change：`c3100-add-agent-preset-resume-diff` 负责 session header preset metadata 与 resume 全量重注入。
 - 本 change 负责 tool set 过滤与 reconcile：按当前 preset 重建 tool set；MCP claims 增删；tool list changed 刷新。
-- diff 低成本：fingerprint 先短路；只对变化项生成 delta；不做全量重注入。
+- 粗粒度：preset 任意变动就全量重注入；不做 diff / delta。
 - preset 不存在：回退默认 preset 并提示；不得静默用错。
 
 ## Capabilities

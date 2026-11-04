@@ -27,7 +27,7 @@ MCP plugin、config、host。
 
 ## Further Notes
 
-- 用户决策：先不做；自定义供应商通过插件贡献。
+- 用户决策：先不做；等待第一个出现的用户 / 供应商需求，由插件贡献。
 - 依赖 `c3085-add-mcp-transport-config`。
 - fixture 只需验证插入点，不需要实现 WebSocket。
 

@@ -17,6 +17,7 @@ Host 当前启动即绑定 cwd；`new_session` 用 host 进程 cwd；多 client 
 - **人类入口暂不做**：只保留 host unary / TUI slash 插入点；后续可能加。
 - workspace set 的 mid-session 变更只允许人类操作；LLM 不得自行 add / remove / switch。
 - trust 按 workspace set 逐个解析；新加入的 workspace 走 trust 门禁。
+- additional workspace 重新确认机制暂不做；agent 工具有绕过风险，后续讨论。
 - host 按 session 绑定 workspace set；`new_session` 用 primary workspace，不用 host cwd。
 - materialize driver、MCP pool、tool catalog 使用 session 的 workspace set。
 - MCP scope pool 对 set 内每个 workspace 建 claim；tool 调用按 `XyToolCtx.workspace` 路由；不在 set 内则拒绝。
@@ -26,8 +27,8 @@ Host 当前启动即绑定 cwd；`new_session` 用 host 进程 cwd；多 client 
 ## Trust store 安全
 
 - 威胁：`trust.json` 当前由 `fs::write` 写入，默认权限（实际 0644）；同用户 agent / 进程可改写并自信任 workspace，绕过 trust 门禁。
-- 缓解：trust store 0600 原子写；lock 0600；人类确认；不得暴露为模型工具；resume 重新校验；additional workspace 默认 ephemeral；审计。
-- 完整性：HMAC / keychain 提高门槛；但同用户任意代码执行无法靠文件权限阻止。
+- 缓解：trust store 0600 原子写；lock 0600；HMAC key 在 agent dir；人类确认；不得暴露为模型工具；resume 重新校验；审计。
+- 完整性：HMAC key 在 agent dir，同用户 agent 可读；只提高门槛，不能对抗同用户任意代码执行。
 - 真边界：不可信 workspace 用 OS sandbox / 独立用户 / 容器；trust store 是 advisory。
 - 独立 change：`c3105-fix-harden-trust-store`。
 
@@ -54,6 +55,6 @@ host、protocol、TUI client、trust、MCP、session store。
 
 - subscribe `workspaces` list vs `workspace` + `additional_workspaces`：推荐 list。
 - 人类入口形态：TUI slash / host unary / 两者；暂不做。
-- additional workspace 的 trust 模式与写权限边界。
+- additional workspace 的 trust 模式与写权限边界；重新确认暂不做。
 - workspace set 变更是否需要 session 级审计记录。
 - trust store 加固是否先行：见 `c3105-fix-harden-trust-store`。

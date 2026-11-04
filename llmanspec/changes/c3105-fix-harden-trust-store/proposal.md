@@ -10,11 +10,12 @@ title: "Harden trust store"
 ## What Changes
 
 - trust store 0600 原子写；lock 文件 0600；schema version；写入前校验。
+- HMAC key 放 agent dir（`~/.xylitol/trust.key`，0600）；trust.json 带 HMAC；篡改检测。
+- 审计日志放 agent dir（`~/.xylitol/audit/trust.log`，0600）；记录 who / when / which workspace / decision。
 - trust 决策只允许人类操作：TUI 交互确认；host unary 需要 client capability / 确认；不得暴露为 LLM 可调用工具。
 - resume 时重新校验 workspace set 的 trust；不得盲目信任 session 存储的 set。
-- additional workspace 默认 ephemeral；持久化必须人类确认并审计。
-- 审计：记录 who / when / which workspace / decision；日志脱敏。
-- 完整性：HMAC / keychain 签名提高门槛；明确不能对抗同用户任意代码执行。
+- additional workspace 重新确认机制：设计保留，**暂不实现**；agent 有大量工具可绕过文件确认，实际收益有限；后续讨论。
+- 完整性：HMAC key 在 agent dir，同用户 agent 可读；只提高门槛，不能对抗同用户任意代码执行。
 - 文档：trust store 是 advisory，不是安全边界；不可信 workspace 用 OS sandbox / 独立用户 / 容器。
 - 测试：权限、原子写、tamper、审计、resume 重校验。
 
@@ -32,11 +33,12 @@ trust、host、TUI、workspace set、session resume、安全文档。
 ## Further Notes
 
 - 当前实现：`crates/xylitol-runtime/src/trust/store.rs` 的 `write_file` 用 `fs::write` + rename；无显式 0600。
-- 同用户 agent 可通过 bash 工具改写 trust.json；文件权限不能阻止同用户进程。真正的隔离需要 OS sandbox / 独立用户。
+- 同用户 agent 可通过 bash 工具改写 trust.json，也可读 trust.key；文件权限与 HMAC 不能阻止同用户进程。
+- additional workspace 重新确认暂不做；记录为后续讨论。
 - 与 `c3050-add-host-workspace-binding` 协同：additional workspace 的 trust 与审计。
 
 ## Open Questions
 
-- HMAC key 放 OS keychain 还是 agent dir；同用户可读 keychain 时的实际收益。
-- 审计日志落点与保留周期。
-- 是否要求每次 additional workspace 都重新确认，还是 session 内记住。
+- HMAC key 在 agent dir 的实际收益；是否需要 keychain 作为可选增强。
+- 审计日志保留周期与轮转。
+- additional workspace 重新确认是否值得做；agent 工具绕过如何缓解。
