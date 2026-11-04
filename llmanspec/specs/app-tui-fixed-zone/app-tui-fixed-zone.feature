@@ -349,3 +349,7 @@
     场景: 默认暗色次要文本对比度达标
       当 读取产品默认暗色次要文本与表面色
       那么 muted 对比度不低于 4.3 且 tool 不高于 muted
+
+  @req:r3080
+  规则: stage-name-display
+    产品 TUI 编辑区上边框右端 须显示当前会话阶段名（muted，右对齐）；阶段名超宽 须以 `…` 截断，不得换行或使编辑区增高；无阶段名时 不得留空槽或伪造占位。阶段名 须复用 session display name，不得新建平行标题存储；fork 后 须显示继承的父名。由 harness 与 snapshot 覆盖，不扩 BDD step。

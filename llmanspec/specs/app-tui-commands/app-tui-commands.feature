@@ -180,3 +180,7 @@
   @req:r3029
   规则: plugin-slash-commands
     产品 TUI idle 时 必须 解析 `/plugin:<name> [args]` 并派发插件命令；busy 时 必须 拒绝；结果（含失败）必须 以滚动提示呈现，不得 写入模型上下文；`SlashCommandSource` 必须 合并宿主返回的 `plugin:` 前缀命令。由 harness 覆盖。
+
+  @req:r3081
+  规则: slash-stage-name
+    产品 TUI 须解析 `/stage-name`：无参 须显示当前阶段名或未生成提示；`/stage-name <text>` 须经 `set_session_name` 显式改名并钉住；`/stage-name refresh` 须经 `generate_session_name(force=true)` 强制重生成；结果与失败 须以滚动提示呈现，不得写入模型上下文；`SlashCommandSource` 须列出 `stage-name`；busy 时 须按 `SessionName` 同档 Allow。由 harness 覆盖，不扩 BDD step。

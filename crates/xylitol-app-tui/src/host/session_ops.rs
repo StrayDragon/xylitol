@@ -551,6 +551,20 @@ impl<T: Terminal> HostSession<T> {
             .map_or(has_more, |history| history.has_more);
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
         self.ui_model.mode_strip = mode_strip_for_entries(&entries);
+        let restored_stage_name = entries.iter().rev().find_map(|entry| {
+            if let SessionEntry::SessionInfo(info) = entry {
+                info.name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+            } else {
+                None
+            }
+        });
+        self.ui_model.stage_name = restored_stage_name.clone();
+        self.stage_name_requested_for = restored_stage_name.map(|_| session_id.to_string());
+        self.stage_name_request_pending = false;
         crate::history_window::trim_to_window(&mut self.ui_model, buffer_has_more);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();

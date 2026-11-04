@@ -83,6 +83,8 @@ pub struct HostSession<T: Terminal> {
     rebuild: Box<dyn FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>>>,
     ui_model: UiModel,
     pending: PendingOps,
+    stage_name_requested_for: Option<String>,
+    stage_name_request_pending: bool,
     run_active: bool,
     bash_active: bool,
     reload_active: bool,
@@ -151,6 +153,8 @@ impl<T: Terminal> HostSession<T> {
             rebuild: Box::new(rebuild),
             ui_model: UiModel::new(),
             pending: PendingOps::default(),
+            stage_name_requested_for: None,
+            stage_name_request_pending: false,
             run_active: false,
             bash_active: false,
             reload_active: false,
@@ -625,6 +629,28 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn take_dequeue(&mut self) -> bool {
         self.pending.take_dequeue()
+    }
+
+    pub fn request_stage_name(&mut self) {
+        self.stage_name_request_pending = true;
+    }
+
+    pub fn take_stage_name_request(&mut self) -> bool {
+        std::mem::take(&mut self.stage_name_request_pending)
+    }
+
+    pub fn stage_name_requested_for(&self) -> Option<&str> {
+        self.stage_name_requested_for.as_deref()
+    }
+
+    pub fn mark_stage_name_requested(&mut self, session_id: &str) {
+        self.stage_name_requested_for = Some(session_id.to_string());
+    }
+
+    pub fn set_stage_name(&mut self, name: Option<String>) {
+        self.ui_model.stage_name = name;
+        self.sync_ui_root_from_model();
+        self.tui.request_render(false);
     }
 
     pub fn dequeue_to_editor(&mut self) -> bool {
@@ -1203,6 +1229,11 @@ impl<T: Terminal> HostSession<T> {
         match xy.as_ref() {
             XyEvent::AgentEnd { .. } => {
                 self.run_active = false;
+                if self.ui_model.stage_name.is_none()
+                    && !crate::trailing_aborted_note(&self.ui_model.entries)
+                {
+                    self.request_stage_name();
+                }
             }
             XyEvent::ContextTokenSettlement {
                 estimate, reason, ..

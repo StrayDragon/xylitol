@@ -67,6 +67,13 @@ impl UiRoot {
             return (line.to_string(), Vec::new());
         }
         let chips = self.footer_chip_actions();
+        let stage_name = self
+            .ui_model
+            .stage_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty());
+        let mut title = stage_name.map(|name| format!(" {name} "));
         let mut labels = Vec::with_capacity(chips.len());
         for (action, label, active) in &chips {
             labels.push((*action, format!("[{label}]"), *active));
@@ -79,7 +86,20 @@ impl UiRoot {
         if labels.is_empty() || chip_w + 6 > width {
             return (line.to_string(), Vec::new());
         }
-        let dash_w = width.saturating_sub(chip_w + 1);
+        let title_w = title
+            .as_deref()
+            .map(xylitol_tui::visible_width)
+            .unwrap_or(0);
+        if chip_w + title_w + usize::from(title.is_some()) + 6 > width {
+            title = None;
+        }
+        let title_w = title
+            .as_deref()
+            .map(xylitol_tui::visible_width)
+            .unwrap_or(0);
+        let title_gap = usize::from(title.is_some());
+        let total_w = chip_w + title_w + title_gap;
+        let dash_w = width.saturating_sub(total_w + 1);
         let border = self.operation_zone_paint();
         let mut out = if dash_w == 0 {
             String::new()
@@ -102,6 +122,10 @@ impl UiRoot {
                 action: *action,
             });
             col += w;
+        }
+        if let Some(title) = title {
+            out.push(' ');
+            out.push_str(&self.theme.paint_muted(&title));
         }
         (out, hits)
     }

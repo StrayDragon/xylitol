@@ -64,6 +64,7 @@ pub struct ScriptedDriver {
     list_sessions_calls: AtomicUsize,
     new_session_calls: AtomicUsize,
     session_name: Mutex<Option<String>>,
+    generate_session_name_calls: AtomicUsize,
     set_session_name_calls: Mutex<Vec<String>>,
     set_session_name_for_calls: Mutex<Vec<(String, String)>>,
     delete_session_calls: Mutex<Vec<String>>,
@@ -179,6 +180,7 @@ impl ScriptedDriver {
             list_sessions_calls: AtomicUsize::new(0),
             new_session_calls: AtomicUsize::new(0),
             session_name: Mutex::new(None),
+            generate_session_name_calls: AtomicUsize::new(0),
             set_session_name_calls: Mutex::new(Vec::new()),
             set_session_name_for_calls: Mutex::new(Vec::new()),
             delete_session_calls: Mutex::new(Vec::new()),
@@ -326,6 +328,10 @@ impl ScriptedDriver {
 
     pub fn new_session_calls(&self) -> usize {
         self.new_session_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn generate_session_name_calls(&self) -> usize {
+        self.generate_session_name_calls.load(Ordering::SeqCst)
     }
 
     pub fn set_session_name_calls(&self) -> Vec<String> {
@@ -1091,6 +1097,8 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             }
             Command::GenerateSessionName { force, .. } => {
                 let _ = force;
+                self.generate_session_name_calls
+                    .fetch_add(1, Ordering::SeqCst);
                 let name = self
                     .session_name
                     .lock()
@@ -4419,6 +4427,69 @@ mod slice_tests {
             "expected show name: {:?}",
             system_notes(&session)
         );
+    }
+
+    #[tokio::test]
+    async fn h35b_stage_name_auto_once_and_slash() {
+        use crate::commands::{PendingSlash, StageNameAction, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/stage-name"),
+            Some(PendingSlash::StageName {
+                action: StageNameAction::View
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/stage-name hello"),
+            Some(PendingSlash::StageName {
+                action: StageNameAction::Set("hello".into())
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/stage-name refresh"),
+            Some(PendingSlash::StageName {
+                action: StageNameAction::Refresh
+            })
+        );
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        session.apply_xy_unfenced(Box::new(XyEvent::AgentEnd {
+            messages: Vec::new(),
+        }));
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.generate_session_name_calls(), 1);
+        assert_eq!(session.ui_model().stage_name.as_deref(), Some("生成阶段名"));
+
+        session.apply_xy_unfenced(Box::new(XyEvent::AgentEnd {
+            messages: Vec::new(),
+        }));
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.generate_session_name_calls(),
+            1,
+            "auto generation must run once per session"
+        );
+
+        root.borrow_mut().set_editor_text("/stage-name refresh");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.generate_session_name_calls(), 2);
+
+        root.borrow_mut().set_editor_text("/stage-name 手动名");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(session.ui_model().stage_name.as_deref(), Some("手动名"));
     }
 
     #[tokio::test]

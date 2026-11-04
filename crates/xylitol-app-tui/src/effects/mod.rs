@@ -11,7 +11,7 @@ use xylitol_tui::Terminal;
 
 use crate::driver::{EventStream, QueueStats, XyDriver, XyDriverError};
 
-use crate::dispatch::dispatch;
+use crate::dispatch::{DispatchOutcome, dispatch};
 use xylitol_protocol::Command;
 
 use crate::commands::slash_allowances;
@@ -241,6 +241,25 @@ pub async fn drain_pending<T: Terminal>(
 
     if let Some(slash) = session.take_slash() {
         slash::handle_slash(session, driver, slash).await;
+    }
+
+    if session.take_stage_name_request() {
+        let session_id = driver.session_id().unwrap_or_default();
+        if !session_id.is_empty() && session.stage_name_requested_for() != Some(&session_id) {
+            session.mark_stage_name_requested(&session_id);
+            match dispatch(driver, Command::GenerateSessionName { force: false }).await {
+                Ok(DispatchOutcome::SessionName(Some(name))) => {
+                    session.set_stage_name(Some(name));
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    log::warn!(
+                        target: "xylitol::tui",
+                        "stage name generation failed session_id={session_id} error={error}"
+                    );
+                }
+            }
+        }
     }
 
     pending_ui::drain_pending_ui(session, driver).await;

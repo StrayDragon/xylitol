@@ -1,5 +1,6 @@
 use xylitol_tui::Terminal;
 
+use crate::commands::StageNameAction;
 use crate::dispatch::{DispatchOutcome, dispatch};
 use crate::driver::XyDriver;
 use crate::host::HostSession;
@@ -243,6 +244,69 @@ pub(super) async fn clone_session<T: Terminal>(
                         format!("/session-clone failed: {e}"),
                     ),
                 }
+            }
+        }
+    }
+    let _ = session.render_now();
+}
+
+pub(super) async fn stage_name<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    action: StageNameAction,
+) {
+    match action {
+        StageNameAction::View => match dispatch(driver, Command::GetSessionName {}).await {
+            Ok(DispatchOutcome::SessionName(Some(name))) => {
+                session.set_stage_name(Some(name.clone()));
+                session.push_scroll_notice(format!("阶段名: {name}"));
+            }
+            Ok(_) => session.push_scroll_notice("阶段名未生成"),
+            Err(error) => note_driver_err(
+                session,
+                "tui.get_session_name",
+                &error,
+                format!("/stage-name failed: {error}"),
+            ),
+        },
+        StageNameAction::Set(raw) => {
+            match dispatch(driver, Command::SetSessionName { name: raw }).await {
+                Ok(DispatchOutcome::SessionName(Some(stored))) => {
+                    session.set_stage_name(Some(stored.clone()));
+                    session.push_scroll_notice(format!("阶段名已更新: {stored}"));
+                }
+                Ok(other) => note_driver_err(
+                    session,
+                    "tui.set_session_name",
+                    &super::super::helpers::outcome_error("tui.set_session_name", &other),
+                    format!("/stage-name failed: {other:?}"),
+                ),
+                Err(error) => note_driver_err(
+                    session,
+                    "tui.set_session_name",
+                    &error,
+                    format!("/stage-name failed: {error}"),
+                ),
+            }
+        }
+        StageNameAction::Refresh => {
+            match dispatch(driver, Command::GenerateSessionName { force: true }).await {
+                Ok(DispatchOutcome::SessionName(Some(name))) => {
+                    session.set_stage_name(Some(name.clone()));
+                    session.push_scroll_notice(format!("阶段名已刷新: {name}"));
+                }
+                Ok(other) => note_driver_err(
+                    session,
+                    "tui.generate_session_name",
+                    &super::super::helpers::outcome_error("tui.generate_session_name", &other),
+                    format!("/stage-name refresh failed: {other:?}"),
+                ),
+                Err(error) => note_driver_err(
+                    session,
+                    "tui.generate_session_name",
+                    &error,
+                    format!("/stage-name refresh failed: {error}"),
+                ),
             }
         }
     }

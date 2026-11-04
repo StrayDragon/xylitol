@@ -68,6 +68,11 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             argument_hint: Some("[name]"),
         },
         ProductSlashCommand {
+            name: "stage-name",
+            description: "Show, set, or refresh the session stage name",
+            argument_hint: Some("[name|refresh]"),
+        },
+        ProductSlashCommand {
             name: "reload",
             description: "Hot-reload keybindings, skills, MCP, themes, context",
             argument_hint: None,

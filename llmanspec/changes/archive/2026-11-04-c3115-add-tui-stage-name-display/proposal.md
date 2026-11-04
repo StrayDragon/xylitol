@@ -3,6 +3,9 @@ depends_on:
   - c3110-add-session-stage-name
 title: TUI 阶段名展示与首轮触发
 needs_specs_change: true
+branch: sdd/c3115-add-tui-stage-name-display
+base_branch: main
+base_sha: a7f0ab8473cd1470fd417e2c1e9ed3d17bedd088
 ---
 
 # TUI 阶段名展示与首轮触发

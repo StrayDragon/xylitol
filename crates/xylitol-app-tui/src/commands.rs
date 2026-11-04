@@ -25,6 +25,9 @@ pub enum PendingSlash {
     SessionName {
         name: Option<String>,
     },
+    StageName {
+        action: StageNameAction,
+    },
     Reload,
     Trust {
         mode: crate::driver::ProjectTrustMode,
@@ -42,6 +45,13 @@ pub enum PendingSlash {
         args: String,
     },
     Usage(&'static str),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StageNameAction {
+    View,
+    Set(String),
+    Refresh,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,7 +113,7 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
         },
-        PendingSlash::SessionName { .. } => SlashAllowances {
+        PendingSlash::SessionName { .. } | PendingSlash::StageName { .. } => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
         },
@@ -176,6 +186,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::Export { .. } => "/session-export",
         PendingSlash::SessionDump => "/session",
         PendingSlash::SessionName { .. } => "/session-name",
+        PendingSlash::StageName { .. } => "/stage-name",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
         PendingSlash::OpenMcp => "/mcp",
         PendingSlash::OpenCapabilities => "/capabilities",
@@ -279,6 +290,17 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
             Some(PendingSlash::Usage("usage: /session-clone (no arguments)"))
         }
         ("session-name", name) => Some(PendingSlash::SessionName { name }),
+        ("stage-name", None) => Some(PendingSlash::StageName {
+            action: StageNameAction::View,
+        }),
+        ("stage-name", Some(arg)) if arg.eq_ignore_ascii_case("refresh") => {
+            Some(PendingSlash::StageName {
+                action: StageNameAction::Refresh,
+            })
+        }
+        ("stage-name", Some(name)) => Some(PendingSlash::StageName {
+            action: StageNameAction::Set(name),
+        }),
         ("reload", None) => Some(PendingSlash::Reload),
         ("reload", Some(_)) => Some(PendingSlash::Usage("usage: /reload (no arguments)")),
         ("trust", None) => Some(PendingSlash::Trust {
