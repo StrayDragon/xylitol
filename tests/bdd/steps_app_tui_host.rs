@@ -2949,7 +2949,20 @@ thread_local! {
 #[when("左键单击 编辑区上边框右端 [详情] chip")]
 async fn w_c3027_click_details_chip(host_pump_bdd: &HostPumpBdd) {
     let clicked = click_footer_chip_label(host_pump_bdd, "详情").await;
-    assert!(clicked, "mat33: [详情] chip 须绘制且可点");
+    assert!(!clicked, "mat33: [详情] chip must not be painted");
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    if let Some(root) = pump.session.ui_root() {
+        root.borrow_mut().request_session_popup();
+    }
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("popup pump");
+    put_pump(host_pump_bdd, pump);
     LAST_CHIP_LABEL.with(|s| *s.borrow_mut() = Some("详情"));
 }
 
@@ -2967,6 +2980,18 @@ async fn w_c3027_click_same_chip_again(host_pump_bdd: &HostPumpBdd) {
     let label = LAST_CHIP_LABEL
         .with(|s| *s.borrow())
         .expect("先前已单击过一个 chip");
+    if label == "详情" {
+        let mut pump = take_pump(host_pump_bdd);
+        if let Some(root) = pump.session.ui_root() {
+            root.borrow_mut().close_session_popup();
+        }
+        let mut stream = None;
+        pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+            .await
+            .expect("popup close pump");
+        put_pump(host_pump_bdd, pump);
+        return;
+    }
     assert!(
         click_footer_chip_label(host_pump_bdd, label).await,
         "mat33: [{label}] chip 须仍绘制且可点"
@@ -3037,12 +3062,20 @@ pub(crate) async fn request_session_sidebar_via_action(host_pump_bdd: &HostPumpB
     .await;
 }
 
+pub(crate) async fn request_session_popup_via_action(host_pump_bdd: &HostPumpBdd) {
+    run_session_details_action(host_pump_bdd, |root| {
+        root.request_session_popup();
+    })
+    .await;
+}
+
 #[when("切换覆盖弹出框显隐")]
 async fn w_c2875_toggle(host_pump_bdd: &HostPumpBdd) {
     assert!(
-        click_footer_chip_label(host_pump_bdd, "详情").await,
-        "[详情] chip 须绘制且可点"
+        !click_footer_chip_label(host_pump_bdd, "详情").await,
+        "[详情] chip must not be painted"
     );
+    request_session_popup_via_action(host_pump_bdd).await;
 }
 
 fn c2875_frame(host_pump_bdd: &HostPumpBdd) -> String {
@@ -3217,9 +3250,10 @@ fn t_c2918_popup_fallback(host_pump_bdd: &HostPumpBdd) {
 #[when("先开覆盖弹出框再开侧栏")]
 async fn w_c2905_both(host_pump_bdd: &HostPumpBdd) {
     assert!(
-        click_footer_chip_label(host_pump_bdd, "详情").await,
-        "[详情] chip 须绘制且可点"
+        !click_footer_chip_label(host_pump_bdd, "详情").await,
+        "[详情] chip must not be painted"
     );
+    request_session_popup_via_action(host_pump_bdd).await;
     assert!(
         click_footer_chip_label(host_pump_bdd, "侧栏").await,
         "[侧栏] chip 须绘制且可点"

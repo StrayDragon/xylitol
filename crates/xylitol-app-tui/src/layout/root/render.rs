@@ -21,6 +21,7 @@ impl UiRoot {
         let mut chip_hits = chip_hits;
         if self.slot.is_editor()
             && editor.len() > 1
+            && !self.editor_autocomplete_open()
             && let Some(last) = editor.last_mut()
         {
             let (bottom, bottom_hits) = self.paint_bottom_chrome(width);

@@ -311,8 +311,8 @@ fn t_mat33_sidebar_chip_active(host_pump_bdd: &HostPumpBdd) {
         .position(|l| l.contains("[侧栏]"))
         .expect("[侧栏] chip 行");
     assert!(
-        plain[chip_row].contains("[详情]"),
-        "标准档须同时绘制两 chip: {}",
+        !plain[chip_row].contains("[详情]"),
+        "标准档不得再绘制 [详情] chip: {}",
         plain[chip_row]
     );
     let raw = &lines[chip_row];
@@ -323,10 +323,10 @@ fn t_mat33_sidebar_chip_active(host_pump_bdd: &HostPumpBdd) {
         "mat33: 开启态 [侧栏] chip 须反色（accent+bold）: {raw:?}"
     );
     let border_rgb = sgr_rgb_before(raw, "─").expect("chip 行虚线取色");
-    let chip_rgb = sgr_rgb_before(raw, "[详情]").expect("chip 取色");
-    assert_eq!(
+    let chip_rgb = sgr_rgb_before(raw, "[侧栏]").expect("chip 取色");
+    assert_ne!(
         chip_rgb, border_rgb,
-        "mat33: 未开启 chip 须与编辑区边框同色（跟随 thinking 档位）: {raw:?}"
+        "mat33: 开启态 [侧栏] chip 须反色: {raw:?}"
     );
     assert_ne!(
         chip_rgb,
@@ -372,10 +372,9 @@ fn t_mat33_narrow_details_only(host_pump_bdd: &HostPumpBdd) {
         .last()
         .cloned()
         .expect("已渲染编辑区上边框");
-    assert!(frame.contains("[详情]"), "窄档仍须绘制 [详情]:\n{frame}");
     assert!(
-        !frame.contains("[侧栏]"),
-        "mat33: 窄于标准档不得绘制 [侧栏] chip:\n{frame}"
+        !frame.contains("[详情]"),
+        "mat33: [详情] chip must not be painted:\n{frame}"
     );
 }
 

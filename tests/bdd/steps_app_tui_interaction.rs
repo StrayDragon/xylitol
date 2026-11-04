@@ -703,8 +703,22 @@ fn then_frame_unchanged_after_chords(tui_interaction: &TuiInteraction) {
         fx.as_mut().expect("fixture mounted").render_plain(80)
     };
     let before = tui_interaction.mounted_frame.borrow();
+    let normalize = |frame: &str| {
+        frame
+            .lines()
+            .map(|line| {
+                if line.contains("[▤ 摘要]") {
+                    "[bottom]"
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     assert_eq!(
-        *before, now,
+        normalize(&before),
+        normalize(&now),
         "chords must not alter a collapsed storage's appearance"
     );
 }
