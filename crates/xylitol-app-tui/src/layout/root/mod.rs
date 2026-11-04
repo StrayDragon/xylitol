@@ -143,6 +143,21 @@ pub struct UiRoot {
     upper_rebuild_count: u64,
 }
 
+fn find_fd() -> Option<String> {
+    for name in ["fd", "fdfind"] {
+        let status = std::process::Command::new(name)
+            .arg("--version")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if status.is_ok_and(|status| status.success()) {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
 impl UiRoot {
     pub fn new() -> Self {
         let theme = LayoutTheme::product_dark();
@@ -283,7 +298,10 @@ impl UiRoot {
                     src
                 }
             }),
-            Box::new(AtPathSource::new(self.at_path_base.clone())),
+            Box::new(AtPathSource::new_with_fd(
+                self.at_path_base.clone(),
+                find_fd(),
+            )),
             Box::new(DollarSkillSource::new(self.dollar_skill_catalog.clone())),
         ];
         self.editor.set_completion_sources(sources);

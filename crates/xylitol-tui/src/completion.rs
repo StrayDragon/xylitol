@@ -2,8 +2,10 @@ use crate::autocomplete::{
     AutocompleteItem, AutocompleteSuggestions, SlashCommand, expand_home_path, extract_at_prefix,
     parse_path_prefix, path_autocomplete_item,
 };
+use crate::autocomplete_fd::walk_directory_with_fd;
 use crate::fuzzy::fuzzy_match;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tokio_util::sync::CancellationToken;
 
 pub struct CompletionContext<'a> {
     pub lines: &'a [String],
@@ -375,13 +377,58 @@ impl CompletionSource for SlashArgCompletionSource {
     }
 }
 
+pub fn fd_path_suggestions(
+    base_path: &Path,
+    fd_path: &str,
+    query: &str,
+    max_results: usize,
+) -> Vec<AutocompleteItem> {
+    let (raw, is_at, is_quoted) = parse_path_prefix(query);
+    let expanded = expand_home_path(raw);
+    if expanded.trim().is_empty() {
+        return Vec::new();
+    }
+    let base = base_path.to_string_lossy().to_string();
+    let entries = walk_directory_with_fd(&base, fd_path, &expanded, 100, CancellationToken::new());
+    let filter = expanded.rsplit('/').next().unwrap_or(expanded.as_str());
+    let mut scored: Vec<(f64, bool, String)> = entries
+        .into_iter()
+        .filter_map(|(path, is_dir)| {
+            let name = path.rsplit('/').next().unwrap_or(path.as_str());
+            if filter.is_empty() {
+                Some((0.0, is_dir, path))
+            } else {
+                fuzzy_match(filter, name).map(|m| (m.score, is_dir, path))
+            }
+        })
+        .collect();
+    scored.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.2.cmp(&b.2))
+    });
+    scored
+        .into_iter()
+        .take(max_results.min(20))
+        .map(|(_, is_dir, path)| path_autocomplete_item("", &path, is_dir, is_at, is_quoted))
+        .collect()
+}
+
 pub struct AtPathSource {
     base_path: PathBuf,
+    fd_path: Option<String>,
 }
 
 impl AtPathSource {
     pub fn new(base_path: PathBuf) -> Self {
-        Self { base_path }
+        Self {
+            base_path,
+            fd_path: None,
+        }
+    }
+
+    pub fn new_with_fd(base_path: PathBuf, fd_path: Option<String>) -> Self {
+        Self { base_path, fd_path }
     }
 
     fn get_fuzzy_file_suggestions(&self, query: &str, _is_quoted: bool) -> Vec<AutocompleteItem> {
@@ -466,7 +513,12 @@ impl CompletionSource for AtPathSource {
         m: &CompletionMatch,
     ) -> Option<AutocompleteSuggestions> {
         let (_raw, _is_at, is_quoted) = parse_path_prefix(&m.prefix);
-        let items = self.get_fuzzy_file_suggestions(&m.prefix, is_quoted);
+        let items = self
+            .fd_path
+            .as_deref()
+            .map(|fd| fd_path_suggestions(&self.base_path, fd, &m.prefix, 20))
+            .filter(|items| !items.is_empty())
+            .unwrap_or_else(|| self.get_fuzzy_file_suggestions(&m.prefix, is_quoted));
         if items.is_empty() {
             return None;
         }
@@ -786,5 +838,43 @@ mod tests {
         let s = reg.open_or_refresh(&ctx).unwrap();
         assert!(s.items.iter().any(|i| i.value == "deepseek-v4-flash"));
         assert_eq!(reg.active_index(), Some(0));
+    }
+}
+
+#[cfg(test)]
+mod fd_path_tests {
+    use super::*;
+
+    #[test]
+    fn fd_recalls_deep_path_when_available() {
+        let available = std::process::Command::new("fd")
+            .arg("--version")
+            .output()
+            .is_ok_and(|out| out.status.success());
+        if !available {
+            return;
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        let nested = dir.path().join("src").join("deep");
+        std::fs::create_dir_all(&nested).expect("dirs");
+        std::fs::write(nested.join("utils.rs"), "fn x() {}").expect("file");
+        let items = fd_path_suggestions(dir.path(), "fd", "@src/deep/uti", 20);
+        assert!(
+            items
+                .iter()
+                .any(|item| item.value.contains("src/deep/utils.rs")),
+            "fd must recall deep path: {:?}",
+            items
+                .iter()
+                .map(|item| item.value.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn missing_fd_falls_back_to_empty() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let items = fd_path_suggestions(dir.path(), "__no_such_fd__", "@a", 20);
+        assert!(items.is_empty());
     }
 }

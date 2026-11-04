@@ -36,7 +36,7 @@ pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use clock::{Clock, MockClock, SystemClock};
 pub use completion::{
     AtPathSource, CompletionContext, CompletionMatch, CompletionRegistry, CompletionSource,
-    SlashArgCompletionSource, SlashCommandSource, extract_slash_arg_prefix,
+    SlashArgCompletionSource, SlashCommandSource, extract_slash_arg_prefix, fd_path_suggestions,
 };
 pub use components::cancellable_loader::CancellableLoader;
 pub use components::choice_prompt::{

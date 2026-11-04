@@ -2,6 +2,9 @@
 depends_on: []
 title: TUI @ 路径补全接入 fd
 needs_specs_change: true
+branch: sdd/c3145-add-tui-fd-path-completion
+base_branch: main
+base_sha: 7cba32da6e2b09df1c708314afb3ca19228ceeb9
 ---
 
 # TUI @ 路径补全接入 fd

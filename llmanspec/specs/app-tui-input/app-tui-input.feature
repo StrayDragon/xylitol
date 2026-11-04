@@ -367,3 +367,7 @@
   @req:r3088
   规则: keybinding-conflict-notice
     产品 TUI 启动与 `/reload` 后 须检查用户键位覆盖冲突，仅当冲突涉及至少一个用户覆盖时 以耐久滚动提示呈现（非通知条）：`Keybinding conflict: <key> → <id1> / <id2>`；多条合并，最多列 3 条；不得阻塞、退出或改键位；无冲突或仅默认冲突 不得提示。由 harness 覆盖，不扩 BDD step。
+
+  @req:r3092
+  规则: at-path-fd-completion
+    产品 TUI `@` 路径补全 须优先用 fd（`fd` 或 `fdfind`）召回深层文件/目录；fd 不存在或结果为空 须静默回落现有单层 read_dir；`@` 空查询 须列顶层；目录项 须带 `/` 后缀；quoted 语义不变；不得新增配置或用户面开关。由引擎单测与 harness 覆盖。
