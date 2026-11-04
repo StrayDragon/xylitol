@@ -82,3 +82,74 @@ match (own, peer) {
 - 双客户端竞态 / EADDRINUSE；锁 + 重探活 + 忽略 AddrInUse。
 - persistent 生命周期不继承；文档写明。
 - 非 Unix 不支持替换；fail-closed。
+
+## 状态机
+
+```text
+Inspect
+  ├─ Absent → spawn → wait ready
+  ├─ Ready + Same → attach
+  ├─ Ready + Newer → fail-closed
+  ├─ Ready + Older → Replace
+  ├─ Starting → wait ready（不替换）
+  ├─ Unauthorized → 凭据诊断
+  └─ NonXylitol → fail-closed（不杀不 spawn）
+
+Replace
+  ├─ acquire replace lock
+  ├─ re-inspect pid/version
+  │    ├─ changed → restart Inspect
+  │    └─ unchanged → SIGTERM
+  ├─ wait pid exit ≤5s
+  │    ├─ timeout → fail-closed（不 SIGKILL）
+  │    └─ exited → remove stale registration（若仍在）
+  ├─ spawn current binary
+  │    ├─ AddrInUse → wait ready（另一客户端已 spawn）
+  │    └─ other error → actionable spawn error
+  └─ wait /healthz ready → attach
+```
+
+## 失败矩阵
+
+| 场景 | 行为 | 诊断 |
+|---|---|---|
+| healthz version 解析失败 | 不替换 | 版本不可比较，提示手停 / 升级 |
+| 旧 Host SIGTERM 失败 | 不 spawn | signal 失败原因 + pid |
+| 旧 Host 5s 未退出 | 不 spawn / 不 SIGKILL | 超时 + pid + 手停建议 |
+| spawn 失败（非 AddrInUse） | 不 attach | spawn 失败原因 + 端口 |
+| spawn AddrInUse | 等待 ready | 若仍不 ready → ready 超时 |
+| 新 Host ready 超时 | 不 attach | ready 超时 + `/healthz` 提示 |
+| 非 xylitol 占用 | 不杀不 spawn | 端口被非 xylitol 占用 |
+| 新于客户端 | 不杀 | 升级客户端 / `xylitol serve stop` |
+| 显式 attach / no-ensure | 不替换 | 既有 fail-closed |
+| 非 Unix | 不替换 | 平台不支持 SIGTERM 替换 |
+
+## 版本比较矩阵
+
+| own | peer | 结果 |
+|---|---|---|
+| 可解析 | 可解析且 peer < own | Replace |
+| 可解析 | 可解析且 peer == own | Attach |
+| 可解析 | 可解析且 peer > own | Fail-closed |
+| 任一侧不可解析 | — | Fail-closed / 不替换 |
+
+## 验收
+
+- 旧 Host 在 ensure 口自动替换后 attach；新 Host 不被杀。
+- 替换失败不会留下半死 Host / stale 注册。
+- 非 xylitol 占用不杀不 spawn。
+- 显式 attach / no-ensure 不替换。
+- 替换锁下两客户端只一个执行替换，另一个等待新 Ready。
+- 同 version 不同 build 不替换；诊断说明手停。
+- 非 Unix fail-closed。
+
+## Implementation outline（tasks 待 designed 后拆）
+
+- T1 `semver` 依赖 + 版本比较 helper + 单测。
+- T2 `classify_running` / `inspect_running` 区分 Older / Same / Newer / NonXylitol。
+- T3 `ensure_host_with` 替换路径：锁、重探活、SIGTERM、等待、spawn、ready。
+- T4 竞态 / AddrInUse / stale registration / 生命周期。
+- T5 边界：显式 attach / no-ensure / 非 xylitol / 非 Unix。
+- T6 wiremock / fake spawn / request_exit / 锁测试。
+- T7 `cli-entry` r1391 / `user-experience` r3065 spec 场景。
+- T8 手测与 `just qa`。

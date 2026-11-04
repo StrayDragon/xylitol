@@ -49,4 +49,4 @@ c3035 开箱确保本机 Host 后，`/healthz` 版本与当前客户端不符仍
 
 ## 状态注记
 
-> **deferred**：搁置在 `llmanspec/delayed-changes/`，未进活跃 graph。深挖 design / tasks 已写；落实时经 `llman-sdd-propose` 迁回 `changes/`。
+> **designed**：已从 delayed 迁回 `changes/`；design 已深挖（状态机 / 失败矩阵 / 版本比较 / 验收）。tasks / specs / attach 下一步补。
