@@ -9,8 +9,9 @@ config 的 `sse` 实际映射 Streamable HTTP，命名误导；legacy HTTP+SSE �
 
 ## What Changes
 
-- canonical transport：`stdio` / `streamable_http`。
-- `transport: sse` 作为迁移别名，映射 `streamable_http`，打 deprecation warning；legacy SSE server 连接失败并明确报错。
+- canonical transport：`stdio` / `http`。`http` 表示 Streamable HTTP。
+- `transport: sse` 直接拒绝（破坏性变更，pre-release 阶段不做兼容别名）；错误提示改用 `http`。
+- legacy SSE server 连接失败并明确报错：不支持 legacy HTTP+SSE。
 - remote 用 `url`；stdio 用 `command` / `args`；headers / env 保持。
 - per-server connect / call timeout 配置；默认保持 8s / 120s。
 - custom transport seam 预留（`websocket` / `custom` 后续）。
@@ -28,11 +29,10 @@ MCP plugin、config、host、TUI。
 
 ## Further Notes
 
-- item 4 调研结论：主流用 `http` / `streamable-http` / `streamableHttp`；`sse` 留给 legacy；MCP registry 推荐 `"streamable-http"`。
-- 选择：canonical `streamable_http` + `sse` 迁移别名；legacy SSE 明确拒绝。
+- item 4 调研结论：主流用 `http` / `streamable-http` / `streamableHttp`；`sse` 留给 legacy；Claude Code 用 `http`。
+- 决策：canonical `http`；`sse` 破坏性拒绝；legacy SSE 明确不支持。
 - 依赖 `c3055-add-mcp-scope-pool`。
 
 ## Open Questions
 
-- `sse` 别名保留多久；是否在下一个 major 移除。
-- 是否增加 `http` 别名：不推荐。
+- 无；命名决策已定。

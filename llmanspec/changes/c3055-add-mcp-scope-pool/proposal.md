@@ -13,6 +13,7 @@ MCP hub 是 kernel 级单例；每次 SessionPrepare（Switch/Resume/Reload）�
 - connection key = `(server config fingerprint, scope, credential)`；同 key 共用一个连接。
 - 懒连接 + 引用计数；最后一个 claim 释放才关闭。
 - session 对其 workspace set 内每个 workspace 建 claim；session 结束释放；1:N 时持有多个 claim。
+- workspace set 的人类变更触发 claim 增删：新增 workspace 建 claim，移除 workspace 释放 claim；LLM 不得触发。
 - Switch/Resume 不 reset；Reload 才 reset；连接失败按 server 重连。
 - 默认 `Workspace`；`shared` opt-in；`session` 字段预留。
 - `SessionPrepare` 携带 workspace set；prepare hub 按 scope 聚合 `view` / `cue`。
