@@ -1,19 +1,20 @@
 ---
 depends_on: [c3085-add-mcp-transport-config]
-title: "MCP custom transports"
+title: "MCP custom transport insertion point"
 ---
 
 ## Why
 
-MCP 标准只有 stdio 与 Streamable HTTP；WebSocket / custom transport 未接线。需要扩展点，但不应污染核心传输。
+MCP 标准只有 stdio 与 Streamable HTTP；WebSocket / custom transport 很少见。自定义供应商应自己贡献 xylitol 插件来支持，不需要核心内置。
 
 ## What Changes
 
-- 新增 custom transport 扩展 seam；核心仍只支持 stdio / http。
-- WebSocket / custom 作为可选 transport；复用 stdio framing（byte stream）与 JSON-RPC。
-- config 预留 `transport: websocket` / `custom`；校验与文档。
+- **暂不实现** custom transport；只保留插入点。
+- 核心仍只支持 stdio / http。
+- 预留 transport extension seam：插件可注册自定义 transport；复用 JSON-RPC framing。
+- config 预留 `transport` 扩展位；校验与文档。
 - legacy SSE 仍不支持。
-- 诊断与测试：custom transport 的连接/取消/关闭；fixture 覆盖。
+- 诊断与测试：插入点可用性；不承诺内置 WebSocket。
 
 ## Capabilities
 
@@ -26,11 +27,11 @@ MCP plugin、config、host。
 
 ## Further Notes
 
-- 用户决策：做；优先级低于标准传输稳定。
+- 用户决策：先不做；自定义供应商通过插件贡献。
 - 依赖 `c3085-add-mcp-transport-config`。
-- fixture 用官方 SDK 验证 custom transport。
+- fixture 只需验证插入点，不需要实现 WebSocket。
 
 ## Open Questions
 
-- WebSocket 内置还是插件扩展：推荐先扩展 seam，WebSocket 作为可选内置。
-- custom transport 的配置形状与安全边界。
+- 插入点的插件 API 形状与安全边界。
+- 是否允许第三方 transport 插件进入默认构建。

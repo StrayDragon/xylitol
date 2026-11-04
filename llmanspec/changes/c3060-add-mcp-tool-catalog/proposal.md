@@ -12,7 +12,7 @@ MCP 工具当前进全局 `HostRegistries.tools`；adapter 忽略 `XyToolCtx`。
 - catalog 按 connection key 建立：tools / prompts / resources。
 - agent preset 过滤：按 `tools` 列表 / capability overlay 在 session 侧过滤；工具名保持 `mcp__server__tool`。
 - connection key 含 config fingerprint；同名不同 config（args/env/url/headers）必须独立连接与 catalog。
-- agent preset 在 session 生命周期内冻结；resume 可能恢复不同 preset：重建 agent tool set，reconcile MCP claims（新 server 连接、未用 release）。
+- resume 时按当前 preset 重建 agent tool set，reconcile MCP claims（新 server 连接、未用 release）。
 - host 维护懒连接：未启动的 server 在需要时连接；不需要 per-preset 连接，除非 config fingerprint 不同。
 - tool list changed：刷新 catalog；下一轮失效并重建 agent tool set。
 - TUI snapshot 按 scope 展示；`/mcp` 面板显示 scope/key/tool count。
@@ -20,11 +20,11 @@ MCP 工具当前进全局 `HostRegistries.tools`；adapter 忽略 `XyToolCtx`。
 
 ## Preset 变更处理
 
-- 现状：agent preset 是 boot 级参数（`agent_profile`），不是 session 级；`SessionContext` 只存 messages / thinking_level / model，不存 preset。resume 会用 host 当前 preset，不能还原旧 preset。
-- 选项 A（推荐）：preset 在 session 生命周期内冻结；session header 存 preset name + fingerprint。resume 指纹相同则继续；不同则要求显式“用新 preset 重建 session”（新 session / fork），重建时重新注入上下文。
-- 选项 B：resume 直接用新 preset。system prompt / tool set 变化，用户容易困惑；不推荐。
-- 选项 C：从历史快照还原旧 preset。可复现但陈旧；不符合用户直觉；不推荐。
-- 底层不灵活：agent assembly 在 host/boot 级；需要 per-session preset binding，才能按 session 选择 preset 并 reconcile tool set。
+- 选择 Option B：resume 使用当前 preset，不冻结旧 preset。理由：冻结的 preset 下一次 resume 可能不存在或已变化。
+- 独立 change：`c3100-add-agent-preset-resume-diff` 负责 session header preset metadata、resume diff、delta 注入。
+- 本 change 负责 tool set 过滤与 reconcile：按当前 preset 重建 tool set；MCP claims 增删；tool list changed 刷新。
+- diff 低成本：fingerprint 先短路；只对变化项生成 delta；不做全量重注入。
+- preset 不存在：回退默认 preset 并提示；不得静默用错。
 
 ## Capabilities
 
@@ -45,6 +45,5 @@ MCP plugin、runtime agent tools、host registry、TUI。
 
 ## Open Questions
 
-- resume 后 preset 变化：是否允许；如何 reconcile claims；是否需要 session 级 preset 冻结记录。
+- resume 后 preset 变化：由 `c3100` 处理；本 change 只负责 tool set reconcile。
 - 同 server 名不同 config 是否包含 credential：推荐包含。
-- per-session preset binding 是否需要独立 change。
