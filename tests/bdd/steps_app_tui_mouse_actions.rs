@@ -235,7 +235,7 @@ fn t_mat32_chords_inert(tui_interaction: &TuiInteraction) {
 
 #[given("用户在 keybindings.json 将 app.session.sidebar 绑到 ctrl+b")]
 fn g_mat32_rebind_sidebar(host_pump_bdd: &HostPumpBdd) {
-    let pump = fresh_pump();
+    let mut pump = fresh_pump();
     let dir = tempfile::tempdir().expect("temp agent dir");
     std::fs::write(
         dir.path().join("keybindings.json"),

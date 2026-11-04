@@ -2280,7 +2280,7 @@ pub(crate) fn t_c2826_model_esc_no_change(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵以损坏 JSON 请求重载键位")]
 pub(crate) fn w_c2826_keybindings_bad(host_pump_bdd: &HostPumpBdd) {
-    let pump = host_pump_bdd
+    let mut pump = host_pump_bdd
         .pump
         .borrow_mut()
         .take()
