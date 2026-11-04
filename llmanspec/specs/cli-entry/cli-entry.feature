@@ -37,7 +37,7 @@
       那么 默认 attach 且同进程驱动路径仍保留给 print 与嵌入
   @req:r1389
   规则: no-silent-fallback
-    配置文件存在但 models.models 无任何显式模型别名（或等价零显式条目）时，经 bootstrap 的表面（TUI/print/--list-models/serve）须硬失败并明确报错指向配置，不得静默用 provider 环境变量注册或选中默认模型（如 gpt-4o）后继续。无配置文件且无显式模型时同样 不得仅凭 OPENAI_API_KEY/ANTHROPIC_API_KEY 造模继续。
+    配置文件存在但 models.entries 无任何显式模型别名（或等价零显式条目）时，经 bootstrap 的表面（TUI/print/--list-models/serve）须硬失败并明确报错指向配置，不得静默用 provider 环境变量注册或选中默认模型（如 gpt-4o）后继续。无配置文件且无显式模型时同样 不得仅凭 OPENAI_API_KEY/ANTHROPIC_API_KEY 造模继续。
 
     场景: 零模型配置硬失败
       假如 存在零显式模型的配置文件

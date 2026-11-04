@@ -136,7 +136,7 @@ fn build_ports(
 fn map_bootstrap_error(err: BootstrapError) -> Box<dyn std::error::Error> {
     let message = match &err {
         BootstrapError::NoModelsAvailable => {
-            "no models available: add explicit models.models entries in config.yaml".to_string()
+            "no models available: add explicit models.entries entries in config.yaml".to_string()
         }
         BootstrapError::ConfigLoadFailed(msg) => format!("config load failed: {msg}"),
         BootstrapError::BuildFailed(msg) => msg.clone(),

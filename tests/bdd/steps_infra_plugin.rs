@@ -71,7 +71,7 @@ fn write_script(ws: &Workspace, name: &str, body: &str) -> PathBuf {
 fn write_config(ws: &Workspace, trusted: bool, name: &str, command: &str, script: &PathBuf) {
     let path = PathBuf::from(ws.ws("config.yaml"));
     let config = format!(
-        "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\nexternal_plugins:\n  - name: \"{name}\"\n    command: \"{command}\"\n    args: [\"-u\", \"{}\"]\n    trusted: {trusted}\n    timeout_ms: 5000\n",
+        "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\nexternal_plugins:\n  - name: \"{name}\"\n    command: \"{command}\"\n    args: [\"-u\", \"{}\"]\n    trusted: {trusted}\n    timeout_ms: 5000\n",
         script.to_string_lossy()
     );
     std::fs::write(&path, config).expect("write config");

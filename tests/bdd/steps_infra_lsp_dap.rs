@@ -23,7 +23,7 @@ pub fn lsp_dap_bdd() -> LspDapBdd {
 }
 
 fn base_config() -> String {
-    "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n"
+    "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n"
         .to_string()
 }
 

@@ -1023,7 +1023,7 @@
             "null"
           ]
         },
-        "models": {
+        "entries": {
           "additionalProperties": {
             "$ref": "#/$defs/models_XyModelEntryConfig"
           },

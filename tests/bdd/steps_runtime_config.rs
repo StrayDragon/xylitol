@@ -85,7 +85,7 @@ fn g_rc_compaction(rc_snap: &RcSnap) {
 }
 #[given("config.yaml 的 compaction.model 经 YAML 别名引用与 models 条目同源的锚点")]
 fn g_rc_compaction_anchor(rc_snap: &RcSnap, tokenizer_bdd: &TokenizerBdd) {
-    let yaml = "models:\n  models:\n    main: &main\n      provider: fake\n      model: anchor-model\ncompaction:\n  model: *main\n";
+    let yaml = "models:\n  entries:\n    main: &main\n      provider: fake\n      model: anchor-model\ncompaction:\n  model: *main\n";
     let cfg = parse_app_config_yaml(yaml).expect("anchor yaml");
     rc_snap.app_config.replace(Some(cfg.clone()));
     tokenizer_bdd.config.replace(cfg);
@@ -110,7 +110,7 @@ fn g_rc_compaction_settings_ignored(rc_snap: &RcSnap) {
 #[given("Settings.default_thinking_level 为 high 且模型支持集为 off 与 high 与 max")]
 fn g_rc_thinking_default(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().default_thinking_level = Some("high".into());
-    let yaml = "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n";
+    let yaml = "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n";
     rc_snap
         .app_config
         .replace(Some(parse_app_config_yaml(yaml).expect("thinking yaml")));
@@ -118,7 +118,7 @@ fn g_rc_thinking_default(rc_snap: &RcSnap) {
 #[given("Settings.default_thinking_level 为 off 且模型支持集为 off 与 high 与 max")]
 fn g_rc_thinking_select(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().default_thinking_level = Some("off".into());
-    let yaml = "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n";
+    let yaml = "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n";
     rc_snap
         .app_config
         .replace(Some(parse_app_config_yaml(yaml).expect("thinking yaml")));
@@ -131,7 +131,7 @@ fn g_rc_docs(rc_snap: &RcSnap) {
 #[given("YAML 模型条目含 thinking_levels [off, high, max]")]
 fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -146,7 +146,7 @@ fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
 #[given("thinking_levels 含空字符串")]
 fn g_rc_empty_token_fails(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [\"\"]\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [\"\"]\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -161,7 +161,7 @@ fn g_rc_empty_token_fails(tokenizer_bdd: &TokenizerBdd) {
 #[given("thinking_levels 含厂商字面量 bogon-level")]
 fn g_rc_freeform_ok(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, bogon-level]\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, bogon-level]\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -176,7 +176,7 @@ fn g_rc_freeform_ok(tokenizer_bdd: &TokenizerBdd) {
 #[given("thinking_levels 为 [off, high] 且 thinking_level_map 含 max: high")]
 fn g_rc_map_key_outside_list_fails(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high]\n      thinking_level_map:\n        max: high\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high]\n      thinking_level_map:\n        max: high\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -191,7 +191,7 @@ fn g_rc_map_key_outside_list_fails(tokenizer_bdd: &TokenizerBdd) {
 #[given("仅配置 thinking_levels 无 map")]
 fn g_rc_absent_key_ok(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, low]\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, low]\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -206,7 +206,7 @@ fn g_rc_absent_key_ok(tokenizer_bdd: &TokenizerBdd) {
 #[given("YAML 含 thinking_levels [off, high] 与 thinking_level_map high: max 与 off: null")]
 fn g_rc_parse_map(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high]\n      thinking_level_map:\n        high: max\n        off: null\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high]\n      thinking_level_map:\n        high: max\n        off: null\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -220,7 +220,7 @@ fn g_rc_parse_map(tokenizer_bdd: &TokenizerBdd) {
 }
 #[given("仅存在 config.local.yaml 含可观测字段而无同层 config.yaml")]
 fn g_rc_local_not_merged(tokenizer_bdd: &TokenizerBdd, rc_snap: &RcSnap) {
-    let local_yaml = "models:\n  default_model: from-local\n  models:\n    from-local:\n      provider: fake\n      model: fake\n";
+    let local_yaml = "models:\n  default_model: from-local\n  entries:\n    from-local:\n      provider: fake\n      model: fake\n";
     rc_snap.local_yaml.replace(Some(local_yaml.to_string()));
     rc_load_flag::LOCAL_YAML.with(|l| l.replace(Some(local_yaml.to_string())));
     rc_load_flag::LOCAL_ONLY.with(|f| f.set(true));
@@ -304,7 +304,7 @@ fn w_rc_resolve_meta2(rc_snap: &RcSnap, tokenizer_bdd: &TokenizerBdd) {
 }
 #[when("从全局 config.yaml 加载完整 settings")]
 fn w_rc_narrative(rc_snap: &RcSnap) {
-    let global_yaml = "models:\n  default_model: from-yaml\n  models:\n    from-yaml:\n      provider: fake\n      model: fake\n";
+    let global_yaml = "models:\n  default_model: from-yaml\n  entries:\n    from-yaml:\n      provider: fake\n      model: fake\n";
     let local_yaml = "models:\n  default_model: from-local\n";
     rc_snap.local_yaml.replace(Some(local_yaml.to_string()));
     rc_snap.app_config.replace(Some(
@@ -659,7 +659,7 @@ fn g_rc_legacy_preset(ws: &crate::bdd::fixtures::Workspace, tokenizer_bdd: &Toke
     let path = ws.ws("legacy-preset.yaml");
     std::fs::write(
         &path,
-        "models:\n  models:\n    zen:\n      preset: opencode-zen\n      model: deepseek-v4-flash-free\n",
+        "models:\n  entries:\n    zen:\n      preset: opencode-zen\n      model: deepseek-v4-flash-free\n",
     )
     .unwrap();
     tokenizer_bdd.legacy_path.replace(Some(path));

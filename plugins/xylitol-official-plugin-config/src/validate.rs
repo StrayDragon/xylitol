@@ -142,7 +142,7 @@ mod tests {
     fn accepts_known_sections() {
         validate_merged_config(&json!({
             "xylitol": {"schema_version": 1, "unknown_keys": "error"},
-            "models": {"default_model": "a", "models": {}},
+            "models": {"default_model": "a", "entries": {}},
             "tui": {"activity_fold": {"enabled": false}}
         }))
         .unwrap();

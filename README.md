@@ -50,7 +50,7 @@ cp configs/secret.env.example .xylitol/secret.env
 
 `xylitol config init` 生成全局最小配置（`~/.config/xylitol/config.yaml`）；项目级配置放 `.xylitol/config.yaml`，覆盖全局配置。
 
-然后在 `models.models` 下添加至少一个模型条目，并设置 `models.default_model`。
+然后在 `models.entries` 下添加至少一个模型条目，并设置 `models.default_model`。
 
 API 密钥（API key）用 `{{ secret.DEEPSEEK_API_KEY }}` 这样的模板从 `secret.env` 引用。不要把密钥写进 YAML。`xylitol config schema` 输出完整配置 schema。
 

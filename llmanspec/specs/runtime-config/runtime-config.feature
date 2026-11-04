@@ -225,7 +225,7 @@
 
   @req:r2987
   规则: legacy-provider-preset-migration
-    预设回滚后，`models.models.<alias>.preset` 与顶层 `provider_presets` 旧写法 须被加载器拒绝，并给出迁移指引（显式 `provider` / `model` / `base_url` / `api` / `compat`，或经网关）；不得静默忽略旧键使配置看似生效。正常配置 不得因该迁移检查失败。
+    预设回滚后，`models.entries.<alias>.preset` 与顶层 `provider_presets` 旧写法 须被加载器拒绝，并给出迁移指引（显式 `provider` / `model` / `base_url` / `api` / `compat`，或经网关）；不得静默忽略旧键使配置看似生效。正常配置 不得因该迁移检查失败。
 
     场景: 旧预设键拒绝并提示迁移
       假如 YAML 模型条目含 preset opencode-zen

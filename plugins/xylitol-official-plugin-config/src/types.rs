@@ -324,7 +324,7 @@ impl OtelConfig {
 #[serde(default)]
 pub struct ModelsConfig {
     pub default_model: Option<String>,
-    pub models: HashMap<String, ModelEntry>,
+    pub entries: HashMap<String, ModelEntry>,
 }
 
 pub type ModelEntry = xylitol_plugin_sdk::model_entry::XyModelEntryConfig;
@@ -448,7 +448,7 @@ impl AppConfig {
 
     pub fn validate_thinking_levels(&self) -> Result<(), LoadError> {
         let models: ModelsConfig = self.section_or_default("models")?;
-        for (alias, entry) in &models.models {
+        for (alias, entry) in &models.entries {
             entry
                 .resolve_thinking_config()
                 .map_err(|e| LoadError::validation(format!("models.{alias}: {e}")))?;
@@ -501,9 +501,9 @@ impl AppConfig {
         model_id: &str,
     ) -> Result<xylitol_plugin_sdk::model::XyModelConfig, LoadError> {
         let models: ModelsConfig = self.section_or_default("models")?;
-        let entry = models.models.get(model_id).ok_or_else(|| {
+        let entry = models.entries.get(model_id).ok_or_else(|| {
             LoadError::validation(format!(
-                "unknown model alias `{model_id}`: add it under models.models in config.yaml"
+                "unknown model alias `{model_id}`: add it under models.entries in config.yaml"
             ))
         })?;
         Ok(entry.to_model_config())
@@ -514,9 +514,9 @@ impl AppConfig {
         model_id: &str,
     ) -> Result<xylitol_plugin_sdk::model::XyModelMeta, LoadError> {
         let models: ModelsConfig = self.section_or_default("models")?;
-        let entry = models.models.get(model_id).ok_or_else(|| {
+        let entry = models.entries.get(model_id).ok_or_else(|| {
             LoadError::validation(format!(
-                "unknown model alias `{model_id}`: add it under models.models in config.yaml"
+                "unknown model alias `{model_id}`: add it under models.entries in config.yaml"
             ))
         })?;
         entry.to_model_meta(model_id).map_err(LoadError::validation)
@@ -791,7 +791,7 @@ mod thinking_levels_tests {
     fn resolve_model_meta_default_levels_are_off_only() {
         let mut cfg = AppConfig::default();
         let mut models = get::<ModelsConfig>(&cfg, "models");
-        models.models.insert("f".into(), fake_entry(true, None));
+        models.entries.insert("f".into(), fake_entry(true, None));
         set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert_eq!(meta.thinking_levels, vec!["off".to_string()]);
@@ -802,7 +802,7 @@ mod thinking_levels_tests {
         let mut cfg = AppConfig::default();
         let mut models = get::<ModelsConfig>(&cfg, "models");
         models
-            .models
+            .entries
             .insert("f".into(), fake_entry(true, Some(vec!["high", "max"])));
         set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
@@ -817,7 +817,7 @@ mod thinking_levels_tests {
         let mut cfg = AppConfig::default();
         let mut models = get::<ModelsConfig>(&cfg, "models");
         models
-            .models
+            .entries
             .insert("f".into(), fake_entry(false, Some(vec!["high"])));
         set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
@@ -829,7 +829,7 @@ mod thinking_levels_tests {
         let mut cfg = AppConfig::default();
         let mut models = get::<ModelsConfig>(&cfg, "models");
         models
-            .models
+            .entries
             .insert("f".into(), fake_entry(true, Some(vec!["bogon"])));
         set(&mut cfg, "models", models);
         cfg.validate_thinking_levels().unwrap();
@@ -844,7 +844,7 @@ mod thinking_levels_tests {
         map.insert("off".into(), None);
         entry.thinking_level_map = Some(map);
         let mut models = get::<ModelsConfig>(&cfg, "models");
-        models.models.insert("f".into(), entry);
+        models.entries.insert("f".into(), entry);
         set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert_eq!(
@@ -866,7 +866,7 @@ mod thinking_levels_tests {
         map.insert("max".into(), Some("x".into()));
         entry.thinking_level_map = Some(map);
         let mut models = get::<ModelsConfig>(&cfg, "models");
-        models.models.insert("f".into(), entry);
+        models.entries.insert("f".into(), entry);
         set(&mut cfg, "models", models);
         let err = cfg.validate_thinking_levels().unwrap_err();
         assert!(err.to_string().contains("max"));
@@ -876,7 +876,7 @@ mod thinking_levels_tests {
     fn resolve_model_meta_absent_map_ok() {
         let mut cfg = AppConfig::default();
         let mut models = get::<ModelsConfig>(&cfg, "models");
-        models.models.insert("f".into(), fake_entry(true, None));
+        models.entries.insert("f".into(), fake_entry(true, None));
         set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert!(meta.thinking_level_map.is_empty());
@@ -1173,7 +1173,7 @@ mod resolve_profile_model_id_tests {
             r#"
 models:
   default_model: ds
-  models:
+  entries:
     ds:
       provider: openai
       model: deepseek-v4-flash
@@ -1198,7 +1198,7 @@ models:
             r#"
 models:
   default_model: ds
-  models:
+  entries:
     ds:
       provider: openai
       model: deepseek-v4-flash

@@ -44,7 +44,7 @@
       那么 以抽象 trait 对象持有
   @req:r1912
   规则: provider-config-value-expression
-    provider 注册配置值（models.models 条目 api_key / model / base_url / api / compat 字段）须支持 ConfigValueResolver 表达式 $VAR、${VAR}、${VAR:-default} 与 !command；纯字面量保持原样；未绑定变量或命令执行失败 须以可读错误拒绝装配（带 alias 与字段上下文）；表达式解析 须与模板渲染（{{ secret.X }} / {{ env.Y }}）共存。
+    provider 注册配置值（models.entries 条目 api_key / model / base_url / api / compat 字段）须支持 ConfigValueResolver 表达式 $VAR、${VAR}、${VAR:-default} 与 !command；纯字面量保持原样；未绑定变量或命令执行失败 须以可读错误拒绝装配（带 alias 与字段上下文）；表达式解析 须与模板渲染（{{ secret.X }} / {{ env.Y }}）共存。
 
     场景: 厂商配置值表达式边界
       当 读取 provider 注册配置值解析

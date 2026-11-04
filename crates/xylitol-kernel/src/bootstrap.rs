@@ -351,7 +351,7 @@ pub(crate) fn build_model_registry(
                 return model_registry;
             }
         };
-    for (alias, entry) in &models.models {
+    for (alias, entry) in &models.entries {
         let api_key = entry.normalized_api_key();
         if api_key.is_empty() {
             missing_key_providers.insert(entry.provider.provider_name().to_string());

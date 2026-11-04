@@ -411,7 +411,7 @@ fn write_fake_project_config(project_root: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(&dir)?;
     std::fs::write(
         dir.join("config.yaml"),
-        "models:\n  default_model: fake\n  models:\n    fake:\n      provider: fake\n      model: fake-model\n      api_key: fake-e2e\n",
+        "models:\n  default_model: fake\n  entries:\n    fake:\n      provider: fake\n      model: fake-model\n      api_key: fake-e2e\n",
     )?;
     Ok(())
 }

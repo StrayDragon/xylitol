@@ -214,7 +214,7 @@ mod tests {
         let config_path = dir.path().join("config.yaml");
         std::fs::write(
             &config_path,
-            "models:\n  default_model: fake\n  models:\n    fake:\n      provider: fake\n      model: fake-1\nsubagent:\n  tools: [read]\n",
+            "models:\n  default_model: fake\n  entries:\n    fake:\n      provider: fake\n      model: fake-1\nsubagent:\n  tools: [read]\n",
         )
         .expect("config");
         crate::provider::factory::reset_fake_state();

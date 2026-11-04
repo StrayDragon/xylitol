@@ -581,7 +581,7 @@ for line in sys.stdin:
         std::fs::write(&script, external_fixture()).expect("fixture");
         let config_path = dir.path().join("config.yaml");
         let config = format!(
-            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\nexternal_plugins:\n  - name: \"{name}\"\n    command: \"python3\"\n    args: [\"-u\", \"{}\"]\n    trusted: {trusted}\n    timeout_ms: 5000\n",
+            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\nexternal_plugins:\n  - name: \"{name}\"\n    command: \"python3\"\n    args: [\"-u\", \"{}\"]\n    trusted: {trusted}\n    timeout_ms: 5000\n",
             script.to_string_lossy()
         );
         std::fs::write(&config_path, config).expect("config");
@@ -630,7 +630,7 @@ for line in sys.stdin:
         let config_path = dir.path().join("config.yaml");
         std::fs::write(
             &config_path,
-            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n",
         )
         .expect("config");
         unsafe {
@@ -653,7 +653,7 @@ for line in sys.stdin:
         assert_eq!(kernel.runtime.driver.available_models().len(), 1);
         std::fs::write(
             &config_path,
-            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n    extra:\n      provider: openai\n      model: extra\n",
+            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n    extra:\n      provider: openai\n      model: extra\n",
         )
         .expect("config");
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -720,7 +720,7 @@ for line in sys.stdin:
         let config_path = dir.path().join("config.yaml");
         std::fs::write(
             &config_path,
-            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n",
         )
         .expect("config");
         unsafe {
@@ -797,7 +797,7 @@ for line in sys.stdin:
         let config_path = dir.path().join("config.yaml");
         std::fs::write(
             &config_path,
-            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n",
         )
         .expect("config");
         unsafe {
@@ -887,7 +887,7 @@ for line in sys.stdin:
         let config_path = dir.path().join("config.yaml");
         std::fs::write(
             &config_path,
-            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n",
         )
         .unwrap();
         let opts = BootOptions {

@@ -691,7 +691,7 @@ fn t_c2826_model_exit_parsed(cli_entry_bdd: &CliEntryBdd) {
 fn g_c2826_broken_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
     ws.init();
     let path = ws.ws("broken-config.yaml");
-    std::fs::write(&path, "models:\n  models: [unclosed\n").unwrap();
+    std::fs::write(&path, "models:\n  entries: [unclosed\n").unwrap();
     cli_entry_bdd.detail.replace(path);
 }
 
@@ -699,7 +699,7 @@ fn g_c2826_broken_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
 fn g_c2826_zero_model_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
     ws.init();
     let path = ws.ws("zero-models.yaml");
-    std::fs::write(&path, "models:\n  models: {}\n").unwrap();
+    std::fs::write(&path, "models:\n  entries: {}\n").unwrap();
     cli_entry_bdd.detail.replace(path);
 }
 

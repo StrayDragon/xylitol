@@ -136,7 +136,7 @@ fn config_template_error_is_hard_fail() {
 
     std::fs::write(
         proj_xy.join("config.yaml"),
-        "# doc {{ secret.KEY }}\nmodels:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+        "# doc {{ secret.KEY }}\nmodels:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n",
     )
     .unwrap();
 
@@ -236,7 +236,7 @@ fn yaml_entry_registers_without_kind_env_key() {
         proj_xy.join("config.yaml"),
         r#"models:
   default_model: local-qwen
-  models:
+  entries:
     local-qwen:
       provider: openai
       model: qwen-local
@@ -290,7 +290,7 @@ fn yaml_model_api_is_honored_in_registry_config() {
         proj_xy.join("config.yaml"),
         r#"models:
   default_model: completions-model
-  models:
+  entries:
     completions-model:
       provider: openai
       model: m-completions
@@ -408,7 +408,7 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
         project.join(".xylitol").join("config.yaml"),
         r#"models:
   default_model: local-qwen
-  models:
+  entries:
     local-qwen:
       provider: openai
       model: qwen-local
@@ -483,7 +483,7 @@ fn resolve_assembly_reads_session_max_turns() {
         proj_xy.join("config.yaml"),
         r#"models:
   default_model: m1
-  models:
+  entries:
     m1:
       provider: openai
       model: m
@@ -525,7 +525,7 @@ fn missing_session_still_applies_settings_thinking_default() {
         project_xylitol.join("config.yaml"),
         r#"models:
   default_model: m1
-  models:
+  entries:
     m1:
       provider: fake
       model: m1

@@ -293,7 +293,7 @@ fn reject_legacy_provider_preset(merged: &Value) -> Result<(), LoadError> {
     }
     let Some(models) = merged
         .get("models")
-        .and_then(|models| models.get("models"))
+        .and_then(|models| models.get("entries"))
         .and_then(Value::as_object)
     else {
         return Ok(());
@@ -316,7 +316,7 @@ fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadErr
     };
     let mut models: ModelsConfig = serde_json::from_value(raw)
         .map_err(|e| LoadError::validation(format!("config section `models`: {e}")))?;
-    for (alias, entry) in models.models.iter_mut() {
+    for (alias, entry) in models.entries.iter_mut() {
         if let Some(v) = entry.api_key.as_mut() {
             *v = expand_config_value(alias, "api_key", v)?;
         }
@@ -546,7 +546,7 @@ compaction:
         let cfg: AppConfig = yaml_serde::from_str(
             r"
 models:
-  models:
+  entries:
     shared: &shared
       provider: fake
       model: anchor-wire
@@ -580,7 +580,7 @@ compaction:
         let cfg: AppConfig = yaml_serde::from_str(
             r"
 models:
-  models:
+  entries:
     shared: &shared
       provider: fake
       model: anchor-wire
@@ -612,7 +612,7 @@ compaction:
         secrets.insert("SUMMARY_KEY".into(), "sk-summary".into());
         let raw = r#"
 models:
-  models:
+  entries:
     sum: &sum
       provider: fake
       model: summary-bot
@@ -652,7 +652,7 @@ compaction:
 
         std::fs::write(
             proj.join("config.local.yaml"),
-            "models:\n  default_model: from-local\n  models:\n    from-local:\n      provider: fake\n      model: fake\n",
+            "models:\n  default_model: from-local\n  entries:\n    from-local:\n      provider: fake\n      model: fake\n",
         )
         .unwrap();
 
@@ -675,7 +675,7 @@ compaction:
 
         std::fs::write(
             proj.join("config.yaml"),
-            "models:\n  default_model: from-yaml\n  models:\n    from-yaml:\n      provider: fake\n      model: fake\n",
+            "models:\n  default_model: from-yaml\n  entries:\n    from-yaml:\n      provider: fake\n      model: fake\n",
         )
         .unwrap();
         let cfg = load_app_config_with(None, env_map(&entries), None).expect("load with yaml");
@@ -691,7 +691,7 @@ compaction:
     fn write_model_config(global: &std::path::Path, body: &str) {
         std::fs::write(
             global.join("config.yaml"),
-            format!("models:\n  models:\n{body}"),
+            format!("models:\n  entries:\n{body}"),
         )
         .unwrap();
     }
@@ -719,7 +719,7 @@ compaction:
         );
         let cfg = load_with(&global).expect("load");
         let models: crate::types::ModelsConfig = cfg.section_or_default("models").unwrap();
-        let e = models.models.get("x").unwrap();
+        let e = models.entries.get("x").unwrap();
         assert_eq!(e.api_key.as_deref(), Some("sk-anchor"), "字面量 MUST 原样");
         assert_eq!(e.model, "m1");
     }
@@ -741,7 +741,7 @@ compaction:
         );
         let cfg = load_with(&global).expect("load");
         let models: crate::types::ModelsConfig = cfg.section_or_default("models").unwrap();
-        let e = models.models.get("x").unwrap();
+        let e = models.entries.get("x").unwrap();
         assert_eq!(
             e.api_key.as_deref(),
             Some("resolved-key"),
@@ -761,7 +761,7 @@ compaction:
         );
         let cfg = load_with(&global).expect("load");
         let models: crate::types::ModelsConfig = cfg.section_or_default("models").unwrap();
-        let e = models.models.get("x").unwrap();
+        let e = models.entries.get("x").unwrap();
         assert_eq!(
             e.api_key.as_deref(),
             Some("fallback-key"),
@@ -781,7 +781,7 @@ compaction:
         );
         let cfg = load_with(&global).expect("load");
         let models: crate::types::ModelsConfig = cfg.section_or_default("models").unwrap();
-        let e = models.models.get("x").unwrap();
+        let e = models.entries.get("x").unwrap();
         assert_eq!(e.model, "evalm", "shell-command syntax MUST 展开为 stdout");
     }
 
@@ -858,7 +858,7 @@ compaction:
         std::fs::create_dir_all(&global).unwrap();
         std::fs::write(
             global.join("config.yaml"),
-            "models:\n  models:\n    zen:\n      preset: opencode-zen\n      model: deepseek-v4-flash-free\n",
+            "models:\n  entries:\n    zen:\n      preset: opencode-zen\n      model: deepseek-v4-flash-free\n",
         )
         .unwrap();
         let home_s = home.path().to_str().unwrap();
@@ -882,7 +882,7 @@ compaction:
         std::fs::create_dir_all(&global).unwrap();
         std::fs::write(
             global.join("config.yaml"),
-            "provider_presets:\n  - opencode-zen\nmodels:\n  models: {}\n",
+            "provider_presets:\n  - opencode-zen\nmodels:\n  entries: {}\n",
         )
         .unwrap();
         let home_s = home.path().to_str().unwrap();
@@ -906,7 +906,7 @@ compaction:
         std::fs::create_dir_all(&global).unwrap();
         std::fs::write(
             global.join("config.yaml"),
-            "models:\n  models:\n    zen:\n      provider: openai\n      model: deepseek-v4-flash-free\n      base_url: https://opencode.ai/zen/v1\n      api: openai-completions\n",
+            "models:\n  entries:\n    zen:\n      provider: openai\n      model: deepseek-v4-flash-free\n      base_url: https://opencode.ai/zen/v1\n      api: openai-completions\n",
         )
         .unwrap();
         let home_s = home.path().to_str().unwrap();

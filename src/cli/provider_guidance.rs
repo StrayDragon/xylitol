@@ -1,7 +1,7 @@
 use xylitol_plugin_sdk::model::XyModelKind;
 
 pub fn get_provider_login_help() -> String {
-    "Configure models in config.yaml under models.models, and set each entry's\n\
+    "Configure models in config.yaml under models.entries, and set each entry's\n\
      \x20 api_key (or {{ secret.NAME }} in secret.env). Examples:\n\
      \x20 DEEPSEEK_API_KEY / OPENCODE_ZEN_API_KEY / a local llama.cpp placeholder.\n\
      \x20 Kind-level OPENAI_API_KEY / ANTHROPIC_API_KEY alone do not invent models.\n\
@@ -42,7 +42,7 @@ mod tests {
     fn test_login_help() {
         let help = get_provider_login_help();
         assert!(help.contains("api_key"));
-        assert!(help.contains("models.models"));
+        assert!(help.contains("models.entries"));
         assert!(!help.contains("OAuth"));
         assert!(help.contains("models.md"));
     }
@@ -51,7 +51,7 @@ mod tests {
     fn test_no_models_message() {
         let msg = format_no_models_available_message();
         assert!(msg.contains("No models"));
-        assert!(msg.contains("models.models"));
+        assert!(msg.contains("models.entries"));
         assert!(msg.contains("models.md"));
     }
 

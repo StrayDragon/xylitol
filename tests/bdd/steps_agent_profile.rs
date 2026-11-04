@@ -20,7 +20,7 @@ pub fn agent_profile_bdd() -> AgentProfileBdd {
 }
 
 fn profile_yaml() -> &'static str {
-    "models:\n  default_model: fake\n  models:\n    fake:\n      provider: fake\n      model: fake-1\nagents:\n  profiles:\n    review:\n      model: fake\n      persona: \"You are a reviewer.\"\n      system_prompt: \"Focus on correctness.\"\n      tools: [read, -bash]\n"
+    "models:\n  default_model: fake\n  entries:\n    fake:\n      provider: fake\n      model: fake-1\nagents:\n  profiles:\n    review:\n      model: fake\n      persona: \"You are a reviewer.\"\n      system_prompt: \"Focus on correctness.\"\n      tools: [read, -bash]\n"
 }
 
 #[given("YAML 含 agents.profiles.review 的 persona 与 tools")]
@@ -37,7 +37,7 @@ fn g_profile_without_missing(ws: &Workspace, agent_profile_bdd: &AgentProfileBdd
     let path = ws.ws("agent-profile-missing.yaml");
     std::fs::write(
         &path,
-        "models:\n  default_model: fake\n  models:\n    fake:\n      provider: fake\n      model: fake-1\n",
+        "models:\n  default_model: fake\n  entries:\n    fake:\n      provider: fake\n      model: fake-1\n",
     )
     .expect("write profile config");
     agent_profile_bdd.config_path.replace(Some(path));
