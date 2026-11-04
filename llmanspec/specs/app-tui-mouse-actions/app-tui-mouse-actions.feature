@@ -80,3 +80,7 @@
   @req:r3084
   规则: tool-args-chip-hit
     产品 TUI 工具块 `args` chip 须注册为折叠命中区，左键单击须切换该块参数折叠；命中区随帧绘制宽度与行高一致；chip 不得写组合键名。由 fold hit 与 harness 覆盖。
+
+  @req:r3086
+  规则: editor-chrome-chip-hit
+    产品 TUI `[侧栏]` / `[重置折叠]` / `[▤ 摘要]` chip 须按屏上实际绘制行注册命中；左键单击须分别切换侧栏、重置覆盖、循环 display level；宽度不足未绘制时 不得命中。由 harness 覆盖，不扩 BDD step。

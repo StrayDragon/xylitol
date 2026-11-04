@@ -14,9 +14,29 @@ impl UiRoot {
             (String::new(), Vec::new())
         };
         let chip_line_width = xylitol_tui::visible_width(&border);
-        let has_chips = !chip_hits.is_empty();
-        if has_chips && let Some(first) = editor.first_mut() {
+        let has_top = !border.is_empty();
+        if has_top && let Some(first) = editor.first_mut() {
             *first = border;
+        }
+        let mut chip_hits = chip_hits;
+        if self.slot.is_editor()
+            && editor.len() > 1
+            && let Some(last) = editor.last_mut()
+        {
+            let (bottom, bottom_hits) = self.paint_bottom_chrome(width);
+            if !bottom.is_empty() {
+                *last = bottom;
+                chip_hits.extend(bottom_hits);
+            }
+        }
+        if self.slot.is_editor() && editor.len() > 2 {
+            let plain = xylitol_tui::utils::strip_ansi_codes(&editor[1]);
+            let content =
+                xylitol_tui::truncate_to_width(&plain, width.saturating_sub(1), "", false);
+            let pad = width
+                .saturating_sub(1)
+                .saturating_sub(xylitol_tui::visible_width(&content));
+            editor[1] = format!("{content}{}◨", " ".repeat(pad));
         }
         self.last_slot_close_hit = None;
         if !self.slot.is_editor() {
@@ -24,7 +44,7 @@ impl UiRoot {
         }
         self.last_chip_width = chip_line_width;
         self.last_footer_hits = chip_hits;
-        has_chips
+        has_top
     }
 
     fn paint_slot_close_chip(&mut self, editor: &mut [String], width: usize) {

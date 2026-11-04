@@ -27,6 +27,7 @@ pub enum FooterAction {
     Details,
     Sidebar,
     ResetFold,
+    FoldSummary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,12 +38,26 @@ pub struct FooterChipHit {
 }
 
 impl UiRoot {
-    pub(crate) fn footer_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
-        let mut chips = vec![(FooterAction::Details, "详情", self.session_popup_open)];
+    fn top_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
+        let mut chips = Vec::new();
         if self.session_sidebar_available() {
             chips.push((FooterAction::Sidebar, "侧栏", self.session_sidebar_on));
         }
-        chips.push((FooterAction::ResetFold, "重置折叠", false));
+        chips
+    }
+
+    fn bottom_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
+        let mut chips = Vec::new();
+        if self.reset_chip_enabled() {
+            chips.push((FooterAction::ResetFold, "重置折叠", false));
+        }
+        chips.push((FooterAction::FoldSummary, "▤ 摘要", false));
+        chips
+    }
+
+    pub(crate) fn footer_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
+        let mut chips = self.top_chip_actions();
+        chips.extend(self.bottom_chip_actions());
         chips
     }
 
@@ -66,7 +81,7 @@ impl UiRoot {
         if width == 0 {
             return (line.to_string(), Vec::new());
         }
-        let chips = self.footer_chip_actions();
+        let chips = self.top_chip_actions();
         let stage_name = self
             .ui_model
             .stage_name
@@ -99,13 +114,14 @@ impl UiRoot {
             .unwrap_or(0);
         let title_gap = usize::from(title.is_some());
         let total_w = chip_w + title_w + title_gap;
-        let dash_w = width.saturating_sub(total_w + 1);
+        let dash_w = width.saturating_sub(total_w + 3);
         let border = self.operation_zone_paint();
         let mut out = if dash_w == 0 {
             String::new()
         } else {
             border(&"─".repeat(dash_w))
         };
+        out.insert(0, '╭');
         out.push(' ');
         let mut col = dash_w + 1;
         let mut hits = Vec::with_capacity(labels.len());
@@ -127,6 +143,51 @@ impl UiRoot {
             out.push(' ');
             out.push_str(&self.theme.paint_muted(&title));
         }
+        out.push('╮');
+        (out, hits)
+    }
+
+    pub(super) fn paint_bottom_chrome(&self, width: usize) -> (String, Vec<FooterChipHit>) {
+        if width == 0 {
+            return (String::new(), Vec::new());
+        }
+        let chips = self.bottom_chip_actions();
+        let mut labels = Vec::with_capacity(chips.len());
+        for (action, label, active) in &chips {
+            labels.push((*action, format!("[{label}]"), *active));
+        }
+        let chip_w: usize = labels
+            .iter()
+            .map(|(_, text, _)| xylitol_tui::visible_width(text))
+            .sum::<usize>()
+            + labels.len().saturating_sub(1);
+        if labels.is_empty() || chip_w + 4 > width {
+            return (String::new(), Vec::new());
+        }
+        let dash_w = width.saturating_sub(chip_w + 3);
+        let border = self.operation_zone_paint();
+        let mut out = String::from("╰");
+        if dash_w > 0 {
+            out.push_str(&border(&"─".repeat(dash_w)));
+        }
+        out.push(' ');
+        let mut col = dash_w + 2;
+        let mut hits = Vec::with_capacity(labels.len());
+        for (i, (action, text, active)) in labels.iter().enumerate() {
+            if i > 0 {
+                out.push(' ');
+                col += 1;
+            }
+            let w = xylitol_tui::visible_width(text);
+            out.push_str(&self.paint_dock_chip(&*border, text, *active));
+            hits.push(FooterChipHit {
+                start: col,
+                end: col + w,
+                action: *action,
+            });
+            col += w;
+        }
+        out.push('╯');
         (out, hits)
     }
 
@@ -178,6 +239,9 @@ impl UiRoot {
                 } else {
                     self.request_session_sidebar();
                 }
+            }
+            FooterAction::FoldSummary => {
+                self.cycle_display_level();
             }
             FooterAction::ResetFold => {
                 if !self.reset_chip_enabled() {
@@ -262,7 +326,7 @@ mod tests {
     fn inactive_chip_shares_the_border_colour() {
         let row = chip_row_for("high");
         let dashes = first_sgr(&row);
-        let chip = rgb_after(&row, "[详情]");
+        let chip = rgb_after(&row, "[侧栏]");
         assert_eq!(
             chip, dashes,
             "inactive chip and border must share one colour"

@@ -152,7 +152,10 @@ impl UiRoot {
             Box::new(move |s| fg_rgb(accent, s)),
             Box::new(move |s| fg_rgb(muted, s)),
             String::new(),
-            Some(LoaderIndicatorOptions::default()),
+            Some(LoaderIndicatorOptions {
+                frames: vec!["⬢".into()],
+                interval_ms: 80,
+            }),
         );
         let mut editor = Editor::new(
             theme.editor_theme(),
@@ -1566,17 +1569,14 @@ mod tests {
     }
 
     #[test]
-    fn footer_chips_render_details_and_sidebar_at_standard_tier() {
+    fn footer_chips_render_sidebar_and_fold_summary_at_standard_tier() {
         let mut root = UiRoot::new();
         root.set_term_cols(120);
         let frame = root.render(120);
-        let chip_row = frame
-            .iter()
-            .map(|l| plain(l))
-            .position(|l| l.contains("[详情]"))
-            .expect("details chip row");
-        let line = plain(&frame[chip_row]);
-        assert!(line.contains("[详情]") && line.contains("[侧栏]"), "{line}");
+        let joined: String = frame.iter().map(|l| plain(l)).collect();
+        assert!(joined.contains("[侧栏]"), "{joined}");
+        assert!(joined.contains("[▤ 摘要]"), "{joined}");
+        assert!(!joined.contains("[详情]"), "{joined}");
         let expected_screen_row = root
             .term_rows
             .saturating_sub(root.last_editor_rows)
@@ -1585,16 +1585,27 @@ mod tests {
     }
 
     #[test]
-    fn narrow_terminal_hides_sidebar_chip() {
+    fn narrow_terminal_hides_details_chip() {
         let mut root = UiRoot::new();
         root.set_term_cols(70);
         let frame = root.render(70);
         let joined: String = frame.iter().map(|l| plain(l)).collect();
-        assert!(joined.contains("[详情]"), "{joined}");
-        assert!(
-            !joined.contains("[侧栏]"),
-            "sidebar chip needs standard tier"
+        assert!(!joined.contains("[详情]"), "{joined}");
+        assert!(joined.contains("[▤ 摘要]"), "{joined}");
+    }
+
+    #[test]
+    fn fold_summary_chip_cycles_display_level() {
+        use crate::activity_fold::DisplayLevel;
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        let _ = root.render(120);
+        assert_eq!(
+            root.activity().settings.display_level,
+            DisplayLevel::Summary
         );
+        assert!(root.click_footer_action(super::footer_chips::FooterAction::FoldSummary));
+        assert_eq!(root.activity().settings.display_level, DisplayLevel::Recent);
     }
 
     #[test]

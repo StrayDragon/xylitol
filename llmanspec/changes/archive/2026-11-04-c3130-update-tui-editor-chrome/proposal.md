@@ -4,6 +4,9 @@ depends_on:
   - c3120-update-tui-activity-display
 title: TUI 编辑区 chrome 改版与详情下线
 needs_specs_change: true
+branch: sdd/c3130-update-tui-editor-chrome
+base_branch: main
+base_sha: 006bd3680237d631a32efc6898035f8de0030a35
 ---
 
 # TUI 编辑区 chrome 改版与详情下线

@@ -12,7 +12,7 @@
       那么 空闲帧不含忙碌短词且忙碌帧恰一行 Working 且 footer 不含 Working
   @req:r1224
   规则: footer-minimal
-    产品 footer 须为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，不得在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 须省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 须在 used 字段后追加派生占用比（见 atc21）；并在可获得 prompt cache 读取状态时 须在 used 字段后、占用比之前追加 `· cache N`（命中 N tokens）或 `· cache ?`（上游未上报）；不适用或缺省时 须省略，不得伪造 `cache 0`；不得在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 不得伪造 used 0；不得常驻快捷键墙；放不下时 须截断右侧而非增高。编辑区上边框右端 可以承载视图动作 chip（`[详情]` / `[侧栏]` / `[重置折叠]`，语义见 app-tui-mouse-actions dock-action-chips）；chip 与边框同高，不得使 footer 或编辑区增高、不得换行，宽度不足时整 chip 不画。
+    产品 footer 须为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，不得在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 须省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 须在 used 字段后追加派生占用比（见 atc21）；并在可获得 prompt cache 读取状态时 须在 used 字段后、占用比之前追加 `· cache N`（命中 N tokens）或 `· cache ?`（上游未上报）；不适用或缺省时 须省略，不得伪造 `cache 0`；不得在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 不得伪造 used 0；不得常驻快捷键墙；放不下时 须截断右侧而非增高。编辑区上边框右端 可以承载 `[侧栏]` chip；下边框右端 承载 `[重置折叠]`（仅覆盖时）与 `[▤ 摘要]` chip；不得再画 `[详情]` chip；chip 与边框同高，不得使 footer 或编辑区增高、不得换行，宽度不足时整 chip 不画。
 
     场景: 页脚单一行带启发式来源
       当 以 Heuristic 上下文估计驱动 footer token 字段
@@ -353,3 +353,7 @@
   @req:r3080
   规则: stage-name-display
     产品 TUI 编辑区上边框右端 须显示当前会话阶段名（muted，右对齐）；阶段名超宽 须以 `…` 截断，不得换行或使编辑区增高；无阶段名时 不得留空槽或伪造占位。阶段名 须复用 session display name，不得新建平行标题存储；fork 后 须显示继承的父名。由 harness 与 snapshot 覆盖，不扩 BDD step。
+
+  @req:r3085
+  规则: editor-chrome
+    产品 TUI 编辑区上/下边框 须用圆角 `╭╮╰╯`；阶段名 右对齐上边框；`[侧栏]` 在上边框；`[▤ 摘要]` 在下边框右端；`[重置折叠]` 仅存在逐块覆盖时显示，位于摘要左侧；不得再显示 `[详情]` chip；固定区高度 不得因 chip 或标题变化。由 snapshot 与 harness 覆盖，不扩 BDD step。

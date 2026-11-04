@@ -339,7 +339,12 @@ impl Component for super::Editor {
         if self.scroll_offset > 0 {
             result.push(self.render_more_border(width, true, self.scroll_offset));
         } else {
-            result.push((self.theme.border_color)(&"─".repeat(width.max(1))));
+            let top = if width >= 2 {
+                format!("╭{}╮", "─".repeat(width - 2))
+            } else {
+                "─".repeat(width.max(1))
+            };
+            result.push((self.theme.border_color)(&top));
         }
 
         for ll in visible {
@@ -392,7 +397,12 @@ impl Component for super::Editor {
         if below > 0 {
             result.push(self.render_more_border(width, false, below));
         } else {
-            result.push((self.theme.border_color)(&"─".repeat(width.max(1))));
+            let bottom = if width >= 2 {
+                format!("╰{}╯", "─".repeat(width - 2))
+            } else {
+                "─".repeat(width.max(1))
+            };
+            result.push((self.theme.border_color)(&bottom));
         }
 
         if let Some(ref mut ac_list) = self.autocomplete_list

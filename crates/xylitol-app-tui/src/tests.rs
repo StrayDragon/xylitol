@@ -955,20 +955,12 @@ async fn dock_chip_click_toggles_popup_in_host() {
     let mut driver = ScriptedDriver::new();
     let root = session.ui_root().expect("product ui").clone();
     assert!(
-        click_chip(&mut session, &mut driver, "[详情]").await,
-        "[详情] chip must be painted"
-    );
-    assert!(
-        root.borrow().session_popup_open(),
-        "first chip click opens the session popup"
-    );
-    assert!(
-        click_chip(&mut session, &mut driver, "[详情]").await,
-        "[详情] chip must still be painted while open"
+        !click_chip(&mut session, &mut driver, "[详情]").await,
+        "[详情] chip must not be painted"
     );
     assert!(
         !root.borrow().session_popup_open(),
-        "second chip click closes the session popup"
+        "removed details chip must not open the session popup"
     );
 }
 
@@ -2082,7 +2074,7 @@ fn layout_idle_status_is_one_blank_above_editor() {
     );
     let editor_border = lines
         .iter()
-        .position(|l| l.contains('─') && !l.contains('╭') && !l.contains('╰'))
+        .position(|l| l.contains('╭') && l.contains("[侧栏]"))
         .expect("editor top border");
     assert!(
         editor_border > 0 && lines[editor_border - 1].is_empty(),
@@ -2188,6 +2180,7 @@ fn layout_busy_status_is_separate_from_footer() {
                 || l.contains('⠧')
                 || l.contains('⠇')
                 || l.contains('⠏')
+                || l.contains('⬢')
         }),
         "busy status must include spinner frame: {lines:?}"
     );
@@ -3638,6 +3631,7 @@ fn harness_l2_ignores_l1_override_after_segment_present() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
+    root.toggle_fold_target(FoldTarget::Thinking("noise".into()));
     let before = strip_ansi(&root.render(100).join("\n"));
     assert!(
         before.contains("Explored") || before.contains("file"),

@@ -19,7 +19,10 @@ impl UiRoot {
             Box::new(move |s| fg_rgb(accent, s)),
             Box::new(move |s| fg_rgb(muted, s)),
             String::new(),
-            Some(LoaderIndicatorOptions::default()),
+            Some(LoaderIndicatorOptions {
+                frames: vec!["⬢".into()],
+                interval_ms: 80,
+            }),
         );
         self.sync_editor_border();
         self.slot.retheme(theme);
