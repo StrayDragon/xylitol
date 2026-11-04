@@ -14,7 +14,7 @@ MCP 标准只有 stdio 与 Streamable HTTP；WebSocket / custom transport 很少
 - 预留 transport extension seam：插件可注册自定义 transport；复用 JSON-RPC framing。
 - config 预留 `transport` 扩展位；校验与文档。
 - legacy SSE 仍不支持。
-- 诊断与测试：插入点可用性；不承诺内置 WebSocket。
+- 不做 API 形状假设；插件实现按现有边界处理。
 
 ## Capabilities
 
@@ -27,11 +27,10 @@ MCP plugin、config、host。
 
 ## Further Notes
 
-- 用户决策：先不做；等待第一个出现的用户 / 供应商需求，由插件贡献。
+- 用户决策：先不处理；无假设；插件实现根据现有边界处理。
 - 依赖 `c3085-add-mcp-transport-config`。
 - fixture 只需验证插入点，不需要实现 WebSocket。
 
 ## Open Questions
 
-- 插入点的插件 API 形状与安全边界。
-- 是否允许第三方 transport 插件进入默认构建。
+- 插入点是否足够；等第一个真实需求再评估。

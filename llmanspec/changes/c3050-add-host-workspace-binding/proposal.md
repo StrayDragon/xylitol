@@ -13,11 +13,10 @@ Host 当前启动即绑定 cwd；`new_session` 用 host 进程 cwd；多 client 
 - client 接入时传 workspace set：primary workspace + additional trusted workspaces。
 - 推荐在 `subscribe` 中正式化 `workspaces` 字段（list）；现有 `cwd` 作为 primary 的兼容入口。
 - primary workspace = TUI/其他客户端启动目录；resume 时 = session 存储的 primary。
-- additional workspace 只能由人类添加/移除：TUI slash 或 host unary；不得暴露为 LLM 可调用工具。
-- **人类入口暂不做**：只保留 host unary / TUI slash 插入点；后续可能加。
+- **additional workspace 先不做**：只保留字段/设计；MVP 只启用 primary workspace。
+- additional workspace 未来只能由人类添加/移除：TUI slash 或 host unary；不得暴露为 LLM 可调用工具。
 - workspace set 的 mid-session 变更只允许人类操作；LLM 不得自行 add / remove / switch。
 - trust 按 workspace set 逐个解析；新加入的 workspace 走 trust 门禁。
-- additional workspace 重新确认机制暂不做；agent 工具有绕过风险，后续讨论。
 - host 按 session 绑定 workspace set；`new_session` 用 primary workspace，不用 host cwd。
 - materialize driver、MCP pool、tool catalog 使用 session 的 workspace set。
 - MCP scope pool 对 set 内每个 workspace 建 claim；tool 调用按 `XyToolCtx.workspace` 路由；不在 set 内则拒绝。
@@ -47,14 +46,12 @@ host、protocol、TUI client、trust、MCP、session store。
 ## Further Notes
 
 - 现有 `Subscribe` 只有 `session_id` / `last_seq`；TUI 在 payload 额外发 `cwd`，host `workspace_from_payload` 读取。推荐先正式化 `workspaces`，不新增 handshake。
-- 人类入口：TUI slash（如 `/workspace add`）或 host unary；不得做成模型工具。暂不实现，保留插入点。
+- additional workspace 先不做；未来人类入口：TUI slash 或 host unary；不得做成模型工具。
 - 1:N 语义：primary 是默认 tool workspace；additional 是受信任集合；mid-session 变更由人类触发。
 - 依赖：`c3105-fix-harden-trust-store`（trust store 加固）；安全后门未处理前不得落地 workspace trust。
 
 ## Open Questions
 
 - subscribe `workspaces` list vs `workspace` + `additional_workspaces`：推荐 list。
-- 人类入口形态：TUI slash / host unary / 两者；暂不做。
-- additional workspace 的 trust 模式与写权限边界；重新确认暂不做。
+- additional workspace 何时做；人类入口形态。
 - workspace set 变更是否需要 session 级审计记录。
-- trust store 加固是否先行：见 `c3105-fix-harden-trust-store`。

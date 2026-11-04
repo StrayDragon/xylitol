@@ -9,7 +9,8 @@ title: "MCP stateful fixtures and multi-client tests"
 
 ## What Changes
 
-- fixture 用官方 MCP SDK 实现；推荐 Python 官方 SDK `mcp`（FastMCP）并用 `uv` 隔离、pin 版本。
+- 新写 stateful fixture：`tests/support/mcp_stateful_fixture.py`，用 Python 官方 SDK `mcp`（FastMCP）实现；不复用现有 minimal fixture。
+- 现有 `tests/support/mcp_fixture_server.py` 与 plugin 内副本保持原样，继续服务 reload / provider-tools 简单测试；不强行合并。
 - stdio fixture：按连接维护计数器/状态；可配置延迟与失败。
 - 覆盖 tools / resources / prompts / elicitation form+url / tool list changed；支持 legacy SSE 拒绝测试。
 - BDD/E2E：多 client、多 workspace、一个 client 启动不 reset 另一个；workspace set 人类变更（后续）。
@@ -36,10 +37,10 @@ title: "MCP stateful fixtures and multi-client tests"
 ## Further Notes
 
 - 依赖：无；横切支撑 `c3055` / `c3060` / `c3065` / `c3070` / `c3090`。
-- fixture 只落 `tests/support` 或 `scripts/lab_*`，不新增 just recipe。
+- 新 fixture 只落 `tests/support`；现有 minimal fixture 不动。
 - CI 前置：`uv` 与 Python 3.11 必须在测试前安装；不依赖测试时联网。
 
 ## Open Questions
 
 - CI setup 的 `uv` / Python 3.11 安装落点。
-- fixture 是否复用现有 `mcp_fixture_server.py`，还是新写 stateful server。
+- stateful fixture 的 state 形状与重置方式。
