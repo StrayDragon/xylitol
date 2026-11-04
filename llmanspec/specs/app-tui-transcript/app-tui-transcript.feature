@@ -381,3 +381,7 @@
   @req:r3083
   规则: tool-args-fold
     产品 TUI 工具块 须在 header 下提供 `args` 折叠 chip：收起只显示 `▸ args`，展开显示 `▾ args` 与参数正文；点击 chip 须切换该块参数折叠，不得改变工具块整体折叠；默认 summary 收起、full 展开；逐块覆盖与 `/fold args` 须生效。由 harness 与 fold hit 测覆盖。
+
+  @req:r3087
+  规则: stream-render-budget
+    产品 TUI 在 TextDelta / ThinkingDelta 高频流期间 须把 UiRoot 同步合并到 Tick，不得逐 delta 重建；MessageEnd / AgentEnd / 工具边界 须强制同步；最终帧内容与逐事件同步一致，不得丢增量或改变事件顺序；每 tick 至多一次 paint。由 harness 与时序测覆盖。

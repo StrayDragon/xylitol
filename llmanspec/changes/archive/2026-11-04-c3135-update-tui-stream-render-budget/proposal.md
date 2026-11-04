@@ -2,6 +2,9 @@
 depends_on: []
 title: TUI 流式渲染预算与合帧降频
 needs_specs_change: false
+branch: sdd/c3135-update-tui-stream-render-budget
+base_branch: main
+base_sha: 015b672c80cd38a566d7bf6493bb6c00a820e8a6
 ---
 
 # TUI 流式渲染预算与合帧降频

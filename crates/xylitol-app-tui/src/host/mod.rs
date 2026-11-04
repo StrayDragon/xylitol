@@ -85,6 +85,7 @@ pub struct HostSession<T: Terminal> {
     pending: PendingOps,
     stage_name_requested_for: Option<String>,
     stage_name_request_pending: bool,
+    stream_sync_pending: bool,
     run_active: bool,
     bash_active: bool,
     reload_active: bool,
@@ -155,6 +156,7 @@ impl<T: Terminal> HostSession<T> {
             pending: PendingOps::default(),
             stage_name_requested_for: None,
             stage_name_request_pending: false,
+            stream_sync_pending: false,
             run_active: false,
             bash_active: false,
             reload_active: false,
@@ -895,6 +897,10 @@ impl<T: Terminal> HostSession<T> {
                 self.quit = true;
             }
             HostEvent::Tick => {
+                if self.stream_sync_pending {
+                    self.stream_sync_pending = false;
+                    self.sync_ui_root_from_model();
+                }
                 let anim_dirty = if self.mode == LayoutMode::Ready {
                     self.tui.idle_tick()
                 } else {
@@ -1226,6 +1232,10 @@ impl<T: Terminal> HostSession<T> {
 
     pub(crate) fn apply_xy_unfenced(&mut self, xy: Box<XyEvent>) {
         apply_xy_event(&mut self.ui_model, &xy);
+        let stream_delta = matches!(
+            xy.as_ref(),
+            XyEvent::TextDelta(_) | XyEvent::ThinkingDelta(_)
+        );
         match xy.as_ref() {
             XyEvent::AgentEnd { .. } => {
                 self.run_active = false;
@@ -1262,8 +1272,13 @@ impl<T: Terminal> HostSession<T> {
             }
             _ => {}
         }
-        self.sync_ui_root_from_model();
-        if matches!(xy.as_ref(), XyEvent::AgentEnd { .. })
+        if stream_delta {
+            self.stream_sync_pending = true;
+        } else {
+            self.sync_ui_root_from_model();
+        }
+        if !stream_delta
+            && matches!(xy.as_ref(), XyEvent::AgentEnd { .. })
             && let Some(root) = self.ui_root.as_ref()
         {
             root.borrow_mut().apply_activity_after_turn_end();
