@@ -2,7 +2,8 @@ use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_host::{
     HostPump, HostPumpBdd, c2826_slot, c2911_click, click_footer_chip_label,
     close_session_popup_via_action, editor_text, fresh_pump, open_busy, open_tree_ready, pump_once,
-    put_pump, render_frame, request_session_popup_via_action, set_editor, stats, step_key, take_pump,
+    put_pump, render_frame, request_session_popup_via_action, set_editor, stats, step_key,
+    take_pump,
 };
 use crate::bdd::steps_app_tui_interaction::TuiInteraction;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
