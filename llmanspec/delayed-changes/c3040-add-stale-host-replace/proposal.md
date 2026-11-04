@@ -19,11 +19,16 @@ c3035 开箱确保本机 Host 后，`/healthz` 版本与当前客户端不符仍
 - 端口被非 xylitol 占用：不杀、不 spawn（沿用 r1787 / r3065）。
 - attach 后协议版本不符仍按既有 fatal 终止，不重试风暴。
 
-## 开放决策（propose 时拍板）
+## 深挖结论（2026-11-04）
 
-- 同 `CARGO_PKG_VERSION`、不同 git 构建：healthz 只有 version 字符串时无法区分；是否加构建身份。
-- 显式 `xylitol serve`（persistent）被新 TUI 替换后，新进程走自动拉起的 last-client 还是继承 persistent。
-- 替换窗口内第二客户端的 EADDRINUSE / 半关停竞态。
+- 版本比较：`semver` 解析 `CARGO_PKG_VERSION` 与 healthz version；旧于客户端 → 替换；新于 → fail-closed；相同 → attach；解析失败 → 不替换。
+- 构建身份：MVP 只比 version；同 version 不同 git 构建不替换；build id 后置。
+- 生命周期：替换后的新 Host 走当前 ensure 策略（`serve.autostart_last_client()`），不继承旧 persistent；需要 persistent 的用户显式 `xylitol serve`。
+- 竞态：`~/.xylitol/serve.replace.lock` 串行化；拿锁后重探活；spawn `AddrInUse` 沿用忽略并等待 ready。
+- SIGTERM 等待 5s；超时返回可操作错误，不 SIGKILL。
+- 非 Unix：替换 fail-closed，不假装成功。
+- 显式 `--attach` / `--no-ensure-host`：不替换；非 xylitol 占用：不杀不 spawn。
+- 设计 / 任务：[design.md](./design.md) / [tasks.md](./tasks.md)。
 
 ## Capabilities（拟）
 
@@ -44,4 +49,4 @@ c3035 开箱确保本机 Host 后，`/healthz` 版本与当前客户端不符仍
 
 ## 状态注记
 
-> **deferred**：搁置在 `llmanspec/delayed-changes/`，未进活跃 graph。落实时经 `llman-sdd-propose` 迁回 `changes/`。
+> **deferred**：搁置在 `llmanspec/delayed-changes/`，未进活跃 graph。深挖 design / tasks 已写；落实时经 `llman-sdd-propose` 迁回 `changes/`。
