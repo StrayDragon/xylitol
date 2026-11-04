@@ -685,3 +685,14 @@ fn tool_header_shows_timeout_only_when_requested() {
         "no default header note: {plain2:?}"
     );
 }
+
+#[test]
+fn args_fold_is_per_block() {
+    let mut fold = ScrollbackFold::default();
+    assert!(!fold.args_effective("t1"));
+    fold.toggle_args("t1");
+    assert!(fold.args_effective("t1"));
+    assert!(!fold.args_effective("t2"));
+    fold.clear_args_overrides();
+    assert!(!fold.args_effective("t1"));
+}

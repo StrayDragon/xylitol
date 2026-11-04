@@ -3,6 +3,9 @@ depends_on:
   - c3120-update-tui-activity-display
 title: TUI 工具参数折叠层与用户长消息折叠
 needs_specs_change: true
+branch: sdd/c3125-add-tui-transcript-folds
+base_branch: main
+base_sha: db4d76ab587ceace23256ecd80907536e3df0e36
 ---
 
 # TUI 工具参数折叠层与用户长消息折叠

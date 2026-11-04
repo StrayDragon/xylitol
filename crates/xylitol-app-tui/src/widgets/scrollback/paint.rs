@@ -486,6 +486,27 @@ pub(super) fn paint_tool_block(
         target: FoldTarget::Tool(id.to_string()),
     });
 
+    if !args_preview.is_empty() {
+        let args_expanded = fold.args_effective(id);
+        let chip = if args_expanded {
+            "▾ args".to_string()
+        } else {
+            "▸ args".to_string()
+        };
+        let row = block.len();
+        push_wrapped(&mut block, &theme.paint_muted(&chip), inner);
+        block_hits.push(CachedFoldHit {
+            row_offset: row,
+            col_start: 0,
+            col_end: xylitol_tui::visible_width(&chip).max(1),
+            height: 1,
+            target: FoldTarget::ToolArgs(id.to_string()),
+        });
+        if args_expanded {
+            push_wrapped(&mut block, &theme.paint_muted(args_preview), inner);
+        }
+    }
+
     if expanded {
         if let Some(content) = write_content
             && !content.is_empty()

@@ -45,7 +45,9 @@ pub struct ScrollbackFold {
     pub tools_output_expanded: bool,
     pub tool_output_visible: bool,
     pub diff_visible: bool,
+    pub args_expanded: bool,
     pub output_overrides: HashMap<String, bool>,
+    pub args_overrides: HashMap<String, bool>,
     pub compaction_expanded: bool,
     pub tools_overrides: HashMap<String, bool>,
     pub thinking_overrides: HashMap<String, bool>,
@@ -62,7 +64,9 @@ impl Default for ScrollbackFold {
             tools_output_expanded: false,
             tool_output_visible: true,
             diff_visible: true,
+            args_expanded: false,
             output_overrides: HashMap::new(),
+            args_overrides: HashMap::new(),
             compaction_expanded: false,
             tools_overrides: HashMap::new(),
             thinking_overrides: HashMap::new(),
@@ -122,11 +126,28 @@ impl ScrollbackFold {
         self.thinking_expanded = items.tool_output;
         self.streaming_thinking_expanded = items.tool_output;
         self.tools_expanded = items.tool_output;
+        self.args_expanded = items.tool_output;
     }
 
     pub fn toggle_output(&mut self, id: &str) {
         let next = !self.output_effective(id);
         self.output_overrides.insert(id.to_string(), next);
+    }
+
+    pub fn args_effective(&self, id: &str) -> bool {
+        self.args_overrides
+            .get(id)
+            .copied()
+            .unwrap_or(self.args_expanded)
+    }
+
+    pub fn toggle_args(&mut self, id: &str) {
+        let next = !self.args_effective(id);
+        self.args_overrides.insert(id.to_string(), next);
+    }
+
+    pub fn clear_args_overrides(&mut self) {
+        self.args_overrides.clear();
     }
 
     pub fn clear_output_overrides(&mut self) {

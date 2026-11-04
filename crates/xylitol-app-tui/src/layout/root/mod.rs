@@ -394,8 +394,14 @@ impl UiRoot {
         self.bump_upper_gen();
     }
 
+    pub fn toggle_args_default(&mut self) {
+        self.fold.args_expanded = !self.fold.args_expanded;
+        self.bump_upper_gen();
+    }
+
     pub fn reset_fold_overrides(&mut self) {
         self.fold.clear_output_overrides();
+        self.fold.clear_args_overrides();
         self.fold.clear_tools_overrides();
         self.fold.clear_thinking_overrides();
         let mut settings = self.activity.settings.clone();
@@ -481,6 +487,9 @@ impl UiRoot {
         match target {
             FoldTarget::Tool(id) | FoldTarget::Diff(id) | FoldTarget::Ask(id) => {
                 self.fold.toggle_tools(&id);
+            }
+            FoldTarget::ToolArgs(id) => {
+                self.fold.toggle_args(&id);
             }
             FoldTarget::Thinking(id) => {
                 self.fold.toggle_thinking(&id);

@@ -3,6 +3,7 @@ use xylitol_tui::{Hit, HitId};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FoldTarget {
     Tool(String),
+    ToolArgs(String),
     Diff(String),
     Ask(String),
     Thinking(String),
@@ -119,7 +120,10 @@ fn region_contains(r: &FoldHitRegion, content_row: usize, col: usize) -> bool {
 
 fn hover_hits_for(id: HitId, r: &FoldHitRegion) -> Vec<Hit> {
     match &r.target {
-        FoldTarget::Tool(_) | FoldTarget::Diff(_) | FoldTarget::Ask(_) => tool_hover_hits(id, r),
+        FoldTarget::Tool(_)
+        | FoldTarget::ToolArgs(_)
+        | FoldTarget::Diff(_)
+        | FoldTarget::Ask(_) => tool_hover_hits(id, r),
         FoldTarget::Thinking(_) | FoldTarget::LoadEarlier => single_line_hit(id, r),
         FoldTarget::OutputViewport(_)
         | FoldTarget::Compaction

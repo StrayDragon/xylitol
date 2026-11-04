@@ -75,7 +75,9 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
         ProductSlashCommand {
             name: "fold",
             description: "Show or change activity display level",
-            argument_hint: Some("[quiet|summary|recent|full|reset|thinking|tools|output|diff]"),
+            argument_hint: Some(
+                "[quiet|summary|recent|full|reset|thinking|tools|args|output|diff]",
+            ),
         },
         ProductSlashCommand {
             name: "reload",

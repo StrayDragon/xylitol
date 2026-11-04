@@ -276,6 +276,11 @@ pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction
                 root.reset_fold_overrides();
                 notice = "fold reset: display level Summary, overrides cleared".into();
             }
+            FoldAction::Toggle(FoldItem::Args) => {
+                root.toggle_args_default();
+                let on = root.fold_view().args_expanded;
+                notice = format!("fold args: {}", if on { "on" } else { "off" });
+            }
             FoldAction::Toggle(item) => {
                 let mut settings = root.activity().settings.clone();
                 let field = match item {
@@ -283,6 +288,7 @@ pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction
                     FoldItem::Tools => &mut settings.visible_items.tool_header,
                     FoldItem::Output => &mut settings.visible_items.tool_output,
                     FoldItem::Diff => &mut settings.visible_items.diff,
+                    FoldItem::Args => unreachable!("args handled above"),
                 };
                 *field = !*field;
                 let label = match item {
@@ -290,6 +296,7 @@ pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction
                     FoldItem::Tools => "tools",
                     FoldItem::Output => "output",
                     FoldItem::Diff => "diff",
+                    FoldItem::Args => "args",
                 };
                 notice = format!("fold {label}: {}", if *field { "on" } else { "off" });
                 root.set_activity_settings(settings);

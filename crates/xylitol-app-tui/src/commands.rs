@@ -61,6 +61,7 @@ pub enum StageNameAction {
 pub enum FoldItem {
     Thinking,
     Tools,
+    Args,
     Output,
     Diff,
 }
@@ -345,6 +346,9 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         }),
         ("fold", Some(arg)) if arg == "tools" => Some(PendingSlash::Fold {
             action: FoldAction::Toggle(FoldItem::Tools),
+        }),
+        ("fold", Some(arg)) if arg == "args" => Some(PendingSlash::Fold {
+            action: FoldAction::Toggle(FoldItem::Args),
         }),
         ("fold", Some(arg)) if arg == "output" => Some(PendingSlash::Fold {
             action: FoldAction::Toggle(FoldItem::Output),

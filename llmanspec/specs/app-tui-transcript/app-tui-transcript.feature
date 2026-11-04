@@ -377,3 +377,7 @@
       假如 产品 ApplicationOwned 会话已向下滚动
       当 产品会话左键单击跳转顶部按钮字符
       那么 产品应用视口滚动位置归零且无选区
+
+  @req:r3083
+  规则: tool-args-fold
+    产品 TUI 工具块 须在 header 下提供 `args` 折叠 chip：收起只显示 `▸ args`，展开显示 `▾ args` 与参数正文；点击 chip 须切换该块参数折叠，不得改变工具块整体折叠；默认 summary 收起、full 展开；逐块覆盖与 `/fold args` 须生效。由 harness 与 fold hit 测覆盖。
