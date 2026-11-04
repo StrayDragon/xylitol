@@ -264,7 +264,9 @@ impl StreamingAssistantPaint {
 }
 
 fn markdown_unfitted(text: String, width: usize, theme: LayoutTheme) -> Vec<String> {
-    let mut md = Markdown::new(text, 0, 0, theme.palette().markdown_theme(), None)
+    let mut md_theme = theme.palette().markdown_theme();
+    md_theme.hyperlink_links = true;
+    let mut md = Markdown::new(text, 0, 0, md_theme, None)
         .with_table_header_underline(true)
         .with_mermaid_mode(MermaidFenceMode::Final);
     md.render(width)
@@ -383,15 +385,11 @@ pub(super) fn paint_assistant_block(
 ) -> (Vec<String>, Vec<CachedFoldHit>) {
     let PaintCtx { theme, width, .. } = ctx;
     let mut lines = Vec::new();
-    let mut md = Markdown::new(
-        text.to_string(),
-        0,
-        0,
-        theme.palette().markdown_theme(),
-        None,
-    )
-    .with_table_header_underline(true)
-    .with_mermaid_mode(MermaidFenceMode::Final);
+    let mut md_theme = theme.palette().markdown_theme();
+    md_theme.hyperlink_links = true;
+    let mut md = Markdown::new(text.to_string(), 0, 0, md_theme, None)
+        .with_table_header_underline(true)
+        .with_mermaid_mode(MermaidFenceMode::Final);
     for line in md.render(width) {
         lines.push(fit(&line, width));
     }
