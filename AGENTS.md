@@ -77,6 +77,8 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 
 交付 **OpenAI 兼容** 与 **Anthropic Messages** 两族（OAuth 等纳入是显式决策，不默认承诺）；网关 courtesy（如 Zen 会话归因）允许。产品细则：`llmanspec/specs/infra-provider/` 与插件侧 `provider-openai*`；开闭规则（业务只依赖 `XyModel`，新兼容端 = 方言插件 / 配置）：`src/AGENTS.md`“Provider 与消息”。
 
+模型配置面是跨仓契约：`models.entries` 与 thinking 档位（`thinking_level_map`）形状同时被 `StrayDragon/x-magpie` 的 `packages/xylitol` 连接器消费，它渲染 `conf.d/magpie-models.yaml` 供本仓加载。改模型条目 schema 或生成形状时 **必须** 同步适配该连接器并跑其 `just check`；**不得**只改本仓使生成文件失效。
+
 ## 命令与验证
 
 - 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；全量门禁 `just qa`（或 `ci`）；需要真终端（PTY / tmux）再加 `just qa-e2e`。新机器先 `just setup`；缺工具在第一次触发 recipe 时安装或失败。
