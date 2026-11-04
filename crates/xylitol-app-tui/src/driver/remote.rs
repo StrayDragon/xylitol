@@ -1479,6 +1479,7 @@ where
             | Command::GetSessionName { .. }
             | Command::SetSessionName { .. }
             | Command::SetSessionNameFor { .. }
+            | Command::GenerateSessionName { .. }
             | Command::DeleteSession { .. }) => self.exec_session_meta(cmd).await,
             Command::Reload { .. } => self.exec_reload().await,
             Command::LoadedResources { .. } => self.exec_loaded_resources().await,
@@ -1830,6 +1831,16 @@ where
         session_name_outcome(&data, "set_session_name_for response missing name")
     }
 
+    async fn exec_generate_session_name(
+        &mut self,
+        force: bool,
+    ) -> Result<DispatchOutcome, XyDriverError> {
+        let data = self
+            .unary_cmd(Command::GenerateSessionName { force })
+            .await?;
+        session_name_outcome(&data, "generate_session_name response missing name")
+    }
+
     async fn exec_delete_session(
         &mut self,
         session_id: String,
@@ -1907,6 +1918,9 @@ where
             Command::SetSessionNameFor {
                 session_id, name, ..
             } => self.exec_set_session_name_for(session_id, name).await,
+            Command::GenerateSessionName { force, .. } => {
+                self.exec_generate_session_name(force).await
+            }
             Command::DeleteSession { session_id, .. } => self.exec_delete_session(session_id).await,
             other => Err(crate::dispatch::transport_variant_error(&other)),
         }

@@ -52,6 +52,23 @@ impl ModelManager {
         Ok((self.model_builder)(&meta.config))
     }
 
+    pub(crate) fn build_model_with_levels(
+        &self,
+        model_id: Option<&str>,
+    ) -> Result<(Arc<dyn XyModel>, Vec<String>), XyError> {
+        let meta = match model_id {
+            Some(id) => self
+                .registry
+                .find(id)
+                .ok_or_else(|| XyError::Config(format!("model {id} is not configured")))?,
+            None => self
+                .current_model()
+                .ok_or_else(|| XyError::Config("no model configured".into()))?,
+        };
+        let levels = Self::levels_for_meta(meta);
+        Ok(((self.model_builder)(&meta.config), levels))
+    }
+
     pub fn supported_levels(&self) -> Option<Vec<String>> {
         let meta = self.current_model()?;
         Some(Self::levels_for_meta(meta))

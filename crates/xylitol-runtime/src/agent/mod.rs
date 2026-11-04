@@ -6,6 +6,7 @@ pub mod llm_project;
 pub mod model;
 pub mod prompt;
 pub mod runtime;
+pub mod stage_name;
 pub mod tools;
 
 pub use crate::agent::builder::AgentBuilder;

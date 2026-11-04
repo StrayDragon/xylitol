@@ -1089,6 +1089,17 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                 *self.session_name.lock().expect("session_name") = Some(stored.clone());
                 Ok(DispatchOutcome::SessionName(Some(stored)))
             }
+            Command::GenerateSessionName { force, .. } => {
+                let _ = force;
+                let name = self
+                    .session_name
+                    .lock()
+                    .expect("session_name")
+                    .clone()
+                    .unwrap_or_else(|| "生成阶段名".to_string());
+                *self.session_name.lock().expect("session_name") = Some(name.clone());
+                Ok(DispatchOutcome::SessionName(Some(name)))
+            }
             Command::SetSessionNameFor {
                 session_id, name, ..
             } => {

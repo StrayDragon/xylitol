@@ -99,6 +99,10 @@ pub enum Command {
         session_id: String,
         name: String,
     },
+    GenerateSessionName {
+        #[serde(default)]
+        force: bool,
+    },
     DeleteSession {
         session_id: String,
     },

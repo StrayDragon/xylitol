@@ -233,6 +233,7 @@ pub struct ResolvedAssembly {
     pub thinking_budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>,
     pub batch_mode: xylitol_plugin_sdk::XyBatchMode,
     pub max_turns: Option<u32>,
+    pub stage_name_config: xylitol_runtime::agent::stage_name::StageNameConfig,
     pub tool_features: crate::driver::ToolFeatures,
     pub project_trusted: bool,
 }
@@ -668,6 +669,28 @@ pub fn resolve_assembly_with(
         })
         .and_then(|s| s.max_turns);
 
+    let stage_name_config = app_config
+        .as_ref()
+        .and_then(|c| {
+            c.section::<xylitol_official_plugin_config::types::SessionConfig>("session")
+                .ok()
+                .flatten()
+        })
+        .map(
+            |session| xylitol_runtime::agent::stage_name::StageNameConfig {
+                enabled: session.stage_name.enabled,
+                target_cjk_chars: session.stage_name.target_cjk_chars,
+                target_words: session.stage_name.target_words,
+                max_title_bytes: session.stage_name.max_title_bytes,
+                max_input_bytes: session.stage_name.max_input_bytes,
+                max_output_tokens: session.stage_name.max_output_tokens,
+                timeout_ms: session.stage_name.timeout_ms,
+                provider: session.stage_name.provider.clone(),
+                model: session.stage_name.model.clone(),
+            },
+        )
+        .unwrap_or_default();
+
     Ok(ResolvedAssembly {
         model_registry,
         system_prompt,
@@ -689,6 +712,7 @@ pub fn resolve_assembly_with(
         thinking_budgets,
         batch_mode,
         max_turns,
+        stage_name_config,
         tool_features: resolve_tool_features(app_config.as_ref(), profile_tools),
         project_trusted,
     })
@@ -716,6 +740,7 @@ pub fn bootstrap_with(
     let default_thinking_level = assembly.default_thinking_level.clone();
     let thinking_budgets = assembly.thinking_budgets.clone();
     let max_turns = assembly.max_turns;
+    let stage_name_config = assembly.stage_name_config.clone();
     let session_file_exists = assembly.session_file_exists;
     let tool_features = assembly.tool_features.clone();
     let driver_context = crate::driver::DriverContext {
@@ -728,6 +753,7 @@ pub fn bootstrap_with(
 
     let mut agent = build_agent(assembly.into_build_options())
         .map_err(|e| BootstrapError::BuildFailed(e.to_string()))?;
+    agent.set_stage_name_config(stage_name_config);
 
     if let Some(n) = max_turns.filter(|&n| n >= 1) {
         agent.set_should_stop_after_turn(Some(xylitol_runtime::agent::max_turns_stop_hook(n)));

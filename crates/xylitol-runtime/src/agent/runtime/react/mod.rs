@@ -89,6 +89,17 @@ impl AgentRuntime {
         self.inner.set_session_name_fact(name);
     }
 
+    pub fn set_stage_name_config(&mut self, config: crate::agent::stage_name::StageNameConfig) {
+        self.inner.set_stage_name_config(config);
+    }
+
+    pub async fn generate_session_name(
+        &mut self,
+        force: bool,
+    ) -> Result<String, xylitol_plugin_sdk::error::XyError> {
+        self.inner.generate_session_name(force).await
+    }
+
     pub fn session_id(&self) -> Option<&str> {
         self.inner.session_id()
     }

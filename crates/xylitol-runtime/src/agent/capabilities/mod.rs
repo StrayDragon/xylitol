@@ -24,6 +24,7 @@ use crate::agent::compaction::{
 use crate::agent::model::manager::ModelManager;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
+use crate::agent::stage_name::StageNameConfig;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
 use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::model::thinking_levels_are_adjustable;
@@ -79,6 +80,7 @@ pub struct AgentCapabilities {
     hook_bus: Option<Arc<dyn XyHookBus>>,
     context_policy: crate::agent::context_policy::ContextPolicy,
     session_name: Option<String>,
+    stage_name_config: StageNameConfig,
     loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
     loop_scope: xylitol_plugin_sdk::LoopScope,
 }
@@ -140,6 +142,7 @@ impl AgentCapabilities {
             hook_bus,
             context_policy: crate::agent::context_policy::ContextPolicy::default(),
             session_name: None,
+            stage_name_config: StageNameConfig::default(),
             loop_registry: None,
             loop_scope: xylitol_plugin_sdk::LoopScope::Root,
         };
@@ -294,6 +297,10 @@ impl AgentCapabilities {
         policy: crate::agent::context_policy::ContextPolicy,
     ) {
         self.context_policy = policy;
+    }
+
+    pub(crate) fn set_stage_name_config(&mut self, config: StageNameConfig) {
+        self.stage_name_config = config;
     }
 
     pub fn model_registry(&self) -> ModelRegistry {

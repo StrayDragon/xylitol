@@ -59,6 +59,7 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
             | Command::GetSessionName { .. }
             | Command::SetSessionName { .. }
             | Command::SetSessionNameFor { .. }
+            | Command::GenerateSessionName { .. }
             | Command::DeleteSession { .. }) => exec_session_meta(self, cmd).await,
             Command::Reload { .. } => exec_reload(self).await,
             Command::LoadedResources { .. } => exec_loaded_resources(self).await,
@@ -147,6 +148,7 @@ async fn exec_session_meta(
         Command::SetSessionNameFor {
             session_id, name, ..
         } => exec_set_session_name_for(driver, &session_id, &name).await,
+        Command::GenerateSessionName { force } => exec_generate_session_name(driver, force).await,
         Command::DeleteSession { session_id, .. } => exec_delete_session(driver, &session_id).await,
         other => Err(transport_variant_error(&other)),
     }
@@ -371,6 +373,15 @@ async fn exec_set_session_name_for(
 ) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::SessionName(Some(
         driver.set_session_name_for(session_id, name).await?,
+    )))
+}
+
+async fn exec_generate_session_name(
+    driver: &mut XyInProcessDriver,
+    force: bool,
+) -> Result<DispatchOutcome, XyDriverError> {
+    Ok(DispatchOutcome::SessionName(Some(
+        driver.generate_session_name(force).await?,
     )))
 }
 

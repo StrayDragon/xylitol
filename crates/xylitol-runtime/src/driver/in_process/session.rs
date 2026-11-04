@@ -238,6 +238,13 @@ impl super::XyInProcessDriver {
         Ok(out)
     }
 
+    pub async fn generate_session_name(&mut self, force: bool) -> Result<String, XyDriverError> {
+        self.agent
+            .generate_session_name(force)
+            .await
+            .map_err(XyDriverError::from)
+    }
+
     pub async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
         self.store
             .delete_session(session_id)

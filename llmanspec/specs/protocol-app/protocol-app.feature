@@ -403,3 +403,7 @@
   @req:r3028
   规则: plugin-command-method
     protocol 的 Command 枚举 必须 包含 `PluginCommand { plugin, args }`，经方法名 `plugin_command` 寻址；不得 为插件命令另开 REST 动词或第二套词表。由协议注册表测试覆盖。
+
+  @req:r3079
+  规则: generate-session-name-method
+    产品方法表 须登记会话阶段名生成 unary `generate_session_name`（写入、Result、Queued），参数含可选 `force`（布尔，缺省 false），返回 `{ name }`。该命令 须经 `Command::GenerateSessionName { force }` 反序列化，不得退回未登记的 REST 产品动词；幂等语义 按 JSON-RPC request id 保持。由协议注册表测试覆盖，不扩 BDD step。

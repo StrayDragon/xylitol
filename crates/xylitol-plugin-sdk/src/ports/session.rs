@@ -244,6 +244,120 @@ pub fn sanitize_session_display_name(name: &str) -> String {
     out.trim().to_string()
 }
 
+fn is_invisible_char(c: char) -> bool {
+    matches!(c, '\u{200B}' | '\u{200E}' | '\u{200F}' | '\u{FEFF}')
+        || ('\u{202A}'..='\u{202E}').contains(&c)
+        || ('\u{2060}'..='\u{2064}').contains(&c)
+        || ('\u{2066}'..='\u{206F}').contains(&c)
+}
+
+fn strip_terminal_sequences(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            match chars.peek().copied() {
+                Some(']') => {
+                    chars.next();
+                    for n in chars.by_ref() {
+                        if n == '\x07' {
+                            break;
+                        }
+                        if n == '\x1b' {
+                            if chars.peek() == Some(&'\\') {
+                                chars.next();
+                            }
+                            break;
+                        }
+                    }
+                }
+                Some('[') => {
+                    chars.next();
+                    for n in chars.by_ref() {
+                        if ('\x40'..='\x7e').contains(&n) {
+                            break;
+                        }
+                    }
+                }
+                Some(_) => {
+                    chars.next();
+                }
+                None => {}
+            }
+            continue;
+        }
+        if c.is_control() || is_invisible_char(c) {
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+pub fn truncate_utf8(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_string();
+    }
+    let mut end = 0usize;
+    for (idx, _) in text.char_indices() {
+        if idx > max_bytes {
+            break;
+        }
+        end = idx;
+    }
+    let candidate = &text[..end];
+    if candidate.len() <= max_bytes {
+        candidate.to_string()
+    } else {
+        let mut cut = max_bytes;
+        while cut > 0 && !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text[..cut].to_string()
+    }
+}
+
+pub fn normalize_stage_name(raw: &str, max_bytes: usize) -> String {
+    let cleaned = strip_terminal_sequences(raw);
+    let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    truncate_utf8(&collapsed, max_bytes)
+}
+
+fn contains_cjk(text: &str) -> bool {
+    text.chars().any(|c| {
+        ('\u{3400}'..='\u{4dbf}').contains(&c)
+            || ('\u{4e00}'..='\u{9fff}').contains(&c)
+            || ('\u{f900}'..='\u{faff}').contains(&c)
+    })
+}
+
+pub fn fallback_stage_name(
+    first_user: &str,
+    target_words: usize,
+    target_cjk_chars: usize,
+    max_bytes: usize,
+) -> String {
+    let cleaned = normalize_stage_name(first_user, usize::MAX);
+    let candidate = if contains_cjk(&cleaned) && !cleaned.contains(char::is_whitespace) {
+        cleaned
+            .chars()
+            .take(target_cjk_chars.max(1))
+            .collect::<String>()
+    } else {
+        let words: Vec<&str> = cleaned
+            .split_whitespace()
+            .take(target_words.max(1))
+            .collect();
+        words.join(" ")
+    };
+    let candidate = truncate_utf8(&candidate, max_bytes);
+    if candidate.is_empty() {
+        truncate_utf8("未命名会话", max_bytes)
+    } else {
+        candidate
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -413,5 +527,44 @@ mod tests {
         }
         let all = store.read_recent("s", 99).await.unwrap();
         assert_eq!(all.len(), 3, "limit 超总量 MUST 返回全部");
+    }
+}
+
+#[cfg(test)]
+mod stage_name_tests {
+    use super::{fallback_stage_name, normalize_stage_name, truncate_utf8};
+
+    #[test]
+    fn strips_terminal_sequences_and_controls() {
+        let raw = "\u{1b}]8;;https://x\u{1b}\\\u{1b}[31m新功能A\u{1b}[0m\u{0}";
+        assert_eq!(normalize_stage_name(raw, 120), "新功能A");
+    }
+
+    #[test]
+    fn collapses_whitespace_and_removes_directional_controls() {
+        let raw = "  新功能\u{200b}A \n\t 标题  ";
+        assert_eq!(normalize_stage_name(raw, 120), "新功能A 标题");
+    }
+
+    #[test]
+    fn truncates_utf8_safely() {
+        let raw = "新功能A";
+        let truncated = truncate_utf8(raw, 4);
+        assert_eq!(truncated, "新");
+        assert!(raw.starts_with(&truncated));
+    }
+
+    #[test]
+    fn fallback_uses_leading_words_and_bounds_bytes() {
+        assert_eq!(
+            fallback_stage_name("帮我修复登录失败的问题并补充测试", 3, 6, 120),
+            "帮我修复登录"
+        );
+        assert_eq!(fallback_stage_name("   ", 20, 15, 120), "未命名会话");
+    }
+
+    #[test]
+    fn normalize_empty_returns_empty() {
+        assert_eq!(normalize_stage_name("\u{1b}[31m\u{1b}[0m", 120), "");
     }
 }

@@ -31,7 +31,8 @@ pub use permission::{XyPermission, XyPermissionVerdict};
 pub use plan::PlanGateway;
 pub use secret::XySecretResolver;
 pub use session::{
-    RuntimeSessionStore, SessionListEntry, XySessionStore, sanitize_session_display_name,
+    RuntimeSessionStore, SessionListEntry, XySessionStore, fallback_stage_name,
+    normalize_stage_name, sanitize_session_display_name, truncate_utf8,
 };
 pub use session_list::{flatten_session_forest, format_session_age};
 pub use todo::AgentTodoGateway;

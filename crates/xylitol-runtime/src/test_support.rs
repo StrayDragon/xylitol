@@ -106,14 +106,33 @@ impl XySessionStore for MemoryStore {
 
     async fn fork(
         &self,
-        _parent_id: &str,
-        _child_id: &str,
+        parent_id: &str,
+        child_id: &str,
         at_entry_id: &str,
         _position: ForkPosition,
     ) -> Result<(), XySessionError> {
-        Err(XySessionError::EntryNotFound {
-            entry_id: at_entry_id.into(),
-        })
+        let entries = self
+            .load_entries(parent_id)
+            .await
+            .map_err(XySessionError::from)?;
+        let Some(index) = entries
+            .iter()
+            .position(|entry| entry.entry_id() == Some(at_entry_id))
+        else {
+            return Err(XySessionError::EntryNotFound {
+                entry_id: at_entry_id.into(),
+            });
+        };
+        self.sessions
+            .lock()
+            .map_err(|_| {
+                XySessionError::Store(XySessionStoreError::io(
+                    "lock",
+                    std::io::Error::other("poison"),
+                ))
+            })?
+            .insert(child_id.to_string(), entries[..=index].to_vec());
+        Ok(())
     }
 
     fn set_leaf(&self, session_id: &str, entry_id: Option<&str>) {

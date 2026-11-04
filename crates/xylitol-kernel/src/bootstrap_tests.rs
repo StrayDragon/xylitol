@@ -500,6 +500,48 @@ session:
 }
 
 #[test]
+fn resolve_assembly_reads_session_stage_name() {
+    let home = tempfile::tempdir().unwrap();
+    let project = home.path().join("proj");
+    let proj_xy = project.join(".xylitol");
+    std::fs::create_dir_all(&proj_xy).unwrap();
+    let global = home.path().join(".config").join("xylitol");
+    std::fs::create_dir_all(&global).unwrap();
+
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
+
+    std::fs::write(
+        proj_xy.join("config.yaml"),
+        r#"models:
+  default_model: m1
+  entries:
+    m1:
+      provider: openai
+      model: m
+session:
+  stage_name:
+    target_cjk_chars: 12
+    max_title_bytes: 96
+    timeout_ms: 4000
+"#,
+    )
+    .unwrap();
+
+    let assembly = resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None)
+        .expect("assembly");
+    assert_eq!(assembly.stage_name_config.target_cjk_chars, 12);
+    assert_eq!(assembly.stage_name_config.max_title_bytes, 96);
+    assert_eq!(assembly.stage_name_config.timeout_ms, 4000);
+}
+
+#[test]
 fn bootstrap_block_on_runs_from_current_thread_runtime() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

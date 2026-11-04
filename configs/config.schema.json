@@ -720,6 +720,66 @@
       ],
       "type": "string"
     },
+    "session_StageNameConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "max_input_bytes": {
+          "default": 8192,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "default": 64,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_title_bytes": {
+          "default": 120,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_cjk_chars": {
+          "default": 15,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target_words": {
+          "default": 20,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timeout_ms": {
+          "default": 8000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "tool_batch_ToolBatchMode": {
       "enum": [
         "sequential",
@@ -1139,6 +1199,20 @@
             "integer",
             "null"
           ]
+        },
+        "stage_name": {
+          "$ref": "#/$defs/session_StageNameConfig",
+          "default": {
+            "enabled": true,
+            "max_input_bytes": 8192,
+            "max_output_tokens": 64,
+            "max_title_bytes": 120,
+            "model": null,
+            "provider": null,
+            "target_cjk_chars": 15,
+            "target_words": 20,
+            "timeout_ms": 8000
+          }
         }
       },
       "title": "SessionConfig",

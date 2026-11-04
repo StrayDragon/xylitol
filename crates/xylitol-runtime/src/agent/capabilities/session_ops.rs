@@ -1,10 +1,19 @@
 use std::sync::Arc;
+use std::time::Duration;
+
+use futures::StreamExt;
 
 use crate::agent::compaction::CompactionSettings;
-use xylitol_plugin_sdk::XySessionStore;
+use crate::agent::stage_name::{
+    extract_stage_name_inputs, stage_name_input_json, stage_name_system_prompt,
+};
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
 use xylitol_plugin_sdk::message::AgentMessage;
+use xylitol_plugin_sdk::model::{THINKING_OFF, XyChunk};
 use xylitol_plugin_sdk::session::SessionEntry;
+use xylitol_plugin_sdk::{
+    XyGenerateOptions, XyLlmMessage, XySessionStore, fallback_stage_name, normalize_stage_name,
+};
 
 use super::{AgentCapabilities, SessionStats, observe_hook};
 
@@ -171,6 +180,12 @@ impl AgentCapabilities {
             .fork(parent_id, &child_id, at_entry_id, position)
             .await
             .map_err(XyError::from)?;
+        if let Ok(Some(name)) = self.store.get_session_name(parent_id).await {
+            self.store
+                .set_session_name(&child_id, &name)
+                .await
+                .map_err(XyError::from)?;
+        }
 
         Ok(child_id)
     }
@@ -181,6 +196,126 @@ impl AgentCapabilities {
             .ok_or(XyError::from(XySessionError::NoActiveSession))?;
         crate::agent::capabilities::stats::compute(self.store.as_ref(), sid).await
     }
+
+    pub async fn generate_session_name(&mut self, force: bool) -> Result<String, XyError> {
+        let sid = self
+            .session_id()
+            .ok_or(XyError::from(XySessionError::NoActiveSession))?
+            .to_string();
+        let existing = self
+            .store
+            .get_session_name(&sid)
+            .await
+            .map_err(XyError::from)?;
+        if !force && let Some(name) = existing.clone() {
+            return Ok(name);
+        }
+
+        let entries = self
+            .store
+            .load_leaf_branch(&sid)
+            .await
+            .map_err(XyError::from)?;
+        let (user, assistant) = extract_stage_name_inputs(&entries);
+        let fallback = fallback_stage_name(
+            &user,
+            self.stage_name_config.target_words,
+            self.stage_name_config.target_cjk_chars,
+            self.stage_name_config.max_title_bytes,
+        );
+
+        if !self.stage_name_config.enabled || user.is_empty() {
+            let name = existing.unwrap_or(fallback);
+            self.persist_stage_name(&sid, &name).await?;
+            return Ok(name);
+        }
+
+        let generated = self.generate_stage_name_with_model(&user, &assistant).await;
+        let name = match generated {
+            Ok(raw) => {
+                let normalized = normalize_stage_name(&raw, self.stage_name_config.max_title_bytes);
+                if normalized.is_empty() {
+                    existing.unwrap_or(fallback)
+                } else {
+                    normalized
+                }
+            }
+            Err(error) => {
+                log::warn!(
+                    target: "xylitol::session",
+                    "stage name generation skipped session_id={sid} error={error}"
+                );
+                existing.unwrap_or(fallback)
+            }
+        };
+        self.persist_stage_name(&sid, &name).await?;
+        Ok(name)
+    }
+
+    async fn persist_stage_name(&mut self, session_id: &str, name: &str) -> Result<(), XyError> {
+        let stored = self
+            .store
+            .set_session_name(session_id, name)
+            .await
+            .map_err(XyError::from)?;
+        self.set_session_name_fact(Some(stored.clone()));
+        xylitol_plugin_sdk::set_obs_session_name(Some(stored.as_str()));
+        Ok(())
+    }
+
+    async fn generate_stage_name_with_model(
+        &self,
+        user: &str,
+        assistant: &str,
+    ) -> Result<String, XyError> {
+        let (model, levels) = {
+            let manager = self
+                .model_manager
+                .lock()
+                .map_err(|_| XyError::Config("model manager lock poisoned".into()))?;
+            manager.build_model_with_levels(self.stage_name_config.model.as_deref())?
+        };
+        let thinking_level = if levels.iter().any(|level| level == THINKING_OFF) {
+            THINKING_OFF.to_string()
+        } else {
+            levels
+                .first()
+                .cloned()
+                .unwrap_or_else(|| THINKING_OFF.to_string())
+        };
+        let input = stage_name_input_json(user, assistant, self.stage_name_config.max_input_bytes);
+        let options = XyGenerateOptions {
+            thinking_level,
+            max_output_tokens: Some(self.stage_name_config.max_output_tokens),
+            system_prompt: Some(stage_name_system_prompt().to_string()),
+            obs_session: self.obs_session_snapshot(),
+            ..Default::default()
+        };
+        let stream = model
+            .generate_stream(vec![XyLlmMessage::user(input)], &[], false, options)
+            .await?;
+        let generated = tokio::time::timeout(
+            Duration::from_millis(self.stage_name_config.timeout_ms),
+            collect_stage_name_text(stream),
+        )
+        .await
+        .map_err(|_| XyError::Config("stage name generation timed out".into()))??;
+        Ok(generated)
+    }
+}
+
+async fn collect_stage_name_text(
+    mut stream: xylitol_plugin_sdk::XyStream,
+) -> Result<String, XyError> {
+    let mut text = String::new();
+    while let Some(chunk) = stream.next().await {
+        match chunk? {
+            XyChunk::TextDelta(delta) => text.push_str(&delta),
+            XyChunk::Done { .. } => break,
+            _ => {}
+        }
+    }
+    Ok(text)
 }
 
 #[cfg(test)]
@@ -253,5 +388,216 @@ mod tests {
             1,
             "after migration the hot path must read once"
         );
+    }
+}
+
+#[cfg(test)]
+mod stage_name_tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use xylitol_plugin_sdk::message::{AgentMessage, XyStopReason};
+    use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
+    use xylitol_plugin_sdk::session::{EntryBase, ForkPosition, MessageEntry, SessionEntry};
+    use xylitol_plugin_sdk::{
+        XyError, XyGenerateOptions, XyLlmMessage, XyModel, XyModelBuilder, XyModelConfig,
+        XyModelKind, XyModelMeta, XyStream,
+    };
+
+    use crate::agent::capabilities::{AgentCapabilities, ModelRegistry, QueueMode};
+    use crate::agent::stage_name::StageNameConfig;
+    use crate::permission::allow_all_permission;
+    use crate::test_support::{MemoryStore, NoopSink, fixture_tools};
+
+    struct StaticModel;
+
+    #[async_trait]
+    impl XyModel for StaticModel {
+        fn name(&self) -> &str {
+            "stage-name-static"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<XyLlmMessage>,
+            _tools: &[XyToolSchema],
+            _stream: bool,
+            _options: XyGenerateOptions,
+        ) -> Result<XyStream, XyError> {
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(XyChunk::TextDelta("新功能A".into())),
+                Ok(XyChunk::Done {
+                    finish_reason: XyStopReason::Stop,
+                    usage: None,
+                }),
+            ])))
+        }
+    }
+
+    fn meta(id: &str) -> XyModelMeta {
+        XyModelMeta {
+            id: id.into(),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: id.into(),
+                base_url: None,
+                api: None,
+                compat: None,
+                prompt_cache: None,
+            },
+            display_name: id.into(),
+            thinking: false,
+            context_window: 0,
+            api: String::new(),
+            provider: "fake".into(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
+        }
+    }
+
+    fn message_entry(id: &str, message: AgentMessage) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 1,
+            },
+            message: serde_json::to_value(message).expect("message"),
+        })
+    }
+
+    fn builder() -> XyModelBuilder {
+        Arc::new(|_| Arc::new(StaticModel) as Arc<dyn XyModel>)
+    }
+
+    #[tokio::test]
+    async fn generates_and_persists_stage_name() {
+        let mut registry = ModelRegistry::new();
+        registry.register(meta("fake-model"));
+        let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(MemoryStore::new());
+        let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> = Arc::new(NoopSink);
+        let mut caps = AgentCapabilities::new(
+            registry,
+            fixture_tools(),
+            Arc::clone(&store),
+            sink,
+            Some("system".into()),
+            Vec::new(),
+            Vec::new(),
+            ".".into(),
+            None,
+            builder(),
+            allow_all_permission(),
+            QueueMode::default(),
+            QueueMode::default(),
+            None,
+        );
+        caps.select_model("fake-model").await.expect("select model");
+        caps.set_session("s".into());
+        caps.set_stage_name_config(StageNameConfig::default());
+        store.create("s", Some("."), None).await.expect("create");
+        store
+            .append_session_entry(
+                "s",
+                &message_entry("u1", AgentMessage::user("帮我实现登录页")),
+            )
+            .await
+            .expect("user");
+        store
+            .append_session_entry(
+                "s",
+                &message_entry("a1", AgentMessage::assistant("已完成登录页")),
+            )
+            .await
+            .expect("assistant");
+
+        let name = caps.generate_session_name(false).await.expect("generate");
+        assert_eq!(name, "新功能A");
+        assert_eq!(
+            store.get_session_name("s").await.expect("name"),
+            Some("新功能A".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_inherits_stage_name() {
+        let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(MemoryStore::new());
+        let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> = Arc::new(NoopSink);
+        let mut caps = AgentCapabilities::new(
+            ModelRegistry::new(),
+            fixture_tools(),
+            Arc::clone(&store),
+            sink,
+            None,
+            Vec::new(),
+            Vec::new(),
+            ".".into(),
+            None,
+            builder(),
+            allow_all_permission(),
+            QueueMode::default(),
+            QueueMode::default(),
+            None,
+        );
+        caps.set_session("parent".into());
+        store
+            .create("parent", Some("."), None)
+            .await
+            .expect("create");
+        store
+            .append_session_entry("parent", &message_entry("u1", AgentMessage::user("父会话")))
+            .await
+            .expect("user");
+        store
+            .set_session_name("parent", "父阶段名")
+            .await
+            .expect("set name");
+
+        let child = caps
+            .fork_session("u1", ForkPosition::At)
+            .await
+            .expect("fork");
+        assert_eq!(
+            store.get_session_name(&child).await.expect("child name"),
+            Some("父阶段名".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn existing_name_is_pinned_without_force() {
+        let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(MemoryStore::new());
+        let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> = Arc::new(NoopSink);
+        let mut caps = AgentCapabilities::new(
+            ModelRegistry::new(),
+            fixture_tools(),
+            Arc::clone(&store),
+            sink,
+            None,
+            Vec::new(),
+            Vec::new(),
+            ".".into(),
+            None,
+            builder(),
+            allow_all_permission(),
+            QueueMode::default(),
+            QueueMode::default(),
+            None,
+        );
+        caps.set_session("s".into());
+        store.create("s", Some("."), None).await.expect("create");
+        store
+            .set_session_name("s", "已钉住")
+            .await
+            .expect("set name");
+
+        let name = caps.generate_session_name(false).await.expect("generate");
+        assert_eq!(name, "已钉住");
     }
 }

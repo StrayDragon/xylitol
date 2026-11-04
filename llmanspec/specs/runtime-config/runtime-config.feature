@@ -296,3 +296,7 @@
       假如 YAML 的 `<<` 值为标量
       当 加载配置
       那么 失败
+
+  @req:r3078
+  规则: session-stage-name-config
+    SessionConfig 须支持可选 `stage_name` 块：`enabled`（布尔，缺省 true）、`target_cjk_chars`（正整数，缺省 15）、`target_words`（正整数，缺省 20）、`max_title_bytes`（正整数，缺省 120）、`max_input_bytes`（正整数，缺省 8192）、`max_output_tokens`（正整数，缺省 64）、`timeout_ms`（正整数，缺省 8000）、可选 `provider` / `model`。非法值（0 / 负数 / 空 provider 或 model）须使配置加载失败；缺省块 须等价默认值。由配置单测覆盖，不扩 BDD step。

@@ -2,6 +2,9 @@
 depends_on: []
 title: 会话阶段名自动生成与持久化
 needs_specs_change: true
+branch: sdd/c3110-add-session-stage-name
+base_branch: main
+base_sha: 1d2d21ebec4818af8c83b0fd3f37fc3b0b95eed1
 ---
 
 # 会话阶段名自动生成与持久化

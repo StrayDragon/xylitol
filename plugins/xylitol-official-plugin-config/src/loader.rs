@@ -105,6 +105,7 @@ fn validate_app_config(config: &AppConfig) -> Result<(), LoadError> {
     config.validate_schema_version()?;
     config.validate_thinking_levels()?;
     config.validate_session_max_turns()?;
+    config.validate_session_stage_name()?;
     config.validate_tools_selection()?;
     Ok(())
 }

@@ -467,6 +467,43 @@ impl AppConfig {
         }
     }
 
+    pub fn validate_session_stage_name(&self) -> Result<(), LoadError> {
+        let Some(session) = self.section::<SessionConfig>("session")? else {
+            return Ok(());
+        };
+        let stage = &session.stage_name;
+        for (field, value) in [
+            ("target_cjk_chars", stage.target_cjk_chars),
+            ("target_words", stage.target_words),
+            ("max_title_bytes", stage.max_title_bytes),
+            ("max_input_bytes", stage.max_input_bytes),
+        ] {
+            if value == 0 {
+                return Err(LoadError::validation(format!(
+                    "session.stage_name.{field} must be a positive integer"
+                )));
+            }
+        }
+        if stage.max_output_tokens == 0 {
+            return Err(LoadError::validation(
+                "session.stage_name.max_output_tokens must be a positive integer",
+            ));
+        }
+        if stage.timeout_ms == 0 {
+            return Err(LoadError::validation(
+                "session.stage_name.timeout_ms must be a positive integer",
+            ));
+        }
+        for (field, value) in [("provider", &stage.provider), ("model", &stage.model)] {
+            if value.as_deref().is_some_and(|raw| raw.trim().is_empty()) {
+                return Err(LoadError::validation(format!(
+                    "session.stage_name.{field} must not be empty"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate_tools_selection(&self) -> Result<(), LoadError> {
         let tools: Vec<String> = self.section_or_default("tools")?;
         for (index, raw) in tools.iter().enumerate() {
@@ -643,10 +680,42 @@ pub struct PermissionProcessConfig {
     pub allowed_paths: Vec<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct StageNameConfig {
+    pub enabled: bool,
+    pub target_cjk_chars: usize,
+    pub target_words: usize,
+    pub max_title_bytes: usize,
+    pub max_input_bytes: usize,
+    pub max_output_tokens: u32,
+    pub timeout_ms: u64,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+}
+
+impl Default for StageNameConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            target_cjk_chars: 15,
+            target_words: 20,
+            max_title_bytes: 120,
+            max_input_bytes: 8192,
+            max_output_tokens: 64,
+            timeout_ms: 8000,
+            provider: None,
+            model: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct SessionConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<u32>,
+    #[serde(default)]
+    pub stage_name: StageNameConfig,
 }
 
 pub use xylitol_official_plugin_dap::DapPluginConfig;
@@ -759,6 +828,79 @@ session:
         let cfg = AppConfig::default();
         cfg.validate_session_max_turns().expect("absent is ok");
         assert!(get::<Option<SessionConfig>>(&cfg, "session").is_none());
+    }
+}
+
+#[cfg(test)]
+mod session_stage_name_tests {
+    use super::test_support::*;
+    use super::*;
+
+    #[test]
+    fn stage_name_defaults() {
+        let config = StageNameConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.target_cjk_chars, 15);
+        assert_eq!(config.target_words, 20);
+        assert_eq!(config.max_title_bytes, 120);
+        assert_eq!(config.max_input_bytes, 8192);
+        assert_eq!(config.max_output_tokens, 64);
+        assert_eq!(config.timeout_ms, 8000);
+        assert!(config.provider.is_none());
+        assert!(config.model.is_none());
+    }
+
+    #[test]
+    fn stage_name_deserializes_and_validates() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+session:
+  stage_name:
+    target_cjk_chars: 12
+    max_title_bytes: 96
+    provider: local
+    model: small
+"#,
+        )
+        .expect("valid stage name");
+        let session = get::<Option<SessionConfig>>(&cfg, "session").expect("session");
+        assert_eq!(session.stage_name.target_cjk_chars, 12);
+        assert_eq!(session.stage_name.max_title_bytes, 96);
+        assert_eq!(session.stage_name.provider.as_deref(), Some("local"));
+        assert_eq!(session.stage_name.model.as_deref(), Some("small"));
+        cfg.validate_session_stage_name().expect("valid");
+    }
+
+    #[test]
+    fn stage_name_zero_target_fails() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+session:
+  stage_name:
+    target_cjk_chars: 0
+"#,
+        )
+        .expect("zero deserializes");
+        let err = cfg
+            .validate_session_stage_name()
+            .expect_err("zero must fail");
+        assert!(err.to_string().contains("target_cjk_chars"), "{err}");
+    }
+
+    #[test]
+    fn stage_name_empty_provider_fails() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+session:
+  stage_name:
+    provider: "  "
+"#,
+        )
+        .expect("empty provider deserializes");
+        let err = cfg
+            .validate_session_stage_name()
+            .expect_err("empty provider must fail");
+        assert!(err.to_string().contains("provider"), "{err}");
     }
 }
 

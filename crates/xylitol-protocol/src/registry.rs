@@ -108,6 +108,7 @@ pub const METHOD_NEW_SESSION: &str = "new_session";
 pub const METHOD_GET_SESSION_NAME: &str = "get_session_name";
 pub const METHOD_SET_SESSION_NAME: &str = "set_session_name";
 pub const METHOD_SET_SESSION_NAME_FOR: &str = "set_session_name_for";
+pub const METHOD_GENERATE_SESSION_NAME: &str = "generate_session_name";
 pub const METHOD_DELETE_SESSION: &str = "delete_session";
 pub const METHOD_RELOAD: &str = "reload";
 pub const METHOD_LOADED_RESOURCES: &str = "loaded_resources";
@@ -349,6 +350,14 @@ pub const REGISTRY: &[MethodEntry] = &[
         true,
         Exec::Inline,
     ),
+    mx(
+        METHOD_GENERATE_SESSION_NAME,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+        Exec::Queued,
+    ),
     m(
         METHOD_DELETE_SESSION,
         Auth::Writer,
@@ -468,6 +477,7 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::LoadSessionEntries { .. }
         | Command::NewSession { .. }
         | Command::GetSessionName { .. }
+        | Command::GenerateSessionName { .. }
         | Command::DeleteSession { .. }
         | Command::Steer { .. }
         | Command::FollowUp { .. }
@@ -558,6 +568,7 @@ mod tests {
                 "new_session",
                 "set_session_name",
                 "set_session_name_for",
+                "generate_session_name",
                 "delete_session",
                 "arm_tool_freeze",
                 "persist_trust",
@@ -823,6 +834,10 @@ mod tests {
                 },
             ),
             (
+                "generate_session_name",
+                Command::GenerateSessionName { force: false },
+            ),
+            (
                 "delete_session",
                 Command::DeleteSession {
                     session_id: String::new(),
@@ -865,7 +880,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(cases.len(), 40, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 41, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");
