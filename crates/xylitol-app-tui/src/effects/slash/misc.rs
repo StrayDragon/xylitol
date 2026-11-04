@@ -6,6 +6,28 @@ use crate::host::HostSession;
 
 use super::super::helpers::note_driver_err;
 
+pub(super) fn perf<T: Terminal>(session: &mut HostSession<T>) {
+    let snap = session.last_render_perf();
+    let text = if snap == xylitol_tui::RenderPerfSnap::default() {
+        "perf: no render snapshot yet".to_string()
+    } else {
+        format!(
+            "perf: render {:.1}ms · lines {} · paint {} · ao_reprojected {} · ao_shift {}",
+            snap.do_render_us as f64 / 1000.0,
+            snap.component_lines,
+            snap.paint_lines,
+            if snap.ao_reprojected { "yes" } else { "no" },
+            if snap.ao_vertical_shifted {
+                "yes"
+            } else {
+                "no"
+            },
+        )
+    };
+    session.push_scroll_notice(text);
+    let _ = session.render_now();
+}
+
 pub(super) async fn plugin_command<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,

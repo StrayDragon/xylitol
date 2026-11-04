@@ -1510,7 +1510,7 @@ fn harness_busy_unknown_slash_not_steered() {
 fn harness_keybindings_reload_keeps_old_on_bad_json() {
     use crate::keybindings::{ReloadOutcome, matches_binding};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("keybindings.json");
     std::fs::write(&path, r#"{ "app.interrupt": ["ctrl+x"] }"#).unwrap();

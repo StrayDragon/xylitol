@@ -1,7 +1,8 @@
 use xylitol_tui::terminal_colors::RgbColor;
 use xylitol_tui::{
-    Component, ExpandableOutputOptions, Markdown, TruncateFrom, highlight_dollar_skill_refs,
-    mix_rgb, paint_left_rail_line, truncate_to_width, visible_width, wrap_text_with_ansi,
+    Component, ExpandableOutputOptions, Markdown, MermaidFenceMode, TruncateFrom,
+    highlight_dollar_skill_refs, mix_rgb, paint_left_rail_line, truncate_to_width, visible_width,
+    wrap_text_with_ansi,
 };
 
 use crate::activity_fold::{format_elapsed_secs, thought_header_body};
@@ -264,7 +265,8 @@ impl StreamingAssistantPaint {
 
 fn markdown_unfitted(text: String, width: usize, theme: LayoutTheme) -> Vec<String> {
     let mut md = Markdown::new(text, 0, 0, theme.palette().markdown_theme(), None)
-        .with_table_header_underline(true);
+        .with_table_header_underline(true)
+        .with_mermaid_mode(MermaidFenceMode::Final);
     md.render(width)
 }
 
@@ -388,7 +390,8 @@ pub(super) fn paint_assistant_block(
         theme.palette().markdown_theme(),
         None,
     )
-    .with_table_header_underline(true);
+    .with_table_header_underline(true)
+    .with_mermaid_mode(MermaidFenceMode::Final);
     for line in md.render(width) {
         lines.push(fit(&line, width));
     }

@@ -2,6 +2,9 @@
 depends_on: []
 title: TUI 引擎能力接入：键位冲突、OSC8、性能面
 needs_specs_change: true
+branch: sdd/c3140-add-tui-engine-quick-wins
+base_branch: main
+base_sha: 7a1d7fc061bdbc2ee25de68bae95fd3298ba933f
 ---
 
 # TUI 引擎能力接入：键位冲突、OSC8、性能面

@@ -349,6 +349,7 @@ impl<T: Terminal> HostSession<T> {
         session.quit_flag = quit_flag.clone();
         session.keybindings = Some(keybindings);
         session._keybindings_scope = Some(keybindings_scope);
+        session.push_keybinding_conflicts();
         install_ui_root_key_listeners(&ui_root, &quit_flag, &mut session.tui);
         if interaction_mode.is_application_owned() {
             session.sync_dock_rows();
@@ -494,14 +495,46 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn reload_keybindings(
-        &self,
+        &mut self,
         agent_dir: &std::path::Path,
     ) -> super::keybindings::ReloadOutcome {
-        if let Some(kb) = &self.keybindings {
+        let outcome = if let Some(kb) = &self.keybindings {
             super::keybindings::reload_keybindings_into(&mut kb.borrow_mut(), agent_dir)
         } else {
             super::keybindings::reload_keybindings(agent_dir)
+        };
+        self.push_keybinding_conflicts();
+        outcome
+    }
+
+    pub fn last_render_perf(&self) -> xylitol_tui::RenderPerfSnap {
+        self.tui.last_render_perf()
+    }
+
+    pub fn push_keybinding_conflicts(&mut self) {
+        let Some(kb) = &self.keybindings else {
+            return;
+        };
+        let conflicts = kb.borrow().get_conflicts().to_vec();
+        if conflicts.is_empty() {
+            return;
         }
+        let mut text = conflicts
+            .iter()
+            .take(3)
+            .map(|conflict| {
+                format!(
+                    "Keybinding conflict: {} → {}",
+                    conflict.key,
+                    conflict.keybindings.join(" / ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if conflicts.len() > 3 {
+            text.push_str(&format!("\n… {} more", conflicts.len() - 3));
+        }
+        self.push_scroll_notice(text);
     }
 
     pub fn reload_themes(&mut self, theme_name: &str) -> Result<(), XyDriverError> {

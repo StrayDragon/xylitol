@@ -31,6 +31,7 @@ pub enum PendingSlash {
     Fold {
         action: FoldAction,
     },
+    Perf,
     Reload,
     Trust {
         mode: crate::driver::ProjectTrustMode,
@@ -139,6 +140,10 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
         },
+        PendingSlash::Perf => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
+        },
         PendingSlash::Import { .. } => SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
@@ -210,6 +215,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::SessionName { .. } => "/session-name",
         PendingSlash::StageName { .. } => "/stage-name",
         PendingSlash::Fold { .. } => "/fold",
+        PendingSlash::Perf => "/perf",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
         PendingSlash::OpenMcp => "/mcp",
         PendingSlash::OpenCapabilities => "/capabilities",
@@ -359,6 +365,8 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("fold", Some(level)) => parse_fold_level(&level).map(|level| PendingSlash::Fold {
             action: FoldAction::Set(level),
         }),
+        ("perf", None) => Some(PendingSlash::Perf),
+        ("perf", Some(_)) => Some(PendingSlash::Usage("usage: /perf (no arguments)")),
         ("reload", None) => Some(PendingSlash::Reload),
         ("reload", Some(_)) => Some(PendingSlash::Usage("usage: /reload (no arguments)")),
         ("trust", None) => Some(PendingSlash::Trust {

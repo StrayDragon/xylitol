@@ -80,6 +80,11 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             ),
         },
         ProductSlashCommand {
+            name: "perf",
+            description: "Show last render performance snapshot",
+            argument_hint: None,
+        },
+        ProductSlashCommand {
             name: "reload",
             description: "Hot-reload keybindings, skills, MCP, themes, context",
             argument_hint: None,

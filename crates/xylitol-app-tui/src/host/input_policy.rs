@@ -245,6 +245,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::SessionName { .. }
                 | PendingSlash::StageName { .. }
                 | PendingSlash::Fold { .. }
+                | PendingSlash::Perf
                 | PendingSlash::Reload
                 | PendingSlash::Trust { .. }
                 | PendingSlash::HistoryCopyLast

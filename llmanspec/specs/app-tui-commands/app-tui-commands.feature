@@ -188,3 +188,7 @@
   @req:r3082
   规则: slash-fold
     产品 TUI 须解析 `/fold`：无参 须显示当前 display level 与可见项；`/fold quiet|summary|recent|full` 须切换预设；`/fold reset` 须清逐项覆盖并回 summary；`/fold thinking|tools|output|diff` 须逐项切换；结果 须以滚动提示呈现，不得写入模型上下文；`SlashCommandSource` 须列出 `fold`；busy 时 须 Allow。由 harness 覆盖，不扩 BDD step。
+
+  @req:r3091
+  规则: slash-perf
+    产品 TUI 须解析 `/perf`（无参）：读取最近一次渲染快照并以滚动提示输出 `perf: render Xms · lines N · paint M · ao_reprojected yes|no · ao_shift yes|no`；无快照 须提示 `perf: no render snapshot yet`；不得开面板、不得常驻、不得写入模型上下文；`SlashCommandSource` 须列出 `perf`；busy 时 Allow。由 harness 覆盖，不扩 BDD step。

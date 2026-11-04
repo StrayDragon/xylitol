@@ -4539,6 +4539,28 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn h35d_slash_perf_reports_snapshot() {
+        use crate::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(parse_slash_command("/perf"), Some(PendingSlash::Perf));
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/perf");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|note| note.contains("perf:")),
+            "expected /perf output: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
     async fn h36_slash_fuzzy_enter_applies_before_host_parse() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();

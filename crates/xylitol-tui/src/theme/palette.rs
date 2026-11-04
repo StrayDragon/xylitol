@@ -113,6 +113,7 @@ impl Palette {
             }),
             link: Box::new(move |s| fg_rgb(accent, s)),
             link_url: Box::new(move |s| underline(&fg_rgb(accent, s))),
+            hyperlink_links: true,
             code: Box::new(move |s| fg_rgb(success, s)),
             code_block: Box::new(|s| s.to_string()),
             code_block_border: Box::new(|_| String::new()),

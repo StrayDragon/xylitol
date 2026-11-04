@@ -22,6 +22,7 @@ pub struct MarkdownTheme {
     pub heading: Box<dyn Fn(usize, &str) -> String>,
     pub link: Box<dyn Fn(&str) -> String>,
     pub link_url: Box<dyn Fn(&str) -> String>,
+    pub hyperlink_links: bool,
     pub code: Box<dyn Fn(&str) -> String>,
     pub code_block: Box<dyn Fn(&str) -> String>,
     pub code_block_border: Box<dyn Fn(&str) -> String>,
@@ -504,8 +505,12 @@ fn collect_inline_until(
                     inner
                 };
                 let labeled = (md.theme.link)(&label);
-                let urled = (md.theme.link_url)(url);
-                parts.push(format!("{labeled} ({urled})"));
+                if md.theme.hyperlink_links {
+                    parts.push(crate::terminal_image::hyperlink(&labeled, url));
+                } else {
+                    let urled = (md.theme.link_url)(url);
+                    parts.push(format!("{labeled} ({urled})"));
+                }
                 parts.push(style_prefix.to_string());
             }
             Event::Start(Tag::Image { dest_url, .. }) => {
@@ -1352,6 +1357,7 @@ mod tests {
             heading,
             link: id.clone(),
             link_url: id.clone(),
+            hyperlink_links: false,
             code: id.clone(),
             code_block: id.clone(),
             code_block_border: id.clone(),
@@ -2206,5 +2212,18 @@ mod tests {
         );
         assert!(text.contains("print(1)") && !text.contains("~~~"));
         assert!(complete.contains("print(1)") && !complete.contains("~~~"));
+    }
+
+    #[test]
+    fn link_renders_osc8_when_enabled() {
+        let mut theme = identity_theme();
+        theme.hyperlink_links = true;
+        let mut md = Markdown::new("[site](https://example.com)".to_string(), 0, 0, theme, None);
+        let out = md.render(80).join("\n");
+        assert!(
+            out.contains("\x1b]8;;https://example.com"),
+            "osc8 sequence missing: {out:?}"
+        );
+        assert!(out.contains("site"), "label missing: {out:?}");
     }
 }

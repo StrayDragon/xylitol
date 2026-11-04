@@ -385,3 +385,11 @@
   @req:r3087
   规则: stream-render-budget
     产品 TUI 在 TextDelta / ThinkingDelta 高频流期间 须把 UiRoot 同步合并到 Tick，不得逐 delta 重建；MessageEnd / AgentEnd / 工具边界 须强制同步；最终帧内容与逐事件同步一致，不得丢增量或改变事件顺序；每 tick 至多一次 paint。由 harness 与时序测覆盖。
+
+  @req:r3089
+  规则: clickable-links
+    产品 TUI markdown 链接 须默认渲染为 OSC8 超链接（`\x1b]8;;<url>\x1b\\<label>\x1b]8;;\x1b\\`），不支持 OSC8 的终端仍显示 label；宽度计算 须按可见 label，不得漂移；不得再强制显示 `label (url)` 后缀。由引擎单测与产品 snapshot 覆盖。
+
+  @req:r3090
+  规则: mermaid-final-fence
+    产品 TUI markdown 代码块 须显式使用 `MermaidFenceMode::Final`；流式期间 不得把 mermaid fence 当裸文本铺开；引擎默认不变；无产品配置。由产品 snapshot 覆盖。
