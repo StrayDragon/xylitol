@@ -30,7 +30,7 @@
   规则: 模型解析器
     System 须提供 resolve_model(pattern, available)，支持 provider/modelId 规范形式、裸 id 匹配、别名优先于带日期版本、以及 thinking-level:model pattern 解析。
     场景: 解析器保留已宣告档位
-      假如 YAML 模型条目含 thinking_levels [off, high, max]
+      假如 YAML 模型条目 thinking_level_map 含 off: null 与 high: max 与 max: 32768
       当 加载配置并 resolve_model_meta
       那么 XyModelMeta.thinking_levels 与列表一致
 
@@ -85,7 +85,7 @@
   规则: honor-model-entry-api
     bootstrap / resolve_model_meta（或等价装配）注册 XyModelMeta 时 须保留 ModelsConfig ModelEntry 的可选 api 字段写入 config.api 与 meta.api：省略 api 时 须走 AdapterKind::default_for（或等价）。显式可识别 api（含 openai-completions）须参与 adapter 选择；未识别字符串 须静默等同省略，不得为此单独报错。不得在注册路径把已配置的 api 字段写成 None。由单测覆盖，不得为静态接线单独扩 BDD step。
     场景: 入口API与映射存活解析
-      假如 YAML 含 thinking_levels [off, high] 与 thinking_level_map high: max 与 off: null
+      假如 YAML 含 thinking_level_map off: null 与 high: max
       当 加载并 resolve_model_meta
       那么 meta 含 high→max 与 off→null
 

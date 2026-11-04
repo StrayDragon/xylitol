@@ -52,12 +52,12 @@ fn test_rc_config_docs(rc_snap: RcSnap) {}
 
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "解析列表"
+    name = "解析映射键为档位"
 )]
 fn test_rc_parse_list(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "空词元失败"
+    name = "空键失败"
 )]
 fn test_rc_empty_token_fails(tokenizer_bdd: TokenizerBdd) {}
 #[scenario(
@@ -72,12 +72,12 @@ fn test_rc_freeform_ok(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
 fn test_rc_parse_map(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "映射键之外列表失败"
+    name = "空串值失败"
 )]
 fn test_rc_map_key_outside_list_fails(tokenizer_bdd: TokenizerBdd) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "缺席键成功"
+    name = "空映射成功"
 )]
 fn test_rc_absent_key_ok(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
 #[scenario(

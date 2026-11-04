@@ -10,6 +10,7 @@ fn default_thinking() -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct XyModelEntryConfig {
     #[schemars(with = "String")]
     pub provider: XyModelKind,
@@ -26,8 +27,6 @@ pub struct XyModelEntryConfig {
     pub fallback: Option<String>,
     #[serde(default = "default_thinking")]
     pub thinking: bool,
-    #[serde(default)]
-    pub thinking_levels: Option<Vec<String>>,
     #[serde(default)]
     pub thinking_level_map: Option<HashMap<String, Option<String>>>,
     #[serde(default)]
@@ -63,11 +62,9 @@ impl XyModelEntryConfig {
     pub fn resolve_thinking_config(
         &self,
     ) -> Result<(Vec<String>, crate::model::ThinkingLevelMap), String> {
-        let levels =
-            crate::model::resolve_configured_levels(self.thinking, self.thinking_levels.as_deref())
-                .map_err(|e| e.to_string())?;
         let map = self.thinking_level_map.clone().unwrap_or_default();
-        crate::model::validate_thinking_level_map(&map, &levels).map_err(|e| e.to_string())?;
+        let levels = crate::model::resolve_levels_from_map(self.thinking, &map)
+            .map_err(|e| e.to_string())?;
         Ok((levels, map))
     }
 
@@ -144,14 +141,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ignores_unknown_fields_in_json() {
+    fn rejects_unknown_fields_in_json() {
         let json = r#"{
             "provider": "fake",
             "model": "summary",
-            "extra": "dropped"
+            "thinking_levels": ["off", "high"]
         }"#;
-        let entry: XyModelEntryConfig = serde_json::from_str(json).expect("parse");
-        assert_eq!(entry.model, "summary");
+        assert!(serde_json::from_str::<XyModelEntryConfig>(json).is_err());
     }
 
     #[test]
@@ -161,7 +157,9 @@ provider: fake
 model: summary-bot
 base_url: https://example.com/v1
 api_key: sk-test
-thinking_levels: [off, high]
+thinking_level_map:
+  off: null
+  high: max
 context_window: 64000
 ";
         let entry: XyModelEntryConfig = yaml_serde::from_str(yaml).expect("snake_case yaml");
@@ -169,8 +167,14 @@ context_window: 64000
         assert_eq!(entry.base_url.as_deref(), Some("https://example.com/v1"));
         assert_eq!(entry.api_key.as_deref(), Some("sk-test"));
         assert_eq!(
-            entry.thinking_levels,
-            Some(vec!["off".into(), "high".into()])
+            entry
+                .thinking_level_map
+                .as_ref()
+                .and_then(|map| map.get("high"))
+                .cloned()
+                .flatten()
+                .as_deref(),
+            Some("max")
         );
         assert_eq!(entry.context_window, 64_000);
     }
@@ -223,10 +227,28 @@ context_window: 64000
             provider: XyModelKind::Fake,
             model: "s".into(),
             thinking: true,
-            thinking_levels: Some(vec!["".into()]),
+            thinking_level_map: Some(HashMap::from([(String::new(), None)])),
             ..Default::default()
         };
         assert!(entry.resolve_thinking_config().is_err());
+    }
+
+    #[test]
+    fn thinking_levels_come_from_map_keys() {
+        let entry = XyModelEntryConfig {
+            provider: XyModelKind::OpenAi,
+            model: "m".into(),
+            thinking: true,
+            thinking_level_map: Some(HashMap::from([
+                ("max".to_string(), Some("max".to_string())),
+                ("off".to_string(), None),
+                ("high".to_string(), Some("max".to_string())),
+            ])),
+            ..Default::default()
+        };
+        let (levels, map) = entry.resolve_thinking_config().expect("levels");
+        assert_eq!(levels, vec!["off", "high", "max"]);
+        assert_eq!(map.get("off"), Some(&None));
     }
 
     #[test]

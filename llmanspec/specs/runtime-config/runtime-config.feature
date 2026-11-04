@@ -71,20 +71,20 @@
       那么 mcp 未启用且字段可序列化
   @req:r1727
   规则: model-entry-thinking-levels
-    ModelsConfig 的 ModelEntry（或等价 YAML 面）须支持可选 thinking_levels 有序字符串列表作为用户面档位 SSOT；空串或仅空白条目 须使配置加载失败；不得仅因档名不属于历史封闭枚举而失败。缺省或未声明可调列表时运行时支持集 须仅为 off（见 m9）。Settings.default_thinking_level 若存在 MAY 仅用于会话首次装配的初始档（∈ 支持集则采用，否则忽略）；换模与精确 /model <id> 默认档 须遵循 m10 末项策略，不得被 Settings 默认覆盖。
+    ModelsConfig 的 ModelEntry 须支持可选 thinking_level_map 作为用户面档位 SSOT：键为档名字符串（须非空），值为字符串或 null；声明键 须即该模型可展示、可 set 的支持集，按规范档位顺序（off、minimal、low、medium、high、xhigh、max）排列，非规范档名附后按字典序；空键 须使配置加载失败；不得仅因档名不属于历史封闭枚举而失败。缺省或空映射时运行时支持集 须仅为 off（见 m9）。Settings.default_thinking_level 若存在 MAY 仅用于会话首次装配的初始档（∈ 支持集则采用，否则忽略）；换模与精确 /model <id> 默认档 须遵循 m10 末项策略，不得被 Settings 默认覆盖。
 
-    场景: 解析列表
-      假如 YAML 模型条目含 thinking_levels [off, high, max]
+    场景: 解析映射键为档位
+      假如 YAML 模型条目 thinking_level_map 含 off: null 与 high: max 与 max: 32768
       当 加载配置并 resolve_model_meta
       那么 XyModelMeta.thinking_levels 与列表一致
 
-    场景: 空词元失败
-      假如 thinking_levels 含空字符串
+    场景: 空键失败
+      假如 thinking_level_map 含空键
       当 加载配置
       那么 失败
 
     场景: 自由文本成功
-      假如 thinking_levels 含厂商字面量 bogon-level
+      假如 thinking_level_map 含厂商字面量 bogon-level: high
       当 加载配置
       那么 成功且支持集含 bogon-level
 
@@ -97,23 +97,22 @@
       假如 Settings.default_thinking_level 为 off 且模型支持集为 off 与 high 与 max
       当 select_model 到该模型
       那么 thinking level 为 max
-    # （c2827 合并：runtime-model-registry r1758 thinking-levels-on-meta 的 meta 解析语义由本条 parse-list/freeform-ok 场景承载。）
   @req:r1728
   规则: model-entry-thinking-level-map
-    ModelsConfig 的 ModelEntry 须支持可选 thinking_level_map（键为档名字符串，值为字符串或 null）；键不在该模型 thinking_levels 声明列表中（缺省列表视为仅 off）时 须使配置加载失败；键与声明列表的归属判定 须精确字符串相等（不得因仅大小写或空白差异而匹配）；解析结果 须进入模型 meta 供请求组装；键缺省 须表示使用 adapter 内置默认，null 须表示该档不向 provider 发送 thinking/effort 字段。
+    thinking_level_map 的值 须精确进入模型 meta 供请求组装：字符串值 须作为该档的 provider wire 值；null 值 须表示该档不向 provider 发送 thinking/effort 字段；未声明的档名 不得出现在支持集或可选列表；键与值的匹配 须精确字符串相等（不得因仅大小写或空白差异而匹配）。
 
     场景: 解析映射
-      假如 YAML 含 thinking_levels [off, high] 与 thinking_level_map high: max 与 off: null
+      假如 YAML 含 thinking_level_map off: null 与 high: max
       当 加载并 resolve_model_meta
       那么 meta 含 high→max 与 off→null
 
-    场景: 映射键之外列表失败
-      假如 thinking_levels 为 [off, high] 且 thinking_level_map 含 max: high
+    场景: 空串值失败
+      假如 thinking_level_map 含空串值
       当 加载配置
       那么 失败
 
-    场景: 缺席键成功
-      假如 仅配置 thinking_levels 无 map
+    场景: 空映射成功
+      假如 thinking_level_map 为空映射
       当 加载配置
       那么 成功且 map 为空或缺省
   @req:r1731
@@ -254,6 +253,9 @@
   @req:r3069
   规则: config-include-removed
     配置加载 不得 支持顶层 `include` 列表，也不得 提供通用 include / presets / import 机制；配置中出现 `include` 键 须 加载期硬失败并给出移除提示。由配置插件单测覆盖。
+  @req:r3076
+  规则: config-drop-in-fragments
+    配置加载 须在每层 config.yaml 之后按文件名升序合并同层 `conf.d/*.yaml` 片段（global 层与 project 层各一次），再进入下一层与 `--config`；片段 须按普通配置片段解析（锚点、x- 前缀载体剥离、未知键硬失败同样适用），不得因此恢复通用 include / presets / import；片段解析或校验失败 须使加载失败且错误含片段文件路径。由配置插件单测覆盖。
   @req:r3064
   规则: serve-config
     运行时配置必须接受可选顶层 serve 块：lifecycle 为 last-client 或 persistent，idle_timeout 为时长或 false。缺省（不写该块）为 last-client 与约 30 秒。idle_timeout 为 false 时自动拉起必须按 persistent。该块仅约束自动拉起的 Host；显式 serve 缺省仍 persistent。由配置插件单测覆盖。

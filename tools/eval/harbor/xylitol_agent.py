@@ -95,7 +95,7 @@ class XylitolAgent(BaseInstalledAgent):
         model = self._model_id()
         return f"""models:
   default_model: "{model}"
-  models:
+  entries:
     "{model}":
       provider: openai
       model: "{model}"
@@ -103,7 +103,6 @@ class XylitolAgent(BaseInstalledAgent):
       api: openai-responses
       api_key: "{{{{ secret.MAGPIE_GATEWAY_KEY }}}}"
       thinking: true
-      thinking_levels: [low, high]
       thinking_level_map:
         low: low
         high: high

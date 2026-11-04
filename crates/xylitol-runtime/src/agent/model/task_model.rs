@@ -164,7 +164,7 @@ mod tests {
             provider: XyModelKind::Fake,
             model: "bad-summary".into(),
             thinking: true,
-            thinking_levels: Some(vec!["".into()]),
+            thinking_level_map: Some(std::collections::HashMap::from([(String::new(), None)])),
             ..Default::default()
         }
     }

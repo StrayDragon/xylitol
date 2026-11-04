@@ -67,12 +67,24 @@ fn merge_config_layers(
         ],
         secrets,
     )?;
+    merge_drop_in_dir(
+        &mut merged,
+        &mut from_yaml_layers,
+        &paths.global_dir.join("conf.d"),
+        secrets,
+    )?;
 
     if let Some(proj_dir) = &paths.project_dir {
         merge_first_layer(
             &mut merged,
             &mut from_yaml_layers,
             &[proj_dir.join("config.yaml"), proj_dir.join("config.yml")],
+            secrets,
+        )?;
+        merge_drop_in_dir(
+            &mut merged,
+            &mut from_yaml_layers,
+            &proj_dir.join("conf.d"),
             secrets,
         )?;
     }
@@ -94,6 +106,34 @@ fn validate_app_config(config: &AppConfig) -> Result<(), LoadError> {
     config.validate_thinking_levels()?;
     config.validate_session_max_turns()?;
     config.validate_tools_selection()?;
+    Ok(())
+}
+
+fn merge_drop_in_dir(
+    merged: &mut Value,
+    from_yaml_layers: &mut bool,
+    dir: &Path,
+    secrets: &super::secret_env::SecretMap,
+) -> Result<(), LoadError> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Ok(());
+    };
+    let mut files: Vec<std::path::PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "yaml"))
+        .collect();
+    files.sort();
+    for path in files {
+        let with_path = |error: LoadError| {
+            LoadError::validation(format!("config fragment {}: {error}", path.display()))
+        };
+        let mut value = load_and_render(&path, secrets).map_err(with_path)?;
+        expand_merge_keys(&mut value).map_err(with_path)?;
+        strip_anchor_carriers(&mut value);
+        super::validate::validate_merged_config(&value).map_err(with_path)?;
+        deep_merge(merged, value);
+        *from_yaml_layers = true;
+    }
     Ok(())
 }
 
@@ -941,5 +981,64 @@ compaction:
         let msg = err.to_string();
         assert!(msg.contains("loop_example"), "got: {msg}");
         assert!(msg.contains("loop_policies"), "got: {msg}");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn conf_d_fragments_merge_after_config_yaml() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(global.join("conf.d")).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "models:\n  default_model: base\n  entries:\n    base:\n      provider: fake\n      model: base\n",
+        )
+        .unwrap();
+        std::fs::write(
+            global.join("conf.d").join("generated.yaml"),
+            "models:\n  entries:\n    generated:\n      provider: fake\n      model: gen\n",
+        )
+        .unwrap();
+        std::fs::write(global.join("conf.d").join("notes.txt"), "ignored").unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let config = load_app_config_with(None, env_map(&entries), None).expect("load");
+        let models: ModelsConfig = config.section_or_default("models").unwrap();
+        assert!(models.entries.contains_key("base"));
+        assert!(models.entries.contains_key("generated"));
+        assert_eq!(models.default_model.as_deref(), Some("base"));
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn conf_d_fragment_validation_error_includes_path() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(global.join("conf.d")).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "models:\n  default_model: base\n  entries:\n    base:\n      provider: fake\n      model: base\n",
+        )
+        .unwrap();
+        std::fs::write(
+            global.join("conf.d").join("broken.yaml"),
+            "models:\n  models: {}\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let msg = err.to_string();
+        assert!(msg.contains("broken.yaml"), "got: {msg}");
     }
 }

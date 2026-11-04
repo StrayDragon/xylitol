@@ -170,7 +170,7 @@ fn yaml_zero_models_hard_fail_no_env_gpt4o() {
 
     std::fs::write(
         proj_xy.join("config.yaml"),
-        "models:\n  default_model: x\n  models: {}\n",
+        "models:\n  default_model: x\n  entries: {}\n",
     )
     .unwrap();
 
@@ -530,7 +530,10 @@ fn missing_session_still_applies_settings_thinking_default() {
       provider: fake
       model: m1
       thinking: true
-      thinking_levels: [off, high, max]
+      thinking_level_map:
+        off: null
+        high: high
+        max: max
 "#,
     )
     .unwrap();

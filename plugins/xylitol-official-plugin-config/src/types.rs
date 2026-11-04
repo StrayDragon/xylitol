@@ -321,7 +321,7 @@ impl OtelConfig {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ModelsConfig {
     pub default_model: Option<String>,
     pub entries: HashMap<String, ModelEntry>,
@@ -768,7 +768,10 @@ mod thinking_levels_tests {
     use super::*;
     use xylitol_plugin_sdk::model::XyModelKind;
 
-    fn fake_entry(thinking: bool, levels: Option<Vec<&str>>) -> ModelEntry {
+    fn fake_entry(
+        thinking: bool,
+        map: Option<std::collections::HashMap<String, Option<String>>>,
+    ) -> ModelEntry {
         ModelEntry {
             provider: XyModelKind::Fake,
             model: "fake-1".into(),
@@ -778,13 +781,21 @@ mod thinking_levels_tests {
             api_key: None,
             fallback: None,
             thinking,
-            thinking_levels: levels.map(|v| v.into_iter().map(str::to_string).collect()),
-            thinking_level_map: None,
+            thinking_level_map: map,
             context_window: 0,
             max_output_tokens: None,
             input_modalities: None,
             prompt_cache: None,
         }
+    }
+
+    fn map_of(
+        entries: &[(&str, Option<&str>)],
+    ) -> std::collections::HashMap<String, Option<String>> {
+        entries
+            .iter()
+            .map(|(level, wire)| ((*level).to_string(), wire.map(str::to_string)))
+            .collect()
     }
 
     #[test]
@@ -801,9 +812,13 @@ mod thinking_levels_tests {
     fn resolve_model_meta_explicit_hole() {
         let mut cfg = AppConfig::default();
         let mut models = get::<ModelsConfig>(&cfg, "models");
-        models
-            .entries
-            .insert("f".into(), fake_entry(true, Some(vec!["high", "max"])));
+        models.entries.insert(
+            "f".into(),
+            fake_entry(
+                true,
+                Some(map_of(&[("high", Some("high")), ("max", Some("max"))])),
+            ),
+        );
         set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert_eq!(
@@ -816,9 +831,10 @@ mod thinking_levels_tests {
     fn resolve_model_meta_thinking_false() {
         let mut cfg = AppConfig::default();
         let mut models = get::<ModelsConfig>(&cfg, "models");
-        models
-            .entries
-            .insert("f".into(), fake_entry(false, Some(vec!["high"])));
+        models.entries.insert(
+            "f".into(),
+            fake_entry(false, Some(map_of(&[("high", Some("high"))]))),
+        );
         set(&mut cfg, "models", models);
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert_eq!(meta.thinking_levels, vec!["off".to_string()]);
@@ -828,9 +844,10 @@ mod thinking_levels_tests {
     fn validate_thinking_levels_accepts_freeform_names() {
         let mut cfg = AppConfig::default();
         let mut models = get::<ModelsConfig>(&cfg, "models");
-        models
-            .entries
-            .insert("f".into(), fake_entry(true, Some(vec!["bogon"])));
+        models.entries.insert(
+            "f".into(),
+            fake_entry(true, Some(map_of(&[("bogon", Some("high"))]))),
+        );
         set(&mut cfg, "models", models);
         cfg.validate_thinking_levels().unwrap();
     }
@@ -838,11 +855,7 @@ mod thinking_levels_tests {
     #[test]
     fn resolve_model_meta_thinking_level_map() {
         let mut cfg = AppConfig::default();
-        let mut entry = fake_entry(true, Some(vec!["off", "high"]));
-        let mut map = std::collections::HashMap::new();
-        map.insert("high".into(), Some("max".into()));
-        map.insert("off".into(), None);
-        entry.thinking_level_map = Some(map);
+        let entry = fake_entry(true, Some(map_of(&[("off", None), ("high", Some("max"))])));
         let mut models = get::<ModelsConfig>(&cfg, "models");
         models.entries.insert("f".into(), entry);
         set(&mut cfg, "models", models);
@@ -859,17 +872,14 @@ mod thinking_levels_tests {
     }
 
     #[test]
-    fn validate_thinking_level_map_rejects_key_outside_declared_list() {
+    fn validate_thinking_levels_rejects_blank_map_key() {
         let mut cfg = AppConfig::default();
-        let mut entry = fake_entry(true, Some(vec!["off", "high"]));
-        let mut map = std::collections::HashMap::new();
-        map.insert("max".into(), Some("x".into()));
-        entry.thinking_level_map = Some(map);
+        let entry = fake_entry(true, Some(map_of(&[("", None)])));
         let mut models = get::<ModelsConfig>(&cfg, "models");
         models.entries.insert("f".into(), entry);
         set(&mut cfg, "models", models);
         let err = cfg.validate_thinking_levels().unwrap_err();
-        assert!(err.to_string().contains("max"));
+        assert!(err.to_string().contains("thinking_level_map"));
     }
 
     #[test]

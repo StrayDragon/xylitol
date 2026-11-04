@@ -10,9 +10,9 @@ pub use config::{
 };
 pub use meta::{ContextTokenEstimate, TokenProvenance, XyModelMeta};
 pub use thinking::{
-    THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap,
-    last_declared_thinking_level, resolve_configured_levels, thinking_levels_are_adjustable,
-    validate_thinking_level_map,
+    CANONICAL_THINKING_LEVELS, THINKING_OFF, ThinkingBudgets, ThinkingConfigError,
+    ThinkingLevelMap, last_declared_thinking_level, resolve_levels_from_map,
+    thinking_levels_are_adjustable, validate_thinking_level_map,
 };
 
 #[cfg(test)]
@@ -99,35 +99,41 @@ mod tests {
     }
 
     #[test]
-    fn configured_levels_are_freeform_ordered_and_default_to_off() {
-        assert_eq!(
-            resolve_configured_levels(true, None).unwrap(),
-            vec!["off".to_string()]
-        );
-        assert_eq!(
-            resolve_configured_levels(true, Some(&[])).unwrap(),
-            vec!["off".to_string()]
-        );
-        let declared = resolve_configured_levels(
-            true,
-            Some(&["off".into(), "bogon-level".into(), "max".into()]),
-        )
-        .unwrap();
-        assert_eq!(declared, vec!["off", "bogon-level", "max"]);
-        assert!(thinking_levels_are_adjustable(&declared));
+    fn map_keys_are_levels_in_canonical_order() {
+        let mut map = ThinkingLevelMap::new();
+        map.insert("bogon-level".into(), Some("high".into()));
+        map.insert("max".into(), Some("max".into()));
+        map.insert("off".into(), None);
+        let levels = resolve_levels_from_map(true, &map).unwrap();
+        assert_eq!(levels, vec!["off", "max", "bogon-level"]);
+        assert!(thinking_levels_are_adjustable(&levels));
         assert!(thinking_levels_are_adjustable(&["OFF".into()]));
         assert!(!thinking_levels_are_adjustable(&["off".into()]));
-        assert!(thinking_levels_are_adjustable(&[
-            "off".into(),
-            "bogon-level".into()
-        ]));
-        assert_eq!(last_declared_thinking_level(&declared), "max");
-        assert!(resolve_configured_levels(true, Some(&[" \t".into()])).is_err());
+        assert_eq!(last_declared_thinking_level(&levels), "bogon-level");
+
         assert_eq!(
-            resolve_configured_levels(false, Some(&["high".into()])).unwrap(),
+            resolve_levels_from_map(true, &ThinkingLevelMap::new()).unwrap(),
             vec!["off".to_string()]
         );
-        assert!(resolve_configured_levels(false, Some(&["".into()])).is_err());
+
+        let mut off_only = ThinkingLevelMap::new();
+        off_only.insert("off".into(), None);
+        assert_eq!(
+            resolve_levels_from_map(false, &off_only).unwrap(),
+            vec!["off".to_string()]
+        );
+        assert_eq!(
+            resolve_levels_from_map(false, &map).unwrap(),
+            vec!["off".to_string()]
+        );
+
+        let mut blank_key = ThinkingLevelMap::new();
+        blank_key.insert(" \t".into(), None);
+        assert!(resolve_levels_from_map(true, &blank_key).is_err());
+
+        let mut blank_wire = ThinkingLevelMap::new();
+        blank_wire.insert("high".into(), Some(" ".into()));
+        assert!(resolve_levels_from_map(true, &blank_wire).is_err());
     }
 
     #[test]
@@ -176,14 +182,17 @@ mod tests {
     }
 
     #[test]
-    fn validate_thinking_level_map_requires_declared_key() {
-        let mut map = ThinkingLevelMap::new();
-        map.insert("bogon".into(), Some("x".into()));
-        assert!(
-            validate_thinking_level_map(&map, &["off".into(), "high".into()])
-                .unwrap_err()
-                .to_string()
-                .contains("bogon")
-        );
+    fn validate_thinking_level_map_rejects_blank_entries() {
+        let mut blank_key = ThinkingLevelMap::new();
+        blank_key.insert(String::new(), Some("x".into()));
+        assert!(validate_thinking_level_map(&blank_key).is_err());
+
+        let mut blank_wire = ThinkingLevelMap::new();
+        blank_wire.insert("high".into(), Some(String::new()));
+        assert!(validate_thinking_level_map(&blank_wire).is_err());
+
+        let mut null_wire = ThinkingLevelMap::new();
+        null_wire.insert("off".into(), None);
+        assert!(validate_thinking_level_map(&null_wire).is_ok());
     }
 }

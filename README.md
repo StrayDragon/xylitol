@@ -41,7 +41,7 @@ cargo build --release --locked
 
 ### 2. 配置模型
 
-配置文件可以放在全局配置目录（默认 `~/.config/xylitol/config.yaml`）或项目的 `.xylitol/config.yaml`。项目配置覆盖全局配置。
+配置文件可以放在全局配置目录（默认 `~/.config/xylitol/config.yaml`）或项目的 `.xylitol/config.yaml`。项目配置覆盖全局配置。同层的 `conf.d/*.yaml` 片段在该层 `config.yaml` 之后按文件名升序合并，供插件写入生成内容（如 magpie 模型目录）；片段同样受未知键硬失败约束。
 
 ```bash
 xylitol config init

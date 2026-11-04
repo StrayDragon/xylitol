@@ -39,7 +39,7 @@ def render_xylitol_config(config: EvalConfig) -> str:
     if config.model.provider == "fake":
         return f"""models:
   default_model: "{alias}"
-  models:
+  entries:
     "{alias}":
       provider: fake
       model: "fake-1"
@@ -59,10 +59,9 @@ session:
     level_lines = "\n".join(
         f"        {level}: {'null' if level == 'off' else level}" for level in levels
     )
-    levels_inline = ", ".join(levels)
     return f"""models:
   default_model: "{alias}"
-  models:
+  entries:
     "{alias}":
       provider: openai
       model: "{alias}"
@@ -70,7 +69,6 @@ session:
       api: {config.model.api}
       api_key: "{{{{ env.{config.model.api_key_env} }}}}"
       thinking: true
-      thinking_levels: [{levels_inline}]
       thinking_level_map:
 {level_lines}
       context_window: {config.model.context_window}

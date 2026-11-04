@@ -22,7 +22,7 @@ pub(crate) fn g_m18_task_entry_fail(agent: &AgentState) {
             provider: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "bad-summary".into(),
             thinking: true,
-            thinking_levels: Some(vec!["".into()]),
+            thinking_level_map: Some(std::collections::HashMap::from([(String::new(), None)])),
             ..Default::default()
         },
     ));

@@ -44,6 +44,7 @@
       "type": "string"
     },
     "compaction_XyModelEntryConfig": {
+      "additionalProperties": false,
       "properties": {
         "api": {
           "default": null,
@@ -136,16 +137,6 @@
           "default": null,
           "type": [
             "object",
-            "null"
-          ]
-        },
-        "thinking_levels": {
-          "default": null,
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
             "null"
           ]
         }
@@ -445,6 +436,7 @@
       "type": "string"
     },
     "models_XyModelEntryConfig": {
+      "additionalProperties": false,
       "properties": {
         "api": {
           "default": null,
@@ -537,16 +529,6 @@
           "default": null,
           "type": [
             "object",
-            "null"
-          ]
-        },
-        "thinking_levels": {
-          "default": null,
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
             "null"
           ]
         }
@@ -1015,6 +997,7 @@
       "type": "array"
     },
     "models": {
+      "additionalProperties": false,
       "properties": {
         "default_model": {
           "default": null,

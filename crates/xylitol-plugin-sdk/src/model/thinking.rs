@@ -2,33 +2,43 @@ use std::collections::HashMap;
 
 pub const THINKING_OFF: &str = "off";
 
+pub const CANONICAL_THINKING_LEVELS: &[&str] =
+    &["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ThinkingConfigError {
-    #[error("thinking_levels[{index}] must not be empty")]
-    EmptyLevel { index: usize },
-    #[error("thinking_level_map key `{key}` is not declared in thinking_levels")]
-    UndeclaredMapKey { key: String },
+    #[error("thinking_level_map key must not be empty")]
+    EmptyLevel,
+    #[error("thinking_level_map[`{level}`] must be null or a non-empty string")]
+    EmptyWireValue { level: String },
 }
 
-pub fn resolve_configured_levels(
+pub fn resolve_levels_from_map(
     thinking: bool,
-    configured: Option<&[String]>,
+    map: &ThinkingLevelMap,
 ) -> Result<Vec<String>, ThinkingConfigError> {
-    if let Some(raw) = configured {
-        for (index, level) in raw.iter().enumerate() {
-            if level.trim().is_empty() {
-                return Err(ThinkingConfigError::EmptyLevel { index });
-            }
-        }
+    validate_thinking_level_map(map)?;
+    if !thinking || map.is_empty() {
+        return Ok(vec![THINKING_OFF.into()]);
     }
+    Ok(ordered_levels(map))
+}
 
-    if !thinking {
-        return Ok(vec![THINKING_OFF.into()]);
-    }
-    let Some(raw) = configured.filter(|levels| !levels.is_empty()) else {
-        return Ok(vec![THINKING_OFF.into()]);
-    };
-    Ok(raw.to_vec())
+fn canonical_rank(level: &str) -> Option<usize> {
+    CANONICAL_THINKING_LEVELS
+        .iter()
+        .position(|known| *known == level)
+}
+
+fn ordered_levels(map: &ThinkingLevelMap) -> Vec<String> {
+    let mut levels: Vec<&String> = map.keys().collect();
+    levels.sort_by(|a, b| match (canonical_rank(a), canonical_rank(b)) {
+        (Some(left), Some(right)) => left.cmp(&right),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.cmp(b),
+    });
+    levels.into_iter().cloned().collect()
 }
 
 pub fn thinking_levels_are_adjustable(levels: &[String]) -> bool {
@@ -44,13 +54,15 @@ pub fn last_declared_thinking_level(levels: &[String]) -> String {
 
 pub type ThinkingLevelMap = HashMap<String, Option<String>>;
 
-pub fn validate_thinking_level_map(
-    map: &ThinkingLevelMap,
-    declared_levels: &[String],
-) -> Result<(), ThinkingConfigError> {
-    for key in map.keys() {
-        if !declared_levels.iter().any(|level| level == key) {
-            return Err(ThinkingConfigError::UndeclaredMapKey { key: key.clone() });
+pub fn validate_thinking_level_map(map: &ThinkingLevelMap) -> Result<(), ThinkingConfigError> {
+    for (level, wire) in map {
+        if level.trim().is_empty() {
+            return Err(ThinkingConfigError::EmptyLevel);
+        }
+        if wire.as_ref().is_some_and(|wire| wire.trim().is_empty()) {
+            return Err(ThinkingConfigError::EmptyWireValue {
+                level: level.clone(),
+            });
         }
     }
     Ok(())

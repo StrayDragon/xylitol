@@ -110,7 +110,7 @@ fn g_rc_compaction_settings_ignored(rc_snap: &RcSnap) {
 #[given("Settings.default_thinking_level 为 high 且模型支持集为 off 与 high 与 max")]
 fn g_rc_thinking_default(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().default_thinking_level = Some("high".into());
-    let yaml = "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n";
+    let yaml = "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_level_map:\n        off: null\n        high: high\n        max: max\n";
     rc_snap
         .app_config
         .replace(Some(parse_app_config_yaml(yaml).expect("thinking yaml")));
@@ -118,7 +118,7 @@ fn g_rc_thinking_default(rc_snap: &RcSnap) {
 #[given("Settings.default_thinking_level 为 off 且模型支持集为 off 与 high 与 max")]
 fn g_rc_thinking_select(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().default_thinking_level = Some("off".into());
-    let yaml = "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n";
+    let yaml = "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_level_map:\n        off: null\n        high: high\n        max: max\n";
     rc_snap
         .app_config
         .replace(Some(parse_app_config_yaml(yaml).expect("thinking yaml")));
@@ -128,10 +128,10 @@ fn g_rc_docs(rc_snap: &RcSnap) {
     let _ = rc_snap;
 }
 
-#[given("YAML 模型条目含 thinking_levels [off, high, max]")]
+#[given("YAML 模型条目 thinking_level_map 含 off: null 与 high: max 与 max: 32768")]
 fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_level_map:\n        off: null\n        high: max\n        max: \"32768\"\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -143,10 +143,10 @@ fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
         }
     }
 }
-#[given("thinking_levels 含空字符串")]
+#[given("thinking_level_map 含空键")]
 fn g_rc_empty_token_fails(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [\"\"]\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_level_map:\n        \"\": null\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -158,10 +158,10 @@ fn g_rc_empty_token_fails(tokenizer_bdd: &TokenizerBdd) {
         }
     }
 }
-#[given("thinking_levels 含厂商字面量 bogon-level")]
+#[given("thinking_level_map 含厂商字面量 bogon-level: high")]
 fn g_rc_freeform_ok(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, bogon-level]\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_level_map:\n        bogon-level: high\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -173,10 +173,10 @@ fn g_rc_freeform_ok(tokenizer_bdd: &TokenizerBdd) {
         }
     }
 }
-#[given("thinking_levels 为 [off, high] 且 thinking_level_map 含 max: high")]
+#[given("thinking_level_map 含空串值")]
 fn g_rc_map_key_outside_list_fails(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high]\n      thinking_level_map:\n        max: high\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_level_map:\n        high: \"\"\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -188,10 +188,10 @@ fn g_rc_map_key_outside_list_fails(tokenizer_bdd: &TokenizerBdd) {
         }
     }
 }
-#[given("仅配置 thinking_levels 无 map")]
+#[given("thinking_level_map 为空映射")]
 fn g_rc_absent_key_ok(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, low]\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_level_map: {}\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -203,10 +203,10 @@ fn g_rc_absent_key_ok(tokenizer_bdd: &TokenizerBdd) {
         }
     }
 }
-#[given("YAML 含 thinking_levels [off, high] 与 thinking_level_map high: max 与 off: null")]
+#[given("YAML 含 thinking_level_map off: null 与 high: max")]
 fn g_rc_parse_map(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high]\n      thinking_level_map:\n        high: max\n        off: null\n",
+        "models:\n  entries:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_level_map:\n        off: null\n        high: max\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
