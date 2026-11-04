@@ -195,7 +195,8 @@ fn load_from_paths(
         );
     }
 
-    let (merged, from_yaml_layers) = merge_config_layers(paths, cli_config, &secrets)?;
+    let (mut merged, from_yaml_layers) = merge_config_layers(paths, cli_config, &secrets)?;
+    strip_anchor_carriers(&mut merged);
 
     if merged.is_null() {
         return Ok(LoadedAppConfig {
@@ -227,6 +228,13 @@ fn load_from_paths(
         config,
         from_yaml_layers,
     })
+}
+
+fn strip_anchor_carriers(value: &mut Value) {
+    let Some(map) = value.as_object_mut() else {
+        return;
+    };
+    map.retain(|key, _| !key.starts_with("x-"));
 }
 
 fn reject_legacy_config_keys(merged: &Value) -> Result<(), LoadError> {
@@ -412,6 +420,17 @@ mod tests {
         let overlay = json!(["c"]);
         deep_merge(&mut base, overlay);
         assert_eq!(base, json!(["c"]));
+    }
+
+    #[test]
+    fn x_prefixed_top_level_keys_are_anchor_carriers() {
+        let mut value = serde_json::json!({
+            "x-base-url": "http://example",
+            "models": {"default_model": "m"}
+        });
+        strip_anchor_carriers(&mut value);
+        assert!(value.get("x-base-url").is_none());
+        assert!(value.get("models").is_some());
     }
 
     #[test]
