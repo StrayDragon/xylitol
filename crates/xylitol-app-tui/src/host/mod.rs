@@ -511,6 +511,14 @@ impl<T: Terminal> HostSession<T> {
         self.tui.last_render_perf()
     }
 
+    #[cfg(test)]
+    pub fn set_keybindings_for_test(&mut self, user: xylitol_tui::KeybindingsConfig) {
+        self.keybindings = Some(std::rc::Rc::new(std::cell::RefCell::new(
+            super::keybindings::build_product_keybindings(user),
+        )));
+        self.push_keybinding_conflicts();
+    }
+
     pub fn push_keybinding_conflicts(&mut self) {
         let Some(kb) = &self.keybindings else {
             return;
@@ -915,6 +923,21 @@ impl<T: Terminal> HostSession<T> {
         self.tui.mark_ao_components_stale();
     }
 
+    #[cfg(test)]
+    pub fn stream_sync_pending(&self) -> bool {
+        self.stream_sync_pending
+    }
+
+    fn sync_stream_ui_root_from_model(&mut self) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let rows = self.tui.terminal.rows() as usize;
+        let mut root = root.borrow_mut();
+        root.set_term_rows(rows);
+        root.apply_ui_model(&self.ui_model);
+    }
+
     pub fn step(&mut self, event: HostEvent) -> Result<(), XyDriverError> {
         let defer_stream_paint = matches!(
             &event,
@@ -932,7 +955,7 @@ impl<T: Terminal> HostSession<T> {
             HostEvent::Tick => {
                 if self.stream_sync_pending {
                     self.stream_sync_pending = false;
-                    self.sync_ui_root_from_model();
+                    self.sync_stream_ui_root_from_model();
                 }
                 let anim_dirty = if self.mode == LayoutMode::Ready {
                     self.tui.idle_tick()
@@ -1267,7 +1290,7 @@ impl<T: Terminal> HostSession<T> {
         apply_xy_event(&mut self.ui_model, &xy);
         let stream_delta = matches!(
             xy.as_ref(),
-            XyEvent::TextDelta(_) | XyEvent::ThinkingDelta(_)
+            XyEvent::TextDelta(_) | XyEvent::ThinkingDelta(_) | XyEvent::MessageUpdate { .. }
         );
         match xy.as_ref() {
             XyEvent::AgentEnd { .. } => {

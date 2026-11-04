@@ -54,10 +54,13 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
     let mut h = DefaultHasher::new();
     std::mem::discriminant(entry).hash(&mut h);
     match entry {
-        UiEntry::User { text }
-        | UiEntry::Assistant { text }
-        | UiEntry::ScrollNotice { text }
-        | UiEntry::Error { text } => text.hash(&mut h),
+        UiEntry::User { text } => {
+            text.hash(&mut h);
+            fold.user_effective(text).hash(&mut h);
+        }
+        UiEntry::Assistant { text } | UiEntry::ScrollNotice { text } | UiEntry::Error { text } => {
+            text.hash(&mut h)
+        }
         UiEntry::Thinking {
             id,
             text,
@@ -92,6 +95,7 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             done.hash(&mut h);
             fold.tools_effective(id).hash(&mut h);
             fold.output_effective(id).hash(&mut h);
+            fold.args_effective(id).hash(&mut h);
         }
         UiEntry::Diff {
             summary,

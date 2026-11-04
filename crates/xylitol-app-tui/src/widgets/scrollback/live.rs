@@ -13,6 +13,7 @@ use super::super::fold_hit::{FoldHitTable, FoldTarget};
 use super::super::glyphs::GlyphSet;
 use super::ScrollbackFold;
 use super::paint::{inter_block_spacer, push_wrapped};
+use xylitol_tui::truncate_to_width;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn paint_envelope_header_row(
@@ -86,13 +87,24 @@ pub(super) fn paint_cluster_header_row(
         .is_thought_only()
         .then(|| thought_duration_label(model, cl))
         .flatten();
-    let plain = format_cluster_header(
+    let mut plain = format_cluster_header(
         glyphs,
         &counts,
         expanded,
         progressive,
         thought_dur.as_deref(),
     );
+    if counts.is_thought_only()
+        && live_think.as_deref() == Some(STREAMING_THINK_ID)
+        && !fold.thinking_effective(STREAMING_THINK_ID)
+    {
+        let latest = model.streaming_thinking.lines().last().unwrap_or("").trim();
+        if !latest.is_empty() {
+            plain.push_str(" · ");
+            plain.push_str(latest);
+        }
+    }
+    let plain = truncate_to_width(&plain, width, "…", true);
     let painted = theme.paint_muted(&plain);
     let row_start = lines.len();
     push_wrapped(lines, &painted, width);
@@ -137,9 +149,16 @@ pub(super) fn paint_folded_streaming_thought(
         theme.paint_muted(&format!("{marker} Thinking"))
     } else {
         let counts = streaming_thought_counts();
-        theme.paint_muted(&format_cluster_header(
-            glyphs, &counts, expanded, true, None,
-        ))
+        let mut plain = format_cluster_header(glyphs, &counts, expanded, true, None);
+        if !expanded {
+            let latest = text.lines().last().unwrap_or("").trim();
+            if !latest.is_empty() {
+                plain.push_str(" · ");
+                plain.push_str(latest);
+            }
+        }
+        let plain = truncate_to_width(&plain, width, "…", true);
+        theme.paint_muted(&plain)
     };
     let row_start = lines.len();
     push_wrapped(lines, &header, width);

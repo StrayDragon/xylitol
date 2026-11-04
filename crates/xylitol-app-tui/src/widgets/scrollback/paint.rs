@@ -75,6 +75,7 @@ pub(super) fn paint_tool_header_line(
         Some(n) => theme.paint_muted(&format!("(timeout {n}s) ")),
         None => String::new(),
     };
+    let args_preview = args_preview.lines().next().unwrap_or("").trim();
     if args_preview.is_empty() {
         format!("{marker} {}  {timeout_note}", theme.paint_tool_name(&title))
     } else {
@@ -365,18 +366,38 @@ pub(super) struct PaintCtx<'a> {
     pub width: usize,
 }
 
-pub(super) fn paint_user_block(text: &str, ctx: PaintCtx) -> (Vec<String>, Vec<CachedFoldHit>) {
+pub(super) fn paint_user_block(
+    id: &str,
+    text: &str,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
     let PaintCtx {
+        fold,
         glyphs,
         theme,
         width,
-        ..
     } = ctx;
     let mut lines = Vec::new();
     let prefix = theme.paint_user(glyphs.user());
     let painted = highlight_dollar_skill_refs(text, theme.palette().skill_ref);
     push_wrapped(&mut lines, &format!("{prefix} {painted}"), width);
-    (lines, Vec::new())
+    let expanded = fold.user_effective(id);
+    let mut hits = Vec::new();
+    if !expanded {
+        let total = lines.len();
+        if total > 3 {
+            lines.truncate(3);
+            lines.push(theme.paint_muted("… (click to expand)"));
+        }
+        hits.push(CachedFoldHit {
+            row_offset: 0,
+            col_start: 0,
+            col_end: width.max(1),
+            height: lines.len().max(1),
+            target: FoldTarget::User(id.to_string()),
+        });
+    }
+    (lines, hits)
 }
 
 pub(super) fn paint_assistant_block(
@@ -475,6 +496,7 @@ pub(super) fn paint_tool_block(
         glyphs.fold()
     };
     let header = paint_tool_header_line(theme, marker, name, args_preview, timeout_secs);
+    let header = fit(&header, inner);
     let rgb = tool_rail_rgb(!done, is_error, theme);
     let mut block = Vec::new();
     let mut block_hits = Vec::new();
@@ -488,11 +510,11 @@ pub(super) fn paint_tool_block(
     });
 
     if !args_preview.is_empty() {
-        let args_expanded = fold.args_effective(id);
-        let chip = if args_expanded {
-            "▾ args".to_string()
-        } else {
-            "▸ args".to_string()
+        let mode = fold.args_effective(id);
+        let chip = match mode {
+            super::ArgsMode::Hidden => "▸ args".to_string(),
+            super::ArgsMode::Preview => "▾ args · preview".to_string(),
+            super::ArgsMode::Full => "▾ args".to_string(),
         };
         let row = block.len();
         push_wrapped(&mut block, &theme.paint_muted(&chip), inner);
@@ -503,8 +525,18 @@ pub(super) fn paint_tool_block(
             height: 1,
             target: FoldTarget::ToolArgs(id.to_string()),
         });
-        if args_expanded {
-            push_wrapped(&mut block, &theme.paint_muted(args_preview), inner);
+        match mode {
+            super::ArgsMode::Hidden => {}
+            super::ArgsMode::Preview => {
+                let preview = args_preview.lines().take(5).collect::<Vec<_>>().join("\n");
+                push_wrapped(&mut block, &theme.paint_muted(&preview), inner);
+                if args_preview.lines().count() > 5 {
+                    push_wrapped(&mut block, &theme.paint_muted("… (click to expand)"), inner);
+                }
+            }
+            super::ArgsMode::Full => {
+                push_wrapped(&mut block, &theme.paint_muted(args_preview), inner);
+            }
         }
     }
 

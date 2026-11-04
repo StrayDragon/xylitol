@@ -19,10 +19,6 @@ impl UiRoot {
             self.session_sidebar_width_cycle();
             return true;
         }
-        if matches_binding(key, "app.session.popup") {
-            self.click_footer_action(crate::layout::root::footer_chips::FooterAction::Details);
-            return true;
-        }
         if matches_binding(key, "app.session.sidebar") {
             self.click_footer_action(crate::layout::root::footer_chips::FooterAction::Sidebar);
             return true;

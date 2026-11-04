@@ -5904,16 +5904,16 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         "collapsed stream is still Thinking: {folded}"
     );
     assert!(
-        !folded.contains("consider next edit"),
-        "clicking Thinking hides the stream: {folded}"
+        folded.contains("consider next edit"),
+        "collapsed stream keeps the latest line: {folded}"
     );
 
     apply_xy_event(&mut model, &XyEvent::ThinkingDelta(" plus more".into()));
     root.apply_ui_model(&model);
     let still = strip_ansi(&root.render(100).join("\n"));
     assert!(
-        !still.contains("consider next edit") && !still.contains("plus more"),
-        "later deltas must not reopen a user-collapsed stream: {still}"
+        still.contains("plus more"),
+        "collapsed stream shows the updated latest line: {still}"
     );
 
     root.toggle_fold_target(FoldTarget::Thinking(

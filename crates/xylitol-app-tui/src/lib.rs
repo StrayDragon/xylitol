@@ -286,7 +286,7 @@ async fn run_host_loop(
 
     let mut term_events = CrosstermEventStream::new();
     let mut agent_stream: Option<AgentEventStream> = None;
-    const TICK_BUSY_MS: u64 = 16;
+    const TICK_BUSY_MS: u64 = 33;
     const TICK_IDLE_MS: u64 = 250;
     let mut tick_busy = session.is_busy();
     let mut observe_prev = AttachObserve::Live;

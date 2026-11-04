@@ -877,4 +877,26 @@ mod fd_path_tests {
         let items = fd_path_suggestions(dir.path(), "__no_such_fd__", "@a", 20);
         assert!(items.is_empty());
     }
+
+    #[test]
+    fn fd_recalls_cjk_filename() {
+        let available = std::process::Command::new("fd")
+            .arg("--version")
+            .output()
+            .is_ok_and(|out| out.status.success());
+        if !available {
+            return;
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("中文.rs"), "fn x() {}").expect("file");
+        let items = fd_path_suggestions(dir.path(), "fd", "@中文", 20);
+        assert!(
+            items.iter().any(|item| item.value.contains("中文.rs")),
+            "fd must recall CJK filename: {:?}",
+            items
+                .iter()
+                .map(|item| item.value.clone())
+                .collect::<Vec<_>>()
+        );
+    }
 }

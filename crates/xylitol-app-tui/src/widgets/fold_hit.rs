@@ -7,6 +7,7 @@ pub enum FoldTarget {
     Diff(String),
     Ask(String),
     Thinking(String),
+    User(String),
     Compaction,
     OutputViewport(String),
     Segment(String),
@@ -124,7 +125,9 @@ fn hover_hits_for(id: HitId, r: &FoldHitRegion) -> Vec<Hit> {
         | FoldTarget::ToolArgs(_)
         | FoldTarget::Diff(_)
         | FoldTarget::Ask(_) => tool_hover_hits(id, r),
-        FoldTarget::Thinking(_) | FoldTarget::LoadEarlier => single_line_hit(id, r),
+        FoldTarget::Thinking(_) | FoldTarget::User(_) | FoldTarget::LoadEarlier => {
+            single_line_hit(id, r)
+        }
         FoldTarget::OutputViewport(_)
         | FoldTarget::Compaction
         | FoldTarget::Segment(_)

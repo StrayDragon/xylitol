@@ -30,14 +30,14 @@ impl UiRoot {
                 chip_hits.extend(bottom_hits);
             }
         }
-        if self.slot.is_editor() && editor.len() > 2 {
+        if self.slot.is_editor() && editor.len() > 2 && width >= 80 {
             let plain = xylitol_tui::utils::strip_ansi_codes(&editor[1]);
             let content =
-                xylitol_tui::truncate_to_width(&plain, width.saturating_sub(1), "", false);
+                xylitol_tui::truncate_to_width(&plain, width.saturating_sub(2), "", false);
             let pad = width
-                .saturating_sub(1)
+                .saturating_sub(2)
                 .saturating_sub(xylitol_tui::visible_width(&content));
-            editor[1] = format!("{content}{}◨", " ".repeat(pad));
+            editor[1] = format!("{content}{} ◨", " ".repeat(pad));
         }
         self.last_slot_close_hit = None;
         if !self.slot.is_editor() {

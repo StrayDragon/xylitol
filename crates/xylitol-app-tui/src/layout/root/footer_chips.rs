@@ -24,7 +24,6 @@ fn fold_differs_from_defaults(fold: &crate::widgets::ScrollbackFold) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FooterAction {
-    Details,
     Sidebar,
     ResetFold,
     FoldSummary,
@@ -192,6 +191,11 @@ impl UiRoot {
     }
 
     pub(crate) fn try_click_painted_chip(&mut self, col: usize, line: &str) -> bool {
+        let plain = xylitol_tui::utils::strip_ansi_codes(line);
+        let width = xylitol_tui::visible_width(&plain);
+        if plain.contains('◨') && col >= width.saturating_sub(2) {
+            return true;
+        }
         let action = self
             .chip_hits_for_painted(line)
             .into_iter()
@@ -226,13 +230,6 @@ impl UiRoot {
 
     pub(crate) fn click_footer_action(&mut self, action: FooterAction) -> bool {
         match action {
-            FooterAction::Details => {
-                if self.session_popup_open {
-                    self.close_session_popup();
-                } else {
-                    self.request_session_popup();
-                }
-            }
             FooterAction::Sidebar => {
                 if self.session_sidebar_on {
                     self.close_session_sidebar();

@@ -689,10 +689,151 @@ fn tool_header_shows_timeout_only_when_requested() {
 #[test]
 fn args_fold_is_per_block() {
     let mut fold = ScrollbackFold::default();
-    assert!(!fold.args_effective("t1"));
+    assert_eq!(fold.args_effective("t1"), ArgsMode::Hidden);
     fold.toggle_args("t1");
-    assert!(fold.args_effective("t1"));
-    assert!(!fold.args_effective("t2"));
+    assert_eq!(fold.args_effective("t1"), ArgsMode::Preview);
+    fold.toggle_args("t1");
+    assert_eq!(fold.args_effective("t1"), ArgsMode::Full);
+    fold.toggle_args("t1");
+    assert_eq!(fold.args_effective("t1"), ArgsMode::Hidden);
+    assert_eq!(fold.args_effective("t2"), ArgsMode::Hidden);
     fold.clear_args_overrides();
-    assert!(!fold.args_effective("t1"));
+    assert_eq!(fold.args_effective("t1"), ArgsMode::Hidden);
+}
+
+#[test]
+fn user_preview_toggles_per_message() {
+    let mut fold = ScrollbackFold::default();
+    assert!(!fold.user_effective("hello"));
+    fold.toggle_user("hello");
+    assert!(fold.user_effective("hello"));
+    assert!(!fold.user_effective("other"));
+    fold.clear_user_overrides();
+    assert!(!fold.user_effective("hello"));
+}
+
+#[test]
+fn tool_args_preview_caps_at_five_lines() {
+    let args = (0..7)
+        .map(|i| format!("arg {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut model = UiModel::default();
+    model.entries.push(UiEntry::Tool {
+        id: "t-args".into(),
+        name: "bash".into(),
+        args_preview: args,
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: String::new(),
+        is_error: false,
+        done: true,
+        timeout_secs: None,
+    });
+    let mut fold = ScrollbackFold {
+        args_expanded: ArgsMode::Preview,
+        ..ScrollbackFold::default()
+    };
+    let theme = LayoutTheme::product_dark();
+    let mut cache = ScrollbackPaintCache::default();
+    let mut hits = FoldHitTable::default();
+    let mut render = |fold: &ScrollbackFold, cache: &mut ScrollbackPaintCache| {
+        render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            fold,
+            &mut crate::activity_fold::ActivityFoldState::default(),
+            100,
+            cache,
+            &mut hits,
+        )
+    };
+    let plain = strip_ansi_codes(&render(&fold, &mut cache).join("\n"));
+    assert!(plain.contains("arg 4"), "{plain}");
+    assert!(!plain.contains("arg 6"), "preview caps at 5: {plain}");
+    assert!(plain.contains("click to expand"), "{plain}");
+    fold.args_expanded = ArgsMode::Full;
+    let plain = strip_ansi_codes(&render(&fold, &mut cache).join("\n"));
+    assert!(plain.contains("arg 6"), "full shows all: {plain}");
+}
+
+#[test]
+fn long_user_message_previews_three_lines() {
+    let text = (0..6)
+        .map(|i| format!("user line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut model = UiModel::default();
+    model.entries.push(UiEntry::User { text: text.clone() });
+    let mut fold = ScrollbackFold::default();
+    let theme = LayoutTheme::product_dark();
+    let mut cache = ScrollbackPaintCache::default();
+    let mut hits = FoldHitTable::default();
+    let lines = render_scrollback(
+        &model,
+        GlyphSet::from_env(),
+        theme,
+        &fold,
+        &mut crate::activity_fold::ActivityFoldState::default(),
+        100,
+        &mut cache,
+        &mut hits,
+    );
+    let plain = strip_ansi_codes(&lines.join("\n"));
+    assert!(plain.contains("user line 2"), "{plain}");
+    assert!(!plain.contains("user line 5"), "preview caps at 3: {plain}");
+    assert!(plain.contains("click to expand"), "{plain}");
+    fold.toggle_user(&text);
+    let expanded = render_scrollback(
+        &model,
+        GlyphSet::from_env(),
+        theme,
+        &fold,
+        &mut crate::activity_fold::ActivityFoldState::default(),
+        100,
+        &mut cache,
+        &mut hits,
+    );
+    let plain = strip_ansi_codes(&expanded.join("\n"));
+    assert!(plain.contains("user line 5"), "expanded shows all: {plain}");
+}
+
+#[test]
+fn product_link_paints_osc8() {
+    let fold = ScrollbackFold::default();
+    let ctx = super::paint::PaintCtx {
+        fold: &fold,
+        glyphs: GlyphSet::from_env(),
+        theme: LayoutTheme::product_dark(),
+        width: 80,
+    };
+    let (lines, _) = super::paint::paint_assistant_block("[site](https://example.com)", ctx);
+    let plain = lines.join("\n");
+    assert!(
+        plain.contains("]8;;https://example.com"),
+        "product markdown links must be OSC8: {plain:?}"
+    );
+}
+
+#[test]
+fn product_mermaid_fence_is_not_raw() {
+    let fold = ScrollbackFold::default();
+    let ctx = super::paint::PaintCtx {
+        fold: &fold,
+        glyphs: GlyphSet::from_env(),
+        theme: LayoutTheme::product_dark(),
+        width: 80,
+    };
+    let (lines, _) = super::paint::paint_assistant_block("```mermaid\nnot a diagram\n```", ctx);
+    let plain = strip_ansi_codes(&lines.join("\n"));
+    assert!(
+        !plain.contains("```mermaid"),
+        "mermaid fence must not paint raw: {plain:?}"
+    );
+    assert!(
+        plain.contains("mermaid"),
+        "mermaid fallback must stay visible: {plain:?}"
+    );
 }

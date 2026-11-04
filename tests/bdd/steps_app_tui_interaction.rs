@@ -82,8 +82,8 @@ fn when_mount_streaming_thinking(tui_interaction: &TuiInteraction) {
 fn then_streaming_thought_body_folded_by_default(tui_interaction: &TuiInteraction) {
     let plain = tui_interaction.mounted_frame.borrow();
     assert!(
-        !plain.contains("consider next edit"),
-        "streaming thinking body must be collapsed by default:\n{plain}"
+        plain.contains("consider next edit"),
+        "collapsed stream must preview the latest line:\n{plain}"
     );
     assert!(
         plain.contains("Thinking"),

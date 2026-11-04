@@ -1,9 +1,8 @@
 use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_host::{
-    HostPump, HostPumpBdd, c2826_slot, c2911_click, click_footer_chip_label,
-    close_session_popup_via_action, editor_text, fresh_pump, open_busy, open_tree_ready, pump_once,
-    put_pump, render_frame, request_session_popup_via_action, set_editor, stats, step_key,
-    take_pump,
+    HostPump, HostPumpBdd, c2826_slot, c2911_click, click_footer_chip_label, editor_text,
+    fresh_pump, open_busy, open_tree_ready, pump_once, put_pump, render_frame, set_editor, stats,
+    step_key, take_pump,
 };
 use crate::bdd::steps_app_tui_interaction::TuiInteraction;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
@@ -40,18 +39,8 @@ fn mount_pointer_scene(tui_interaction: &TuiInteraction) -> String {
 }
 
 thread_local! {
-    static SAW_POPUP_OPEN: RefCell<bool> = const { RefCell::new(false) };
     static SAW_SIDEBAR_OPEN: RefCell<bool> = const { RefCell::new(false) };
     static TREE_THIRD_ROW: RefCell<Option<(u16, u16, String)>> = const { RefCell::new(None) };
-}
-
-fn host_root_popup_open(bdd: &HostPumpBdd) -> bool {
-    let pump = take_pump(bdd);
-    let root = pump.session.ui_root().expect("ui").clone();
-    let open = root.borrow().session_popup_open();
-    drop(root);
-    put_pump(bdd, pump);
-    open
 }
 
 fn host_root_sidebar_on(bdd: &HostPumpBdd) -> bool {
@@ -113,13 +102,6 @@ async fn w_mat31_pointer_only(tui_interaction: &TuiInteraction, host_pump_bdd: &
         assert!(fx.left_click(thinking.0, thinking.1), "思维块点击须被消费");
     }
     assert!(
-        !click_footer_chip_label(host_pump_bdd, "详情").await,
-        "[详情] chip must not be painted"
-    );
-    request_session_popup_via_action(host_pump_bdd).await;
-    SAW_POPUP_OPEN.with(|s| *s.borrow_mut() = host_root_popup_open(host_pump_bdd));
-    close_session_popup_via_action(host_pump_bdd).await;
-    assert!(
         click_footer_chip_label(host_pump_bdd, "侧栏").await,
         "[侧栏] chip"
     );
@@ -130,7 +112,7 @@ async fn w_mat31_pointer_only(tui_interaction: &TuiInteraction, host_pump_bdd: &
     );
 }
 
-#[then("思维块与工具块可展开可收纳且详情弹层与侧栏可开关")]
+#[then("思维块与工具块可展开可收纳且侧栏可开关")]
 fn t_mat31_pointer_reaches_all(tui_interaction: &TuiInteraction, host_pump_bdd: &HostPumpBdd) {
     let frame = {
         let mut slot = tui_interaction.fx.borrow_mut();
@@ -151,11 +133,6 @@ fn t_mat31_pointer_reaches_all(tui_interaction: &TuiInteraction, host_pump_bdd: 
         frame.contains("Read old.rs"),
         "mat31: 收纳块保留摘要行: {frame}"
     );
-    assert!(
-        SAW_POPUP_OPEN.with(|s| *s.borrow()),
-        "mat31: 详情弹层须可经 chip 开启"
-    );
-    assert!(!host_root_popup_open(host_pump_bdd), "弹层须可再关");
     assert!(
         SAW_SIDEBAR_OPEN.with(|s| *s.borrow()),
         "mat31: 侧栏须可经 chip 开启"
@@ -178,9 +155,7 @@ fn g_mat32_default_catalog(tui_interaction: &TuiInteraction) {
         "app.tools.blocks",
         "app.activity.expandNearest",
         "app.activity.collapseNearest",
-        "app.session.popup",
         "app.session.sidebar",
-        "app.session.detailsCycle",
         "app.session.sidebarWidth",
     ] {
         assert!(
@@ -363,7 +338,7 @@ fn w_mat33_render_editor_border(host_pump_bdd: &HostPumpBdd) {
     host_pump_bdd.ansi_frames.borrow_mut().push(frame);
 }
 
-#[then("编辑区上边框右端只有 [详情] chip 且无 [侧栏] chip")]
+#[then("编辑区上边框右端无 [侧栏] chip 且无 [详情] chip")]
 fn t_mat33_narrow_details_only(host_pump_bdd: &HostPumpBdd) {
     let frame = host_pump_bdd
         .ansi_frames

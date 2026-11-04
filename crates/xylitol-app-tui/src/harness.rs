@@ -4539,6 +4539,40 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn h35f_message_update_coalesces_into_tick() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+        session.on_run_started("u");
+        assert!(!session.stream_sync_pending());
+        session.handle_xy(Box::new(XyEvent::MessageUpdate { message: None }));
+        assert!(
+            session.stream_sync_pending(),
+            "MessageUpdate must wait for the next tick"
+        );
+    }
+
+    #[tokio::test]
+    async fn h35e_keybinding_conflict_notice() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+        assert!(
+            !system_notes(&session)
+                .iter()
+                .any(|note| note.contains("Keybinding conflict")),
+            "default bindings must stay silent"
+        );
+        let mut user = xylitol_tui::KeybindingsConfig::new();
+        user.insert("app.interrupt".into(), vec!["ctrl+b".into()]);
+        user.insert("app.session.sidebar".into(), vec!["ctrl+b".into()]);
+        session.set_keybindings_for_test(user);
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|note| note.contains("Keybinding conflict")),
+            "user override conflict must notify: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
     async fn h35d_slash_perf_reports_snapshot() {
         use crate::commands::{PendingSlash, parse_slash_command};
         assert_eq!(parse_slash_command("/perf"), Some(PendingSlash::Perf));

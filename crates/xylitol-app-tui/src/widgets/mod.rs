@@ -14,7 +14,7 @@ pub use queue::render_queue_strip;
 #[cfg(test)]
 pub use scrollback::find_stable_markdown_prefix_end;
 pub(crate) use scrollback::format_token_count;
-pub use scrollback::{ScrollbackFold, ScrollbackPaintCache, render_scrollback};
+pub use scrollback::{ArgsMode, ScrollbackFold, ScrollbackPaintCache, render_scrollback};
 #[cfg(test)]
 pub use todo_bar::TODO_BAR_SPACER_ROWS;
 pub use todo_bar::{

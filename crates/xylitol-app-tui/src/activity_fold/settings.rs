@@ -90,7 +90,7 @@ impl Default for ActivityFoldSettings {
 
 impl ActivityFoldSettings {
     pub fn paints_envelope_header(&self) -> bool {
-        self.collapse_floor == SegmentLevel::L3
+        self.enabled && self.collapse_floor == SegmentLevel::L3
     }
 
     pub fn apply_display_level(&mut self, level: DisplayLevel) {
@@ -122,6 +122,14 @@ mod tests {
         assert!(settings.visible_items.tool_header);
         assert!(settings.visible_items.tool_output);
         assert!(settings.visible_items.diff);
+    }
+
+    #[test]
+    fn disabled_does_not_paint_envelope_header() {
+        let mut settings = ActivityFoldSettings::default();
+        assert!(settings.paints_envelope_header());
+        settings.enabled = false;
+        assert!(!settings.paints_envelope_header());
     }
 
     #[test]

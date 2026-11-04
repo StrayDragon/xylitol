@@ -32,7 +32,7 @@ async fn test_mat33_chip_opens_sidebar(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-mouse-actions/app-tui-mouse-actions.feature",
-    name = "窄终端只有详情 chip"
+    name = "窄终端不绘制视图 chip"
 )]
 fn test_mat33_narrow_details_only(host_pump_bdd: HostPumpBdd) {}
 

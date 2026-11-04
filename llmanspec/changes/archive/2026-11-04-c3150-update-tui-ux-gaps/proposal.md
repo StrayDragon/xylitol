@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 补齐 TUI UX 验收缺口
+branch: sdd/c3150-update-tui-ux-gaps
+base_branch: main
+base_sha: 221c75aea59ad67ebc593c4433063ee5635b610e
 ---
 
 ## Why

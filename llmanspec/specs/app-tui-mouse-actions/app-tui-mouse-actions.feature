@@ -5,15 +5,15 @@
 
   @req:r3031
   规则: pointer-path-for-common-actions
-    产品 TUI 的常用操作 必须均有指针入口：思维块展开、工具与 diff 块展开、输出视口展开、活动段展开与收纳、会话详情弹层显隐、会话侧栏显隐与宽度档循环、队列取回、槽内列表选中与执行、槽关闭。键盘绑定 不得为这些操作的唯一入口。安全网动作例外：中断（Esc）、清空与退出（Ctrl+C）、提交（Enter）、外编（Ctrl+G）、图片粘贴（Ctrl+V）必须保留可用键位。
+    产品 TUI 的常用操作 必须均有指针入口：思维块展开、工具与 diff 块展开、输出视口展开、活动段展开与收纳、会话侧栏显隐与宽度档循环、队列取回、槽内列表选中与执行、槽关闭。键盘绑定 不得为这些操作的唯一入口。安全网动作例外：中断（Esc）、清空与退出（Ctrl+C）、提交（Enter）、外编（Ctrl+G）、图片粘贴（Ctrl+V）必须保留可用键位。
 
     场景: 所有常用操作均可经指针完成
       假如 产品 TUI 已就绪且存在可展开的思维块与工具块
       当 不按任何组合键而仅用左键与滚轮操作
-      那么 思维块与工具块可展开可收纳且详情弹层与侧栏可开关
+      那么 思维块与工具块可展开可收纳且侧栏可开关
   @req:r3032
   规则: default-binding-contraction
-    以下动作 id 必须保留注册与分发，但默认和弦必须为空：app.thinking.toggle、app.tools.expand、app.tools.blocks、app.activity.expandNearest、app.activity.collapseNearest、app.activity.displayLevel、app.session.popup、app.session.sidebar、app.session.detailsCycle、app.session.sidebarWidth。空默认和弦时这些动作 不得响应任何按键；用户经 keybindings.json 重绑后 必须恢复响应。绑定目录 不得因默认和弦为空而移除这些 id。
+    以下动作 id 必须保留注册与分发，但默认和弦必须为空：app.thinking.toggle、app.tools.expand、app.tools.blocks、app.activity.expandNearest、app.activity.collapseNearest、app.activity.displayLevel、app.session.sidebar、app.session.sidebarWidth。空默认和弦时这些动作 不得响应任何按键；用户经 keybindings.json 重绑后 必须恢复响应。绑定目录 不得因默认和弦为空而移除这些 id。
 
     场景: 收缩后默认和弦不触发动作
       假如 产品绑定目录使用默认配置
@@ -26,17 +26,17 @@
       那么 会话侧栏按既有开启路径上屏
   @req:r3033
   规则: dock-action-chips
-    产品 TUI 必须在 编辑区上边框右端绘制视图动作 chip：[详情] 与 [侧栏]，两者 必须可左键点击并分别走与动作 id 相同的开启或关闭路径；对应视图开启时 chip 必须反色标识激活态。标准档（≥80 列）必须同时绘制两者；窄于标准档 必须只绘制 [详情]，点 [侧栏] 不得出现（无 chip 即无入口）。存在非默认折叠态或逐块覆盖时 必须在标准档及以上额外绘制 [重置折叠]，点击等价旧 app.tools.blocks 动作：翻转工具族默认展开态并清空逐块覆盖。chip 与编辑区上边框同高：宽度不足时 必须整 chip 不绘制，不得拆半或换行；不得因此增高编辑区或另加固定区行。chip 行 必须与编辑区上边框同色：未激活 chip 与分隔虚线 必须取当前 thinking 档位对应的边框色（经 ThinkingBorderLevel 派生），激活 chip 必须走 accent 反色；bash 强调色边框生效时 必须同色跟随时令；不得写死 muted，也不得另立色值。
+    产品 TUI 必须在 编辑区上边框右端绘制视图动作 chip：[侧栏]，必须可左键点击并走与动作 id 相同的开启或关闭路径；侧栏开启时 chip 必须反色标识激活态。标准档（≥80 列）必须绘制；窄于标准档 不得绘制 [侧栏] 或 [详情]（无 chip 即无入口）。存在非默认折叠态或逐块覆盖时 必须在标准档及以上额外绘制 [重置折叠]，点击等价旧 app.tools.blocks 动作：翻转工具族默认展开态并清空逐块覆盖。chip 与编辑区上边框同高：宽度不足时 必须整 chip 不绘制，不得拆半或换行；不得因此增高编辑区或另加固定区行。chip 行 必须与编辑区上边框同色：未激活 chip 与分隔虚线 必须取当前 thinking 档位对应的边框色（经 ThinkingBorderLevel 派生），激活 chip 必须走 accent 反色；bash 强调色边框生效时 必须同色跟随时令；不得写死 muted，也不得另立色值。
 
     场景: 编辑区上边框右端视图 chip 可点开侧栏
       假如 产品 TUI 就绪于 120 列终端
       当 左键单击 编辑区上边框右端 [侧栏] chip
       那么 右侧栏上屏且内容区让宽且 [侧栏] chip 反色
 
-    场景: 窄终端只有详情 chip
+    场景: 窄终端不绘制视图 chip
       假如 产品 TUI 就绪于 70 列终端
       当 渲染编辑区上边框
-      那么 编辑区上边框右端只有 [详情] chip 且无 [侧栏] chip
+      那么 编辑区上边框右端无 [侧栏] chip 且无 [详情] chip
   @req:r3034
   规则: dock-click-absolute-row
     固定区内的可点击元素 必须按终端绝对行命中，不得受 transcript 行数上限与视口滚动位置影响；同一屏幕格在滚动前后 必须命中同一动作。队列条 必须整条可点并走与 app.message.dequeue 相同的取回路径。未命中任何固定区元素的点击 不得被应用层吞掉。

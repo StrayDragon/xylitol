@@ -278,8 +278,8 @@ pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction
             }
             FoldAction::Toggle(FoldItem::Args) => {
                 root.toggle_args_default();
-                let on = root.fold_view().args_expanded;
-                notice = format!("fold args: {}", if on { "on" } else { "off" });
+                let mode = root.fold_view().args_expanded;
+                notice = format!("fold args: {mode:?}");
             }
             FoldAction::Toggle(item) => {
                 let mut settings = root.activity().settings.clone();

@@ -25,7 +25,7 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     AtPathSource, ChoiceQuestion, CompletionSource, Focusable, Hit, HitId, HitSpace, InputEvent,
-    SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, fg_rgb,
+    SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, fg_rgb, mix_rgb,
 };
 
 use super::dollar_skill_source::DollarSkillSource;
@@ -162,14 +162,19 @@ impl UiRoot {
     pub fn new() -> Self {
         let theme = LayoutTheme::product_dark();
         let accent = theme.palette().accent;
+        let dim = mix_rgb(accent, theme.palette().surface, 0.55);
         let muted = theme.palette().muted;
+        let pulse = std::sync::Arc::new(AtomicBool::new(false));
         let status_loader = Loader::new(
-            Box::new(move |s| fg_rgb(accent, s)),
+            Box::new(move |s| {
+                let on = pulse.fetch_xor(true, Ordering::SeqCst);
+                fg_rgb(if on { accent } else { dim }, s)
+            }),
             Box::new(move |s| fg_rgb(muted, s)),
             String::new(),
             Some(LoaderIndicatorOptions {
                 frames: vec!["⬢".into()],
-                interval_ms: 80,
+                interval_ms: 100,
             }),
         );
         let mut editor = Editor::new(
@@ -404,7 +409,13 @@ impl UiRoot {
     }
 
     pub fn set_activity_settings(&mut self, settings: crate::activity_fold::ActivityFoldSettings) {
+        let thinking_full = matches!(
+            settings.display_level,
+            crate::activity_fold::DisplayLevel::Recent | crate::activity_fold::DisplayLevel::Full
+        );
         self.fold.apply_visible_items(settings.visible_items);
+        self.fold.thinking_expanded = thinking_full;
+        self.fold.streaming_thinking_expanded = thinking_full;
         self.activity.settings = settings;
     }
 
@@ -416,13 +427,18 @@ impl UiRoot {
     }
 
     pub fn toggle_args_default(&mut self) {
-        self.fold.args_expanded = !self.fold.args_expanded;
+        self.fold.args_expanded = match self.fold.args_expanded {
+            crate::widgets::ArgsMode::Hidden => crate::widgets::ArgsMode::Preview,
+            crate::widgets::ArgsMode::Preview => crate::widgets::ArgsMode::Full,
+            crate::widgets::ArgsMode::Full => crate::widgets::ArgsMode::Hidden,
+        };
         self.bump_upper_gen();
     }
 
     pub fn reset_fold_overrides(&mut self) {
         self.fold.clear_output_overrides();
         self.fold.clear_args_overrides();
+        self.fold.clear_user_overrides();
         self.fold.clear_tools_overrides();
         self.fold.clear_thinking_overrides();
         let mut settings = self.activity.settings.clone();
@@ -471,10 +487,14 @@ impl UiRoot {
     }
 
     pub fn apply_activity_after_turn_end(&mut self) {
-        if self
-            .activity
-            .auto_degrade(&self.ui_model.entries, AutoTrigger::TurnEnd, false)
-        {
+        let degraded =
+            self.activity
+                .auto_degrade(&self.ui_model.entries, AutoTrigger::TurnEnd, false);
+        let expanded = matches!(
+            self.activity.settings.display_level,
+            crate::activity_fold::DisplayLevel::Recent
+        ) && self.activity.expand_nearest(&self.ui_model.entries);
+        if degraded || expanded {
             self.bump_upper_gen();
         }
     }
@@ -514,6 +534,9 @@ impl UiRoot {
             }
             FoldTarget::Thinking(id) => {
                 self.fold.toggle_thinking(&id);
+            }
+            FoldTarget::User(id) => {
+                self.fold.toggle_user(&id);
             }
             FoldTarget::Compaction => {
                 self.fold.compaction_expanded = !self.fold.compaction_expanded;
@@ -2010,6 +2033,72 @@ mod tests {
             dock_before,
             "notice stack must not grow dock footprint"
         );
+    }
+
+    #[test]
+    fn spinner_pulses_color_without_changing_glyph() {
+        use xylitol_tui::utils::strip_ansi_codes;
+        let mut root = UiRoot::new();
+        let mut model = UiModel::new();
+        model.status = Some("working".into());
+        root.apply_ui_model(&model);
+        let first = root
+            .render(80)
+            .into_iter()
+            .find(|line| strip_ansi_codes(line).contains('⬢'))
+            .expect("spinner row");
+        root.status_loader.set_message("working".into());
+        let second = root
+            .render(80)
+            .into_iter()
+            .find(|line| strip_ansi_codes(line).contains('⬢'))
+            .expect("spinner row");
+        assert_ne!(first, second, "spinner color must pulse between frames");
+        assert_eq!(
+            strip_ansi_codes(&first),
+            strip_ansi_codes(&second),
+            "spinner glyph must not change"
+        );
+    }
+
+    #[test]
+    fn input_marker_hit_covers_two_columns() {
+        use xylitol_tui::utils::strip_ansi_codes;
+        let mut root = UiRoot::new();
+        let lines = root.render(80);
+        let line = lines
+            .iter()
+            .find(|line| strip_ansi_codes(line).contains('◨'))
+            .expect("input marker row");
+        let width = xylitol_tui::visible_width(&strip_ansi_codes(line));
+        assert!(
+            root.try_click_painted_chip(width.saturating_sub(2), line),
+            "marker reserves two columns"
+        );
+        assert!(
+            !root.try_click_painted_chip(width.saturating_sub(4), line),
+            "text before the marker must not be a chip"
+        );
+    }
+
+    #[test]
+    fn display_level_controls_thinking_expansion() {
+        let mut root = UiRoot::new();
+        for (level, expected) in [
+            (crate::activity_fold::DisplayLevel::Summary, false),
+            (crate::activity_fold::DisplayLevel::Recent, true),
+            (crate::activity_fold::DisplayLevel::Full, true),
+            (crate::activity_fold::DisplayLevel::Quiet, false),
+        ] {
+            let mut settings = crate::activity_fold::ActivityFoldSettings::default();
+            settings.apply_display_level(level);
+            root.set_activity_settings(settings);
+            assert_eq!(
+                root.fold_view().thinking_expanded,
+                expected,
+                "level {level:?} thinking expansion"
+            );
+        }
     }
 
     #[test]

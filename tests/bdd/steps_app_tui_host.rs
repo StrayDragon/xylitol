@@ -3069,13 +3069,6 @@ pub(crate) async fn request_session_popup_via_action(host_pump_bdd: &HostPumpBdd
     .await;
 }
 
-pub(crate) async fn close_session_popup_via_action(host_pump_bdd: &HostPumpBdd) {
-    run_session_details_action(host_pump_bdd, |root| {
-        root.close_session_popup();
-    })
-    .await;
-}
-
 #[when("切换覆盖弹出框显隐")]
 async fn w_c2875_toggle(host_pump_bdd: &HostPumpBdd) {
     assert!(

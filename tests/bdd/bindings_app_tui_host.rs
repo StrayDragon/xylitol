@@ -201,39 +201,9 @@ fn test_ati_c2895_observe_notice(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "会话弹出层切换渲染关闭"
-)]
-async fn test_ati_c2875_popup(host_pump_bdd: HostPumpBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "弹出层空闲Esc关闭无树链"
-)]
-async fn test_ati_c2914_popup_esc_chain(host_pump_bdd: HostPumpBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "弹出层忙碌Esc传递中止"
-)]
-async fn test_ati_c2914_popup_busy_esc(host_pump_bdd: HostPumpBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "会话侧栏切换与恢复"
 )]
 async fn test_ati_c2905_sidebar(host_pump_bdd: HostPumpBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "侧栏低于标准档回落返回至弹出层"
-)]
-async fn test_ati_c2918_sidebar_fallback(host_pump_bdd: HostPumpBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "侧栏与弹出层共存"
-)]
-async fn test_ati_c2905_coexist(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
@@ -243,21 +213,9 @@ async fn test_ati_c2911_sidebar_width(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "单键三态循环"
-)]
-async fn test_ati_c2911_details_cycle(host_pump_bdd: HostPumpBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "点击侧栏带关闭且选区不穿透"
 )]
 async fn test_ati_c2911_click_sidebar(host_pump_bdd: HostPumpBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "点击覆盖弹出框关闭"
-)]
-async fn test_ati_c2911_click_popup(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",

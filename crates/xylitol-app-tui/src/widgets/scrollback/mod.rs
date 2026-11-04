@@ -35,6 +35,13 @@ use paint::{
     push_wrapped,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArgsMode {
+    Hidden,
+    Preview,
+    Full,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScrollbackFold {
     pub thinking_expanded: bool,
@@ -45,9 +52,11 @@ pub struct ScrollbackFold {
     pub tools_output_expanded: bool,
     pub tool_output_visible: bool,
     pub diff_visible: bool,
-    pub args_expanded: bool,
+    pub args_expanded: ArgsMode,
+    pub user_expanded: bool,
     pub output_overrides: HashMap<String, bool>,
-    pub args_overrides: HashMap<String, bool>,
+    pub args_overrides: HashMap<String, ArgsMode>,
+    pub user_overrides: HashMap<String, bool>,
     pub compaction_expanded: bool,
     pub tools_overrides: HashMap<String, bool>,
     pub thinking_overrides: HashMap<String, bool>,
@@ -64,9 +73,11 @@ impl Default for ScrollbackFold {
             tools_output_expanded: false,
             tool_output_visible: true,
             diff_visible: true,
-            args_expanded: false,
+            args_expanded: ArgsMode::Hidden,
+            user_expanded: false,
             output_overrides: HashMap::new(),
             args_overrides: HashMap::new(),
+            user_overrides: HashMap::new(),
             compaction_expanded: false,
             tools_overrides: HashMap::new(),
             thinking_overrides: HashMap::new(),
@@ -74,11 +85,16 @@ impl Default for ScrollbackFold {
     }
 }
 
-pub type ScrollbackFoldDefaultsKey = (bool, bool);
+pub type ScrollbackFoldDefaultsKey = (bool, bool, ArgsMode, bool);
 
 impl ScrollbackFold {
     pub fn defaults_key(&self) -> ScrollbackFoldDefaultsKey {
-        (self.thinking_expanded, self.tools_expanded)
+        (
+            self.thinking_expanded,
+            self.tools_expanded,
+            self.args_expanded,
+            self.user_expanded,
+        )
     }
 
     pub fn tools_effective(&self, id: &str) -> bool {
@@ -126,7 +142,12 @@ impl ScrollbackFold {
         self.thinking_expanded = items.tool_output;
         self.streaming_thinking_expanded = items.tool_output;
         self.tools_expanded = items.tool_output;
-        self.args_expanded = items.tool_output;
+        self.args_expanded = if items.tool_output {
+            ArgsMode::Full
+        } else {
+            ArgsMode::Hidden
+        };
+        self.user_expanded = items.tool_output;
     }
 
     pub fn toggle_output(&mut self, id: &str) {
@@ -134,7 +155,7 @@ impl ScrollbackFold {
         self.output_overrides.insert(id.to_string(), next);
     }
 
-    pub fn args_effective(&self, id: &str) -> bool {
+    pub fn args_effective(&self, id: &str) -> ArgsMode {
         self.args_overrides
             .get(id)
             .copied()
@@ -142,12 +163,32 @@ impl ScrollbackFold {
     }
 
     pub fn toggle_args(&mut self, id: &str) {
-        let next = !self.args_effective(id);
+        let next = match self.args_effective(id) {
+            ArgsMode::Hidden => ArgsMode::Preview,
+            ArgsMode::Preview => ArgsMode::Full,
+            ArgsMode::Full => ArgsMode::Hidden,
+        };
         self.args_overrides.insert(id.to_string(), next);
+    }
+
+    pub fn user_effective(&self, id: &str) -> bool {
+        self.user_overrides
+            .get(id)
+            .copied()
+            .unwrap_or(self.user_expanded)
+    }
+
+    pub fn toggle_user(&mut self, id: &str) {
+        let next = !self.user_effective(id);
+        self.user_overrides.insert(id.to_string(), next);
     }
 
     pub fn clear_args_overrides(&mut self) {
         self.args_overrides.clear();
+    }
+
+    pub fn clear_user_overrides(&mut self) {
+        self.user_overrides.clear();
     }
 
     pub fn clear_output_overrides(&mut self) {
@@ -366,7 +407,7 @@ pub fn render_scrollback(
             continue;
         }
         let (block_lines, block_hits) = match entry {
-            UiEntry::User { text } => paint_user_block(text, paint_ctx),
+            UiEntry::User { text } => paint_user_block(text, text, paint_ctx),
             UiEntry::Assistant { text } => paint_assistant_block(text, paint_ctx),
             UiEntry::Thinking {
                 id,
