@@ -21,7 +21,8 @@ title: "MCP stateful fixtures and multi-client tests"
 
 - 官方 SDK 版本：TypeScript `@modelcontextprotocol/sdk` 1.32.2（参考实现）；Python `mcp` 2.3.0；Rust `rmcp` 3.8.0（workspace 已用）。
 - 选择 Python 官方 SDK：FastMCP 高层 API 最短路径；与 Rust client 跨实现验证，避免同库盲区。
-- CI 允许 `uv`：前置工具必须已安装；CI setup 安装 `uv` + Python 3.11；pin `mcp==2.3.0`；测试时用 `uv run --python 3.11 --with mcp==2.3.0`。
+- 单脚本实现：`uv add --script tests/support/mcp_stateful_fixture.py mcp==2.3.0` 写入 PEP 723 inline metadata；`uv run tests/support/mcp_stateful_fixture.py` 直接运行，不初始化 venv。
+- CI 允许 `uv`：前置工具必须已安装；CI setup 安装 `uv`；脚本用 `requires-python >=3.11`；`uv run` 按 inline metadata 解析依赖。
 - 若 CI 环境缺失 `uv`，fallback 到 Rust `rmcp` server（官方 Rust SDK，启用 `server` + `transport-io`）。
 - TypeScript 作为参考实现备选；不默认，避免 Node 运行时依赖。
 
@@ -38,7 +39,7 @@ title: "MCP stateful fixtures and multi-client tests"
 
 - 依赖：无；横切支撑 `c3055` / `c3060` / `c3065` / `c3070` / `c3090`。
 - 新 fixture 只落 `tests/support`；现有 minimal fixture 不动。
-- CI 前置：`uv` 与 Python 3.11 必须在测试前安装；不依赖测试时联网。
+- CI 前置：`uv` 必须在测试前安装；Python 3.11 由 `uv run` 按脚本 `requires-python` 处理；依赖由 inline metadata 固定；不依赖测试时联网。
 
 ## Open Questions
 
