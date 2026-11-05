@@ -94,11 +94,17 @@ pub(super) fn paint_cluster_header_row(
         progressive,
         thought_dur.as_deref(),
     );
-    if counts.is_thought_only()
-        && live_think.as_deref() == Some(STREAMING_THINK_ID)
-        && !fold.thinking_effective(STREAMING_THINK_ID)
-    {
-        let latest = model.streaming_thinking.lines().last().unwrap_or("").trim();
+    if counts.is_thought_only() && !expanded {
+        let streaming_latest = if live_think.as_deref() == Some(STREAMING_THINK_ID) {
+            model.streaming_thinking.lines().last().unwrap_or("").trim()
+        } else {
+            ""
+        };
+        let latest = if streaming_latest.is_empty() {
+            latest_thinking_line(model, cl).unwrap_or("")
+        } else {
+            streaming_latest
+        };
         if !latest.is_empty() {
             plain.push_str(" · ");
             plain.push_str(latest);
@@ -146,7 +152,16 @@ pub(super) fn paint_folded_streaming_thought(
         glyphs.fold()
     };
     let header = if live_open_cluster {
-        theme.paint_muted(&format!("{marker} Thinking"))
+        let mut plain = format!("{marker} Thinking");
+        if !expanded {
+            let latest = text.lines().last().unwrap_or("").trim();
+            if !latest.is_empty() {
+                plain.push_str(" · ");
+                plain.push_str(latest);
+            }
+        }
+        let plain = truncate_to_width(&plain, width, "…", true);
+        theme.paint_muted(&plain)
     } else {
         let counts = streaming_thought_counts();
         let mut plain = format_cluster_header(glyphs, &counts, expanded, true, None);
@@ -174,21 +189,41 @@ pub(super) fn paint_folded_streaming_thought(
     );
 }
 
+fn latest_thinking_line<'a>(
+    model: &'a UiModel,
+    cluster: &crate::activity_fold::ActivityCluster,
+) -> Option<&'a str> {
+    for idx in cluster_middle_indices(&model.entries, cluster)
+        .into_iter()
+        .rev()
+    {
+        if let Some(UiEntry::Thinking { text, .. }) = model.entries.get(idx) {
+            let latest = text.lines().last().unwrap_or("").trim();
+            if !latest.is_empty() {
+                return Some(latest);
+            }
+        }
+    }
+    None
+}
+
 fn thought_duration_label(
     model: &UiModel,
     cluster: &crate::activity_fold::ActivityCluster,
 ) -> Option<String> {
     let mut secs = 0u64;
+    let mut found = false;
     for idx in cluster_middle_indices(&model.entries, cluster) {
         if let Some(UiEntry::Thinking {
             elapsed_secs: Some(s),
             ..
         }) = model.entries.get(idx)
         {
+            found = true;
             secs = secs.saturating_add(*s);
         }
     }
-    (secs > 0).then(|| format_elapsed_secs(secs))
+    found.then(|| format_elapsed_secs(secs))
 }
 
 pub(super) fn is_open_live_cluster(

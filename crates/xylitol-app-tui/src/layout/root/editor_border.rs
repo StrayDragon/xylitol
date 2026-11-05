@@ -18,11 +18,8 @@ impl UiRoot {
     }
 
     pub(crate) fn chrome_button_paint(&self) -> Box<dyn Fn(&str) -> String> {
-        let paint = self
-            .theme
-            .palette()
-            .thinking_border_paint(ThinkingBorderLevel::Off);
-        Box::new(move |s: &str| paint(s))
+        let theme = self.theme;
+        Box::new(move |s: &str| theme.paint_muted(s))
     }
 
     pub(crate) fn operation_zone_paint(&self) -> Box<dyn Fn(&str) -> String> {

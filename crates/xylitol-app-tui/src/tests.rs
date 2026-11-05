@@ -4691,6 +4691,76 @@ fn activity_fold_att23_l2_shows_summary_keeps_user_asst_scrollnotice() {
 }
 
 #[test]
+fn live_agent_end_sets_worked_for_clock() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+    session
+        .ui_model_mut()
+        .entries
+        .push(crate::bridge::UiEntry::User { text: "u".into() });
+    session
+        .ui_model_mut()
+        .entries
+        .push(crate::bridge::UiEntry::Thinking {
+            id: "th".into(),
+            text: "consider".into(),
+            elapsed_secs: Some(0),
+        });
+    session.apply_xy_unfenced(Box::new(crate::driver::XyEvent::AgentStart {
+        session_id: "s".into(),
+        model: "m".into(),
+    }));
+    session.apply_xy_unfenced(Box::new(crate::driver::XyEvent::AgentEnd {
+        messages: Vec::new(),
+    }));
+    let root = session.ui_root().expect("ui").clone();
+    root.borrow_mut()
+        .activity_mut()
+        .force_level("seg-0", super::activity_fold::SegmentLevel::L3);
+    root.borrow_mut().touch_activity();
+    let plain = xylitol_tui::utils::strip_ansi_codes(&root.borrow_mut().render(100).join("\n"));
+    assert!(
+        plain.contains("Worked for 0s"),
+        "live AgentEnd must stamp the segment clock: {plain}"
+    );
+}
+
+#[test]
+fn activity_fold_worked_for_zero_seconds() {
+    use super::activity_fold::{SegmentClock, SegmentLevel};
+    use super::layout::UiRoot;
+    use time::macros::datetime;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: "th".into(),
+        text: "consider".into(),
+        elapsed_secs: Some(0),
+    });
+    model
+        .entries
+        .push(super::bridge::UiEntry::Assistant { text: "a".into() });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L3);
+    root.activity_mut().set_clock(
+        "seg-0",
+        SegmentClock {
+            start: Some(datetime!(2026-01-01 0:00 UTC)),
+            end: Some(datetime!(2026-01-01 0:00 UTC)),
+        },
+    );
+    root.touch_activity();
+    let plain = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Worked for 0s"),
+        "zero-duration segment must show seconds: {plain}"
+    );
+}
+
+#[test]
 fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
     use super::activity_fold::{SegmentClock, SegmentLevel};
     use super::layout::UiRoot;
@@ -5512,7 +5582,13 @@ fn activity_fold_thinking_only_is_thought_not_explored() {
         "must not invent Explored: {plain}"
     );
     assert!(
-        !plain.contains("consider"),
+        plain
+            .lines()
+            .any(|l| l.contains("Thought") && l.contains("consider")),
+        "folded Thought header must preview the latest line: {plain}"
+    );
+    assert!(
+        !plain.lines().any(|l| l.trim() == "consider"),
         "Thought cluster kids stay folded by default: {plain}"
     );
     assert!(
@@ -6030,8 +6106,16 @@ fn activity_fold_live_thinking_stream_keeps_own_bar_in_tool_cluster() {
     ));
     let folded = strip_ansi(&root.render(100).join("\n"));
     assert!(
-        !folded.contains("weigh results"),
-        "clicking the Thinking bar hides the stream: {folded}"
+        folded
+            .lines()
+            .any(|l| l.contains("Thinking") && l.contains("weigh results")),
+        "folded Thinking bar keeps the latest-line preview: {folded}"
+    );
+    assert!(
+        !folded
+            .lines()
+            .any(|l| l.trim() == "command done, now weigh results"),
+        "clicking the Thinking bar hides the stream body: {folded}"
     );
     assert!(
         folded.contains("Running 1 command"),
@@ -6965,7 +7049,13 @@ fn activity_fold_live_thinking_folds_after_channel_end() {
         "settled thinking must switch to Thought: {settled}"
     );
     assert!(
-        !settled.contains("live thought body"),
+        settled
+            .lines()
+            .any(|l| l.contains("Thought") && l.contains("live thought body")),
+        "folded Thought header must preview the latest line: {settled}"
+    );
+    assert!(
+        !settled.lines().any(|l| l.trim() == "live thought body"),
         "settled thinking body folds by default: {settled}"
     );
 }

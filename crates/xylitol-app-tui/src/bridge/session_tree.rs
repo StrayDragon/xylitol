@@ -426,7 +426,7 @@ fn assistant_parts_to_ui(
                     out.push(UiEntry::Thinking {
                         id,
                         text,
-                        elapsed_secs: thought_elapsed.filter(|s| *s > 0),
+                        elapsed_secs: thought_elapsed,
                     });
                 }
             }

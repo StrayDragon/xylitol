@@ -68,7 +68,7 @@ impl UiRoot {
             let buttons = self.chrome_button_paint();
             let left = border("│");
             let right = border("│");
-            let prompt = buttons(self.glyphs.user());
+            let prompt = self.theme.paint_user(self.glyphs.user());
             let marker = if self.session_sidebar_on {
                 self.theme.paint_chip("◨", true)
             } else {

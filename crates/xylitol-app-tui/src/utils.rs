@@ -58,8 +58,7 @@ impl ThoughtClock {
 }
 
 fn secs_between(start: Instant, end: Instant) -> Option<u64> {
-    let secs = end.saturating_duration_since(start).as_secs();
-    (secs > 0).then_some(secs)
+    Some(end.saturating_duration_since(start).as_secs())
 }
 
 pub fn elapsed_from_persist_ms(
@@ -67,9 +66,9 @@ pub fn elapsed_from_persist_ms(
     started_at_ms: Option<u64>,
     ended_at_ms: Option<u64>,
 ) -> Option<u64> {
-    elapsed_secs.filter(|s| *s > 0).or_else(|| {
+    elapsed_secs.or_else(|| {
         let start = started_at_ms?;
         let end = ended_at_ms?;
-        end.checked_sub(start).map(|d| d / 1000).filter(|s| *s > 0)
+        end.checked_sub(start).map(|d| d / 1000)
     })
 }

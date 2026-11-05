@@ -125,16 +125,18 @@ fn thought_duration_label(
     cluster: &crate::activity_fold::ActivityCluster,
 ) -> Option<String> {
     let mut secs = 0u64;
+    let mut found = false;
     for idx in crate::activity_fold::cluster_middle_indices(entries, cluster) {
         if let Some(UiEntry::Thinking {
             elapsed_secs: Some(s),
             ..
         }) = entries.get(idx)
         {
+            found = true;
             secs = secs.saturating_add(*s);
         }
     }
-    (secs > 0).then(|| format_elapsed_secs(secs))
+    found.then(|| format_elapsed_secs(secs))
 }
 
 pub struct SceneBuilder {

@@ -15,9 +15,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use time::OffsetDateTime;
 
 use xylitol_tui::{InputEvent, InputReaction, PointerClickPhase, RenderError, TUI, Terminal};
 
+use crate::activity_fold::{SegmentClock, partition_segments};
 use crate::driver::{XyDriver, XyDriverError, XyEvent};
 use xylitol_plugin_sdk::XyBashResult;
 
@@ -89,6 +91,7 @@ pub struct HostSession<T: Terminal> {
     stage_name_attempted: bool,
     stage_name_request_pending: bool,
     completed_turns: u64,
+    agent_started_at: Option<OffsetDateTime>,
     stream_sync_pending: bool,
     run_active: bool,
     bash_active: bool,
@@ -162,6 +165,7 @@ impl<T: Terminal> HostSession<T> {
             stage_name_attempted: false,
             stage_name_request_pending: false,
             completed_turns: 0,
+            agent_started_at: None,
             stream_sync_pending: false,
             run_active: false,
             bash_active: false,
@@ -1327,9 +1331,27 @@ impl<T: Terminal> HostSession<T> {
             XyEvent::TextDelta(_) | XyEvent::ThinkingDelta(_) | XyEvent::MessageUpdate { .. }
         );
         match xy.as_ref() {
+            XyEvent::AgentStart { .. } => {
+                self.agent_started_at = Some(OffsetDateTime::now_utc());
+            }
             XyEvent::AgentEnd { .. } => {
                 self.run_active = false;
                 self.completed_turns = self.completed_turns.saturating_add(1);
+                let end = OffsetDateTime::now_utc();
+                if let (Some(start), Some(root)) =
+                    (self.agent_started_at.take(), self.ui_root.as_ref())
+                    && let Some(seg) = partition_segments(&self.ui_model.entries).last()
+                {
+                    let mut root = root.borrow_mut();
+                    root.activity_mut().set_clock(
+                        &seg.id,
+                        SegmentClock {
+                            start: Some(start),
+                            end: Some(end),
+                        },
+                    );
+                    root.touch_activity();
+                }
                 let context = StageNameContext {
                     attempted: self.stage_name_attempted,
                     has_name: self.ui_model.stage_name.is_some(),

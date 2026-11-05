@@ -445,7 +445,7 @@ pub(super) fn paint_thinking_block(
     } else {
         glyphs.fold()
     };
-    let dur = elapsed_secs.filter(|s| *s > 0).map(format_elapsed_secs);
+    let dur = elapsed_secs.map(format_elapsed_secs);
     let label = thought_header_body(dur.as_deref());
     let header = theme.paint_muted(&format!("{marker} {label}"));
     let header_row = lines.len();

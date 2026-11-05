@@ -2045,22 +2045,48 @@ mod tests {
     }
 
     #[test]
-    fn prompt_and_marker_keep_thinking_off_colour() {
+    fn prompt_and_marker_use_button_colours() {
         let mut root = UiRoot::new();
         root.set_term_cols(80);
         root.set_thinking_level_ui("high".into());
         let lines = root.render(80);
         let raw = lines.join("\n");
-        let off = crate::layout::LayoutTheme::product_dark()
-            .palette()
-            .thinking_border_rgb(xylitol_tui::ThinkingBorderLevel::Off);
+        let palette = crate::layout::LayoutTheme::product_dark().palette();
         assert!(
-            raw.contains(&xylitol_tui::fg_rgb(off, "❯")),
-            "prompt must stay on thinking-off colour"
+            raw.contains(&xylitol_tui::fg_rgb(palette.user, "❯")),
+            "prompt must use the user colour"
         );
         assert!(
-            raw.contains(&xylitol_tui::fg_rgb(off, "◨")),
-            "inactive marker must stay on thinking-off colour"
+            raw.contains(&xylitol_tui::fg_rgb(palette.muted, "◨")),
+            "inactive marker must use the muted default"
+        );
+    }
+
+    #[test]
+    fn summary_click_with_body_notifies_level() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        let mut model = UiModel::new();
+        model
+            .entries
+            .push(crate::bridge::UiEntry::User { text: "hi".into() });
+        model.entries.push(crate::bridge::UiEntry::Assistant {
+            text: "hello".into(),
+        });
+        root.apply_ui_model(&model);
+        let lines = root.render(120);
+        let line = lines
+            .iter()
+            .find(|line| plain(line).contains("[▤ 摘要]"))
+            .expect("summary row");
+        let plain_line = plain(line);
+        let col = xylitol_tui::visible_width(&plain_line[..plain_line.find("[▤ 摘要]").unwrap()]);
+        assert!(root.try_click_painted_chip(col, line));
+        assert!(
+            root.client_notices
+                .iter()
+                .any(|notice| notice.body.contains("显示等级")),
+            "summary click must always notify"
         );
     }
 

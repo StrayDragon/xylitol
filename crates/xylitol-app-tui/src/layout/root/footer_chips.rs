@@ -195,15 +195,17 @@ impl UiRoot {
                 }
             }
             FooterAction::FoldSummary => {
-                let had_body = !self.ui_model.entries.is_empty();
                 self.cycle_display_level();
-                if !had_body {
-                    let level = self.activity.settings.display_level;
-                    self.push_client_notice(
-                        super::ClientNoticeKind::Info,
-                        format!("显示等级: {level:?}"),
-                    );
-                }
+                let label = match self.activity.settings.display_level {
+                    crate::activity_fold::DisplayLevel::Summary => "摘要",
+                    crate::activity_fold::DisplayLevel::Recent => "最近",
+                    crate::activity_fold::DisplayLevel::Full => "完整",
+                    crate::activity_fold::DisplayLevel::Quiet => "安静",
+                };
+                self.push_client_notice(
+                    super::ClientNoticeKind::Info,
+                    format!("显示等级: {label}"),
+                );
             }
         }
         true
@@ -296,16 +298,15 @@ mod tests {
     }
 
     #[test]
-    fn button_chip_keeps_thinking_off_colour() {
+    fn button_chip_uses_muted_colour() {
         let palette = crate::layout::LayoutTheme::product_dark().palette();
-        let off = palette.thinking_border_rgb(xylitol_tui::ThinkingBorderLevel::Off);
         let row = chip_row_for("high");
         let dashes = first_sgr(&row);
         let chip = rgb_after(&row, "[▤ 摘要]");
         assert_eq!(
             chip,
-            (off.r, off.g, off.b),
-            "button chip must stay on the thinking-off colour"
+            (palette.muted.r, palette.muted.g, palette.muted.b),
+            "button chip must use the muted default"
         );
         assert_ne!(
             chip, dashes,

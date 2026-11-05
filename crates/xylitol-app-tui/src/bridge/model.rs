@@ -546,7 +546,7 @@ impl UiModel {
         let text = std::mem::take(&mut self.streaming_thinking);
         self.streaming_think_id = None;
         let elapsed_secs = match elapsed_override {
-            Some(secs) => (secs > 0).then_some(secs),
+            Some(secs) => Some(secs),
             None => {
                 if !self.thought_clock.has_ended() {
                     self.thought_clock.stamp_end();
