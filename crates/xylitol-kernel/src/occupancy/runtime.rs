@@ -184,6 +184,8 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
     let trust_audit = assembly.trust_audit.clone();
+    let agent_profile = assembly.agent_profile.clone();
+    let agent_profile_fingerprint = assembly.agent_profile_fingerprint.clone();
     let ports = build_ports(config, assembly)?;
     ctx.provide(xylitol_plugin_sdk::RuntimeSessionStore(ports.store.clone()))
         .map_err(|e| format!("provide runtime session store: {e}"))?;
@@ -197,7 +199,8 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
             mcp_servers,
             default_model_id.clone(),
         )
-        .with_prepare_ctx(ctx, loader),
+        .with_prepare_ctx(ctx, loader)
+        .with_agent_profile(agent_profile, agent_profile_fingerprint),
     );
     Ok(HostState::from_bootstrap(
         ports,

@@ -27,6 +27,16 @@ pub struct SessionHeader {
     pub parent_session: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fork_at_entry_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_profile_fingerprint: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionProfile {
+    pub name: Option<String>,
+    pub fingerprint: Option<String>,
 }
 
 fn default_version() -> u32 {

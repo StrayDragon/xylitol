@@ -29,6 +29,8 @@ pub struct ProductOccupancyFactory {
     project_trusted: bool,
     mcp_servers: Vec<McpServerSpec>,
     default_model_id: Option<String>,
+    agent_profile: Option<String>,
+    agent_profile_fingerprint: Option<String>,
     ctx: Option<xylitol_plugin_sdk::rt::Ctx>,
     _loader: Option<rutis_loader::Loader>,
 }
@@ -49,9 +51,21 @@ impl ProductOccupancyFactory {
             project_trusted,
             mcp_servers,
             default_model_id,
+            agent_profile: None,
+            agent_profile_fingerprint: None,
             ctx: None,
             _loader: None,
         }
+    }
+
+    pub fn with_agent_profile(
+        mut self,
+        profile: Option<String>,
+        fingerprint: Option<String>,
+    ) -> Self {
+        self.agent_profile = profile;
+        self.agent_profile_fingerprint = fingerprint;
+        self
     }
 
     pub fn with_prepare_ctx(
@@ -138,6 +152,10 @@ impl OccupancyFactory for ProductOccupancyFactory {
                 .collect(),
         );
         attach_optional_context(&mut driver, self.ctx.as_ref(), &self.mcp_servers);
+        driver.set_session_profile(xylitol_plugin_sdk::session::SessionProfile {
+            name: self.agent_profile.clone(),
+            fingerprint: self.agent_profile_fingerprint.clone(),
+        });
         driver
             .agent
             .set_cwd(workspace.to_string_lossy().into_owned());

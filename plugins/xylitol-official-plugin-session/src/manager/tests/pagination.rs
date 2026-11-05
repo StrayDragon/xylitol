@@ -14,6 +14,8 @@ fn header(sid: &str) -> SessionEntry {
         cwd: ".".into(),
         parent_session: None,
         fork_at_entry_id: None,
+        agent_profile: None,
+        agent_profile_fingerprint: None,
     })
 }
 

@@ -20,8 +20,8 @@ pub use checkpoint::{
 pub use entries::{
     BranchSummaryEntry, CompactionEntry, CompactionPolicySnapshot, CustomEntry, CustomMessageEntry,
     EntryBase, ForkPosition, LabelEntry, MessageEntry, ModelChangeEntry, SESSION_VERSION,
-    SessionContext, SessionEntry, SessionHeader, SessionInfoEntry, ThinkingLevelChangeEntry,
-    build_context_entries, done_bash_ids, fold_interrupted_bash_rows,
+    SessionContext, SessionEntry, SessionHeader, SessionInfoEntry, SessionProfile,
+    ThinkingLevelChangeEntry, build_context_entries, done_bash_ids, fold_interrupted_bash_rows,
 };
 pub use graph::{
     Branch, ContextView, EdgeKind, EdgeRecord, GraphError, WorkspaceRef, build_context, prefix_hash,
@@ -118,6 +118,24 @@ mod session_tree_tests {
     }
 
     #[test]
+    fn header_serializes_profile_metadata() {
+        let header = SessionEntry::Header(SessionHeader {
+            entry_type: "session".into(),
+            version: SESSION_VERSION,
+            id: "s1".into(),
+            timestamp: 0,
+            cwd: "/tmp".into(),
+            parent_session: None,
+            fork_at_entry_id: None,
+            agent_profile: Some("review".into()),
+            agent_profile_fingerprint: Some("abc".into()),
+        });
+        let v = serde_json::to_value(&header).unwrap();
+        assert_eq!(v["agentProfile"], "review");
+        assert_eq!(v["agentProfileFingerprint"], "abc");
+    }
+
+    #[test]
     fn entry_shell_serializes_parent_id_camel_and_version_5() {
         let header = SessionEntry::Header(SessionHeader {
             entry_type: "session".into(),
@@ -127,6 +145,8 @@ mod session_tree_tests {
             cwd: "/tmp".into(),
             parent_session: Some("p".into()),
             fork_at_entry_id: None,
+            agent_profile: None,
+            agent_profile_fingerprint: None,
         });
         let v = serde_json::to_value(&header).unwrap();
         assert_eq!(v["version"], 7);
@@ -141,6 +161,8 @@ mod session_tree_tests {
             cwd: "/tmp".into(),
             parent_session: Some("p".into()),
             fork_at_entry_id: Some("u6".into()),
+            agent_profile: None,
+            agent_profile_fingerprint: None,
         });
         let v = serde_json::to_value(&with_cut).unwrap();
         assert_eq!(v["forkAtEntryId"], "u6");
@@ -333,6 +355,8 @@ mod session_tree_tests {
             cwd: "/tmp".into(),
             parent_session: Some("p".into()),
             fork_at_entry_id: None,
+            agent_profile: None,
+            agent_profile_fingerprint: None,
         });
         let raw_header = serde_json::to_string(&header).unwrap();
         assert!(

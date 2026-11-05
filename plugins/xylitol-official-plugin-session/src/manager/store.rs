@@ -41,6 +41,21 @@ impl XySessionStore for SessionManager {
         SessionManager::build_session_context_entries(self, session_id).await
     }
 
+    async fn session_profile(
+        &self,
+        session_id: &str,
+    ) -> Result<xylitol_plugin_sdk::session::SessionProfile, XySessionStoreError> {
+        SessionManager::session_profile(self, session_id).await
+    }
+
+    async fn set_session_profile(
+        &self,
+        session_id: &str,
+        profile: xylitol_plugin_sdk::session::SessionProfile,
+    ) -> Result<(), XySessionStoreError> {
+        SessionManager::set_session_profile(self, session_id, profile).await
+    }
+
     async fn append_session_entry(
         &self,
         session_id: &str,

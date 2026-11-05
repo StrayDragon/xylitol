@@ -46,6 +46,21 @@ impl super::XyInProcessDriver {
         }
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
         self.bind_todo_session(Some(session_id)).await;
+        let stored_profile = self.store.session_profile(session_id).await?;
+        if stored_profile.fingerprint.is_some()
+            && stored_profile.fingerprint != self.session_profile.fingerprint
+        {
+            self.profile_mismatch_notice = Some(format!(
+                "agent profile changed since session start: {} -> {}; resume continues without compaction",
+                stored_profile.name.as_deref().unwrap_or("unknown"),
+                self.session_profile.name.as_deref().unwrap_or("current")
+            ));
+        }
+        if stored_profile != self.session_profile {
+            self.store
+                .set_session_profile(session_id, self.session_profile.clone())
+                .await?;
+        }
         self.agent.restore_thinking_level(context.thinking_level);
         self.agent.clear_tool_freeze();
         self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Resume);
@@ -222,6 +237,12 @@ impl super::XyInProcessDriver {
             .create(&session_id, cwd.as_deref(), None)
             .await
             .map_err(XyDriverError::from)?;
+        if self.session_profile.name.is_some() || self.session_profile.fingerprint.is_some() {
+            self.store
+                .set_session_profile(&session_id, self.session_profile.clone())
+                .await
+                .map_err(XyDriverError::from)?;
+        }
         if let Some(previous) = self.agent.session_id().map(str::to_string)
             && let Some(hub) = &self.prepare_hub
         {

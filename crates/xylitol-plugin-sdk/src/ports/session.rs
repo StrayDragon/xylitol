@@ -33,6 +33,21 @@ pub struct SessionListEntry {
 pub trait XySessionStore: Send + Sync {
     async fn exists(&self, session_id: &str) -> bool;
 
+    async fn session_profile(
+        &self,
+        _session_id: &str,
+    ) -> Result<crate::session::SessionProfile, XySessionStoreError> {
+        Ok(crate::session::SessionProfile::default())
+    }
+
+    async fn set_session_profile(
+        &self,
+        _session_id: &str,
+        _profile: crate::session::SessionProfile,
+    ) -> Result<(), XySessionStoreError> {
+        Ok(())
+    }
+
     async fn load_entries(
         &self,
         session_id: &str,

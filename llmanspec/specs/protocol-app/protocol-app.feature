@@ -408,6 +408,10 @@
   规则: generate-session-name-method
     产品方法表 须登记会话阶段名生成 unary `generate_session_name`（写入、Result、Queued），参数含可选 `force`（布尔，缺省 false），返回 `{ name }`。该命令 须经 `Command::GenerateSessionName { force }` 反序列化，不得退回未登记的 REST 产品动词；幂等语义 按 JSON-RPC request id 保持。由协议注册表测试覆盖，不扩 BDD step。
 
+  @req:r3247
+  规则: session-header-profile
+    session header 须含可选 agent_profile 与 agent_profile_fingerprint；formatVersion 保持 7；旧 header 缺字段须按 None 解析；不得把 profile 写入 config 或模型上下文。由单测覆盖，不扩 BDD step。
+
   @req:r3224
   规则: subscribe-workspaces
     subscribe 载荷 须正式化 `workspaces` 列表（primary = 首项）；缺省回退既有 `cwd`；additional 条目在 MVP 产生可读诊断且不启用。`Command::Subscribe` 须含 `workspaces: Vec<String>`（serde 缺省空）。由 host / 协议单测覆盖，不扩 BDD step。

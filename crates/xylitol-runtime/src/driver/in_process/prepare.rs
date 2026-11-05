@@ -104,6 +104,14 @@ impl XyInProcessDriver {
         self.reload_agent_dir.as_ref()
     }
 
+    pub fn set_session_profile(&mut self, profile: xylitol_plugin_sdk::session::SessionProfile) {
+        self.session_profile = profile;
+    }
+
+    pub fn take_profile_mismatch_notice(&mut self) -> Option<String> {
+        self.profile_mismatch_notice.take()
+    }
+
     pub fn set_trust_audit_config(&mut self, config: crate::trust::TrustAuditConfig) {
         self.trust_audit = config;
     }

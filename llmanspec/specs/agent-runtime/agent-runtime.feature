@@ -637,6 +637,10 @@
   规则: tool-workspace-membership
     工具执行上下文 须携带会话 workspace set；`XyToolCtx.workspace` 不在 set 内时 须拒绝执行并返回可分类错误；set 为空时不限制。LLM 不得 add / remove / switch workspace。由 runtime 单测覆盖，不扩 BDD step。
 
+  @req:r3248
+  规则: resume-profile-diff
+    resume 须读取 session header 的 profile fingerprint 并与当前 profile 比较；不同须产生可读 notice（old -> new）；不得静默使用错 profile。由单测覆盖，不扩 BDD step。
+
   @req:r3230
   规则: session-prepare-workspaces
     SessionPrepare 事件 须携带 workspaces（primary 在前）；无 workspace 时回退 agent cwd；MCP hub 按 workspace set 建 claim，stdio 连接 current_dir 为对应 workspace。由单测 / fixture 覆盖，不扩 BDD step。

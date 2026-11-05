@@ -259,6 +259,8 @@ mod tests {
             cwd: "/tmp".into(),
             parent_session: None,
             fork_at_entry_id: None,
+            agent_profile: None,
+            agent_profile_fingerprint: None,
         })
     }
 

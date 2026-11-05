@@ -9,6 +9,7 @@ repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
+sha2 = { workspace = true }
 xylitol-plugin-sdk = { workspace = true }
 xylitol-runtime = { workspace = true }
 xylitol-protocol = { workspace = true }

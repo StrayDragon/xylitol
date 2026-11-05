@@ -302,3 +302,18 @@ async fn write_entries_to_disk_failure_keeps_original_intact() {
     let after = tokio::fs::read_to_string(&file).await.unwrap();
     assert_eq!(original, after, "failed rewrite must not touch original");
 }
+
+#[tokio::test]
+async fn session_profile_round_trips_through_header() {
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = SessionManager::new(dir.path().join("sessions"));
+    mgr.create("s1", Some("."), None).await.unwrap();
+    let profile = xylitol_plugin_sdk::session::SessionProfile {
+        name: Some("review".into()),
+        fingerprint: Some("fp".into()),
+    };
+    mgr.set_session_profile("s1", profile.clone())
+        .await
+        .unwrap();
+    assert_eq!(mgr.session_profile("s1").await.unwrap(), profile);
+}

@@ -73,6 +73,8 @@ pub struct BootstrappedAgent {
     tool_features: crate::driver::ToolFeatures,
     driver_context: crate::driver::DriverContext,
     trust_audit: xylitol_runtime::TrustAuditConfig,
+    agent_profile: Option<String>,
+    agent_profile_fingerprint: Option<String>,
 }
 
 pub struct BootstrappedRuntime {
@@ -195,6 +197,10 @@ impl BootstrappedAgent {
         );
         driver.set_mcp_server_ids(mcp_ids);
         driver.set_trust_audit_config(self.trust_audit);
+        driver.set_session_profile(xylitol_plugin_sdk::session::SessionProfile {
+            name: self.agent_profile,
+            fingerprint: self.agent_profile_fingerprint,
+        });
         let todo_gw = driver.todo_gateway();
         let sid = self.session_id.clone();
         let _ = block_on_bootstrap_task("bind todo session", async move {
@@ -239,6 +245,8 @@ pub struct ResolvedAssembly {
     pub tool_features: crate::driver::ToolFeatures,
     pub project_trusted: bool,
     pub trust_audit: xylitol_runtime::TrustAuditConfig,
+    pub agent_profile: Option<String>,
+    pub agent_profile_fingerprint: Option<String>,
 }
 
 impl ResolvedAssembly {
@@ -299,9 +307,33 @@ impl std::fmt::Display for BootstrapError {
 impl std::error::Error for BootstrapError {}
 
 struct ProfileAssembly {
+    name: Option<String>,
+    fingerprint: Option<String>,
     system_prompt: Option<String>,
     model: Option<String>,
     tools: Vec<String>,
+}
+
+fn profile_fingerprint(
+    system_prompt: Option<&str>,
+    model: Option<&str>,
+    tools: &[String],
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(system_prompt.unwrap_or(""));
+    hasher.update(b"\0");
+    hasher.update(model.unwrap_or(""));
+    hasher.update(b"\0");
+    for tool in tools {
+        hasher.update(tool.as_bytes());
+        hasher.update(b"\0");
+    }
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn resolve_profile_assembly(
@@ -326,15 +358,23 @@ fn resolve_profile_assembly(
         }
         None => app_config.and_then(|cfg| cfg.resolve_default_profile().ok()),
     };
+    let system_prompt = resolved
+        .as_ref()
+        .and_then(|profile| profile.system_prompt.clone());
+    let model = resolved.as_ref().map(|profile| profile.model_id.clone());
+    let tools = resolved
+        .as_ref()
+        .map(|profile| profile.tools.clone())
+        .unwrap_or_default();
+    let fingerprint = resolved
+        .as_ref()
+        .map(|_| profile_fingerprint(system_prompt.as_deref(), model.as_deref(), &tools));
     Ok(ProfileAssembly {
-        system_prompt: resolved
-            .as_ref()
-            .and_then(|profile| profile.system_prompt.clone()),
-        model: resolved.as_ref().map(|profile| profile.model_id.clone()),
-        tools: resolved
-            .as_ref()
-            .map(|profile| profile.tools.clone())
-            .unwrap_or_default(),
+        name: agent_profile.map(str::to_string),
+        fingerprint,
+        system_prompt,
+        model,
+        tools,
     })
 }
 
@@ -741,6 +781,8 @@ pub fn resolve_assembly_with(
         tool_features: resolve_tool_features(app_config.as_ref(), profile_tools),
         project_trusted,
         trust_audit,
+        agent_profile: profile.name,
+        agent_profile_fingerprint: profile.fingerprint,
     })
 }
 
@@ -770,6 +812,8 @@ pub fn bootstrap_with(
     let session_file_exists = assembly.session_file_exists;
     let tool_features = assembly.tool_features.clone();
     let trust_audit = assembly.trust_audit.clone();
+    let agent_profile = assembly.agent_profile.clone();
+    let agent_profile_fingerprint = assembly.agent_profile_fingerprint.clone();
     let driver_context = crate::driver::DriverContext {
         project_root: std::path::PathBuf::from(&assembly.cwd),
         trusted: assembly.project_trusted,
@@ -827,6 +871,8 @@ pub fn bootstrap_with(
         tool_features,
         driver_context,
         trust_audit,
+        agent_profile,
+        agent_profile_fingerprint,
     })
 }
 

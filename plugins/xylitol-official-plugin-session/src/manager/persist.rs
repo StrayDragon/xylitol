@@ -18,6 +18,40 @@ impl SessionManager {
         Ok(())
     }
 
+    pub(super) async fn session_profile(
+        &self,
+        session_id: &str,
+    ) -> Result<xylitol_plugin_sdk::session::SessionProfile, XySessionStoreError> {
+        let entries = self.read_entries(session_id).await?;
+        Ok(match entries.first() {
+            Some(SessionEntry::Header(header)) => xylitol_plugin_sdk::session::SessionProfile {
+                name: header.agent_profile.clone(),
+                fingerprint: header.agent_profile_fingerprint.clone(),
+            },
+            _ => xylitol_plugin_sdk::session::SessionProfile::default(),
+        })
+    }
+
+    pub(super) async fn set_session_profile(
+        &self,
+        session_id: &str,
+        profile: xylitol_plugin_sdk::session::SessionProfile,
+    ) -> Result<(), XySessionStoreError> {
+        let mut entries = self.read_entries(session_id).await?;
+        let Some(SessionEntry::Header(header)) = entries.first_mut() else {
+            return Ok(());
+        };
+        header.agent_profile = profile.name;
+        header.agent_profile_fingerprint = profile.fingerprint;
+        match &self.backend {
+            SessionBackend::Persisted => self.write_entries_to_disk(session_id, &entries).await,
+            SessionBackend::InMemory => {
+                lock_rwlock_write(&self.in_memory_store).insert(session_id.to_string(), entries);
+                Ok(())
+            }
+        }
+    }
+
     pub(super) fn stamp_header_fork_at_entry_id(&self, session_id: &str, at_entry_id: &str) {
         let stamp = |entries: &mut Vec<SessionEntry>| {
             if let Some(entry) = entries
@@ -132,6 +166,8 @@ impl SessionManager {
             cwd: cwd.unwrap_or(".").to_string(),
             parent_session: parent_session.map(String::from),
             fork_at_entry_id: None,
+            agent_profile: None,
+            agent_profile_fingerprint: None,
         });
 
         match &self.backend {
@@ -258,6 +294,8 @@ impl SessionManager {
                                     cwd: ".".into(),
                                     parent_session: None,
                                     fork_at_entry_id: None,
+                                    agent_profile: None,
+                                    agent_profile_fingerprint: None,
                                 }),
                             );
                         }
@@ -311,6 +349,8 @@ impl SessionManager {
                 cwd: String::new(),
                 parent_session: parent_id.map(String::from),
                 fork_at_entry_id: h.fork_at_entry_id.clone(),
+                agent_profile: h.agent_profile.clone(),
+                agent_profile_fingerprint: h.agent_profile_fingerprint.clone(),
             }),
             SessionEntry::Message(m) => SessionEntry::Message(MessageEntry {
                 base,
