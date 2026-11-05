@@ -29,6 +29,12 @@ pub struct ConnectionKey {
 
 struct PoolEntry {
     manager: Arc<McpClientManager>,
+    name: String,
+    transport: String,
+    scope: String,
+    credential_configured: bool,
+    connect_timeout_ms: u64,
+    call_timeout_ms: u64,
     claims: usize,
     connected: Vec<(String, usize)>,
     diags: Vec<String>,
@@ -198,6 +204,29 @@ impl McpPrepareHub {
                             key.clone(),
                             PoolEntry {
                                 manager: Arc::new(McpClientManager::new()),
+                                name: key_servers
+                                    .first()
+                                    .map(|server| server.name.clone())
+                                    .unwrap_or_default(),
+                                transport: key_servers
+                                    .first()
+                                    .map(|server| format!("{:?}", server.transport))
+                                    .unwrap_or_default(),
+                                scope: key_servers
+                                    .first()
+                                    .map(|server| format!("{:?}", server.scope))
+                                    .unwrap_or_default(),
+                                credential_configured: key_servers
+                                    .first()
+                                    .is_some_and(|server| server.credential.is_some()),
+                                connect_timeout_ms: key_servers
+                                    .first()
+                                    .map(|server| server.connect_timeout_ms)
+                                    .unwrap_or(8_000),
+                                call_timeout_ms: key_servers
+                                    .first()
+                                    .map(|server| server.call_timeout_ms)
+                                    .unwrap_or(120_000),
                                 claims: 1,
                                 connected: Vec::new(),
                                 diags: Vec::new(),
@@ -411,10 +440,33 @@ impl McpPrepareHub {
         let mut connected = Vec::new();
         let mut diags = Vec::new();
         let mut tools: Vec<Arc<dyn XyTool>> = Vec::new();
+        let mut server_details = Vec::new();
         for entry in pool.values() {
             connected.extend(entry.connected.iter().cloned());
             diags.extend(entry.diags.iter().cloned());
             tools.extend(entry.tools.iter().cloned());
+            server_details.push(format!(
+                "server={} transport={} scope={} credential={} connected={} tools={} prompts={} resources={} connect_timeout_ms={} call_timeout_ms={} last_error={}",
+                entry.name,
+                entry.transport,
+                entry.scope,
+                if entry.credential_configured {
+                    "set"
+                } else {
+                    "none"
+                },
+                !entry.connected.is_empty(),
+                entry.rows.len(),
+                entry.rows_prompts.len(),
+                entry.rows_resources.len(),
+                entry.connect_timeout_ms,
+                entry.call_timeout_ms,
+                if entry.diags.is_empty() {
+                    "none".to_string()
+                } else {
+                    entry.diags.join("; ")
+                }
+            ));
         }
         let armed = server_ids
             .iter()
@@ -440,6 +492,7 @@ impl McpPrepareHub {
             complete: servers.is_empty() || (!progress.connecting && !pool.is_empty()),
             server_ids,
             armed,
+            server_details,
         }
     }
 
@@ -607,6 +660,24 @@ mod tests {
     }
 
     #[test]
+    fn desired_keys_isolate_credentials() {
+        let mut account_a = server("fs", McpScope::Workspace);
+        account_a.credential = Some("acct-a".into());
+        let mut account_b = server("fs", McpScope::Workspace);
+        account_b.credential = Some("acct-b".into());
+        let keys = desired_keys(&[account_a, account_b], "s1", &["/a".into()]);
+        assert_eq!(keys.len(), 2);
+        assert!(
+            keys.keys()
+                .any(|key| key.credential.as_deref() == Some("acct-a"))
+        );
+        assert!(
+            keys.keys()
+                .any(|key| key.credential.as_deref() == Some("acct-b"))
+        );
+    }
+
+    #[test]
     fn desired_keys_isolate_workspace_scope() {
         let servers = vec![server("fs", McpScope::Workspace)];
         let keys = desired_keys(&servers, "s1", &["/a".into(), "/b".into()]);
@@ -620,16 +691,6 @@ mod tests {
         let left = desired_keys(&servers, "s1", &["/a".into()]);
         let right = desired_keys(&servers, "s2", &["/b".into()]);
         assert_eq!(left.keys().next(), right.keys().next());
-    }
-
-    #[test]
-    fn desired_keys_isolate_credentials() {
-        let mut left = server("fs", McpScope::Workspace);
-        left.credential = Some("a".into());
-        let mut right = server("fs", McpScope::Workspace);
-        right.credential = Some("b".into());
-        let keys = desired_keys(&[left, right], "s1", &["/a".into()]);
-        assert_eq!(keys.len(), 2);
     }
 
     #[test]

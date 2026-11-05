@@ -144,3 +144,7 @@
   @req:r3244
   规则: mcp-credential-key
     credential ID 须进入 connection key；同 server 不同 credential 须独立连接与 catalog；credential 值不得进入日志或工具子进程 env。由单测覆盖，不扩 BDD step。
+
+  @req:r3245
+  规则: mcp-diagnostics
+    /mcp 诊断须显示每 server 的 transport / scope / credential 是否存在 / 连接状态 / tools / prompts / resources / timeout 配置 / last error；不得显示 credential 值；不得把未知当 configured=0。由单测覆盖，不扩 BDD step。

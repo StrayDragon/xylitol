@@ -123,8 +123,11 @@ impl XyInProcessDriver {
             view.connected.len(),
             ids.join(", ")
         );
+        for detail in &view.server_details {
+            line.push_str(&format!("\n{detail}"));
+        }
         if !view.diags.is_empty() {
-            line.push_str(&format!("; diagnostics: {}", view.diags.join("; ")));
+            line.push_str(&format!("\ndiagnostics: {}", view.diags.join("; ")));
         }
         Some(line)
     }
