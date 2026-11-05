@@ -8,11 +8,11 @@ pub mod truncate;
 pub(crate) mod types;
 
 pub use adapter::McpToolAdapter;
-pub use assemble::{connect_and_discover, connect_and_discover_with_progress, mcp_enabled};
+pub use assemble::{connect_and_discover, connect_and_discover_at, mcp_enabled};
 pub use client::{
     ConnectedMcpServer, McpClientManager, McpConnectDiagnostic, McpConnectProgress, McpError,
 };
-pub use config::{McpServerConfig, McpTransportKind};
+pub use config::{McpScope, McpServerConfig, McpTransportKind};
 pub use defaults::MCP_SERVER_CONNECT_TIMEOUT;
 pub use hub::McpPrepareHub;
 pub use truncate::{MCP_RESULT_MAX_BYTES, McpResultTruncate};

@@ -1,46 +1,109 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::FutureExt;
-use futures::future::BoxFuture;
-use futures::future::Shared;
 use tokio::sync::Mutex;
 use xylitol_plugin_sdk::XyTool;
 use xylitol_plugin_sdk::plugin_events::SessionPrepareResult;
 use xylitol_plugin_sdk::session_prepare::{SessionPrepareHub, SessionPrepareView};
 use xylitol_plugin_sdk::tool_name::mcp_tool_armed_prefix;
 
-use crate::assemble::connect_and_discover_with_progress;
+use crate::assemble::connect_and_discover_at;
 use crate::client::{McpClientManager, McpConnectProgress};
-use crate::config::McpServerConfig;
+use crate::config::{McpScope, McpServerConfig};
 
-type DiscoverOk = Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)>;
-type DiscoverShared = Shared<BoxFuture<'static, DiscoverOk>>;
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ConnectionKey {
+    pub fingerprint: String,
+    pub scope: McpScope,
+    pub credential: Option<String>,
+    pub workspace: Option<String>,
+    pub session: Option<String>,
+}
 
-struct HubReady {
-    manager: Option<Arc<McpClientManager>>,
-    tools: Vec<Arc<dyn XyTool>>,
-    result: SessionPrepareResult,
+struct PoolEntry {
+    manager: Arc<McpClientManager>,
+    claims: usize,
     connected: Vec<(String, usize)>,
     diags: Vec<String>,
+    tools: Vec<Arc<dyn XyTool>>,
 }
 
 struct HubState {
     servers: Mutex<Vec<McpServerConfig>>,
-    inner: Mutex<Inner>,
+    pool: Mutex<HashMap<ConnectionKey, PoolEntry>>,
+    claims: Mutex<HashMap<String, Vec<ConnectionKey>>>,
+    current: Mutex<Option<(String, Vec<String>)>>,
+    last_view: Mutex<Option<SessionPrepareView>>,
+    last_result: Mutex<Option<SessionPrepareResult>>,
+    last_tools: Mutex<Vec<Arc<dyn XyTool>>>,
     progress: Arc<Mutex<McpConnectProgress>>,
     notice: Mutex<Option<String>>,
-}
-
-struct Inner {
-    inflight: Option<DiscoverShared>,
-    ready: Option<HubReady>,
 }
 
 #[derive(Clone)]
 pub struct McpPrepareHub {
     state: Arc<HubState>,
+}
+
+fn workspace_fallback() -> Vec<String> {
+    std::env::current_dir()
+        .ok()
+        .map(|path| vec![path.to_string_lossy().into_owned()])
+        .unwrap_or_default()
+}
+
+fn desired_keys(
+    servers: &[McpServerConfig],
+    session_id: &str,
+    workspaces: &[String],
+) -> HashMap<ConnectionKey, Vec<McpServerConfig>> {
+    let workspaces = if workspaces.is_empty() {
+        workspace_fallback()
+    } else {
+        workspaces.to_vec()
+    };
+    let mut out: HashMap<ConnectionKey, Vec<McpServerConfig>> = HashMap::new();
+    for server in servers {
+        let fingerprint = server.fingerprint();
+        match server.scope {
+            McpScope::Shared => {
+                let key = ConnectionKey {
+                    fingerprint,
+                    scope: McpScope::Shared,
+                    credential: server.credential.clone(),
+                    workspace: None,
+                    session: None,
+                };
+                out.entry(key).or_default().push(server.clone());
+            }
+            McpScope::Workspace => {
+                for workspace in &workspaces {
+                    let key = ConnectionKey {
+                        fingerprint: fingerprint.clone(),
+                        scope: McpScope::Workspace,
+                        credential: server.credential.clone(),
+                        workspace: Some(workspace.clone()),
+                        session: None,
+                    };
+                    out.entry(key).or_default().push(server.clone());
+                }
+            }
+            McpScope::Session => {
+                let key = ConnectionKey {
+                    fingerprint,
+                    scope: McpScope::Session,
+                    credential: server.credential.clone(),
+                    workspace: None,
+                    session: Some(session_id.to_string()),
+                };
+                out.entry(key).or_default().push(server.clone());
+            }
+        }
+    }
+    out
 }
 
 impl McpPrepareHub {
@@ -49,10 +112,12 @@ impl McpPrepareHub {
         Self {
             state: Arc::new(HubState {
                 servers: Mutex::new(servers),
-                inner: Mutex::new(Inner {
-                    inflight: None,
-                    ready: None,
-                }),
+                pool: Mutex::new(HashMap::new()),
+                claims: Mutex::new(HashMap::new()),
+                current: Mutex::new(None),
+                last_view: Mutex::new(None),
+                last_result: Mutex::new(None),
+                last_tools: Mutex::new(Vec::new()),
                 progress: Arc::new(Mutex::new(McpConnectProgress {
                     connecting: false,
                     total,
@@ -64,17 +129,128 @@ impl McpPrepareHub {
         }
     }
 
-    async fn result_from_discover(discovered: DiscoverOk) -> HubReady {
-        let Some((manager, tools)) = discovered else {
-            return HubReady {
-                manager: None,
-                tools: Vec::new(),
-                result: SessionPrepareResult::default(),
-                connected: Vec::new(),
-                diags: Vec::new(),
+    pub async fn ensure_for(
+        &self,
+        session_id: &str,
+        workspaces: &[String],
+    ) -> SessionPrepareResult {
+        *self.state.current.lock().await = Some((session_id.to_string(), workspaces.to_vec()));
+        self.claim_and_connect(session_id, workspaces).await;
+        self.update_snapshot().await;
+        self.state
+            .last_result
+            .lock()
+            .await
+            .clone()
+            .unwrap_or_default()
+    }
+
+    async fn claim_and_connect(&self, session_id: &str, workspaces: &[String]) {
+        let servers = self.state.servers.lock().await.clone();
+        let desired = desired_keys(&servers, session_id, workspaces);
+        let mut shutdowns = Vec::new();
+        let mut to_connect = Vec::new();
+        {
+            let mut pool = self.state.pool.lock().await;
+            let old = self
+                .state
+                .claims
+                .lock()
+                .await
+                .remove(session_id)
+                .unwrap_or_default();
+            for key in old {
+                let remove = if let Some(entry) = pool.get_mut(&key) {
+                    entry.claims = entry.claims.saturating_sub(1);
+                    entry.claims == 0
+                } else {
+                    false
+                };
+                if remove && let Some(entry) = pool.remove(&key) {
+                    shutdowns.push(entry.manager);
+                }
+            }
+            let mut keys = Vec::new();
+            for (key, key_servers) in desired {
+                keys.push(key.clone());
+                match pool.get_mut(&key) {
+                    Some(entry) => entry.claims += 1,
+                    None => {
+                        pool.insert(
+                            key.clone(),
+                            PoolEntry {
+                                manager: Arc::new(McpClientManager::new()),
+                                claims: 1,
+                                connected: Vec::new(),
+                                diags: Vec::new(),
+                                tools: Vec::new(),
+                            },
+                        );
+                        to_connect.push((key, key_servers));
+                    }
+                }
+            }
+            self.state
+                .claims
+                .lock()
+                .await
+                .insert(session_id.to_string(), keys);
+        }
+        for manager in shutdowns {
+            manager.shutdown().await;
+        }
+        if to_connect.is_empty() {
+            return;
+        }
+        for (key, servers) in to_connect {
+            let workspace = key.workspace.clone().map(PathBuf::from);
+            let discovered = connect_and_discover_at(
+                &servers,
+                workspace.as_deref(),
+                Some(self.state.progress.clone()),
+            )
+            .await;
+            let Some((manager, tools)) = discovered else {
+                continue;
             };
-        };
-        let mut names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
+            let connected = manager
+                .connected_servers()
+                .await
+                .into_iter()
+                .map(|server| (server.id, server.tool_count))
+                .collect();
+            let diags = manager
+                .diagnostics()
+                .await
+                .into_iter()
+                .map(|diag| format!("{}: {}", diag.server, diag.message))
+                .collect();
+            let mut pool = self.state.pool.lock().await;
+            if let Some(entry) = pool.get_mut(&key) {
+                entry.manager = manager;
+                entry.connected = connected;
+                entry.diags = diags;
+                entry.tools = tools;
+            }
+        }
+    }
+
+    async fn update_snapshot(&self) {
+        let pool = self.state.pool.lock().await;
+        let mut tools: Vec<Arc<dyn XyTool>> = Vec::new();
+        let mut connected = Vec::new();
+        let mut diags = Vec::new();
+        for entry in pool.values() {
+            for tool in &entry.tools {
+                if !tools.iter().any(|existing| existing.name() == tool.name()) {
+                    tools.push(tool.clone());
+                }
+            }
+            connected.extend(entry.connected.iter().cloned());
+            diags.extend(entry.diags.iter().cloned());
+        }
+        drop(pool);
+        let mut names: Vec<String> = tools.iter().map(|tool| tool.name().to_string()).collect();
         names.sort();
         let fingerprint = names.join("\n");
         let env_body = if names.is_empty() {
@@ -82,108 +258,124 @@ impl McpPrepareHub {
         } else {
             format!("MCP armed: {}", names.join(", "))
         };
-        let connected = manager
-            .connected_servers()
-            .await
-            .into_iter()
-            .map(|s| (s.id, s.tool_count))
-            .collect();
-        let diags = manager
-            .diagnostics()
-            .await
-            .into_iter()
-            .map(|d| format!("{}: {}", d.server, d.message))
-            .collect();
-        HubReady {
-            manager: Some(manager),
-            tools,
-            result: SessionPrepareResult {
-                fingerprint,
-                env_body,
-            },
-            connected,
-            diags,
-        }
+        *self.state.last_result.lock().await = Some(SessionPrepareResult {
+            fingerprint,
+            env_body,
+        });
+        *self.state.last_tools.lock().await = tools;
+        let view = self.view_now().await;
+        *self.state.last_view.lock().await = Some(view);
     }
 
-    async fn start_discover(&self) -> DiscoverShared {
-        let servers = self.state.servers.lock().await.clone();
-        let progress = self.state.progress.clone();
-        {
-            let mut p = progress.lock().await;
-            p.connecting = !servers.is_empty();
-            p.total = servers.len();
-            p.finished = 0;
-            p.current = None;
-        }
-        async move { connect_and_discover_with_progress(&servers, Some(progress)).await }
-            .boxed()
-            .shared()
-    }
-
-    pub async fn view_async(&self) -> SessionPrepareView {
-        let inner = self.state.inner.lock().await;
-        let progress = self.state.progress.lock().await;
+    async fn view_now(&self) -> SessionPrepareView {
         let servers = self.state.servers.lock().await;
-        Self::view_from_parts(&inner, &progress, &servers)
-    }
-
-    fn view_from_parts(
-        inner: &Inner,
-        progress: &McpConnectProgress,
-        servers: &[McpServerConfig],
-    ) -> SessionPrepareView {
-        let configured = servers.len();
-        let ready = inner.ready.as_ref();
-        let connecting = progress.connecting && ready.is_none();
-        let server_ids: Vec<String> = servers.iter().map(|c| c.name.clone()).collect();
+        let pool = self.state.pool.lock().await;
+        let progress = self.state.progress.lock().await;
+        let server_ids: Vec<String> = servers.iter().map(|server| server.name.clone()).collect();
         let mut connected = Vec::new();
         let mut diags = Vec::new();
-        let mut armed = Vec::new();
-        if let Some(ready) = ready {
-            connected = ready.connected.clone();
-            diags = ready.diags.clone();
-            for id in &server_ids {
-                let prefix = mcp_tool_armed_prefix(id);
-                let n = ready
-                    .tools
-                    .iter()
-                    .filter(|t| t.name().starts_with(&prefix))
-                    .count();
-                armed.push((id.clone(), n));
-            }
+        let mut tools: Vec<Arc<dyn XyTool>> = Vec::new();
+        for entry in pool.values() {
+            connected.extend(entry.connected.iter().cloned());
+            diags.extend(entry.diags.iter().cloned());
+            tools.extend(entry.tools.iter().cloned());
         }
+        let armed = server_ids
+            .iter()
+            .map(|id| {
+                let prefix = mcp_tool_armed_prefix(id);
+                let count = tools
+                    .iter()
+                    .filter(|tool| tool.name().starts_with(&prefix))
+                    .count();
+                (id.clone(), count)
+            })
+            .collect();
         SessionPrepareView {
-            configured,
+            configured: servers.len(),
             connected,
             diags,
-            connecting_label: if connecting {
+            connecting_label: if progress.connecting {
                 progress.connecting_label()
             } else {
                 None
             },
-            connecting,
-            complete: ready.is_some() || configured == 0,
+            connecting: progress.connecting && !servers.is_empty(),
+            complete: servers.is_empty() || (!progress.connecting && !pool.is_empty()),
             server_ids,
             armed,
         }
+    }
+
+    pub async fn reset_pool(&self) {
+        let entries = {
+            let mut pool = self.state.pool.lock().await;
+            std::mem::take(&mut *pool)
+        };
+        *self.state.claims.lock().await = HashMap::new();
+        *self.state.last_tools.lock().await = Vec::new();
+        *self.state.last_result.lock().await = None;
+        for (_, entry) in entries {
+            entry.manager.shutdown().await;
+        }
+    }
+
+    pub fn release_session(&self, session_id: &str) {
+        let this = self.clone();
+        let session_id = session_id.to_string();
+        tokio::spawn(async move {
+            this.release_claims(&session_id).await;
+        });
+    }
+
+    async fn release_claims(&self, session_id: &str) {
+        let keys = self
+            .state
+            .claims
+            .lock()
+            .await
+            .remove(session_id)
+            .unwrap_or_default();
+        let mut shutdowns = Vec::new();
+        {
+            let mut pool = self.state.pool.lock().await;
+            for key in keys {
+                let remove = if let Some(entry) = pool.get_mut(&key) {
+                    entry.claims = entry.claims.saturating_sub(1);
+                    entry.claims == 0
+                } else {
+                    false
+                };
+                if remove && let Some(entry) = pool.remove(&key) {
+                    shutdowns.push(entry.manager);
+                }
+            }
+        }
+        for manager in shutdowns {
+            manager.shutdown().await;
+        }
+        self.update_snapshot().await;
+    }
+
+    pub async fn view_async(&self) -> SessionPrepareView {
+        self.view_now().await
     }
 }
 
 #[async_trait]
 impl SessionPrepareHub for McpPrepareHub {
     fn cue_connecting(&self) {
-        if let Ok(mut p) = self.state.progress.try_lock() {
-            let n = self
+        if let Ok(mut progress) = self.state.progress.try_lock() {
+            let total = self
                 .state
                 .servers
                 .try_lock()
-                .map(|s| s.len())
-                .unwrap_or(p.total);
-            p.connecting = n > 0;
-            p.total = n;
-            p.finished = 0;
-            p.current = None;
+                .map(|servers| servers.len())
+                .unwrap_or(progress.total);
+            progress.connecting = total > 0;
+            progress.total = total;
+            progress.finished = 0;
+            progress.current = None;
         }
     }
 
@@ -191,103 +383,77 @@ impl SessionPrepareHub for McpPrepareHub {
         self.cue_connecting();
         let this = self.clone();
         tokio::spawn(async move {
-            this.reset_join().await;
             let _ = this.ensure().await;
         });
     }
 
-    async fn reset_join(&self) {
-        let mut inner = self.state.inner.lock().await;
-        inner.inflight = None;
-        let old = inner.ready.take();
-        drop(inner);
-        if let Some(ready) = old
-            && let Some(manager) = ready.manager
-        {
-            manager.shutdown().await;
-        }
-    }
+    async fn reset_join(&self) {}
 
     async fn ensure(&self) -> SessionPrepareResult {
-        let shared = {
-            let inner = self.state.inner.lock().await;
-            if let Some(ready) = inner.ready.as_ref() {
-                return ready.result.clone();
-            }
-            if let Some(inflight) = inner.inflight.clone() {
-                inflight
-            } else {
-                drop(inner);
-                let shared = self.start_discover().await;
-                let mut inner = self.state.inner.lock().await;
-                if let Some(ready) = inner.ready.as_ref() {
-                    return ready.result.clone();
-                }
-                inner.inflight = Some(shared.clone());
-                shared
-            }
-        };
-        let discovered = shared.await;
-        let ready = Self::result_from_discover(discovered).await;
-        let result = ready.result.clone();
-        let mut inner = self.state.inner.lock().await;
-        inner.inflight = None;
-        inner.ready = Some(ready);
-        {
-            let mut p = self.state.progress.lock().await;
-            p.connecting = false;
-            p.current = None;
-        }
-        result
+        let (session_id, workspaces) = self
+            .state
+            .current
+            .lock()
+            .await
+            .clone()
+            .unwrap_or_else(|| ("".to_string(), workspace_fallback()));
+        self.ensure_for(&session_id, &workspaces).await
     }
 
     async fn wait(&self, timeout: Duration) -> SessionPrepareResult {
         match tokio::time::timeout(timeout, self.ensure()).await {
-            Ok(r) => r,
+            Ok(result) => result,
             Err(_) => {
                 *self.state.notice.lock().await =
                     Some(xylitol_plugin_sdk::SESSION_PREPARE_TIMEOUT_NOTICE.into());
-                self.view_async().await.armed_result()
+                self.state
+                    .last_result
+                    .lock()
+                    .await
+                    .clone()
+                    .unwrap_or_else(|| self.view().armed_result())
             }
         }
     }
 
     fn view(&self) -> SessionPrepareView {
-        let Ok(inner) = self.state.inner.try_lock() else {
-            return SessionPrepareView {
-                connecting: true,
-                complete: false,
-                ..SessionPrepareView::default()
-            };
-        };
-        let Ok(progress) = self.state.progress.try_lock() else {
-            return SessionPrepareView {
-                connecting: true,
-                complete: false,
-                ..SessionPrepareView::default()
-            };
-        };
-        let Ok(servers) = self.state.servers.try_lock() else {
-            return SessionPrepareView {
-                connecting: true,
-                complete: false,
-                ..SessionPrepareView::default()
-            };
-        };
-        Self::view_from_parts(&inner, &progress, &servers)
+        if let Ok(guard) = self.state.last_view.try_lock()
+            && let Some(view) = guard.as_ref()
+        {
+            return view.clone();
+        }
+        let configured = self
+            .state
+            .servers
+            .try_lock()
+            .map(|servers| servers.len())
+            .unwrap_or(0);
+        SessionPrepareView {
+            configured,
+            connecting: configured > 0,
+            complete: configured == 0,
+            ..SessionPrepareView::default()
+        }
     }
 
     fn take_notice(&self) -> Option<String> {
-        self.state.notice.try_lock().ok().and_then(|mut g| g.take())
+        self.state
+            .notice
+            .try_lock()
+            .ok()
+            .and_then(|mut guard| guard.take())
     }
 
     fn tools(&self) -> Vec<Arc<dyn XyTool>> {
         self.state
-            .inner
+            .last_tools
             .try_lock()
-            .ok()
-            .and_then(|g| g.ready.as_ref().map(|r| r.tools.clone()))
+            .map(|tools| tools.clone())
             .unwrap_or_default()
+    }
+
+    fn release_session(&self, session_id: &str) {
+        McpPrepareHub::release_session(self, session_id);
     }
 }
 
@@ -295,28 +461,62 @@ impl SessionPrepareHub for McpPrepareHub {
 mod tests {
     use super::*;
 
+    fn server(name: &str, scope: McpScope) -> McpServerConfig {
+        McpServerConfig {
+            name: name.into(),
+            scope,
+            command: Some(format!("{name}-bin")),
+            ..Default::default()
+        }
+    }
+
     #[test]
-    fn view_reports_complete_when_no_servers_are_configured() {
-        let hub = McpPrepareHub::new(Vec::new());
-        let view = hub.view();
-        assert!(!view.connecting);
-        assert!(view.complete);
+    fn desired_keys_isolate_workspace_scope() {
+        let servers = vec![server("fs", McpScope::Workspace)];
+        let keys = desired_keys(&servers, "s1", &["/a".into(), "/b".into()]);
+        assert_eq!(keys.len(), 2);
+        assert!(keys.keys().all(|key| key.workspace.is_some()));
+    }
+
+    #[test]
+    fn desired_keys_share_shared_scope_across_sessions() {
+        let servers = vec![server("fs", McpScope::Shared)];
+        let left = desired_keys(&servers, "s1", &["/a".into()]);
+        let right = desired_keys(&servers, "s2", &["/b".into()]);
+        assert_eq!(left.keys().next(), right.keys().next());
+    }
+
+    #[test]
+    fn desired_keys_isolate_credentials() {
+        let mut left = server("fs", McpScope::Workspace);
+        left.credential = Some("a".into());
+        let mut right = server("fs", McpScope::Workspace);
+        right.credential = Some("b".into());
+        let keys = desired_keys(&[left, right], "s1", &["/a".into()]);
+        assert_eq!(keys.len(), 2);
+    }
+
+    #[test]
+    fn desired_keys_isolate_session_scope() {
+        let servers = vec![server("fs", McpScope::Session)];
+        let left = desired_keys(&servers, "s1", &["/a".into()]);
+        let right = desired_keys(&servers, "s2", &["/a".into()]);
+        assert_ne!(left.keys().next(), right.keys().next());
     }
 
     #[tokio::test]
-    async fn view_reports_connecting_when_a_lock_is_held() {
+    async fn view_keeps_configured_count_when_not_ready() {
+        let hub = McpPrepareHub::new(vec![server("fs", McpScope::Workspace)]);
+        let view = hub.view();
+        assert_eq!(view.configured, 1);
+        assert!(view.connecting);
+    }
+
+    #[tokio::test]
+    async fn release_session_drops_claims() {
         let hub = McpPrepareHub::new(Vec::new());
-        {
-            let _guard = hub.state.inner.lock().await;
-            assert!(hub.view().connecting);
-        }
-        {
-            let _guard = hub.state.progress.lock().await;
-            assert!(hub.view().connecting);
-        }
-        {
-            let _guard = hub.state.servers.lock().await;
-            assert!(hub.view().connecting);
-        }
+        hub.release_session("s1");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert!(hub.state.claims.lock().await.is_empty());
     }
 }

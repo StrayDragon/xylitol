@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use xylitol_official_plugin_config::types::{McpServerConfig, McpTransportKind};
+use xylitol_official_plugin_config::types::{McpScope, McpServerConfig, McpTransportKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum McpTransportSpec {
@@ -17,6 +17,8 @@ pub struct McpServerSpec {
     pub url: Option<String>,
     pub env: Option<HashMap<String, String>>,
     pub headers: Option<HashMap<String, String>>,
+    pub scope: McpScope,
+    pub credential: Option<String>,
 }
 
 impl From<&McpServerConfig> for McpServerSpec {
@@ -32,6 +34,8 @@ impl From<&McpServerConfig> for McpServerSpec {
             url: c.url.clone(),
             env: c.env.clone(),
             headers: c.headers.clone(),
+            scope: c.scope,
+            credential: c.credential.clone(),
         }
     }
 }
@@ -49,6 +53,8 @@ impl From<&McpServerSpec> for McpServerConfig {
             url: s.url.clone(),
             env: s.env.clone(),
             headers: s.headers.clone(),
+            scope: s.scope,
+            credential: s.credential.clone(),
         }
     }
 }

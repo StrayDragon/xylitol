@@ -27,6 +27,17 @@ pub trait InProcessReloadHook: Send + Sync {
     ) -> Result<RuntimeReloadReport, XyDriverError>;
 }
 
+fn session_workspaces(agent: &crate::agent::AgentRuntime) -> Vec<String> {
+    let mut workspaces = agent.workspaces().to_vec();
+    if workspaces.is_empty() {
+        let cwd = agent.cwd();
+        if !cwd.trim().is_empty() {
+            workspaces.push(cwd.to_string());
+        }
+    }
+    workspaces
+}
+
 impl XyInProcessDriver {
     pub fn attach_ctx(&mut self, ctx: Ctx) {
         self.ctx = Some(ctx);
@@ -126,8 +137,13 @@ impl XyInProcessDriver {
             hub.cue_connecting();
         }
         let session_id = self.agent.session_id().unwrap_or("").to_string();
+        let workspaces = session_workspaces(&self.agent);
         if let Some(ctx) = &self.ctx {
-            let ev = SessionPrepare { session_id, reason };
+            let ev = SessionPrepare {
+                session_id,
+                reason,
+                workspaces,
+            };
             let _ = ctx.emit(ev);
             return;
         }
@@ -143,6 +159,7 @@ impl XyInProcessDriver {
         let ev = SessionPrepare {
             session_id,
             reason: SessionPrepareReason::Generate,
+            workspaces: session_workspaces(&self.agent),
         };
         let timeout = MCP_FIRST_TURN_GATE_TIMEOUT;
         let result = if let Some(ctx) = self.ctx.clone() {

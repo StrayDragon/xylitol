@@ -70,6 +70,8 @@ pub enum SessionPrepareReason {
 pub struct SessionPrepare {
     pub session_id: String,
     pub reason: SessionPrepareReason,
+    #[serde(default)]
+    pub workspaces: Vec<String>,
 }
 
 impl Event for SessionPrepare {

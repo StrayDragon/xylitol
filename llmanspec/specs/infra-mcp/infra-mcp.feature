@@ -88,3 +88,15 @@
       假如 MCP 工具返回文本加图片分片
       当 该结果经过截断中间件
       那么 分片数量与图片分片保持不变
+
+  @req:r3227
+  规则: mcp-scope-pool
+    MCP 连接 须按 connection key =（config fingerprint, scope, credential, workspace, session）池化；McpScope 含 Shared / Workspace / Session（缺省 Workspace）；同 key 共用一个连接；懒连接 + 引用计数，最后一个 claim 释放才关闭。由单测覆盖，不扩 BDD step。
+
+  @req:r3228
+  规则: mcp-lifecycle-no-reset
+    Switch / Resume 不得 reset MCP pool；只有 Reload 清空并重连；单 server 连接失败按 server 重连且不拖死其余。由单测覆盖，不扩 BDD step。
+
+  @req:r3229
+  规则: mcp-last-known-snapshot
+    pool 忙或正在重连时 view 须返回上一份已知快照；不得把未知当 configured=0。由单测覆盖，不扩 BDD step。

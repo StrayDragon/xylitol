@@ -360,6 +360,14 @@
       },
       "type": "object"
     },
+    "mcp_servers_McpScope": {
+      "enum": [
+        "workspace",
+        "shared",
+        "session"
+      ],
+      "type": "string"
+    },
     "mcp_servers_McpServerConfig": {
       "properties": {
         "args": {
@@ -373,6 +381,13 @@
           ]
         },
         "command": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credential": {
           "default": null,
           "type": [
             "string",
@@ -401,6 +416,10 @@
         },
         "name": {
           "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/mcp_servers_McpScope",
+          "default": "workspace"
         },
         "transport": {
           "$ref": "#/$defs/mcp_servers_McpTransportKind",

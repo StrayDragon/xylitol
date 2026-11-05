@@ -340,6 +340,7 @@ mod tests {
         xylitol_plugin_sdk::plugin_events::SessionPrepare {
             session_id: "s".into(),
             reason,
+            workspaces: Vec::new(),
         }
     }
 

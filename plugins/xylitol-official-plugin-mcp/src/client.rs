@@ -114,12 +114,14 @@ impl McpClientManager {
     }
 
     pub async fn connect_servers(self: &Arc<Self>, servers: &[McpServerConfig]) {
-        self.connect_servers_with_progress(servers, None).await
+        self.connect_servers_with_progress(servers, None, None)
+            .await
     }
 
     pub async fn connect_servers_with_progress(
         self: &Arc<Self>,
         servers: &[McpServerConfig],
+        workspace: Option<&std::path::Path>,
         progress_out: Option<Arc<Mutex<McpConnectProgress>>>,
     ) {
         {
@@ -149,7 +151,9 @@ impl McpClientManager {
                 let name = server_config.name.clone();
                 let connect = async {
                     match server_config.transport {
-                        McpTransportKind::Stdio => this.connect_stdio(&name, &server_config).await,
+                        McpTransportKind::Stdio => {
+                            this.connect_stdio(&name, &server_config, workspace).await
+                        }
                         McpTransportKind::Sse => this.connect_sse(&name, &server_config).await,
                     }
                 };
@@ -233,7 +237,12 @@ impl McpClientManager {
         out
     }
 
-    async fn connect_stdio(&self, name: &str, config: &McpServerConfig) -> Result<(), McpError> {
+    async fn connect_stdio(
+        &self,
+        name: &str,
+        config: &McpServerConfig,
+        workspace: Option<&std::path::Path>,
+    ) -> Result<(), McpError> {
         #[cfg(not(feature = "mcp"))]
         {
             let _ = (name, config);
@@ -255,6 +264,9 @@ impl McpClientManager {
 
             let mut cmd = Command::new(command);
             cmd.args(args);
+            if let Some(workspace) = workspace {
+                cmd.current_dir(workspace);
+            }
             if let Some(ref env) = config.env {
                 for (k, v) in env {
                     cmd.env(k, v);

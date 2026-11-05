@@ -17,6 +17,8 @@ fn bad_mcp(name: &str) -> McpServerSpec {
         url: None,
         env: None,
         headers: None,
+        scope: Default::default(),
+        credential: None,
     }
 }
 

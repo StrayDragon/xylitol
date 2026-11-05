@@ -23,6 +23,7 @@ rmcp = { workspace = true, optional = true, features = ["client", "transport-chi
 schemars = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "process", "rt", "sync", "time"] }
 

@@ -72,11 +72,10 @@ async fn install_prepare_hub(ctx: &Ctx, servers: &[McpServerConfig]) -> Result {
         move |event, call| {
             let hub = hub.clone();
             async move {
-                if event.reason != SessionPrepareReason::Generate {
-                    hub.cue_connecting();
-                    hub.reset_join().await;
+                if event.reason == SessionPrepareReason::Reload {
+                    hub.reset_pool().await;
                 }
-                let mine = hub.ensure().await;
+                let mine = hub.ensure_for(&event.session_id, &event.workspaces).await;
                 if let Some(regs) = call.ctx().get::<HostRegistries>() {
                     for tool in hub.tools() {
                         let name = tool.name().to_string();

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct McpServerConfig {
@@ -18,6 +19,10 @@ pub struct McpServerConfig {
     pub env: Option<HashMap<String, String>>,
     #[serde(default)]
     pub headers: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub scope: McpScope,
+    #[serde(default)]
+    pub credential: Option<String>,
 }
 
 impl Default for McpServerConfig {
@@ -30,6 +35,8 @@ impl Default for McpServerConfig {
             url: None,
             env: None,
             headers: None,
+            scope: McpScope::default(),
+            credential: None,
         }
     }
 }
@@ -53,6 +60,21 @@ impl McpServerConfig {
             },
         }
     }
+
+    pub fn fingerprint(&self) -> String {
+        let identity = serde_json::json!({
+            "name": self.name,
+            "transport": self.transport,
+            "command": self.command,
+            "args": self.args,
+            "url": self.url,
+            "env": self.env,
+            "headers": self.headers,
+        });
+        let bytes = serde_json::to_vec(&identity).unwrap_or_default();
+        let digest = Sha256::digest(&bytes);
+        digest.iter().map(|b| format!("{b:02x}")).collect()
+    }
 }
 
 fn default_mcp_transport() -> McpTransportKind {
@@ -64,4 +86,49 @@ fn default_mcp_transport() -> McpTransportKind {
 pub enum McpTransportKind {
     Stdio,
     Sse,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum McpScope {
+    #[default]
+    Workspace,
+    Shared,
+    Session,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn server(name: &str, command: &str) -> McpServerConfig {
+        McpServerConfig {
+            name: name.into(),
+            command: Some(command.into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn fingerprint_ignores_scope_and_credential() {
+        let mut left = server("fs", "fs-server");
+        let right = McpServerConfig {
+            scope: McpScope::Shared,
+            credential: Some("a".into()),
+            ..left.clone()
+        };
+        assert_eq!(left.fingerprint(), right.fingerprint());
+        left.args = Some(vec!["--x".into()]);
+        assert_ne!(left.fingerprint(), right.fingerprint());
+    }
+
+    #[test]
+    fn validate_sse_requires_url() {
+        let cfg = McpServerConfig {
+            name: "x".into(),
+            transport: McpTransportKind::Sse,
+            ..Default::default()
+        };
+        assert!(cfg.validate().unwrap_err().contains("url"));
+    }
 }

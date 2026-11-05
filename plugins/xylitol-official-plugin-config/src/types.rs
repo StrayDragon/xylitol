@@ -803,7 +803,7 @@ pub struct SessionConfig {
 
 pub use xylitol_official_plugin_dap::DapPluginConfig;
 pub use xylitol_official_plugin_lsp::LspPluginConfig;
-pub use xylitol_official_plugin_mcp::{McpServerConfig, McpTransportKind};
+pub use xylitol_official_plugin_mcp::{McpScope, McpServerConfig, McpTransportKind};
 
 #[cfg(test)]
 mod agent_profile_tests {

@@ -478,6 +478,8 @@ mod tests {
             url: None,
             env: Some(env),
             headers: None,
+            scope: Default::default(),
+            credential: None,
         }
     }
 

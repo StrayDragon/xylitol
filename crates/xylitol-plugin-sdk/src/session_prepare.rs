@@ -147,6 +147,8 @@ pub trait SessionPrepareHub: Send + Sync {
     fn take_notice(&self) -> Option<String>;
 
     fn tools(&self) -> Vec<Arc<dyn XyTool>>;
+
+    fn release_session(&self, _session_id: &str) {}
 }
 
 #[cfg(test)]

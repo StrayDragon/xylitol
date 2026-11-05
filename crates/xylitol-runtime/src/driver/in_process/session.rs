@@ -39,6 +39,11 @@ impl super::XyInProcessDriver {
         self.agent.script_hook_observe(ty, phase, ctx).await;
         migrate_legacy_before_switch(self.store.as_ref(), session_id).await;
         let context = self.store.build_session_context(session_id).await?;
+        if let Some(previous) = self.agent.session_id().map(str::to_string)
+            && let Some(hub) = &self.prepare_hub
+        {
+            hub.release_session(&previous);
+        }
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
         self.bind_todo_session(Some(session_id)).await;
         self.agent.restore_thinking_level(context.thinking_level);
@@ -217,6 +222,11 @@ impl super::XyInProcessDriver {
             .create(&session_id, cwd.as_deref(), None)
             .await
             .map_err(XyDriverError::from)?;
+        if let Some(previous) = self.agent.session_id().map(str::to_string)
+            && let Some(hub) = &self.prepare_hub
+        {
+            hub.release_session(&previous);
+        }
         bind_session_or_err(&mut self.agent, session_id.clone())?;
         self.bind_todo_session(Some(&session_id)).await;
         Ok(session_id)
