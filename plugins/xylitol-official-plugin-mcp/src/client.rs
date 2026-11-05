@@ -28,6 +28,44 @@ impl rmcp::ClientHandler for McpClientHandler {
         self.dirty.store(true, Ordering::SeqCst);
         std::future::ready(())
     }
+
+    fn create_elicitation(
+        &self,
+        request: rmcp::model::ElicitRequestParams,
+        _context: rmcp::service::RequestContext<rmcp::RoleClient>,
+    ) -> impl std::future::Future<Output = Result<rmcp::model::ElicitResult, rmcp::model::ErrorData>>
+    + Send
+    + '_ {
+        use rmcp::model::{ElicitRequestParams, ElicitResult, ElicitationAction};
+        if let ElicitRequestParams::FormElicitationParams {
+            requested_schema, ..
+        } = &request
+            && schema_requests_secrets(requested_schema)
+        {
+            log::warn!(
+                "MCP elicitation declined: schema requests secret-like fields {:?}",
+                requested_schema.properties.keys().collect::<Vec<_>>()
+            );
+        }
+        std::future::ready(Ok(ElicitResult::new(ElicitationAction::Decline)))
+    }
+}
+
+#[cfg(feature = "mcp")]
+fn schema_requests_secrets(schema: &rmcp::model::ElicitationSchema) -> bool {
+    const MARKERS: &[&str] = &[
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "credential",
+        "private_key",
+    ];
+    schema.properties.keys().any(|name| {
+        let lower = name.to_ascii_lowercase();
+        MARKERS.iter().any(|marker| lower.contains(marker))
+    })
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -720,6 +758,23 @@ impl McpClientManager {
 mod tests {
     use super::*;
     use std::sync::Arc;
+
+    #[test]
+    fn elicitation_secret_schema_detected() {
+        let schema: rmcp::model::ElicitationSchema = serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {"password": {"type": "string"}}
+        }))
+        .expect("schema");
+        assert!(schema_requests_secrets(&schema));
+
+        let schema: rmcp::model::ElicitationSchema = serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {"name": {"type": "string"}}
+        }))
+        .expect("schema");
+        assert!(!schema_requests_secrets(&schema));
+    }
 
     #[tokio::test]
     async fn tools_dirty_flag_clears_after_listing() {

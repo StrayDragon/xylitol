@@ -136,3 +136,7 @@
   @req:r3240
   规则: mcp-prompts-resources
     MCP prompts 须以 `mcp__server__prompt__name` 暴露为模型工具，resources 须以 `mcp__server__resource__read` 暴露（uri 参数）；prompts/get 与 resources/read 须受 per-server call timeout；list 失败保留上一份 catalog 并诊断；profile tools 选择同样适用。由单测覆盖，不扩 BDD step。
+
+  @req:r3241
+  规则: mcp-elicitation-secrets
+    MCP elicitation 表单不得收集秘密；requestedSchema 字段命中 password / secret / token / api_key / credential / private_key 须拒绝；默认不弹 UI，返回 decline；不得记录 message 或字段值。由单测覆盖，不扩 BDD step。
