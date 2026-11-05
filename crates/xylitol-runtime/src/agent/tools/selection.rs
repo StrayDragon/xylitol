@@ -189,6 +189,15 @@ mod tests {
     }
 
     #[test]
+    fn mcp_tool_names_can_be_disabled_and_enabled() {
+        let tools = vec![tool("mcp__fs__read", &[]), tool("read", &[])];
+        let (set, _) = resolve_tool_selection(tools.clone(), &["-mcp__fs__read".into()]);
+        assert!(!names(&set).contains(&"mcp__fs__read".to_string()));
+        let (set, _) = resolve_tool_selection(tools, &["+mcp__fs__read".into()]);
+        assert!(names(&set).contains(&"mcp__fs__read".to_string()));
+    }
+
+    #[test]
     fn duplicate_names_last_wins() {
         let tools = vec![tool("grep", &[]), tool("grep", &[])];
         let (set, _) = resolve_tool_selection(tools, &[]);

@@ -100,3 +100,19 @@
   @req:r3229
   规则: mcp-last-known-snapshot
     pool 忙或正在重连时 view 须返回上一份已知快照；不得把未知当 configured=0。由单测覆盖，不扩 BDD step。
+
+  @req:r3231
+  规则: mcp-tool-catalog
+    MCP tool catalog 须按 connection key 建立；catalog 只含 tools；同名 server 不同 config 独立；list tools 失败保留上一份并诊断。由单测覆盖，不扩 BDD step。
+
+  @req:r3232
+  规则: mcp-profile-filter
+    MCP 工具须进入统一 tool selection 管线；profile / config tools 的 `+name` / `-name` 可增删 `mcp__server__tool`；不得另开第二套过滤语义。由单测覆盖，不扩 BDD step。
+
+  @req:r3233
+  规则: mcp-tool-list-changed
+    server 发 `notifications/tools/list_changed` 时 须标记 catalog dirty，下一轮 prepare / ensure 重新 list 并重建 adapter；不得在当前已冻结 provider 工具表上热扩。由单测覆盖，不扩 BDD step。
+
+  @req:r3234
+  规则: mcp-resume-reconcile
+    resume 须按当前 profile 与 session workspace set 重建 MCP claims 与 tool set；未使用 server 释放。由单测覆盖，不扩 BDD step。

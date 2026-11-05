@@ -9,8 +9,9 @@ use xylitol_plugin_sdk::XyTool;
 use xylitol_plugin_sdk::plugin_events::SessionPrepareResult;
 use xylitol_plugin_sdk::session_prepare::{SessionPrepareHub, SessionPrepareView};
 use xylitol_plugin_sdk::tool_name::mcp_tool_armed_prefix;
+use xylitol_plugin_sdk::tool_name::mcp_tool_public_name;
 
-use crate::assemble::connect_and_discover_at;
+use crate::assemble::{adapters_from_discovered, connect_and_discover_at};
 use crate::client::{McpClientManager, McpConnectProgress};
 use crate::config::{McpScope, McpServerConfig};
 
@@ -28,7 +29,17 @@ struct PoolEntry {
     claims: usize,
     connected: Vec<(String, usize)>,
     diags: Vec<String>,
+    rows: Vec<(String, String, String, serde_json::Value)>,
     tools: Vec<Arc<dyn XyTool>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct McpToolDescriptor {
+    pub key: ConnectionKey,
+    pub server: String,
+    pub name: String,
+    pub description: String,
+    pub schema: serde_json::Value,
 }
 
 struct HubState {
@@ -136,6 +147,7 @@ impl McpPrepareHub {
     ) -> SessionPrepareResult {
         *self.state.current.lock().await = Some((session_id.to_string(), workspaces.to_vec()));
         self.claim_and_connect(session_id, workspaces).await;
+        self.refresh_dirty_entries().await;
         self.update_snapshot().await;
         self.state
             .last_result
@@ -183,6 +195,7 @@ impl McpPrepareHub {
                                 claims: 1,
                                 connected: Vec::new(),
                                 diags: Vec::new(),
+                                rows: Vec::new(),
                                 tools: Vec::new(),
                             },
                         );
@@ -210,7 +223,7 @@ impl McpPrepareHub {
                 Some(self.state.progress.clone()),
             )
             .await;
-            let Some((manager, tools)) = discovered else {
+            let Some((manager, _tools)) = discovered else {
                 continue;
             };
             let connected = manager
@@ -225,14 +238,76 @@ impl McpPrepareHub {
                 .into_iter()
                 .map(|diag| format!("{}: {}", diag.server, diag.message))
                 .collect();
+            let rows = manager.list_all_tools().await;
+            let tools = adapters_from_discovered(manager.clone(), &rows);
             let mut pool = self.state.pool.lock().await;
             if let Some(entry) = pool.get_mut(&key) {
                 entry.manager = manager;
                 entry.connected = connected;
                 entry.diags = diags;
+                entry.rows = rows;
                 entry.tools = tools;
             }
         }
+    }
+
+    async fn refresh_dirty_entries(&self) {
+        let dirty_keys: Vec<ConnectionKey> = {
+            let pool = self.state.pool.lock().await;
+            pool.iter()
+                .filter(|(_, entry)| entry.manager.tools_dirty())
+                .map(|(key, _)| key.clone())
+                .collect()
+        };
+        for key in dirty_keys {
+            let manager = {
+                let pool = self.state.pool.lock().await;
+                pool.get(&key).map(|entry| entry.manager.clone())
+            };
+            let Some(manager) = manager else {
+                continue;
+            };
+            let rows = manager.list_all_tools().await;
+            let tools = adapters_from_discovered(manager, &rows);
+            let mut pool = self.state.pool.lock().await;
+            if let Some(entry) = pool.get_mut(&key) {
+                entry.rows = rows;
+                entry.tools = tools;
+            }
+        }
+    }
+
+    pub async fn catalog(&self) -> Vec<McpToolDescriptor> {
+        let pool = self.state.pool.lock().await;
+        let mut out = Vec::new();
+        for (key, entry) in pool.iter() {
+            for (server, name, description, schema) in &entry.rows {
+                out.push(McpToolDescriptor {
+                    key: key.clone(),
+                    server: server.clone(),
+                    name: mcp_tool_public_name(server, name),
+                    description: description.clone(),
+                    schema: schema.clone(),
+                });
+            }
+        }
+        out
+    }
+
+    pub async fn catalog_for_session(&self, session_id: &str) -> Vec<McpToolDescriptor> {
+        let keys: Vec<ConnectionKey> = self
+            .state
+            .claims
+            .lock()
+            .await
+            .get(session_id)
+            .cloned()
+            .unwrap_or_default();
+        self.catalog()
+            .await
+            .into_iter()
+            .filter(|descriptor| keys.contains(&descriptor.key))
+            .collect()
     }
 
     async fn update_snapshot(&self) {
@@ -502,6 +577,13 @@ mod tests {
         let left = desired_keys(&servers, "s1", &["/a".into()]);
         let right = desired_keys(&servers, "s2", &["/a".into()]);
         assert_ne!(left.keys().next(), right.keys().next());
+    }
+
+    #[tokio::test]
+    async fn catalog_empty_without_connections() {
+        let hub = McpPrepareHub::new(Vec::new());
+        assert!(hub.catalog().await.is_empty());
+        assert!(hub.catalog_for_session("s1").await.is_empty());
     }
 
     #[tokio::test]

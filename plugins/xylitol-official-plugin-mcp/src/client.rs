@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use serde_json::Value;
@@ -8,9 +9,26 @@ use tokio::sync::Mutex;
 use super::types::{McpServerConfig, McpTransportKind};
 
 #[cfg(feature = "mcp")]
-type McpService = rmcp::service::RunningService<rmcp::RoleClient, ()>;
+type McpService = rmcp::service::RunningService<rmcp::RoleClient, McpClientHandler>;
 #[cfg(not(feature = "mcp"))]
 type McpService = ();
+
+#[cfg(feature = "mcp")]
+#[derive(Clone)]
+pub struct McpClientHandler {
+    dirty: Arc<AtomicBool>,
+}
+
+#[cfg(feature = "mcp")]
+impl rmcp::ClientHandler for McpClientHandler {
+    fn on_tool_list_changed(
+        &self,
+        _context: rmcp::service::NotificationContext<rmcp::RoleClient>,
+    ) -> impl std::future::Future<Output = ()> + Send + '_ {
+        self.dirty.store(true, Ordering::SeqCst);
+        std::future::ready(())
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum McpError {
@@ -83,6 +101,7 @@ pub const MCP_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 
 pub struct McpClientManager {
     services: Mutex<HashMap<String, McpService>>,
+    tools_dirty: Arc<AtomicBool>,
     transports: Mutex<HashMap<String, McpTransportKind>>,
     tool_counts: Mutex<HashMap<String, usize>>,
     diagnostics: Mutex<Vec<McpConnectDiagnostic>>,
@@ -99,6 +118,7 @@ impl McpClientManager {
     pub fn new() -> Self {
         Self {
             services: Mutex::new(HashMap::new()),
+            tools_dirty: Arc::new(AtomicBool::new(false)),
             transports: Mutex::new(HashMap::new()),
             tool_counts: Mutex::new(HashMap::new()),
             diagnostics: Mutex::new(Vec::new()),
@@ -212,6 +232,14 @@ impl McpClientManager {
             .push(McpConnectDiagnostic { server, message });
     }
 
+    pub fn tools_dirty(&self) -> bool {
+        self.tools_dirty.load(Ordering::SeqCst)
+    }
+
+    pub fn mark_tools_dirty(&self) {
+        self.tools_dirty.store(true, Ordering::SeqCst);
+    }
+
     pub async fn diagnostics(&self) -> Vec<McpConnectDiagnostic> {
         self.diagnostics.lock().await.clone()
     }
@@ -276,7 +304,10 @@ impl McpClientManager {
 
             let transport = TokioChildProcess::new(cmd).map_err(McpError::Spawn)?;
 
-            let service = serve_client((), transport)
+            let handler = McpClientHandler {
+                dirty: self.tools_dirty.clone(),
+            };
+            let service = serve_client(handler, transport)
                 .await
                 .map_err(|e| McpError::Init(Box::new(e)))?;
 
@@ -335,7 +366,10 @@ impl McpClientManager {
                 transport_cfg = transport_cfg.custom_headers(custom);
             }
             let transport = StreamableHttpClientTransport::from_config(transport_cfg);
-            let service = serve_client((), transport)
+            let handler = McpClientHandler {
+                dirty: self.tools_dirty.clone(),
+            };
+            let service = serve_client(handler, transport)
                 .await
                 .map_err(|e| McpError::Init(Box::new(e)))?;
 
@@ -400,6 +434,7 @@ impl McpClientManager {
             }
             drop(services);
             *self.tool_counts.lock().await = counts;
+            self.tools_dirty.store(false, Ordering::SeqCst);
             result
         }
     }
@@ -472,6 +507,15 @@ impl McpClientManager {
 mod tests {
     use super::*;
     use std::sync::Arc;
+
+    #[tokio::test]
+    async fn tools_dirty_flag_clears_after_listing() {
+        let manager = McpClientManager::new();
+        manager.mark_tools_dirty();
+        assert!(manager.tools_dirty());
+        let _ = manager.list_all_tools().await;
+        assert!(!manager.tools_dirty());
+    }
 
     #[test]
     fn test_mcp_client_manager_new() {

@@ -37,6 +37,20 @@ impl McpToolAdapter {
             manager,
         }
     }
+
+    pub fn server_id(&self) -> &str {
+        &self.server_id
+    }
+
+    pub fn tool_name(&self) -> &str {
+        &self.tool_name
+    }
+
+    pub fn schema(&self) -> Value {
+        self.parameters_schema
+            .clone()
+            .unwrap_or(serde_json::json!({}))
+    }
 }
 
 #[async_trait]
