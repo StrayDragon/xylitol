@@ -348,6 +348,7 @@ mod tests {
             Command::Subscribe {
                 session_id: "s".into(),
                 last_seq: 0,
+                workspaces: Vec::new(),
             },
             Command::ApproveTool {
                 call_id: "c".into(),

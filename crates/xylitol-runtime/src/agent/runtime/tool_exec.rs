@@ -28,6 +28,7 @@ pub(crate) struct ToolExecEnv<'a> {
     pub turn_id: Option<&'a str>,
     pub batch_mode: XyBatchMode,
     pub workspace: &'a str,
+    pub workspaces: &'a [String],
     pub obs_session: &'a xylitol_plugin_sdk::ObsSessionContext,
     pub loop_chain: &'a LoopChain,
     pub turn_index: u32,
@@ -41,6 +42,32 @@ pub(crate) struct PreparedCall {
     pub(crate) denied_reason: Option<String>,
     pub(crate) stop_run: bool,
     pub(crate) fault: Option<MiddlewareFault>,
+}
+
+fn workspace_outside_set(workspaces: &[String], workspace: &str) -> Option<String> {
+    if workspaces.is_empty() {
+        return None;
+    }
+    if workspaces
+        .iter()
+        .any(|allowed| same_workspace_path(allowed, workspace))
+    {
+        return None;
+    }
+    Some(format!(
+        "workspace outside session set: {workspace} (allowed: {})",
+        workspaces.join(", ")
+    ))
+}
+
+fn same_workspace_path(allowed: &str, actual: &str) -> bool {
+    match (
+        std::fs::canonicalize(allowed),
+        std::fs::canonicalize(actual),
+    ) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => std::path::Path::new(allowed) == std::path::Path::new(actual),
+    }
 }
 
 fn middleware_fault_reason(fault: &MiddlewareFault) -> String {
@@ -181,7 +208,9 @@ pub(crate) async fn run_one(
     let name = &call.name;
     let tool_args = &call.args;
     let tool = &call.tool;
-    let denied_reason = &call.denied_reason;
+    let workspace_denied = workspace_outside_set(env.workspaces, env.workspace);
+    let effective_denied = call.denied_reason.clone().or(workspace_denied);
+    let denied_reason = &effective_denied;
     let mut middleware_stop = call.stop_run;
     let mut middleware_fault = call.fault.clone();
     let tool_span = ToolExecuteSpan::start_with_parent_ctx(
@@ -422,6 +451,15 @@ mod tests {
         BeforeToolCtx, LoopChain, LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep,
     };
 
+    #[test]
+    fn workspace_outside_set_rejects_unknown_workspace() {
+        let allowed = vec!["/tmp/project".to_string()];
+        assert!(workspace_outside_set(&allowed, "/tmp/project").is_none());
+        let denied = workspace_outside_set(&allowed, "/tmp/other").expect("denied");
+        assert!(denied.contains("workspace outside session set"), "{denied}");
+        assert!(workspace_outside_set(&[], "/tmp/other").is_none());
+    }
+
     struct Deny;
 
     #[async_trait]
@@ -464,6 +502,7 @@ mod tests {
             turn_id: None,
             batch_mode: XyBatchMode::Sequential,
             workspace: ".",
+            workspaces: &[],
             obs_session: &obs,
             loop_chain: &chain,
             turn_index: 0,

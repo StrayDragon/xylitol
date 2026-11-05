@@ -350,6 +350,10 @@ impl XyInProcessDriver {
         self.prepare_acked = true;
     }
 
+    pub fn set_workspaces(&mut self, workspaces: Vec<String>) {
+        self.agent.set_workspaces(workspaces);
+    }
+
     pub fn persist_project_trust(
         &mut self,
         mode: ProjectTrustMode,

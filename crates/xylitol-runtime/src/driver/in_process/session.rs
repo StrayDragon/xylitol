@@ -200,9 +200,19 @@ impl super::XyInProcessDriver {
 
     pub async fn new_session(&mut self) -> Result<String, XyDriverError> {
         let session_id = uuid::Uuid::new_v4().to_string();
-        let cwd = std::env::current_dir()
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned());
+        let cwd = self
+            .reload_cwd
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .or_else(|| {
+                let agent_cwd = self.agent.cwd();
+                (!agent_cwd.trim().is_empty()).then(|| agent_cwd.to_string())
+            })
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+            });
         self.store
             .create(&session_id, cwd.as_deref(), None)
             .await

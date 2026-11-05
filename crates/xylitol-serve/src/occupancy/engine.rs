@@ -26,6 +26,8 @@ pub trait OccupancyEngine: XyDriver {
         registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
         scope: xylitol_plugin_sdk::LoopScope,
     );
+
+    fn set_workspaces(&mut self, _workspaces: Vec<String>) {}
 }
 
 pub trait OccupancyFactory: Send + Sync {

@@ -71,6 +71,7 @@ pub struct AgentCapabilities {
     compaction_orchestrator: Arc<dyn XyCompaction>,
     compaction_factory: XyCompactionFactory,
     cwd: String,
+    workspaces: Vec<String>,
     prompt_opts: SystemPromptOpts,
 
     permission: Arc<dyn XyPermission>,
@@ -124,6 +125,7 @@ impl AgentCapabilities {
             ),
             compaction_factory: noop_compaction_factory(),
             cwd: cwd.clone(),
+            workspaces: Vec::new(),
             prompt_opts: SystemPromptOpts {
                 system_prompt,
                 context_files,
@@ -317,6 +319,14 @@ impl AgentCapabilities {
 
     pub fn set_cwd(&mut self, cwd: impl Into<String>) {
         self.cwd = cwd.into();
+    }
+
+    pub fn workspaces(&self) -> &[String] {
+        &self.workspaces
+    }
+
+    pub fn set_workspaces(&mut self, workspaces: Vec<String>) {
+        self.workspaces = workspaces;
     }
 
     pub(crate) fn set_midturn_active_probe(&mut self, probe: Arc<dyn Fn() -> bool + Send + Sync>) {

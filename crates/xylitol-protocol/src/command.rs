@@ -125,6 +125,8 @@ pub enum Command {
     Subscribe {
         session_id: String,
         last_seq: u64,
+        #[serde(default)]
+        workspaces: Vec<String>,
     },
     ApproveTool {
         call_id: String,

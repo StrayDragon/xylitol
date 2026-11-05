@@ -755,3 +755,7 @@
   @req:r3222
   规则: host-trust-decision
     host 的 trust 决策 unary 须要求已认证 client；resume 物化 writer 时 须重新校验 workspace trust 并记 trust_recheck 审计；不得把 trust 决策暴露为模型工具。
+
+  @req:r3225
+  规则: session-workspace-binding
+    host 须按 subscribe 解析会话 primary workspace：新会话取 client primary，resume 取会话存储的 primary（header cwd）；`new_session` 须用 primary workspace，不得用 host 进程 cwd；primary 不可解析时 回退 host cwd 并诊断。additional workspace 暂不启用。由 host / driver 单测覆盖，不扩 BDD step。

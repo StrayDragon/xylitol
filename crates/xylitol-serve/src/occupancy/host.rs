@@ -22,6 +22,7 @@ use crate::{MUX_CHAN_CAP, MuxSink, OccupiedHost};
 use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 use xylitol_plugin_sdk::error::{XySessionStoreError, XyToolError};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
+use xylitol_plugin_sdk::session::SessionEntry;
 use xylitol_protocol::method::{
     APPROVAL_REQUESTED, BASH_OUTPUT, QUESTION_REQUESTED, SESSION_EVENT, SESSION_MODEL,
     SESSION_RESOURCES, SESSION_RESYNC_REQUIRED, SESSION_SUBSCRIBED, is_unary_method,
@@ -89,6 +90,13 @@ pub struct SessionSlot {
     pub bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
     pub idempotency: IdempotencyLedger,
     pub loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+    pub workspaces: std::sync::Mutex<WorkspaceSet>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WorkspaceSet {
+    pub primary: PathBuf,
+    pub additional: Vec<PathBuf>,
 }
 
 impl HostState {
@@ -457,6 +465,7 @@ impl SessionSlot {
             mcp_watch_started: AtomicBool::new(false),
             bash_run_cancel: std::sync::Mutex::new(None),
             idempotency: IdempotencyLedger::default(),
+            workspaces: std::sync::Mutex::new(WorkspaceSet::default()),
             loop_registry: root_loop_registry.map(|registry| Arc::new(registry.derive())),
         })
     }
@@ -879,14 +888,80 @@ pub fn is_writer_method(method: &str) -> bool {
         .is_some_and(|e| e.auth == xylitol_protocol::registry::Auth::Writer)
 }
 
+fn parse_workspaces(payload: &Value) -> (Option<PathBuf>, Vec<PathBuf>) {
+    let mut paths: Vec<PathBuf> = payload
+        .get("workspaces")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|raw| !raw.is_empty())
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    if paths.is_empty()
+        && let Some(cwd) = payload
+            .get("cwd")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|raw| !raw.is_empty())
+    {
+        paths.push(PathBuf::from(cwd));
+    }
+    let primary = paths.first().cloned();
+    let additional = paths.into_iter().skip(1).collect();
+    (primary, additional)
+}
+
 fn workspace_from_payload(host: &HostState, payload: &Value) -> PathBuf {
-    payload
-        .get("cwd")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
+    parse_workspaces(payload)
+        .0
         .unwrap_or_else(|| host.reload.cwd.clone())
+}
+
+fn session_workspace(host: &HostState, slot: &SessionSlot, payload: &Value) -> PathBuf {
+    if let Ok(guard) = slot.workspaces.lock()
+        && !guard.primary.as_os_str().is_empty()
+    {
+        return guard.primary.clone();
+    }
+    workspace_from_payload(host, payload)
+}
+
+async fn session_primary_workspace(host: &HostState, session_id: &str) -> Option<PathBuf> {
+    let entries = host.ports.store.load_entries(session_id).await.ok()?;
+    entries.into_iter().find_map(|entry| match entry {
+        SessionEntry::Header(header) if !header.cwd.trim().is_empty() => {
+            Some(PathBuf::from(header.cwd))
+        }
+        _ => None,
+    })
+}
+
+async fn resolve_workspace_set(
+    host: &HostState,
+    session_id: &str,
+    payload: &Value,
+) -> WorkspaceSet {
+    let (client_primary, additional) = parse_workspaces(payload);
+    let primary = session_primary_workspace(host, session_id)
+        .await
+        .or(client_primary)
+        .unwrap_or_else(|| host.reload.cwd.clone());
+    if !additional.is_empty() {
+        log::warn!(
+            target: "xylitol::host",
+            "additional workspace set is not supported yet; binding primary {}",
+            primary.display()
+        );
+    }
+    WorkspaceSet {
+        primary,
+        additional,
+    }
 }
 
 fn same_workspace(a: &Path, b: &Path) -> bool {
@@ -938,12 +1013,14 @@ pub async fn materialize_writer_at(
     workspace: &Path,
 ) -> Result<(), XyDriverError> {
     let mut guard = slot.driver.lock().await;
-    if guard.is_some() {
+    if let Some(driver) = guard.as_mut() {
+        driver.set_workspaces(vec![workspace.to_string_lossy().into_owned()]);
         drop(guard);
         slot.ensure_mcp_resources_watch();
         return Ok(());
     }
     let mut driver = host.factory.new_driver_at(workspace);
+    driver.set_workspaces(vec![workspace.to_string_lossy().into_owned()]);
     if let Some(registry) = slot.loop_registry.clone() {
         driver.set_loop_middleware_scoped(Some(registry), xylitol_plugin_sdk::LoopScope::Session);
     }
@@ -1199,8 +1276,8 @@ pub async fn handle_unary(
     } else {
         host.session_id_from_payload(&payload)
     };
-    let workspace = workspace_from_payload(host, &payload);
     let slot = host.slot(&session_id).await;
+    let workspace = session_workspace(host, &slot, &payload);
 
     let reservation = match slot.idempotency.admit(rpc_id, method, &payload).await {
         Admission::Proceed(reservation) => reservation,
@@ -1245,7 +1322,11 @@ async fn dispatch_session_unary(
         {
             return occupancy_err(e);
         }
-        if let Err(e) = materialize_writer_at(host, slot, workspace).await {
+        let workspace_set = resolve_workspace_set(host, session_id, &payload).await;
+        if let Ok(mut guard) = slot.workspaces.lock() {
+            *guard = workspace_set.clone();
+        }
+        if let Err(e) = materialize_writer_at(host, slot, &workspace_set.primary).await {
             log::warn!(
                 target: "xylitol::host",
                 "subscribe materialize_writer failed: {e}"
@@ -1696,6 +1777,24 @@ mod tests {
     use super::*;
     use serde_json::json;
     use xylitol_plugin_sdk::BashChunk;
+
+    #[test]
+    fn parse_workspaces_prefers_list_and_falls_back_to_cwd() {
+        let (primary, additional) = parse_workspaces(&json!({
+            "workspaces": ["/a/project", "/a/other"],
+            "cwd": "/legacy"
+        }));
+        assert_eq!(primary, Some(PathBuf::from("/a/project")));
+        assert_eq!(additional, vec![PathBuf::from("/a/other")]);
+
+        let (primary, additional) = parse_workspaces(&json!({"cwd": "/legacy"}));
+        assert_eq!(primary, Some(PathBuf::from("/legacy")));
+        assert!(additional.is_empty());
+
+        let (primary, additional) = parse_workspaces(&json!({}));
+        assert!(primary.is_none());
+        assert!(additional.is_empty());
+    }
 
     #[test]
     fn stage_export_treats_null_output_path_as_absent() {

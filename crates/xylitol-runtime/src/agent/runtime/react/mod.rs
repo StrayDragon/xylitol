@@ -306,6 +306,14 @@ impl AgentRuntime {
         self.inner.set_cwd(cwd);
     }
 
+    pub fn workspaces(&self) -> &[String] {
+        self.inner.workspaces()
+    }
+
+    pub fn set_workspaces(&mut self, workspaces: Vec<String>) {
+        self.inner.set_workspaces(workspaces);
+    }
+
     pub fn hook_bus(&self) -> Option<Arc<dyn XyHookBus>> {
         self.inner.hook_bus()
     }
@@ -511,6 +519,7 @@ impl AgentRuntime {
             permission: self.inner.get_permission(),
             hook_bus: self.inner.hook_bus(),
             cwd: self.inner.cwd().to_string(),
+            workspaces: self.inner.workspaces().to_vec(),
             pending_prepare: self.pending_prepare.lock().ok().and_then(|g| g.clone()),
             loop_chain: self.inner.loop_chain(),
         }
@@ -695,6 +704,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         permission,
         hook_bus,
         cwd,
+        workspaces,
         pending_prepare,
         loop_chain,
     } = frozen;
@@ -763,6 +773,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         compaction_settings,
         compaction,
         cwd,
+        workspaces,
         obs_session_name,
         pending_prepare,
         loop_chain,
@@ -864,6 +875,7 @@ struct ReActConfig {
     compaction_settings: crate::agent::compaction::CompactionSettings,
     compaction: std::sync::Arc<dyn crate::agent::compaction::XyCompaction>,
     cwd: String,
+    workspaces: Vec<String>,
     obs_session_name: Option<String>,
     pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
     loop_chain: LoopChain,
@@ -944,6 +956,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         compaction_settings,
         compaction,
         cwd,
+        workspaces,
         obs_session_name,
         pending_prepare,
         loop_chain,
@@ -1784,6 +1797,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     turn_id: turn_id.as_deref(),
                     batch_mode,
                     workspace: &cwd,
+                    workspaces: &workspaces,
                     obs_session: &obs_session,
                     loop_chain: &loop_chain,
                     turn_index: turn as u32,

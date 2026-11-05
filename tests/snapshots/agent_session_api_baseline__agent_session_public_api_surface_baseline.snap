@@ -66,6 +66,7 @@ pub fn set_system_prompt(&mut self, prompt: Option<String>)
 pub fn set_thinking_budgets( &mut self, budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>, )
 pub fn set_tools(&mut self, tools: ToolSet)
 pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
+pub fn set_workspaces(&mut self, workspaces: Vec<String>)
 pub fn stats(&self) -> QueueStats
 pub fn steer(&self, message: impl Into<String>)
 pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>)
@@ -73,6 +74,7 @@ pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> String
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
 pub fn unbind_event_tx(&self, run_id: RunId)
+pub fn workspaces(&self) -> &[String]
 pub model_id: String, pub display_name: String, pub thinking: String, pub omit_thinking: bool, } impl ActiveTurnBinding
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>, } impl AsyncQueueRuntime

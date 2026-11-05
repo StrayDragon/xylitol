@@ -870,6 +870,7 @@ mod tests {
                 Command::Subscribe {
                     session_id: String::new(),
                     last_seq: 0,
+                    workspaces: Vec::new(),
                 },
             ),
             (

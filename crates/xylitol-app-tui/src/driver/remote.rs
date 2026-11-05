@@ -398,6 +398,7 @@ where
                         "session_id": ctx.session_id,
                         "last_seq": 0,
                         "cwd": ctx.client_cwd,
+                        "workspaces": [ctx.client_cwd],
                     }),
                 )
                 .await;
@@ -472,6 +473,7 @@ where
                             "session_id": ctx.session_id,
                             "last_seq": seq,
                             "cwd": ctx.client_cwd,
+                            "workspaces": [ctx.client_cwd],
                         }),
                     )
                     .await

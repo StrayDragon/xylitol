@@ -632,3 +632,7 @@
   @req:r3021
   规则: retry-classification-structured
     自动重试判定 必须 优先使用 provider 结构化错误字段：HTTP 429 与 5xx 必须 判为可重试，4xx 必须 判为不可重试，`insufficient_quota` 与 billing 必须 判为不可重试；结构字段缺失时 必须 回落到既有消息匹配，且上下文溢出 不得 被判为可重试。`retry-after` 必须 参与退避：退避时长 必须 取指数退避与服务端建议的较大值。由单测覆盖。
+
+  @req:r3226
+  规则: tool-workspace-membership
+    工具执行上下文 须携带会话 workspace set；`XyToolCtx.workspace` 不在 set 内时 须拒绝执行并返回可分类错误；set 为空时不限制。LLM 不得 add / remove / switch workspace。由 runtime 单测覆盖，不扩 BDD step。

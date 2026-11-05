@@ -2,6 +2,26 @@ use super::*;
 use xylitol_plugin_sdk::session::{SessionTreeKind, ThinkingLevelChangeEntry};
 
 #[tokio::test]
+async fn new_session_uses_primary_workspace() {
+    let dir = tempfile::tempdir().unwrap();
+    let primary = dir.path().join("primary");
+    std::fs::create_dir_all(&primary).unwrap();
+    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let (mut driver, _obs) = build_test_driver(store.clone()).await;
+    driver.enable_reload_state(primary.clone(), dir.path().join(".xylitol"), true);
+    let id = driver.new_session().await.unwrap();
+    let entries = store.load_entries(&id).await.unwrap();
+    let header = entries
+        .iter()
+        .find_map(|entry| match entry {
+            SessionEntry::Header(header) => Some(header),
+            _ => None,
+        })
+        .expect("session header");
+    assert_eq!(header.cwd, primary.display().to_string());
+}
+
+#[tokio::test]
 
 async fn switch_session_restores_sticky_thinking_without_rewriting() {
     let dir = tempfile::tempdir().unwrap();

@@ -77,6 +77,7 @@ pub struct FrozenRootConfig {
     pub permission: std::sync::Arc<dyn xylitol_plugin_sdk::XyPermission>,
     pub hook_bus: Option<std::sync::Arc<dyn xylitol_plugin_sdk::XyHookBus>>,
     pub cwd: String,
+    pub workspaces: Vec<String>,
     pub pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
     pub loop_chain: xylitol_plugin_sdk::LoopChain,
 }
