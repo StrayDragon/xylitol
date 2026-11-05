@@ -247,13 +247,21 @@ impl UiRoot {
             format!("{}{cue_paint}", " ".repeat(pad))
         };
 
+        if width == 0 {
+            return Vec::new();
+        }
         if !self.status_busy {
-            if let Some(cue) = self.status_next_turn_cue.as_deref() {
-                return vec![paint_cue_line(&self.theme, cue, width)];
-            }
-            return vec![String::new()];
+            let cue = self
+                .status_next_turn_cue
+                .as_deref()
+                .map(|cue| paint_cue_line(&self.theme, cue, width))
+                .unwrap_or_default();
+            return vec![cue];
         }
         let mut lines = self.status_loader.render(width);
+        if lines.first().is_some_and(|line| line.is_empty()) {
+            lines.remove(0);
+        }
         if let Some(cue) = self.status_next_turn_cue.as_deref() {
             if let Some(content) = lines.last_mut() {
                 let cue_paint = self.theme.paint_muted(cue);

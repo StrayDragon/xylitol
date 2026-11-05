@@ -5,9 +5,9 @@
 
   @req:r1214
   规则: idle-status-omitted
-    产品 UiRoot 空闲时 status 槽 须渲染 0 行；忙碌时 须至多独立 1 行短状态；不得将 Working 等忙碌文案并入 footer。
+    产品 UiRoot 空闲时 status 槽 须保留 1 行空白；忙碌时 须至多独立 1 行短状态；不得将 Working 等忙碌文案并入 footer。
 
-    场景: 空闲状态空忙碌单一行
+    场景: 空闲状态保留空白行
       当 以空闲与忙碌两种 UiModel 渲染固定区
       那么 空闲帧不含忙碌短词且忙碌帧恰一行 Working 且 footer 不含 Working
   @req:r1224
@@ -66,9 +66,9 @@
       那么 编辑器操作区保留上下横线边框且无大块空盒
   @req:r1237
   规则: busy-status-spinner
-    产品 agent-busy status 行 须为至多一行：左侧 lead 为 accent spinner（或等价动画帧）加短词（须作为同一组合贴左，不得用 space-between 拆开 spinner 与短词）；idle 须仍为 0 行；不得把 spinner 画进 footer。
+    产品 agent-busy status 行 须为至多一行：左侧 lead 为 accent spinner（或等价动画帧）加短词（须作为同一组合贴左，不得用 space-between 拆开 spinner 与短词）；idle 须仍保留 1 行空白；不得把 spinner 画进 footer。
 
-    场景: 忙碌旋转标单一行带前导
+    场景: 忙碌旋转标单一行
       当 以忙碌 UiModel 渲染固定区
       那么 恰一行含 spinner 短词且 footer 不含该短词
   @req:r1238
@@ -102,7 +102,7 @@
       那么 footer 反映新 active 模型且无换模预告
   @req:r1217
   规则: status-spacer-above-editor
-    产品 TUI status 槽：busy 时 须渲染 Loader 前导空行加一行 spinner 短词并紧贴 editor 上方（不得 strip 空行）；idle 时 须保留恰好一行空白呼吸间距（不得显示 Ready 文案）；对齐 agent_demo status_lines 与 status.md。
+    产品 TUI status 槽 须恒为 1 行：busy 时渲染一行 spinner 短词，idle 时保留一行空白呼吸间距（不得显示 Ready 文案）；不得保留额外前导空行或 0 行；对齐 agent_demo status_lines 与 status.md。
 
     场景: 空闲无就绪措辞
       当 以空闲 UiModel 渲染固定区
@@ -183,9 +183,9 @@
 
   @req:r1228
   规则: fixed-zone-footprint-term-budget
-    产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / ModeStrip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
+    产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（status 恒 1 行、footer 1 行；非空 queue strip / ModeStrip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
 
-    场景: 短终端忙碌前导可见
+    场景: 短终端忙碌状态可见
       当 以小高度终端渲染忙碌帧
       那么 status lead 短词在视口内可见
   @req:r1229
@@ -197,9 +197,9 @@
       那么 分别展示 used 42k tokens 与 used 8.1M tokens 且保留 tokens 词
   @req:r1230
   规则: reload-status-and-toasts
-    产品 TUI 在 /reload 进行中（ath28 reload 态）时 status 槽 须显示 Loader 形态：前导空行 + 一行 spinner+短词 `Reloading`（lead 贴左，与 atc7/atc12 同形）；不得冒充 agent Working 或 Assembling；该态下 status 右侧 不得显示 mcp pending cue 或任何换模预告。软闸拒提交、取消收口、失败收口的通知条 须走 atc22：body 分别为 `reloading — wait`、`reload cancelled`、`reload failed — see report`（可见前缀 `Error: `）；取消与失败 须另有滚动提示报告（见 ath28），软闸拒提交 不得为此追加 ScrollNotice。reload 结束后 status 须回到 idle 0 内容行（保留呼吸空行）。
+    产品 TUI 在 /reload 进行中（ath28 reload 态）时 status 槽 须显示 Loader 形态：一行 spinner+短词 `Reloading`（lead 贴左，与 atc7/atc12 同形）；不得冒充 agent Working 或 Assembling；该态下 status 右侧 不得显示 mcp pending cue 或任何换模预告。软闸拒提交、取消收口、失败收口的通知条 须走 atc22：body 分别为 `reloading — wait`、`reload cancelled`、`reload failed — see report`（可见前缀 `Error: `）；取消与失败 须另有滚动提示报告（见 ath28），软闸拒提交 不得为此追加 ScrollNotice。reload 结束后 status 须回到 idle 1 行空白（保留呼吸空行）。
 
-    场景: 重载状态前导重载中
+    场景: 重载状态单行重载中
       当 以主机泵进入 reload 进行中态后渲染
       那么 status 显示 Reloading 短词且不冒充 Working
   @req:r1231

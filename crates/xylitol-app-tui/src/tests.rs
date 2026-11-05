@@ -2081,7 +2081,7 @@ fn layout_idle_status_is_one_blank_above_editor() {
 }
 
 #[test]
-fn layout_busy_status_keeps_leading_blank() {
+fn layout_busy_status_stays_one_row() {
     use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
@@ -2090,13 +2090,11 @@ fn layout_busy_status_keeps_leading_blank() {
     model.begin_run("hello");
     root.apply_ui_model(&model);
     let lines = root.render(80);
-    let working_idx = lines
-        .iter()
-        .position(|l| l.contains("Working"))
-        .expect("busy Working row");
-    assert!(
-        working_idx > 0 && lines[working_idx - 1].is_empty(),
-        "busy spinner must keep leading blank: {lines:?}"
+    let working: Vec<_> = lines.iter().filter(|l| l.contains("Working")).collect();
+    assert_eq!(
+        working.len(),
+        1,
+        "busy status must stay one spinner row: {lines:?}"
     );
 }
 

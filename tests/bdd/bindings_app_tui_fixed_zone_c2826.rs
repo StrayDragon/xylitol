@@ -4,7 +4,7 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "空闲状态空忙碌单一行"
+    name = "空闲状态保留空白行"
 )]
 fn test_c2826_atc_idle_busy(fixed_zone_bdd: FixedZoneBdd) {}
 
@@ -28,7 +28,7 @@ fn test_c2826_atc_editor_compact(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "忙碌旋转标单一行带前导"
+    name = "忙碌旋转标单一行"
 )]
 fn test_c2826_atc_spinner(fixed_zone_bdd: FixedZoneBdd) {}
 
@@ -106,7 +106,7 @@ async fn test_c2826_atc_footer_compact(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "重载状态前导重载中"
+    name = "重载状态单行重载中"
 )]
 async fn test_c2826_atc_reload_status(host_pump_bdd: HostPumpBdd) {}
 
@@ -130,7 +130,7 @@ async fn test_c2826_atc_footer_refresh(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "短终端忙碌前导可见"
+    name = "短终端忙碌状态可见"
 )]
 fn test_c2826_atc_short_terminal(host_pump_bdd: HostPumpBdd) {}
 

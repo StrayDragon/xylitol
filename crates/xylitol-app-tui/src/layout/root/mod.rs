@@ -2133,6 +2133,38 @@ mod tests {
     }
 
     #[test]
+    fn status_slot_keeps_row_height_across_busy_idle() {
+        let mut root = UiRoot::new();
+        root.set_term_rows(30);
+        root.set_term_cols(80);
+        let mut model = UiModel::new();
+        model.begin_run("long paragraph");
+        model.entries.push(crate::bridge::UiEntry::User {
+            text: "long paragraph ".repeat(20),
+        });
+        model.entries.push(crate::bridge::UiEntry::Assistant {
+            text: "streaming output ".repeat(40),
+        });
+        root.apply_ui_model(&model);
+        let _ = root.render(80);
+        let busy_status_rows = root.last_status_rows;
+        let busy_top = root.last_slot_top_row;
+
+        let mut idle = UiModel::new();
+        idle.entries = model.entries.clone();
+        root.apply_ui_model(&idle);
+        let _ = root.render(80);
+        assert_eq!(
+            root.last_status_rows, busy_status_rows,
+            "status row height must not change when spinner disappears"
+        );
+        assert_eq!(
+            root.last_slot_top_row, busy_top,
+            "editor top must not move when spinner disappears"
+        );
+    }
+
+    #[test]
     fn input_marker_hit_covers_two_columns() {
         use xylitol_tui::utils::strip_ansi_codes;
         let mut root = UiRoot::new();
