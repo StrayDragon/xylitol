@@ -1,6 +1,9 @@
 ---
 depends_on: [c3105-fix-harden-trust-store, c3206-refactor-session-graph]
 title: "Host workspace set binding from client"
+branch: main
+base_branch: origin/main
+base_sha: 78d077258664b34c5b9147336d76994cb6f448b7
 ---
 
 ## Why
