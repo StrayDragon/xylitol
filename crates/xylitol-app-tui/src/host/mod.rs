@@ -3,6 +3,7 @@ mod input_policy;
 mod link_grace;
 mod pending;
 mod session_ops;
+mod stage_name;
 
 pub use link_grace::{
     LINK_DOWN_NOTICE, LINK_GRACE_INITIAL, LINK_GRACE_RECONNECT, LINK_RECOVERED_NOTICE, LinkGrace,
@@ -22,6 +23,7 @@ use xylitol_plugin_sdk::XyBashResult;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
+use stage_name::{StageNameContext, StageNamePolicy};
 
 pub use super::commands::{PendingBash, PendingSlash, bash_block_status, bash_output_body};
 
@@ -83,8 +85,10 @@ pub struct HostSession<T: Terminal> {
     rebuild: Box<dyn FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>>>,
     ui_model: UiModel,
     pending: PendingOps,
-    stage_name_requested_for: Option<String>,
+    stage_name_policy: StageNamePolicy,
+    stage_name_attempted: bool,
     stage_name_request_pending: bool,
+    completed_turns: u64,
     stream_sync_pending: bool,
     run_active: bool,
     bash_active: bool,
@@ -154,8 +158,10 @@ impl<T: Terminal> HostSession<T> {
             rebuild: Box::new(rebuild),
             ui_model: UiModel::new(),
             pending: PendingOps::default(),
-            stage_name_requested_for: None,
+            stage_name_policy: StageNamePolicy::default(),
+            stage_name_attempted: false,
             stage_name_request_pending: false,
+            completed_turns: 0,
             stream_sync_pending: false,
             run_active: false,
             bash_active: false,
@@ -675,6 +681,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn request_stage_name(&mut self) {
+        self.stage_name_attempted = true;
         self.stage_name_request_pending = true;
     }
 
@@ -682,12 +689,8 @@ impl<T: Terminal> HostSession<T> {
         std::mem::take(&mut self.stage_name_request_pending)
     }
 
-    pub fn stage_name_requested_for(&self) -> Option<&str> {
-        self.stage_name_requested_for.as_deref()
-    }
-
-    pub fn mark_stage_name_requested(&mut self, session_id: &str) {
-        self.stage_name_requested_for = Some(session_id.to_string());
+    pub fn set_stage_name_policy(&mut self, policy: StageNamePolicy) {
+        self.stage_name_policy = policy;
     }
 
     pub fn set_stage_name(&mut self, name: Option<String>) {
@@ -1326,9 +1329,14 @@ impl<T: Terminal> HostSession<T> {
         match xy.as_ref() {
             XyEvent::AgentEnd { .. } => {
                 self.run_active = false;
-                if self.ui_model.stage_name.is_none()
-                    && !crate::trailing_aborted_note(&self.ui_model.entries)
-                {
+                self.completed_turns = self.completed_turns.saturating_add(1);
+                let context = StageNameContext {
+                    attempted: self.stage_name_attempted,
+                    has_name: self.ui_model.stage_name.is_some(),
+                    aborted: crate::trailing_aborted_note(&self.ui_model.entries),
+                    completed_turns: self.completed_turns,
+                };
+                if self.stage_name_policy.should_request(context) {
                     self.request_stage_name();
                 }
             }

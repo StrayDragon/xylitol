@@ -245,8 +245,7 @@ pub async fn drain_pending<T: Terminal>(
 
     if session.take_stage_name_request() {
         let session_id = driver.session_id().unwrap_or_default();
-        if !session_id.is_empty() && session.stage_name_requested_for() != Some(&session_id) {
-            session.mark_stage_name_requested(&session_id);
+        if !session_id.is_empty() {
             match dispatch(driver, Command::GenerateSessionName { force: false }).await {
                 Ok(DispatchOutcome::SessionName(Some(name))) => {
                     session.set_stage_name(Some(name));

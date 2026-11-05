@@ -551,8 +551,8 @@ impl<T: Terminal> HostSession<T> {
                 None
             }
         });
-        self.ui_model.stage_name = restored_stage_name.clone();
-        self.stage_name_requested_for = restored_stage_name.map(|_| session_id.to_string());
+        self.stage_name_attempted = restored_stage_name.is_some();
+        self.ui_model.stage_name = restored_stage_name;
         self.stage_name_request_pending = false;
         crate::history_window::trim_to_window(&mut self.ui_model, buffer_has_more);
         if let Some(root) = self.ui_root.as_ref() {
