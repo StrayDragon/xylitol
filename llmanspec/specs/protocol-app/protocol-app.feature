@@ -271,7 +271,7 @@
 
   @req:r1704
   规则: 握手与版本
-    每条线协议消息 须归属某个 session。握手 须经已登记方法 host.describe 的 result 携带 protocol 整数与 formats（含 jsonrpc）；客户端 对 protocol 或 formats 不匹配 须断开且不得降级。客户端 须能以 session_id 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 须发出 resync。不得以特例首帧或环境变量并行维护第二套版本协商。协议版本 须在移除既有字段或收紧既有形状时递增（当前为 5，因 MessageUpdate 删除 text/thinking）；新增可选字段不单独要求递增。客户端 须以声明的格式通信；客户端要求的格式或 protocol 版本 Host 不支持时 须致命失败，不得降级猜测，不得重试风暴。
+    每条线协议消息 须归属某个 session。握手 须经已登记方法 host.describe 的 result 携带 protocol 整数与 formats（含 jsonrpc）；客户端 对 protocol 或 formats 不匹配 须断开且不得降级。客户端 须能以 session_id 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 须发出 resync。不得以特例首帧或环境变量并行维护第二套版本协商。协议版本 须在移除既有字段或收紧既有形状时递增（具体值以 `PROTOCOL_VERSION` 为准）；新增可选字段不单独要求递增。客户端 须以声明的格式通信；客户端要求的格式或 protocol 版本 Host 不支持时 须致命失败，不得降级猜测，不得重试风暴。
 
     场景: 握手协议经描述
       当 服务端在空闲端口上启动

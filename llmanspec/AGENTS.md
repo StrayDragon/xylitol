@@ -63,7 +63,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## 版本化命名
 
-- 线协议与代码标识符 **MUST NOT** 带版本后缀（如 `v3`、`new_v3`、`V4`、`_v2`）。协议版本只用 `PROTOCOL_VERSION` 整数（当前 4）经 `host.describe` 宣告；字段级演进走可选字段与 `Unknown` 降级，不靠版本号分叉。
+- 线协议与代码标识符 **MUST NOT** 带版本后缀（如 `v3`、`new_v3`、`V4`、`_v2`）。协议版本只用 `PROTOCOL_VERSION` 整数经 `host.describe` 宣告（具体值以 `crates/xylitol-protocol/src/message.rs` 为准，不在文档内记录）；字段级演进走可选字段与 `Unknown` 降级，不靠版本号分叉。
 - capability 名、scenario 名与步骤文本 **MUST NOT** 嵌入版本标签（如 `-v3` 后缀）。
 - 门禁：`scripts/check_no_version_names.py --check`，经 `just qa` 的 `check_*.py` glob 接线；白名单与排除规则见脚本。
 
