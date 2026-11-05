@@ -45,3 +45,7 @@
     场景: TUI端到端工作区隔离
       当 读取 TUI 端到端测试布局
       那么 独立于主矩阵
+
+  @req:r3238
+  规则: mcp-stateful-fixture
+    MCP 状态化 fixture 须位于 tests/support/，使用 Python 官方 SDK mcp==2.3.0 的 MCPServer 与 PEP 723 inline metadata；uv run 直接运行且不初始化 venv；现有 minimal fixture 不得改动；CI 须安装 uv 并运行 fixture self-check。

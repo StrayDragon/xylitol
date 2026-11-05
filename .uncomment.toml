@@ -30,6 +30,7 @@ exclude = [
   "crates/**/llmanspec/specs/**/*.feature",
   "plugins/**/llmanspec/specs/**/*.feature",
   "docs/book/**",
+  "tests/support/mcp_stateful_fixture.py",
 ]
 use_default_ignores = false
 respect_gitignore = true

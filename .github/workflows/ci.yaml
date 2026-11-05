@@ -37,6 +37,14 @@ jobs:
           sudo apt-get install -y ripgrep fd-find clang mold
           sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
+      - name: Install uv + Python for stateful MCP fixture
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+
+      - name: Smoke-test stateful MCP fixture
+        run: uv run tests/support/mcp_stateful_fixture.py --self-check
+
       - name: Install prek
         run: pipx install prek
 
