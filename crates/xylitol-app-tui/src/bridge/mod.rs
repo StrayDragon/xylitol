@@ -100,7 +100,8 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
     model.entries.push(UiEntry::Tool {
         id: id.to_string(),
         name: name.to_string(),
-        args_preview: preview,
+        args_preview: preview.clone(),
+        args_full: preview,
         tool_path,
         timeout_secs,
         write_content,

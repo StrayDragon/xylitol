@@ -20,16 +20,10 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     session.poll_ask_host();
 
     clipboard::take_paste_image(session, driver).await;
-    if session.take_pending_session_popup() {
-        let id = driver.session_id().unwrap_or_default();
-        session.show_session_popup(&id);
-    }
     if session.take_pending_session_sidebar() {
         let id = driver.session_id().unwrap_or_default();
         if session.session_sidebar_available() {
             session.show_session_sidebar(&id);
-        } else {
-            session.show_session_popup(&id);
         }
     }
     tree::open(session, driver).await;

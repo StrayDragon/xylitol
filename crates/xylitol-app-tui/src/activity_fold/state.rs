@@ -255,6 +255,7 @@ mod tests {
             id: id.into(),
             name: "read".into(),
             args_preview: "a.rs".into(),
+            args_full: String::new(),
             tool_path: None,
             write_content: None,
             display_diff: None,

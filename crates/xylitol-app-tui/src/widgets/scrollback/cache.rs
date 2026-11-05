@@ -75,6 +75,7 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             id,
             name,
             args_preview,
+            args_full,
             timeout_secs,
             tool_path,
             write_content,
@@ -86,6 +87,7 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             id.hash(&mut h);
             name.hash(&mut h);
             args_preview.hash(&mut h);
+            args_full.hash(&mut h);
             timeout_secs.hash(&mut h);
             tool_path.hash(&mut h);
             write_content.hash(&mut h);

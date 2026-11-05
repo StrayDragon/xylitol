@@ -369,6 +369,7 @@ mod tests {
             id: name.into(),
             name: name.into(),
             args_preview: path.unwrap_or("").into(),
+            args_full: String::new(),
             tool_path: path.map(str::to_string),
             write_content: None,
             display_diff: None,

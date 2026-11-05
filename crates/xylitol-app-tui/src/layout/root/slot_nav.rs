@@ -6,10 +6,6 @@ use crate::bridge::UiPhase;
 
 impl UiRoot {
     pub fn on_escape(&mut self) -> bool {
-        if self.session_popup_open && !self.status_busy {
-            self.close_session_popup();
-            return true;
-        }
         if matches!(&self.slot, EditorSlot::Tree(_)) {
             let stay = if let EditorSlot::Tree(tree) = &mut self.slot {
                 tree.cancel_label_edit() || tree.clear_search_if_any()

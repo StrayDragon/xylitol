@@ -105,6 +105,7 @@ pub enum UiEntry {
         id: String,
         name: String,
         args_preview: String,
+        args_full: String,
         tool_path: Option<String>,
         write_content: Option<String>,
         display_diff: Option<String>,

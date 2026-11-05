@@ -99,8 +99,6 @@ pub struct UiRoot {
     slot: EditorSlot,
     pending: PendingSlotOps,
     designing: bool,
-    session_popup_open: bool,
-    session_popup_id: String,
     session_sidebar_on: bool,
     session_sidebar_width: usize,
     session_sidebar_scroll: usize,
@@ -212,8 +210,6 @@ impl UiRoot {
             slot: EditorSlot::Editor,
             pending: PendingSlotOps::default(),
             designing: false,
-            session_popup_open: false,
-            session_popup_id: String::new(),
             session_sidebar_on: false,
             session_sidebar_width: Self::SESSION_SIDEBAR_WIDTHS[0],
             session_sidebar_scroll: 0,
@@ -799,32 +795,6 @@ impl UiRoot {
         self.slot.is_tree()
     }
 
-    pub fn session_popup_open(&self) -> bool {
-        self.session_popup_open
-    }
-
-    pub fn close_session_popup(&mut self) {
-        self.session_popup_open = false;
-    }
-
-    pub fn request_session_popup(&mut self) {
-        self.pending.session_popup = true;
-    }
-
-    #[cfg(test)]
-    pub fn session_popup_pending_for_test(&self) -> bool {
-        self.pending.session_popup
-    }
-
-    pub fn take_pending_session_popup(&mut self) -> bool {
-        std::mem::take(&mut self.pending.session_popup)
-    }
-
-    pub fn show_session_popup(&mut self, session_id: &str) {
-        self.session_popup_id = session_id.to_string();
-        self.session_popup_open = true;
-    }
-
     pub fn session_sidebar_on(&self) -> bool {
         self.session_sidebar_on
     }
@@ -847,8 +817,7 @@ impl UiRoot {
         std::mem::take(&mut self.pending.session_sidebar)
     }
 
-    pub fn show_session_sidebar(&mut self, session_id: &str) {
-        self.session_popup_id = session_id.to_string();
+    pub fn show_session_sidebar(&mut self, _session_id: &str) {
         self.session_sidebar_on = true;
         self.session_sidebar_scroll = 0;
     }
@@ -900,26 +869,6 @@ impl UiRoot {
             self.session_sidebar_scroll = next;
             true
         }
-    }
-
-    pub fn cycle_session_details(&mut self) {
-        if self.session_sidebar_on && self.session_popup_open {
-            self.close_session_sidebar();
-            self.close_session_popup();
-            return;
-        }
-        if self.session_sidebar_on {
-            self.close_session_sidebar();
-            return;
-        }
-        if self.session_popup_open {
-            self.close_session_popup();
-            if self.session_sidebar_available() {
-                self.request_session_sidebar();
-            }
-            return;
-        }
-        self.request_session_popup();
     }
 
     pub const SESSION_SIDEBAR_W: usize = Self::SESSION_SIDEBAR_WIDTHS[0];
@@ -1757,39 +1706,6 @@ mod tests {
         assert!(!root.scroll_session_sidebar(1, 1));
         assert!(root.scroll_session_sidebar(-10, 1));
         assert_eq!(root.session_sidebar_scroll(), 0);
-    }
-
-    #[test]
-    fn details_cycle_walks_popup_sidebar_off() {
-        let mut root = UiRoot::new();
-        root.set_term_cols(120);
-        root.cycle_session_details();
-        assert!(root.take_pending_session_popup());
-        root.show_session_popup("s1");
-
-        root.cycle_session_details();
-        assert!(!root.session_popup_open());
-        assert!(root.take_pending_session_sidebar());
-        root.show_session_sidebar("s1");
-
-        root.cycle_session_details();
-        assert!(!root.session_sidebar_on());
-    }
-
-    #[test]
-    fn details_cycle_degrades_on_narrow_terminal() {
-        let mut root = UiRoot::new();
-        root.set_term_cols(78);
-        root.cycle_session_details();
-        assert!(root.take_pending_session_popup());
-        root.show_session_popup("s1");
-
-        root.cycle_session_details();
-        assert!(!root.session_popup_open());
-        assert!(
-            !root.take_pending_session_sidebar(),
-            "narrow terminal must not request an unavailable sidebar"
-        );
     }
 
     fn root_with_dock(queue_rows: usize) -> UiRoot {

@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use xylitol_tui::{InputEvent, Terminal};
@@ -260,25 +260,85 @@ async fn lab_ao_session_perf_report() {
     );
 }
 
+#[cfg(unix)]
 fn cpu_jiffies_self() -> Option<u64> {
-    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
-    let parts: Vec<&str> = stat.split_whitespace().collect();
-    let utime: u64 = parts.get(13)?.parse().ok()?;
-    let stime: u64 = parts.get(14)?.parse().ok()?;
-    Some(utime.saturating_add(stime))
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) };
+    if rc != 0 {
+        return None;
+    }
+    let secs = i64::from(usage.ru_utime.tv_sec) + i64::from(usage.ru_stime.tv_sec);
+    let usecs = i64::from(usage.ru_utime.tv_usec) + i64::from(usage.ru_stime.tv_usec);
+    Some((secs.max(0) as u64).saturating_mul(1_000_000) + usecs.max(0) as u64)
+}
+
+#[cfg(not(unix))]
+fn cpu_jiffies_self() -> Option<u64> {
+    None
 }
 
 fn cpu_pct(j0: u64, j1: u64, wall_secs: f64) -> f64 {
-    let hz = 100.0;
     if wall_secs <= 0.0 {
         return 0.0;
     }
-    100.0 * (j1.saturating_sub(j0) as f64) / hz / wall_secs
+    100.0 * (j1.saturating_sub(j0) as f64) / 1_000_000.0 / wall_secs
 }
 
 async fn seed_long_session(session: &mut HostSession<LabTerminal>) {
     let (sid, entries, _) = synthetic_ao_seed("lab-ao-stream").await;
     session.apply_cli_restored_session(&sid, entries, false);
+}
+
+#[tokio::test]
+#[ignore = "lab: 1000 delta/s process CPU budget"]
+async fn lab_ao_stream_1000_delta_cpu() {
+    const DELTAS: usize = 1000;
+    const TICK_EVERY: usize = 33;
+
+    let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
+    seed_long_session(&mut session).await;
+    session.tui.render_now().expect("warm");
+    session.on_run_started("lab");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
+            session_id: "lab".into(),
+            model: "lab".into(),
+        })))
+        .expect("agent start");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::MessageStart {
+            role: "assistant".into(),
+            message: None,
+        })))
+        .expect("msg start");
+
+    let j0 = cpu_jiffies_self();
+    let t0 = Instant::now();
+    let mut paints = 0u32;
+    for i in 0..DELTAS {
+        apply_xy_event(
+            session.ui_model_mut(),
+            &XyEvent::TextDelta(format!("tok{i} ")),
+        );
+        if (i + 1) % TICK_EVERY == 0 {
+            session.sync_ui_root_from_model();
+            session.tui.render_now().expect("paint");
+            paints += 1;
+        }
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+    let wall = t0.elapsed().as_secs_f64();
+    let cpu = match (j0, cpu_jiffies_self()) {
+        (Some(a), Some(b)) => cpu_pct(a, b, wall),
+        _ => -1.0,
+    };
+    println!(
+        "REPORT lab_ao_stream_1000_delta_cpu\ndeltas={DELTAS} tick_every={TICK_EVERY} paints={paints} wall_s={wall:.3} cpu%={cpu:.1}"
+    );
+    assert!(
+        cpu < 20.0,
+        "1000 delta/s process CPU must stay under 20%, got {cpu:.1}%"
+    );
 }
 
 #[tokio::test]

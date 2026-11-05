@@ -409,6 +409,7 @@ pub(crate) fn w_c2827_armed_hover_header(c2827_bdd: &C2827Bdd) {
             id: "hover-bdd".into(),
             name: "read".into(),
             args_preview: "h.rs".into(),
+            args_full: String::new(),
             tool_path: None,
             write_content: None,
             display_diff: None,

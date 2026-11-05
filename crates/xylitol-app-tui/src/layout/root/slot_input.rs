@@ -11,10 +11,6 @@ use crate::session_resume::SessionResumeAction;
 
 impl UiRoot {
     fn handle_session_details_key(&mut self, key: &KeyEvent) -> bool {
-        if matches_binding(key, "app.session.detailsCycle") {
-            self.cycle_session_details();
-            return true;
-        }
         if matches_binding(key, "app.session.sidebarWidth") {
             self.session_sidebar_width_cycle();
             return true;

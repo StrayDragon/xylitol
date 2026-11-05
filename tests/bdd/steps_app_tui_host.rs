@@ -2946,26 +2946,6 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-#[when("左键单击 编辑区上边框右端 [详情] chip")]
-async fn w_c3027_click_details_chip(host_pump_bdd: &HostPumpBdd) {
-    let clicked = click_footer_chip_label(host_pump_bdd, "详情").await;
-    assert!(!clicked, "mat33: [详情] chip must not be painted");
-    let mut pump = host_pump_bdd
-        .pump
-        .borrow_mut()
-        .take()
-        .unwrap_or_else(fresh_pump);
-    if let Some(root) = pump.session.ui_root() {
-        root.borrow_mut().request_session_popup();
-    }
-    let mut stream = None;
-    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
-        .await
-        .expect("popup pump");
-    put_pump(host_pump_bdd, pump);
-    LAST_CHIP_LABEL.with(|s| *s.borrow_mut() = Some("详情"));
-}
-
 #[when("左键单击 编辑区上边框右端 [侧栏] chip")]
 async fn w_c3027_click_sidebar_chip(host_pump_bdd: &HostPumpBdd) {
     let clicked = click_footer_chip_label(host_pump_bdd, "侧栏").await;
@@ -2980,18 +2960,6 @@ async fn w_c3027_click_same_chip_again(host_pump_bdd: &HostPumpBdd) {
     let label = LAST_CHIP_LABEL
         .with(|s| *s.borrow())
         .expect("先前已单击过一个 chip");
-    if label == "详情" {
-        let mut pump = take_pump(host_pump_bdd);
-        if let Some(root) = pump.session.ui_root() {
-            root.borrow_mut().close_session_popup();
-        }
-        let mut stream = None;
-        pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
-            .await
-            .expect("popup close pump");
-        put_pump(host_pump_bdd, pump);
-        return;
-    }
     assert!(
         click_footer_chip_label(host_pump_bdd, label).await,
         "mat33: [{label}] chip 须仍绘制且可点"
@@ -3060,22 +3028,6 @@ pub(crate) async fn request_session_sidebar_via_action(host_pump_bdd: &HostPumpB
         root.request_session_sidebar();
     })
     .await;
-}
-
-pub(crate) async fn request_session_popup_via_action(host_pump_bdd: &HostPumpBdd) {
-    run_session_details_action(host_pump_bdd, |root| {
-        root.request_session_popup();
-    })
-    .await;
-}
-
-#[when("切换覆盖弹出框显隐")]
-async fn w_c2875_toggle(host_pump_bdd: &HostPumpBdd) {
-    assert!(
-        !click_footer_chip_label(host_pump_bdd, "详情").await,
-        "[详情] chip must not be painted"
-    );
-    request_session_popup_via_action(host_pump_bdd).await;
 }
 
 fn c2875_frame(host_pump_bdd: &HostPumpBdd) -> String {
@@ -3247,34 +3199,6 @@ fn t_c2918_popup_fallback(host_pump_bdd: &HostPumpBdd) {
     assert!(!frame.contains("会话侧栏"), "窄档不得渲染侧栏:\n{frame}");
 }
 
-#[when("先开覆盖弹出框再开侧栏")]
-async fn w_c2905_both(host_pump_bdd: &HostPumpBdd) {
-    assert!(
-        !click_footer_chip_label(host_pump_bdd, "详情").await,
-        "[详情] chip must not be painted"
-    );
-    request_session_popup_via_action(host_pump_bdd).await;
-    assert!(
-        click_footer_chip_label(host_pump_bdd, "侧栏").await,
-        "[侧栏] chip 须绘制且可点"
-    );
-}
-
-#[then("两面同时可辨且覆盖弹出框贴内容右边界")]
-fn t_c2905_coexist(host_pump_bdd: &HostPumpBdd) {
-    let pump = take_pump(host_pump_bdd);
-    let frame = pump
-        .session
-        .ui_root()
-        .expect("ui")
-        .borrow_mut()
-        .render_with_viewport_overlay(120)
-        .join("\n");
-    assert!(frame.contains("会话详情"), "覆盖弹出框须在");
-    assert!(frame.contains("会话侧栏"), "侧栏须在");
-    put_pump(host_pump_bdd, pump);
-}
-
 #[given("产品 ApplicationOwned 会话已向下滚动")]
 pub(crate) fn g_product_ao_scrolled(host_pump_bdd: &HostPumpBdd) {
     g_tall_scrolled_viewport(host_pump_bdd);
@@ -3336,12 +3260,6 @@ async fn g_c2911_sidebar_on(host_pump_bdd: &HostPumpBdd) {
     g_c2911_sidebar_ready(host_pump_bdd).await;
 }
 
-#[given("覆盖弹出框已开启")]
-async fn g_c2911_popup_on(host_pump_bdd: &HostPumpBdd) {
-    g2875_mount(host_pump_bdd);
-    w_c2875_toggle(host_pump_bdd).await;
-}
-
 #[when("循环侧栏宽度")]
 async fn w_c2911_sidebar_width_cycle(host_pump_bdd: &HostPumpBdd) {
     run_session_details_action(host_pump_bdd, |root| {
@@ -3365,58 +3283,6 @@ fn t_c2911_sidebar_width_cycle(host_pump_bdd: &HostPumpBdd) {
     assert!(
         content_w >= 40,
         "content must keep at least 40 columns: {content_w}"
-    );
-    put_pump(host_pump_bdd, pump);
-}
-
-#[when("按会话详情循环键")]
-async fn w_c2911_details_cycle(host_pump_bdd: &HostPumpBdd) {
-    run_session_details_action(host_pump_bdd, |root| {
-        root.cycle_session_details();
-    })
-    .await;
-}
-
-#[when("再按会话详情循环键")]
-async fn w_c2911_details_cycle_again(host_pump_bdd: &HostPumpBdd) {
-    w_c2911_details_cycle(host_pump_bdd).await;
-}
-
-#[then("先出现覆盖弹出框")]
-fn t_c2911_details_popup(host_pump_bdd: &HostPumpBdd) {
-    let pump = take_pump(host_pump_bdd);
-    let root = pump.session.ui_root().expect("ui").clone();
-    assert!(root.borrow().session_popup_open(), "popup must open first");
-    assert!(
-        !root.borrow().session_sidebar_on(),
-        "sidebar must not open before the popup"
-    );
-    put_pump(host_pump_bdd, pump);
-}
-
-#[then("覆盖弹出框收起且侧栏上屏")]
-fn t_c2911_details_sidebar(host_pump_bdd: &HostPumpBdd) {
-    let pump = take_pump(host_pump_bdd);
-    let root = pump.session.ui_root().expect("ui").clone();
-    assert!(
-        !root.borrow().session_popup_open(),
-        "popup must close when cycling to sidebar"
-    );
-    assert!(root.borrow().session_sidebar_on(), "sidebar must open");
-    put_pump(host_pump_bdd, pump);
-}
-
-#[then("侧栏收起")]
-fn t_c2911_details_off(host_pump_bdd: &HostPumpBdd) {
-    let pump = take_pump(host_pump_bdd);
-    let root = pump.session.ui_root().expect("ui").clone();
-    assert!(
-        !root.borrow().session_sidebar_on(),
-        "third cycle press must close the sidebar"
-    );
-    assert!(
-        !root.borrow().session_popup_open(),
-        "third cycle press must leave no popup"
     );
     put_pump(host_pump_bdd, pump);
 }
@@ -3459,22 +3325,6 @@ fn t_c2911_click_sidebar(host_pump_bdd: &HostPumpBdd) {
     assert!(
         !pump.session.tui.application_owned_has_selection(),
         "chrome click must not start a content selection"
-    );
-    put_pump(host_pump_bdd, pump);
-}
-
-#[when("点击覆盖弹出框")]
-async fn w_c2911_click_popup(host_pump_bdd: &HostPumpBdd) {
-    c2911_click(host_pump_bdd, 95, 2).await;
-}
-
-#[then("覆盖弹出框关闭")]
-fn t_c2911_click_popup(host_pump_bdd: &HostPumpBdd) {
-    let pump = take_pump(host_pump_bdd);
-    let root = pump.session.ui_root().expect("ui").clone();
-    assert!(
-        !root.borrow().session_popup_open(),
-        "popup must close on chrome click"
     );
     put_pump(host_pump_bdd, pump);
 }

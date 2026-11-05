@@ -36,17 +36,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    pub fn take_pending_session_popup(&mut self) -> bool {
-        let root = self.ui_root.as_ref().expect("product ui").clone();
-        root.borrow_mut().take_pending_session_popup()
-    }
-
-    pub fn show_session_popup(&mut self, session_id: &str) {
-        if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().show_session_popup(session_id);
-        }
-    }
-
     pub fn take_pending_session_tree_open(&mut self) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;

@@ -15,7 +15,6 @@ pub(super) struct PendingSlotOps {
     pub session_resume_select: Option<String>,
     pub session_resume_rename: Option<(String, String)>,
     pub session_resume_delete: Option<String>,
-    pub session_popup: bool,
     pub session_sidebar: bool,
 }
 

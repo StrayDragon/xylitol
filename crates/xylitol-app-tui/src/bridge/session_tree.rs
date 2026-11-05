@@ -136,6 +136,7 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
             id: tool_call_id.to_string(),
             name: name.to_string(),
             args_preview: String::new(),
+            args_full: String::new(),
             tool_path: None,
             write_content: None,
             display_diff: None,
@@ -348,6 +349,7 @@ fn message_json_to_ui_entries(
                 id: tool_call_id.to_string(),
                 name: name.clone(),
                 args_preview: String::new(),
+                args_full: String::new(),
                 tool_path: None,
                 write_content: None,
                 display_diff: None,
@@ -463,15 +465,17 @@ fn assistant_parts_to_ui(
                     .cloned()
                     .unwrap_or(Value::Object(Default::default()));
                 let mcp = is_mcp_tool_name(name);
+                let args_preview = if mcp {
+                    String::new()
+                } else {
+                    crate::bridge::human_tool_args_preview(name, &args, usize::MAX)
+                };
                 out.push(UiEntry::Tool {
                     timeout_secs: None,
                     id,
                     name: name.to_string(),
-                    args_preview: if mcp {
-                        String::new()
-                    } else {
-                        crate::bridge::human_tool_args_preview(name, &args, usize::MAX)
-                    },
+                    args_preview: args_preview.clone(),
+                    args_full: args_preview,
                     tool_path: crate::bridge::extract_tool_path(&args),
                     write_content: is_write_tool(name)
                         .then(|| {

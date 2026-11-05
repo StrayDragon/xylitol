@@ -471,6 +471,7 @@ pub(super) fn paint_tool_block(
     id: &str,
     name: &str,
     args_preview: &str,
+    args_full: &str,
     timeout_secs: Option<u64>,
     write_content: Option<&str>,
     display_diff: Option<&str>,
@@ -486,6 +487,11 @@ pub(super) fn paint_tool_block(
         width,
     } = ctx;
     let inner = rail_inner_width(width);
+    let args_body = if args_full.is_empty() {
+        args_preview
+    } else {
+        args_full
+    };
     if !fold.tool_header_visible {
         return (Vec::new(), Vec::new());
     }
@@ -528,14 +534,14 @@ pub(super) fn paint_tool_block(
         match mode {
             super::ArgsMode::Hidden => {}
             super::ArgsMode::Preview => {
-                let preview = args_preview.lines().take(5).collect::<Vec<_>>().join("\n");
+                let preview = args_body.lines().take(5).collect::<Vec<_>>().join("\n");
                 push_wrapped(&mut block, &theme.paint_muted(&preview), inner);
-                if args_preview.lines().count() > 5 {
+                if args_body.lines().count() > 5 {
                     push_wrapped(&mut block, &theme.paint_muted("… (click to expand)"), inner);
                 }
             }
             super::ArgsMode::Full => {
-                push_wrapped(&mut block, &theme.paint_muted(args_preview), inner);
+                push_wrapped(&mut block, &theme.paint_muted(args_body), inner);
             }
         }
     }
