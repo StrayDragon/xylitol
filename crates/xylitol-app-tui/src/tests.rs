@@ -4719,13 +4719,13 @@ fn live_agent_end_sets_worked_for_clock() {
     root.borrow_mut().touch_activity();
     let plain = xylitol_tui::utils::strip_ansi_codes(&root.borrow_mut().render(100).join("\n"));
     assert!(
-        plain.contains("Worked for 0s"),
+        plain.contains("Worked for ~1s"),
         "live AgentEnd must stamp the segment clock: {plain}"
     );
 }
 
 #[test]
-fn activity_fold_worked_for_zero_seconds() {
+fn activity_fold_worked_for_sub_second_is_approx() {
     use super::activity_fold::{SegmentClock, SegmentLevel};
     use super::layout::UiRoot;
     use time::macros::datetime;
@@ -4755,8 +4755,8 @@ fn activity_fold_worked_for_zero_seconds() {
     root.touch_activity();
     let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
-        plain.contains("Worked for 0s"),
-        "zero-duration segment must show seconds: {plain}"
+        plain.contains("Worked for ~1s"),
+        "sub-second segment must show ~1s: {plain}"
     );
 }
 
@@ -5609,6 +5609,34 @@ fn activity_fold_thinking_only_is_thought_not_explored() {
             .lines()
             .any(|l| l.contains("thinking") && l.contains("Ctrl+T")),
         "expanded Thought still has no thinking L1 header: {opened}"
+    );
+}
+
+#[test]
+fn activity_fold_thought_sub_second_is_approx() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "hi".into() });
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: "th".into(),
+        text: "consider".into(),
+        elapsed_secs: Some(0),
+    });
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "hello".into(),
+    });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Thought ~1s"),
+        "sub-second thought must show ~1s: {plain}"
     );
 }
 
