@@ -156,6 +156,14 @@ fn find_fd() -> Option<String> {
     None
 }
 
+fn snapshot_has_mcp(snap: &LoadedResourcesSnapshot) -> bool {
+    snap.mcp_configured > 0
+        || !snap.mcp_connected.is_empty()
+        || !snap.mcp_servers.is_empty()
+        || snap.mcp_connecting_label.is_some()
+        || !snap.mcp_diag_short.is_empty()
+}
+
 impl UiRoot {
     pub fn new() -> Self {
         let theme = LayoutTheme::product_dark();
@@ -343,7 +351,19 @@ impl UiRoot {
         self.install_completion_sources();
     }
 
-    pub fn set_loaded_resources(&mut self, snap: LoadedResourcesSnapshot) {
+    pub fn set_loaded_resources(&mut self, mut snap: LoadedResourcesSnapshot) {
+        let prev = &self.loaded_resources;
+        let prev_has_mcp = snapshot_has_mcp(prev);
+        let next_has_mcp = snapshot_has_mcp(&snap);
+        if prev_has_mcp && !next_has_mcp && !snap.mcp_bootstrap_complete {
+            snap.mcp_configured = prev.mcp_configured;
+            snap.mcp_connected = prev.mcp_connected.clone();
+            snap.mcp_servers = prev.mcp_servers.clone();
+            snap.mcp_diag_short = prev.mcp_diag_short.clone();
+            snap.mcp_connecting_label = prev.mcp_connecting_label.clone();
+            snap.mcp_bootstrap_complete = prev.mcp_bootstrap_complete;
+            snap.tools_table_frozen = prev.tools_table_frozen;
+        }
         if self.loaded_resources == snap {
             return;
         }
@@ -2149,6 +2169,45 @@ mod tests {
                 .any(|notice| notice.body.contains("显示等级")),
             "in-place chip must not push a notice"
         );
+    }
+
+    #[test]
+    fn transient_empty_snapshot_keeps_mcp_welcome_row() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(100);
+        root.set_loaded_resources(LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_connecting_label: Some("connecting 0/2".into()),
+            ..LoadedResourcesSnapshot::default()
+        });
+        let with_mcp = plain(&root.render(100).join("\n"));
+        assert!(with_mcp.contains("mcp"), "{with_mcp}");
+        assert_eq!(
+            root.status_next_turn_cue_for_test().as_deref(),
+            Some(crate::driver::MCP_PENDING_CUE)
+        );
+
+        root.set_loaded_resources(LoadedResourcesSnapshot::default());
+        let after_empty = plain(&root.render(100).join("\n"));
+        assert!(
+            after_empty.contains("mcp"),
+            "unfinished empty snapshot must not hide the welcome row: {after_empty}"
+        );
+        assert_eq!(
+            root.status_next_turn_cue_for_test().as_deref(),
+            Some(crate::driver::MCP_PENDING_CUE)
+        );
+
+        root.set_loaded_resources(LoadedResourcesSnapshot {
+            mcp_bootstrap_complete: true,
+            ..LoadedResourcesSnapshot::default()
+        });
+        let settled = plain(&root.render(100).join("\n"));
+        assert!(
+            !settled.contains("mcp"),
+            "settled no-MCP snapshot must hide the row: {settled}"
+        );
+        assert_eq!(root.status_next_turn_cue_for_test(), None);
     }
 
     #[test]

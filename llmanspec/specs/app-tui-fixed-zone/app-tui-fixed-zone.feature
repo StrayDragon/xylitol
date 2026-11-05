@@ -139,7 +139,7 @@
       那么 footer 含该档位标签
   @req:r1223
   规则: loaded-resources-slot
-    产品 UiRoot 须在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ XYlitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MCP 连接进行中时 mcp 行 须显示可区分的 connecting 进度（含已配置数或 i/n 与当前 server id 或等价），完成后 须收敛为 connected 摘要（已连接 id 与工具数或等价）。Host 侧已有成功连接时 不得把头卡停在仅 `N configured · 0 connected` 且无 connecting 进度、无失败诊断。失败诊断 须可感且 不得用逐步滚动提示刷墙。不得展示木糖醇中文标签；不得渲染 ASCII logo 艺术字；不得用省略号截断资源名；不得列出或暗示存在 prompt templates（产品无此能力）；不得展示密钥或完整 env。snapshot 携带 obs_diag（观测通道短诊断）时卡 须追加一行 obs 诊断（与 mcp 失败诊断同形：单短行、无密钥、无完整 env）；absent 时 不得占行。
+    产品 UiRoot 须在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ XYlitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MCP 连接进行中时 mcp 行 须显示可区分的 connecting 进度（含已配置数或 i/n 与当前 server id 或等价），完成后 须收敛为 connected 摘要（已连接 id 与工具数或等价）。Host 侧已有成功连接时 不得把头卡停在仅 `N configured · 0 connected` 且无 connecting 进度、无失败诊断。bootstrap 未完成且新 snapshot 无 MCP 时，不得把上一份有 MCP 的 mcp 行隐藏；bootstrap 完成且确认无 MCP 后才可隐藏。失败诊断 须可感且 不得用逐步滚动提示刷墙。不得展示木糖醇中文标签；不得渲染 ASCII logo 艺术字；不得用省略号截断资源名；不得列出或暗示存在 prompt templates（产品无此能力）；不得展示密钥或完整 env。snapshot 携带 obs_diag（观测通道短诊断）时卡 须追加一行 obs 诊断（与 mcp 失败诊断同形：单短行、无密钥、无完整 env）；absent 时 不得占行。
 
     场景: 已加载资源卡片渲染技能与MCP
       当 以含 skills 与 connecting MCP 的资源快照渲染头部卡
