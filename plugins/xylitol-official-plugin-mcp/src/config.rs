@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, OnceLock};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,8 @@ pub struct McpServerConfig {
     pub connect_timeout_ms: u64,
     #[serde(default = "default_call_timeout_ms")]
     pub call_timeout_ms: u64,
+    #[serde(default)]
+    pub custom_transport: Option<String>,
 }
 
 impl Default for McpServerConfig {
@@ -43,6 +46,7 @@ impl Default for McpServerConfig {
             credential: None,
             connect_timeout_ms: default_connect_timeout_ms(),
             call_timeout_ms: default_call_timeout_ms(),
+            custom_transport: None,
         }
     }
 }
@@ -66,6 +70,19 @@ impl McpServerConfig {
         if self.call_timeout_ms == 0 {
             return Err("call_timeout_ms must be positive".into());
         }
+        if self.transport == McpTransportKind::Custom {
+            let name = self
+                .custom_transport
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| "custom_transport is required for custom transport".to_string())?;
+            if !is_custom_transport_registered(name) {
+                return Err(format!("custom transport `{name}` is not registered"));
+            }
+        } else if self.custom_transport.is_some() {
+            return Err("custom_transport is only valid for custom transport".into());
+        }
         match self.transport {
             McpTransportKind::Stdio => match self.command.as_deref().map(str::trim) {
                 None | Some("") => Err("command is required for stdio transport".into()),
@@ -81,6 +98,7 @@ impl McpServerConfig {
                 }
                 Some(_) => Ok(()),
             },
+            McpTransportKind::Custom => Ok(()),
         }
     }
 
@@ -100,15 +118,35 @@ impl McpServerConfig {
     }
 }
 
+fn custom_transport_registry() -> &'static Mutex<HashSet<String>> {
+    static REGISTRY: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+pub fn register_custom_transport(name: impl Into<String>) {
+    custom_transport_registry()
+        .lock()
+        .expect("custom transport registry")
+        .insert(name.into());
+}
+
+pub fn is_custom_transport_registered(name: &str) -> bool {
+    custom_transport_registry()
+        .lock()
+        .expect("custom transport registry")
+        .contains(name)
+}
+
 fn default_mcp_transport() -> McpTransportKind {
     McpTransportKind::Stdio
 }
 
-#[derive(Clone, Copy, Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum McpTransportKind {
     Stdio,
     Http,
+    Custom,
 }
 
 impl<'de> Deserialize<'de> for McpTransportKind {
@@ -120,6 +158,7 @@ impl<'de> Deserialize<'de> for McpTransportKind {
         match raw.as_str() {
             "stdio" => Ok(Self::Stdio),
             "http" => Ok(Self::Http),
+            "custom" => Ok(Self::Custom),
             "sse" => Err(serde::de::Error::custom(
                 "`transport: sse` is removed; use `http` (Streamable HTTP). Legacy HTTP+SSE is not supported.",
             )),
@@ -196,6 +235,50 @@ mod tests {
         };
         let message = cfg.validate().unwrap_err();
         assert!(message.contains("legacy HTTP+SSE"), "{message}");
+    }
+
+    #[test]
+    fn custom_transport_requires_registration() {
+        let cfg = McpServerConfig {
+            name: "x".into(),
+            transport: McpTransportKind::Custom,
+            custom_transport: Some("ws-unregistered".into()),
+            ..Default::default()
+        };
+        let message = cfg.validate().unwrap_err();
+        assert!(message.contains("is not registered"), "{message}");
+
+        register_custom_transport("ws-registered");
+        let cfg = McpServerConfig {
+            custom_transport: Some("ws-registered".into()),
+            ..cfg
+        };
+        cfg.validate().expect("registered custom transport");
+    }
+
+    #[test]
+    fn custom_transport_requires_name() {
+        let cfg = McpServerConfig {
+            name: "x".into(),
+            transport: McpTransportKind::Custom,
+            ..Default::default()
+        };
+        assert!(cfg.validate().unwrap_err().contains("custom_transport"));
+    }
+
+    #[test]
+    fn custom_transport_name_rejected_for_core_transports() {
+        let cfg = McpServerConfig {
+            name: "x".into(),
+            command: Some("bin".into()),
+            custom_transport: Some("ws".into()),
+            ..Default::default()
+        };
+        assert!(
+            cfg.validate()
+                .unwrap_err()
+                .contains("only valid for custom transport")
+        );
     }
 
     #[test]

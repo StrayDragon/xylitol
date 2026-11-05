@@ -177,6 +177,13 @@ impl McpClientManager {
                             this.connect_stdio(&name, &server_config, workspace).await
                         }
                         McpTransportKind::Http => this.connect_http(&name, &server_config).await,
+                        McpTransportKind::Custom => Err(McpError::Config(format!(
+                            "custom transport `{}` has no connector; a plugin must register one",
+                            server_config
+                                .custom_transport
+                                .as_deref()
+                                .unwrap_or("unknown")
+                        ))),
                     }
                 };
                 let connect_timeout =
@@ -260,7 +267,7 @@ impl McpClientManager {
             let tool_count = counts.get(id).copied().unwrap_or(0);
             let transport = transports
                 .get(id)
-                .copied()
+                .cloned()
                 .unwrap_or(McpTransportKind::Stdio);
             out.push(ConnectedMcpServer {
                 id: id.clone(),

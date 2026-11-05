@@ -6,6 +6,7 @@ use xylitol_official_plugin_config::types::{McpScope, McpServerConfig, McpTransp
 pub enum McpTransportSpec {
     Stdio,
     Http,
+    Custom,
 }
 
 #[derive(Clone, Debug)]
@@ -21,6 +22,7 @@ pub struct McpServerSpec {
     pub credential: Option<String>,
     pub connect_timeout_ms: u64,
     pub call_timeout_ms: u64,
+    pub custom_transport: Option<String>,
 }
 
 impl From<&McpServerConfig> for McpServerSpec {
@@ -30,6 +32,7 @@ impl From<&McpServerConfig> for McpServerSpec {
             transport: match c.transport {
                 McpTransportKind::Stdio => McpTransportSpec::Stdio,
                 McpTransportKind::Http => McpTransportSpec::Http,
+                McpTransportKind::Custom => McpTransportSpec::Custom,
             },
             command: c.command.clone(),
             args: c.args.clone(),
@@ -40,6 +43,7 @@ impl From<&McpServerConfig> for McpServerSpec {
             credential: c.credential.clone(),
             connect_timeout_ms: c.connect_timeout_ms,
             call_timeout_ms: c.call_timeout_ms,
+            custom_transport: c.custom_transport.clone(),
         }
     }
 }
@@ -51,6 +55,7 @@ impl From<&McpServerSpec> for McpServerConfig {
             transport: match s.transport {
                 McpTransportSpec::Stdio => McpTransportKind::Stdio,
                 McpTransportSpec::Http => McpTransportKind::Http,
+                McpTransportSpec::Custom => McpTransportKind::Custom,
             },
             command: s.command.clone(),
             args: s.args.clone(),
@@ -61,6 +66,7 @@ impl From<&McpServerSpec> for McpServerConfig {
             credential: s.credential.clone(),
             connect_timeout_ms: s.connect_timeout_ms,
             call_timeout_ms: s.call_timeout_ms,
+            custom_transport: s.custom_transport.clone(),
         }
     }
 }

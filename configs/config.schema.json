@@ -406,6 +406,13 @@
             "null"
           ]
         },
+        "custom_transport": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "env": {
           "additionalProperties": {
             "type": "string"
@@ -453,7 +460,8 @@
     "mcp_servers_McpTransportKind": {
       "enum": [
         "stdio",
-        "http"
+        "http",
+        "custom"
       ],
       "type": "string"
     },

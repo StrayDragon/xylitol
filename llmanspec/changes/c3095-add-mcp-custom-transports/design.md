@@ -8,8 +8,8 @@
 
 ## 2. 配置
 
-- transport 接受 custom:<name>；name 非空。
-- 未注册的 custom name 在配置校验阶段报错（可读、可定位）。
+- transport 取值 stdio / http / custom；custom 时须提供 custom_transport 名称。
+- 未注册的 custom_transport 名称在配置校验阶段报错（可读、可定位）。
 - 已注册但无连接器时，连接阶段返回稳定错误 “custom transport <name> has no connector”；不得静默回退到 http/stdio。
 
 ## 3. Registry seam
@@ -26,6 +26,6 @@
 
 ## 5. 测试
 
-- 配置：custom:<name> 解析；空 name / 未注册拒绝。
+- 配置：custom + custom_transport 解析；空 name / 未注册拒绝；非 custom 携带 custom_transport 拒绝。
 - Registry：注册后校验通过；连接返回 no-connector 错误。
 - 核心 stdio/http 行为不变。

@@ -128,3 +128,7 @@
   @req:r3237
   规则: mcp-legacy-sse-diagnostic
     legacy HTTP+SSE endpoint 或协议须产生可读诊断（不自动回退），供 `/mcp` 面板显示。由单测覆盖，不扩 BDD step。
+
+  @req:r3239
+  规则: mcp-custom-transport-seam
+    transport 须接受 stdio / http / custom；custom 须提供 custom_transport 名称且名称已注册；已注册但无连接器时连接须返回稳定错误；不得静默回退；不实现 WebSocket；不假设连接器 API 形状。由单测覆盖，不扩 BDD step。
