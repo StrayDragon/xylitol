@@ -2005,9 +2005,18 @@ mod tests {
             .find(|line| plain(line).contains('◨'))
             .expect("marker line");
         assert!(
-            plain(marker_line).starts_with('╰') && plain(marker_line).contains("[▤ 摘要]"),
-            "marker must sit on the bottom border:\n{}",
+            !plain(marker_line).starts_with('╰'),
+            "marker must sit above the bottom border:\n{}",
             plain(marker_line)
+        );
+        let bottom_line = lines
+            .iter()
+            .find(|line| plain(line).contains('╰') && plain(line).contains("[▤ 摘要]"))
+            .expect("bottom border");
+        assert!(
+            plain(bottom_line).ends_with('╯') && plain(bottom_line).contains("[▤ 摘要]"),
+            "bottom border must keep ╯ below the marker:\n{}",
+            plain(bottom_line)
         );
         assert!(!joined.contains("[侧栏]"), "{joined}");
         assert!(!joined.contains("[重置折叠]"), "{joined}");
@@ -2032,6 +2041,26 @@ mod tests {
         assert!(
             raw.contains("\x1b[7m"),
             "cursor styling must survive:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn prompt_and_marker_keep_thinking_off_colour() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(80);
+        root.set_thinking_level_ui("high".into());
+        let lines = root.render(80);
+        let raw = lines.join("\n");
+        let off = crate::layout::LayoutTheme::product_dark()
+            .palette()
+            .thinking_border_rgb(xylitol_tui::ThinkingBorderLevel::Off);
+        assert!(
+            raw.contains(&xylitol_tui::fg_rgb(off, "❯")),
+            "prompt must stay on thinking-off colour"
+        );
+        assert!(
+            raw.contains(&xylitol_tui::fg_rgb(off, "◨")),
+            "inactive marker must stay on thinking-off colour"
         );
     }
 

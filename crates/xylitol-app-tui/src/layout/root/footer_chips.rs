@@ -115,15 +115,11 @@ impl UiRoot {
                 .trim_end_matches('╯')
                 .to_string()
         };
-        let marker_visible = self.slot.is_editor() && width >= 80;
-        let avail = if marker_visible {
-            width.saturating_sub(chip_w + 4)
-        } else {
-            width.saturating_sub(chip_w + 3)
-        };
+        let avail = width.saturating_sub(chip_w + 3);
         let interior = xylitol_tui::truncate_to_width(&interior, avail, "", false);
         let pad = avail.saturating_sub(xylitol_tui::visible_width(&interior));
         let border = self.operation_zone_paint();
+        let buttons = self.chrome_button_paint();
         let mut out = border("╰");
         out.push_str(&border(&interior));
         out.push_str(&border(&"─".repeat(pad)));
@@ -136,7 +132,7 @@ impl UiRoot {
                 col += 1;
             }
             let w = xylitol_tui::visible_width(text);
-            out.push_str(&self.paint_dock_chip(&*border, text, *active));
+            out.push_str(&self.paint_dock_chip(&*buttons, text, *active));
             hits.push(FooterChipHit {
                 start: col,
                 end: col + w,
@@ -144,17 +140,7 @@ impl UiRoot {
             });
             col += w;
         }
-        if marker_visible {
-            out.push(' ');
-            let marker = if self.session_sidebar_on {
-                self.theme.paint_chip("◨", true)
-            } else {
-                border("◨")
-            };
-            out.push_str(&marker);
-        } else {
-            out.push_str(&border("╯"));
-        }
+        out.push_str(&border("╯"));
         (out, hits)
     }
 
@@ -310,13 +296,20 @@ mod tests {
     }
 
     #[test]
-    fn inactive_chip_shares_the_border_colour() {
+    fn button_chip_keeps_thinking_off_colour() {
+        let palette = crate::layout::LayoutTheme::product_dark().palette();
+        let off = palette.thinking_border_rgb(xylitol_tui::ThinkingBorderLevel::Off);
         let row = chip_row_for("high");
         let dashes = first_sgr(&row);
         let chip = rgb_after(&row, "[▤ 摘要]");
         assert_eq!(
+            chip,
+            (off.r, off.g, off.b),
+            "button chip must stay on the thinking-off colour"
+        );
+        assert_ne!(
             chip, dashes,
-            "inactive chip and border must share one colour"
+            "button chip must not follow the thinking border level"
         );
     }
 }

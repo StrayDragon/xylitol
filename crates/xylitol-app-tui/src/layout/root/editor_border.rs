@@ -17,6 +17,14 @@ impl UiRoot {
         ThinkingBorderLevel::parse(&self.thinking_level).unwrap_or(ThinkingBorderLevel::Off)
     }
 
+    pub(crate) fn chrome_button_paint(&self) -> Box<dyn Fn(&str) -> String> {
+        let paint = self
+            .theme
+            .palette()
+            .thinking_border_paint(ThinkingBorderLevel::Off);
+        Box::new(move |s: &str| paint(s))
+    }
+
     pub(crate) fn operation_zone_paint(&self) -> Box<dyn Fn(&str) -> String> {
         if self.bash_mode {
             return self.theme.bash_border_color();

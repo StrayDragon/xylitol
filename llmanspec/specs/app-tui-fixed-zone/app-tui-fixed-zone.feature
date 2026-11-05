@@ -12,7 +12,7 @@
       那么 空闲帧不含忙碌短词且忙碌帧恰一行 Working 且 footer 不含 Working
   @req:r1224
   规则: footer-minimal
-    产品 footer 须为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，不得在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 须省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 须在 used 字段后追加派生占用比（见 atc21）；并在可获得 prompt cache 读取状态时 须在 used 字段后、占用比之前追加 `· cache N`（命中 N tokens）或 `· cache ?`（上游未上报）；不适用或缺省时 须省略，不得伪造 `cache 0`；不得在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 不得伪造 used 0；不得常驻快捷键墙；放不下时 须截断右侧而非增高。编辑区上边框右端 可以承载阶段名；下边框右端 承载 `[▤ 摘要]` 与 `◨`；不得再画 `[侧栏]`、`[重置折叠]`、`[详情]` chip；chip 与边框同高，不得使 footer 或编辑区增高、不得换行，宽度不足时整 chip 不画。
+    产品 footer 须为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，不得在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 须省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 须在 used 字段后追加派生占用比（见 atc21）；并在可获得 prompt cache 读取状态时 须在 used 字段后、占用比之前追加 `· cache N`（命中 N tokens）或 `· cache ?`（上游未上报）；不适用或缺省时 须省略，不得伪造 `cache 0`；不得在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 不得伪造 used 0；不得常驻快捷键墙；放不下时 须截断右侧而非增高。编辑区上边框右端 可以承载阶段名；下边框右端 承载 `[▤ 摘要]`；末行右端 承载 `◨`；不得再画 `[侧栏]`、`[重置折叠]`、`[详情]` chip；chip 与边框同高，不得使 footer 或编辑区增高、不得换行，宽度不足时整 chip 不画。
 
     场景: 页脚单一行带启发式来源
       当 以 Heuristic 上下文估计驱动 footer token 字段
@@ -308,4 +308,4 @@
 
   @req:r3085
   规则: editor-chrome
-    产品 TUI 编辑区上/下边框 须用圆角 `╭╮╰╯`，角与边框 须同色并跟随输入框 thinking/bash 色；阶段名 右对齐上边框；下边框右端 须有 `[▤ 摘要]`；不得显示 `[侧栏]`、`[重置折叠]`、`[详情]` chip 或会话详情覆盖弹出框；内容行 须有左右 `│` 竖边，末行左侧 须绘制用户 glyph（默认 `❯`，ASCII `>`）；`◨` 须固定在下边框最右端并替代 `╯`，命中按屏上实际列（含侧栏展开后），左键切换侧栏；窄档 <80 列 隐藏 `◨` 并保留 `╯`；内容行 不得重建或剥离 ANSI，光标样式 须保留；边框内部截断 不得显示省略号；多行输入溢出时 须保留编辑器 `↑/↓ N more` 提示，再拼阶段名/摘要 chip，不得覆盖提示或断边框；状态 spinner 须固定 `⬢` 字形，以 1.2s 正弦在 accent 亮/暗间平滑脉冲（100ms tick），不得换字形或每帧翻转；固定区高度 不得因 chip 或标题变化。由 snapshot 与 harness 覆盖，不扩 BDD step。
+    产品 TUI 编辑区上/下边框 须用圆角 `╭╮╰╯`，角与边框 须同色并跟随输入框 thinking/bash 色；阶段名 右对齐上边框；下边框右端 须有 `[▤ 摘要]`；不得显示 `[侧栏]`、`[重置折叠]`、`[详情]` chip 或会话详情覆盖弹出框；内容行 须有左右 `│` 竖边，末行左侧 须绘制用户 glyph（默认 `❯`，ASCII `>`）；`◨` 须固定在末行右端、`╯` 上方，下边框 须保留 `╯`，命中按屏上实际列（含侧栏展开后），左键切换侧栏；窄档 <80 列 隐藏 `◨` 且末行右端 须为 `│`；`❯`、`[▤ 摘要]`、`◨` 等按钮 须固定使用 thinking-off 色，不得随 thinking 强度变化；边框与角 仍须跟随 thinking/bash 色；内容行 不得重建或剥离 ANSI，光标样式 须保留；边框内部截断 不得显示省略号；多行输入溢出时 须保留编辑器 `↑/↓ N more` 提示，再拼阶段名/摘要 chip，不得覆盖提示或断边框；状态 spinner 须固定 `⬢` 字形，以 1.2s 正弦在 accent 亮/暗间平滑脉冲（100ms tick），不得换字形或每帧翻转；固定区高度 不得因 chip 或标题变化。由 snapshot 与 harness 覆盖，不扩 BDD step。

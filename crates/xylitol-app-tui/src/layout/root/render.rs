@@ -6,6 +6,23 @@ use super::super::slots::EditorSlot;
 use super::UiRoot;
 use crate::widgets::{render_queue_strip, render_scrollback};
 
+fn wrap_marker_row(row: &mut String, left: &str, marker: &str) {
+    if row.starts_with(' ') {
+        row.replace_range(0..1, left);
+    } else {
+        row.insert_str(0, left);
+    }
+    if row.ends_with("  ") {
+        let end = row.len();
+        row.replace_range(end - 2..end, &format!(" {marker}"));
+    } else if row.ends_with(' ') {
+        let end = row.len();
+        row.replace_range(end - 1..end, marker);
+    } else {
+        row.push_str(marker);
+    }
+}
+
 fn wrap_content_row(row: &mut String, left: &str, right: &str) {
     if row.starts_with(' ') {
         row.replace_range(0..1, left);
@@ -48,15 +65,25 @@ impl UiRoot {
         }
         if self.slot.is_editor() && editor.len() > 2 && !self.editor_autocomplete_open() {
             let border = self.operation_zone_paint();
+            let buttons = self.chrome_button_paint();
             let left = border("│");
             let right = border("│");
-            let prompt = self.theme.paint_user(self.glyphs.user());
+            let prompt = buttons(self.glyphs.user());
+            let marker = if self.session_sidebar_on {
+                self.theme.paint_chip("◨", true)
+            } else {
+                buttons("◨")
+            };
             let last_content = editor.len() - 2;
             for row in editor.iter_mut().take(last_content).skip(1) {
                 wrap_content_row(row, &left, &right);
             }
             if let Some(row) = editor.get_mut(last_content) {
-                wrap_content_row(row, &prompt, &right);
+                if width >= 80 {
+                    wrap_marker_row(row, &prompt, &marker);
+                } else {
+                    wrap_content_row(row, &prompt, &right);
+                }
             }
         }
         self.last_slot_close_hit = None;
