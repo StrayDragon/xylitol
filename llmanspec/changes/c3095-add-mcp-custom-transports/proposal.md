@@ -1,6 +1,9 @@
 ---
 depends_on: [c3085-add-mcp-transport-config]
 title: "MCP custom transport insertion point"
+branch: main
+base_branch: origin/main
+base_sha: 78d077258664b34c5b9147336d76994cb6f448b7
 ---
 
 ## Why
