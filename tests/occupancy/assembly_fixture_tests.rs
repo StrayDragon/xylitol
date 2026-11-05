@@ -794,6 +794,8 @@ fn fixture_mcp(name: &str) -> xylitol_kernel::mcp_spec::McpServerSpec {
         headers: None,
         scope: Default::default(),
         credential: None,
+        connect_timeout_ms: 8_000,
+        call_timeout_ms: 120_000,
     }
 }
 
@@ -1109,6 +1111,8 @@ async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
         headers: None,
         scope: Default::default(),
         credential: None,
+        connect_timeout_ms: 8_000,
+        call_timeout_ms: 120_000,
     };
     let host = host_state_for_test_with_mcp(vec![hang]).expect("host");
     let slot = host.slot("hang-freeze").await;
@@ -1160,6 +1164,8 @@ async fn materialize_writer_does_not_wait_session_prepare() {
         headers: None,
         scope: Default::default(),
         credential: None,
+        connect_timeout_ms: 8_000,
+        call_timeout_ms: 120_000,
     };
     let host = host_state_for_test_with_mcp(vec![hang]).expect("host");
     let slot = host.slot("hang-sess").await;

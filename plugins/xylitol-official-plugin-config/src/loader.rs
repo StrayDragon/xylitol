@@ -529,7 +529,7 @@ mod tests {
         std::fs::write(global.join("secret.env"), "CTX_KEY=secret-value\n").unwrap();
         std::fs::write(
             global.join("config.yml"),
-            "mcp_servers:\n  - name: demo\n    transport: sse\n    url: https://example.com/mcp\n    headers:\n      CONTEXT7_API_KEY: \"{{ secret.CTX_KEY }}\"\n",
+            "mcp_servers:\n  - name: demo\n    transport: http\n    url: https://example.com/mcp\n    headers:\n      CONTEXT7_API_KEY: \"{{ secret.CTX_KEY }}\"\n",
         )
         .unwrap();
         let home_s = home.path().to_str().unwrap();

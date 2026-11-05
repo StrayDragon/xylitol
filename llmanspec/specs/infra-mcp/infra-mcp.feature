@@ -116,3 +116,15 @@
   @req:r3234
   规则: mcp-resume-reconcile
     resume 须按当前 profile 与 session workspace set 重建 MCP claims 与 tool set；未使用 server 释放。由单测覆盖，不扩 BDD step。
+
+  @req:r3235
+  规则: mcp-canonical-transport
+    MCP transport 只支持 `stdio` 与 `http`（Streamable HTTP）；`transport: sse` 须破坏性拒绝并给迁移提示；legacy HTTP+SSE 不支持；不得保留兼容别名。由单测覆盖，不扩 BDD step。
+
+  @req:r3236
+  规则: mcp-per-server-timeout
+    每 server 须有 `connect_timeout_ms`（缺省 8000）与 `call_timeout_ms`（缺省 120000）；connect 超时按 server 独立；call 超时按 server 覆盖全局；非法值配置校验失败；超时返回可分类错误。由单测覆盖，不扩 BDD step。
+
+  @req:r3237
+  规则: mcp-legacy-sse-diagnostic
+    legacy HTTP+SSE endpoint 或协议须产生可读诊断（不自动回退），供 `/mcp` 面板显示。由单测覆盖，不扩 BDD step。

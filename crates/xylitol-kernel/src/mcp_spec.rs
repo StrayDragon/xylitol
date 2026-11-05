@@ -5,7 +5,7 @@ use xylitol_official_plugin_config::types::{McpScope, McpServerConfig, McpTransp
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum McpTransportSpec {
     Stdio,
-    Sse,
+    Http,
 }
 
 #[derive(Clone, Debug)]
@@ -19,6 +19,8 @@ pub struct McpServerSpec {
     pub headers: Option<HashMap<String, String>>,
     pub scope: McpScope,
     pub credential: Option<String>,
+    pub connect_timeout_ms: u64,
+    pub call_timeout_ms: u64,
 }
 
 impl From<&McpServerConfig> for McpServerSpec {
@@ -27,7 +29,7 @@ impl From<&McpServerConfig> for McpServerSpec {
             name: c.name.clone(),
             transport: match c.transport {
                 McpTransportKind::Stdio => McpTransportSpec::Stdio,
-                McpTransportKind::Sse => McpTransportSpec::Sse,
+                McpTransportKind::Http => McpTransportSpec::Http,
             },
             command: c.command.clone(),
             args: c.args.clone(),
@@ -36,6 +38,8 @@ impl From<&McpServerConfig> for McpServerSpec {
             headers: c.headers.clone(),
             scope: c.scope,
             credential: c.credential.clone(),
+            connect_timeout_ms: c.connect_timeout_ms,
+            call_timeout_ms: c.call_timeout_ms,
         }
     }
 }
@@ -46,7 +50,7 @@ impl From<&McpServerSpec> for McpServerConfig {
             name: s.name.clone(),
             transport: match s.transport {
                 McpTransportSpec::Stdio => McpTransportKind::Stdio,
-                McpTransportSpec::Sse => McpTransportKind::Sse,
+                McpTransportSpec::Http => McpTransportKind::Http,
             },
             command: s.command.clone(),
             args: s.args.clone(),
@@ -55,6 +59,8 @@ impl From<&McpServerSpec> for McpServerConfig {
             headers: s.headers.clone(),
             scope: s.scope,
             credential: s.credential.clone(),
+            connect_timeout_ms: s.connect_timeout_ms,
+            call_timeout_ms: s.call_timeout_ms,
         }
     }
 }

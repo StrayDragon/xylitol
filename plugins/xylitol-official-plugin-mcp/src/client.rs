@@ -102,6 +102,7 @@ pub const MCP_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 pub struct McpClientManager {
     services: Mutex<HashMap<String, McpService>>,
     tools_dirty: Arc<AtomicBool>,
+    call_timeouts: Mutex<HashMap<String, std::time::Duration>>,
     transports: Mutex<HashMap<String, McpTransportKind>>,
     tool_counts: Mutex<HashMap<String, usize>>,
     diagnostics: Mutex<Vec<McpConnectDiagnostic>>,
@@ -119,6 +120,7 @@ impl McpClientManager {
         Self {
             services: Mutex::new(HashMap::new()),
             tools_dirty: Arc::new(AtomicBool::new(false)),
+            call_timeouts: Mutex::new(HashMap::new()),
             transports: Mutex::new(HashMap::new()),
             tool_counts: Mutex::new(HashMap::new()),
             diagnostics: Mutex::new(Vec::new()),
@@ -174,23 +176,28 @@ impl McpClientManager {
                         McpTransportKind::Stdio => {
                             this.connect_stdio(&name, &server_config, workspace).await
                         }
-                        McpTransportKind::Sse => this.connect_sse(&name, &server_config).await,
+                        McpTransportKind::Http => this.connect_http(&name, &server_config).await,
                     }
                 };
-                let result =
-                    match tokio::time::timeout(crate::MCP_SERVER_CONNECT_TIMEOUT, connect).await {
-                        Ok(inner) => inner,
-                        Err(_) => Err(McpError::Timeout(format!(
-                            "connect timed out after {:?}",
-                            crate::MCP_SERVER_CONNECT_TIMEOUT
-                        ))),
-                    };
-                (name, result)
+                let connect_timeout =
+                    std::time::Duration::from_millis(server_config.connect_timeout_ms);
+                let result = match tokio::time::timeout(connect_timeout, connect).await {
+                    Ok(inner) => inner,
+                    Err(_) => Err(McpError::Timeout(format!(
+                        "connect timed out after {:?}",
+                        connect_timeout
+                    ))),
+                };
+                (name, result, server_config.call_timeout_ms)
             });
         }
 
         let mut finished = 0usize;
-        while let Some((name, result)) = futs.next().await {
+        while let Some((name, result, call_timeout_ms)) = futs.next().await {
+            self.call_timeouts.lock().await.insert(
+                name.clone(),
+                std::time::Duration::from_millis(call_timeout_ms),
+            );
             if let Err(e) = result {
                 log::warn!("MCP server {name}: connection failed: {e}");
                 self.push_diagnostic(name.clone(), e.to_string()).await;
@@ -326,7 +333,14 @@ impl McpClientManager {
         }
     }
 
-    async fn connect_sse(&self, name: &str, config: &McpServerConfig) -> Result<(), McpError> {
+    async fn connect_http(&self, name: &str, config: &McpServerConfig) -> Result<(), McpError> {
+        if let Some(url) = config.url.as_deref()
+            && url.trim_end_matches('/').ends_with("/sse")
+        {
+            return Err(McpError::Config(format!(
+                "legacy HTTP+SSE is not supported: {url}; use Streamable HTTP"
+            )));
+        }
         #[cfg(not(feature = "mcp"))]
         {
             let _ = (name, config);
@@ -378,8 +392,12 @@ impl McpClientManager {
             self.transports
                 .lock()
                 .await
-                .insert(name.to_string(), McpTransportKind::Sse);
-            log::info!("MCP server connected name={} transport={}", { name }, "sse");
+                .insert(name.to_string(), McpTransportKind::Http);
+            log::info!(
+                "MCP server connected name={} transport={}",
+                { name },
+                "http"
+            );
             Ok(())
         }
     }
@@ -466,15 +484,22 @@ impl McpClientManager {
             let args_map = args.as_object().cloned().unwrap_or_default();
             let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args_map);
 
+            let call_timeout = self
+                .call_timeouts
+                .lock()
+                .await
+                .get(server_id)
+                .copied()
+                .unwrap_or(MCP_CALL_TIMEOUT);
             let result: CallToolResult = tokio::time::timeout(
-                MCP_CALL_TIMEOUT,
+                call_timeout,
                 service.call_tool(params),
             )
             .await
             .map_err(|_| {
                 McpError::Timeout(format!(
-                    "mcp tool call timed out after {}s (server={server_id}, tool={tool_name})",
-                    MCP_CALL_TIMEOUT.as_secs()
+                    "mcp tool call timed out after {:?} (server={server_id}, tool={tool_name})",
+                    call_timeout
                 ))
             })?
             .map_err(|source| McpError::Call {
@@ -567,7 +592,7 @@ mod tests {
         let manager = Arc::new(McpClientManager::new());
         let servers = vec![McpServerConfig {
             name: "bad-url".into(),
-            transport: McpTransportKind::Sse,
+            transport: McpTransportKind::Http,
             url: Some("not-a-url".into()),
             ..Default::default()
         }];

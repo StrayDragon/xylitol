@@ -480,6 +480,8 @@ mod tests {
             headers: None,
             scope: Default::default(),
             credential: None,
+            connect_timeout_ms: 8_000,
+            call_timeout_ms: 120_000,
         }
     }
 

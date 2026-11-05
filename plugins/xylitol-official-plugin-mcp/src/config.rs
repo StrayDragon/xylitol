@@ -23,6 +23,10 @@ pub struct McpServerConfig {
     pub scope: McpScope,
     #[serde(default)]
     pub credential: Option<String>,
+    #[serde(default = "default_connect_timeout_ms")]
+    pub connect_timeout_ms: u64,
+    #[serde(default = "default_call_timeout_ms")]
+    pub call_timeout_ms: u64,
 }
 
 impl Default for McpServerConfig {
@@ -37,8 +41,18 @@ impl Default for McpServerConfig {
             headers: None,
             scope: McpScope::default(),
             credential: None,
+            connect_timeout_ms: default_connect_timeout_ms(),
+            call_timeout_ms: default_call_timeout_ms(),
         }
     }
+}
+
+fn default_connect_timeout_ms() -> u64 {
+    8_000
+}
+
+fn default_call_timeout_ms() -> u64 {
+    120_000
 }
 
 impl McpServerConfig {
@@ -46,15 +60,24 @@ impl McpServerConfig {
         if self.name.trim().is_empty() {
             return Err("mcp server name must not be empty".into());
         }
+        if self.connect_timeout_ms == 0 {
+            return Err("connect_timeout_ms must be positive".into());
+        }
+        if self.call_timeout_ms == 0 {
+            return Err("call_timeout_ms must be positive".into());
+        }
         match self.transport {
             McpTransportKind::Stdio => match self.command.as_deref().map(str::trim) {
                 None | Some("") => Err("command is required for stdio transport".into()),
                 Some(_) => Ok(()),
             },
-            McpTransportKind::Sse => match self.url.as_deref().map(str::trim) {
-                None | Some("") => Err("url is required for sse transport".into()),
+            McpTransportKind::Http => match self.url.as_deref().map(str::trim) {
+                None | Some("") => Err("url is required for http transport".into()),
+                Some(u) if u.ends_with("/sse") => Err(format!(
+                    "legacy HTTP+SSE endpoint is not supported: {u}; use Streamable HTTP"
+                )),
                 Some(u) if !(u.starts_with("http://") || u.starts_with("https://")) => {
-                    Err(format!("url must be http(s) for sse transport: {u}"))
+                    Err(format!("url must be http(s) for http transport: {u}"))
                 }
                 Some(_) => Ok(()),
             },
@@ -81,11 +104,30 @@ fn default_mcp_transport() -> McpTransportKind {
     McpTransportKind::Stdio
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum McpTransportKind {
     Stdio,
-    Sse,
+    Http,
+}
+
+impl<'de> Deserialize<'de> for McpTransportKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        match raw.as_str() {
+            "stdio" => Ok(Self::Stdio),
+            "http" => Ok(Self::Http),
+            "sse" => Err(serde::de::Error::custom(
+                "`transport: sse` is removed; use `http` (Streamable HTTP). Legacy HTTP+SSE is not supported.",
+            )),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown MCP transport `{other}`; expected `stdio` or `http`"
+            ))),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
@@ -123,12 +165,50 @@ mod tests {
     }
 
     #[test]
-    fn validate_sse_requires_url() {
+    fn validate_http_requires_url() {
         let cfg = McpServerConfig {
             name: "x".into(),
-            transport: McpTransportKind::Sse,
+            transport: McpTransportKind::Http,
             ..Default::default()
         };
         assert!(cfg.validate().unwrap_err().contains("url"));
+    }
+
+    #[test]
+    fn sse_transport_is_rejected_with_migration_hint() {
+        let err = serde_json::from_value::<McpServerConfig>(serde_json::json!({
+            "name": "x",
+            "transport": "sse"
+        }))
+        .expect_err("sse must be rejected");
+        let message = err.to_string();
+        assert!(message.contains("sse"), "{message}");
+        assert!(message.contains("http"), "{message}");
+    }
+
+    #[test]
+    fn legacy_sse_url_is_rejected() {
+        let cfg = McpServerConfig {
+            name: "x".into(),
+            transport: McpTransportKind::Http,
+            url: Some("https://example.com/sse".into()),
+            ..Default::default()
+        };
+        let message = cfg.validate().unwrap_err();
+        assert!(message.contains("legacy HTTP+SSE"), "{message}");
+    }
+
+    #[test]
+    fn timeout_defaults_and_validation() {
+        let cfg = McpServerConfig::default();
+        assert_eq!(cfg.connect_timeout_ms, 8_000);
+        assert_eq!(cfg.call_timeout_ms, 120_000);
+        let zero = McpServerConfig {
+            name: "x".into(),
+            command: Some("bin".into()),
+            call_timeout_ms: 0,
+            ..Default::default()
+        };
+        assert!(zero.validate().unwrap_err().contains("call_timeout_ms"));
     }
 }

@@ -380,12 +380,24 @@
             "null"
           ]
         },
+        "call_timeout_ms": {
+          "default": 120000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "command": {
           "default": null,
           "type": [
             "string",
             "null"
           ]
+        },
+        "connect_timeout_ms": {
+          "default": 8000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
         "credential": {
           "default": null,
@@ -441,7 +453,7 @@
     "mcp_servers_McpTransportKind": {
       "enum": [
         "stdio",
-        "sse"
+        "http"
       ],
       "type": "string"
     },
