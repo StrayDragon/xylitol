@@ -6,6 +6,20 @@ use super::super::slots::EditorSlot;
 use super::UiRoot;
 use crate::widgets::{render_queue_strip, render_scrollback};
 
+fn wrap_content_row(row: &mut String, left: &str, right: &str) {
+    if row.starts_with(' ') {
+        row.replace_range(0..1, left);
+    } else {
+        row.insert_str(0, left);
+    }
+    if row.ends_with(' ') {
+        let end = row.len();
+        row.replace_range(end - 1..end, right);
+    } else {
+        row.push_str(right);
+    }
+}
+
 impl UiRoot {
     fn paint_editor_chips(&mut self, editor: &mut [String], width: usize) -> bool {
         let top_base = editor.first().cloned().unwrap_or_default();
@@ -32,19 +46,18 @@ impl UiRoot {
                 chip_hits.extend(bottom_hits);
             }
         }
-        if self.slot.is_editor() && editor.len() > 2 && width >= 80 {
-            let plain = xylitol_tui::utils::strip_ansi_codes(&editor[1]);
-            let content =
-                xylitol_tui::truncate_to_width(&plain, width.saturating_sub(2), "", false);
-            let pad = width
-                .saturating_sub(2)
-                .saturating_sub(xylitol_tui::visible_width(&content));
-            let marker = if self.session_sidebar_on {
-                self.theme.paint_chip("◨", true)
-            } else {
-                self.operation_zone_paint()("◨")
-            };
-            editor[1] = format!("{content}{} {marker}", " ".repeat(pad));
+        if self.slot.is_editor() && editor.len() > 2 && !self.editor_autocomplete_open() {
+            let border = self.operation_zone_paint();
+            let left = border("│");
+            let right = border("│");
+            let prompt = self.theme.paint_user(self.glyphs.user());
+            let last_content = editor.len() - 2;
+            for row in editor.iter_mut().take(last_content).skip(1) {
+                wrap_content_row(row, &left, &right);
+            }
+            if let Some(row) = editor.get_mut(last_content) {
+                wrap_content_row(row, &prompt, &right);
+            }
         }
         self.last_slot_close_hit = None;
         if !self.slot.is_editor() {

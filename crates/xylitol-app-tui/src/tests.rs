@@ -2063,7 +2063,10 @@ fn layout_idle_status_is_one_blank_above_editor() {
         .iter()
         .position(|l| xylitol_tui::utils::strip_ansi_codes(l).contains('◨'))
         .expect("input marker row");
-    let editor_border = marker_row.saturating_sub(1);
+    let editor_border = lines[..marker_row]
+        .iter()
+        .rposition(|l| xylitol_tui::utils::strip_ansi_codes(l).contains('╭'))
+        .expect("editor top border");
     assert!(
         editor_border > 0 && lines[editor_border - 1].is_empty(),
         "idle must keep one blank above editor: {lines:?}"

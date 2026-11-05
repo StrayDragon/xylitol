@@ -49,7 +49,7 @@ impl UiRoot {
                 return (line.to_string(), Vec::new());
             }
             let interior =
-                xylitol_tui::truncate_to_width(&plain, width.saturating_sub(2), "…", false);
+                xylitol_tui::truncate_to_width(&plain, width.saturating_sub(2), "", false);
             let pad = width
                 .saturating_sub(2)
                 .saturating_sub(xylitol_tui::visible_width(&interior));
@@ -74,7 +74,7 @@ impl UiRoot {
                 .to_string()
         };
         let avail = width.saturating_sub(2 + title_w);
-        let interior = xylitol_tui::truncate_to_width(&interior, avail, "…", false);
+        let interior = xylitol_tui::truncate_to_width(&interior, avail, "", false);
         let pad = avail.saturating_sub(xylitol_tui::visible_width(&interior));
         let border = self.operation_zone_paint();
         let mut out = border("╭");
@@ -115,8 +115,13 @@ impl UiRoot {
                 .trim_end_matches('╯')
                 .to_string()
         };
-        let avail = width.saturating_sub(2 + chip_w + 1);
-        let interior = xylitol_tui::truncate_to_width(&interior, avail, "…", false);
+        let marker_visible = self.slot.is_editor() && width >= 80;
+        let avail = if marker_visible {
+            width.saturating_sub(chip_w + 4)
+        } else {
+            width.saturating_sub(chip_w + 3)
+        };
+        let interior = xylitol_tui::truncate_to_width(&interior, avail, "", false);
         let pad = avail.saturating_sub(xylitol_tui::visible_width(&interior));
         let border = self.operation_zone_paint();
         let mut out = border("╰");
@@ -139,16 +144,28 @@ impl UiRoot {
             });
             col += w;
         }
-        out.push_str(&border("╯"));
+        if marker_visible {
+            out.push(' ');
+            let marker = if self.session_sidebar_on {
+                self.theme.paint_chip("◨", true)
+            } else {
+                border("◨")
+            };
+            out.push_str(&marker);
+        } else {
+            out.push_str(&border("╯"));
+        }
         (out, hits)
     }
 
     pub(crate) fn try_click_painted_chip(&mut self, col: usize, line: &str) -> bool {
         let plain = xylitol_tui::utils::strip_ansi_codes(line);
-        let width = xylitol_tui::visible_width(&plain);
-        if plain.contains('◨') && col >= width.saturating_sub(2) {
-            self.click_footer_action(FooterAction::Sidebar);
-            return true;
+        if let Some(pos) = plain.find('◨') {
+            let start = xylitol_tui::visible_width(&plain[..pos]);
+            if col >= start.saturating_sub(1) && col <= start + 1 {
+                self.click_footer_action(FooterAction::Sidebar);
+                return true;
+            }
         }
         let action = self
             .chip_hits_for_painted(line)

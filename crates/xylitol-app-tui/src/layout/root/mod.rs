@@ -1992,9 +1992,69 @@ mod tests {
             "multi-line input must keep the overflow cue:\n{joined}"
         );
         assert!(joined.contains("[▤ 摘要]"), "{joined}");
-        assert!(joined.contains('◨'), "{joined}");
+        assert!(
+            joined.contains('❯'),
+            "input prompt must be painted:\n{joined}"
+        );
+        assert!(
+            joined.contains('│'),
+            "content rows must have vertical sides:\n{joined}"
+        );
+        let marker_line = lines
+            .iter()
+            .find(|line| plain(line).contains('◨'))
+            .expect("marker line");
+        assert!(
+            plain(marker_line).starts_with('╰') && plain(marker_line).contains("[▤ 摘要]"),
+            "marker must sit on the bottom border:\n{}",
+            plain(marker_line)
+        );
         assert!(!joined.contains("[侧栏]"), "{joined}");
         assert!(!joined.contains("[重置折叠]"), "{joined}");
+        assert!(
+            !joined.contains('…'),
+            "border must not truncate with ellipsis:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn editor_content_keeps_cursor_ansi() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(80);
+        root.set_editor_text("abc");
+        let lines = root.render(80);
+        let joined: String = lines
+            .iter()
+            .map(|l| plain(l))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let raw: String = lines.join("\n");
+        assert!(
+            raw.contains("\x1b[7m"),
+            "cursor styling must survive:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn marker_click_closes_open_sidebar() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.show_session_sidebar("s1");
+        let lines = root.render(120);
+        let line = lines
+            .iter()
+            .find(|line| plain(line).contains('◨'))
+            .expect("marker line");
+        let plain_line = plain(line);
+        let col = xylitol_tui::visible_width(&plain_line[..plain_line.find('◨').expect("marker")]);
+        assert!(
+            root.try_click_painted_chip(col, line),
+            "marker must consume"
+        );
+        assert!(
+            !root.session_sidebar_on(),
+            "second click must close sidebar"
+        );
     }
 
     #[test]
@@ -2032,8 +2092,8 @@ mod tests {
             "marker reserves two columns"
         );
         assert!(
-            !root.try_click_painted_chip(width.saturating_sub(4), line),
-            "text before the marker must not be a chip"
+            !root.try_click_painted_chip(width / 2, line),
+            "border dashes must not be a chip"
         );
     }
 

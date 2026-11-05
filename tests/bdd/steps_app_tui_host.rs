@@ -2946,7 +2946,7 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-#[when("左键单击输入行右端 ◨")]
+#[when("左键单击下边框右端 ◨")]
 async fn w_c3027_click_sidebar_chip(host_pump_bdd: &HostPumpBdd) {
     assert!(
         click_input_marker(host_pump_bdd).await,
@@ -2976,12 +2976,9 @@ pub(crate) async fn click_input_marker(host_pump_bdd: &HostPumpBdd) -> bool {
         put_pump(host_pump_bdd, pump);
         lines.iter().enumerate().find_map(|(idx, line)| {
             let plain = xylitol_tui::utils::strip_ansi_codes(line);
-            plain.contains('◨').then(|| {
-                (
-                    xylitol_tui::visible_width(&plain).saturating_sub(2) as u16,
-                    idx as u16,
-                )
-            })
+            plain
+                .find('◨')
+                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
         })
     };
     let Some((col, row)) = coord else {
