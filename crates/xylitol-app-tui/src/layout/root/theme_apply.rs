@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::{fg_rgb, mix_rgb};
@@ -18,11 +18,13 @@ impl UiRoot {
         let accent = theme.palette().accent;
         let dim = mix_rgb(accent, theme.palette().surface, 0.55);
         let muted = theme.palette().muted;
-        let pulse = std::sync::Arc::new(AtomicBool::new(false));
+        let pulse_start = Instant::now();
         self.status_loader = Loader::new(
             Box::new(move |s| {
-                let on = pulse.fetch_xor(true, Ordering::SeqCst);
-                fg_rgb(if on { accent } else { dim }, s)
+                let phase =
+                    (pulse_start.elapsed().as_secs_f32() * std::f32::consts::TAU / 1.2).sin() * 0.5
+                        + 0.5;
+                fg_rgb(mix_rgb(dim, accent, phase), s)
             }),
             Box::new(move |s| fg_rgb(muted, s)),
             String::new(),

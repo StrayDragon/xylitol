@@ -1,31 +1,8 @@
 use super::UiRoot;
 
-fn fold_has_overrides(fold: &crate::widgets::ScrollbackFold) -> bool {
-    [
-        &fold.tools_overrides,
-        &fold.thinking_overrides,
-        &fold.output_overrides,
-    ]
-    .iter()
-    .any(|m| !m.is_empty())
-}
-
-fn fold_differs_from_defaults(fold: &crate::widgets::ScrollbackFold) -> bool {
-    let defaults = crate::widgets::ScrollbackFold::default();
-    [
-        fold.thinking_expanded != defaults.thinking_expanded,
-        fold.tools_expanded != defaults.tools_expanded,
-        fold.tools_output_expanded != defaults.tools_output_expanded,
-        fold.compaction_expanded != defaults.compaction_expanded,
-    ]
-    .iter()
-    .any(|d| *d)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FooterAction {
     Sidebar,
-    ResetFold,
     FoldSummary,
 }
 
@@ -37,27 +14,12 @@ pub struct FooterChipHit {
 }
 
 impl UiRoot {
-    fn top_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
-        let mut chips = Vec::new();
-        if self.session_sidebar_available() {
-            chips.push((FooterAction::Sidebar, "侧栏", self.session_sidebar_on));
-        }
-        chips
-    }
-
     fn bottom_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
-        let mut chips = Vec::new();
-        if self.reset_chip_enabled() {
-            chips.push((FooterAction::ResetFold, "重置折叠", false));
-        }
-        chips.push((FooterAction::FoldSummary, "▤ 摘要", false));
-        chips
+        vec![(FooterAction::FoldSummary, "▤ 摘要", false)]
     }
 
     pub(crate) fn footer_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
-        let mut chips = self.top_chip_actions();
-        chips.extend(self.bottom_chip_actions());
-        chips
+        self.bottom_chip_actions()
     }
 
     fn paint_dock_chip(&self, border: &dyn Fn(&str) -> String, text: &str, active: bool) -> String {
@@ -65,11 +27,6 @@ impl UiRoot {
             return self.theme.paint_chip(text, true);
         }
         border(text)
-    }
-
-    fn reset_chip_enabled(&self) -> bool {
-        let fold = self.fold();
-        fold_has_overrides(&fold) || fold_differs_from_defaults(&fold)
     }
 
     pub(super) fn append_border_chips(
@@ -80,75 +37,61 @@ impl UiRoot {
         if width == 0 {
             return (line.to_string(), Vec::new());
         }
-        let chips = self.top_chip_actions();
         let stage_name = self
             .ui_model
             .stage_name
             .as_deref()
             .map(str::trim)
             .filter(|name| !name.is_empty());
-        let mut title = stage_name.map(|name| format!(" {name} "));
-        let mut labels = Vec::with_capacity(chips.len());
-        for (action, label, active) in &chips {
-            labels.push((*action, format!("[{label}]"), *active));
-        }
-        let chip_w: usize = labels
-            .iter()
-            .map(|(_, text, _)| xylitol_tui::visible_width(text))
-            .sum::<usize>()
-            + labels.len().saturating_sub(1);
-        if labels.is_empty() || chip_w + 6 > width {
+        let plain = xylitol_tui::utils::strip_ansi_codes(line);
+        let Some(title) = stage_name.map(|name| format!(" {name} ")) else {
+            if !plain.contains("more") {
+                return (line.to_string(), Vec::new());
+            }
+            let interior =
+                xylitol_tui::truncate_to_width(&plain, width.saturating_sub(2), "…", false);
+            let pad = width
+                .saturating_sub(2)
+                .saturating_sub(xylitol_tui::visible_width(&interior));
+            let border = self.operation_zone_paint();
+            let mut out = border("╭");
+            out.push_str(&border(&interior));
+            out.push_str(&border(&"─".repeat(pad)));
+            out.push_str(&border("╮"));
+            return (out, Vec::new());
+        };
+        let title_w = xylitol_tui::visible_width(&title);
+        if title_w + 4 > width {
             return (line.to_string(), Vec::new());
         }
-        let title_w = title
-            .as_deref()
-            .map(xylitol_tui::visible_width)
-            .unwrap_or(0);
-        if chip_w + title_w + usize::from(title.is_some()) + 6 > width {
-            title = None;
-        }
-        let title_w = title
-            .as_deref()
-            .map(xylitol_tui::visible_width)
-            .unwrap_or(0);
-        let title_gap = usize::from(title.is_some());
-        let total_w = chip_w + title_w + title_gap;
-        let dash_w = width.saturating_sub(total_w + 3);
-        let border = self.operation_zone_paint();
-        let mut out = if dash_w == 0 {
-            String::new()
+        let plain = xylitol_tui::utils::strip_ansi_codes(line);
+        let interior = if plain.contains("more") {
+            plain
         } else {
-            border(&"─".repeat(dash_w))
+            plain
+                .trim_start_matches('╭')
+                .trim_end_matches('╮')
+                .to_string()
         };
-        out.insert(0, '╭');
-        out.push(' ');
-        let mut col = dash_w + 1;
-        let mut hits = Vec::with_capacity(labels.len());
-        for (i, (action, text, active)) in labels.iter().enumerate() {
-            if i > 0 {
-                out.push(' ');
-                col += 1;
-            }
-            let w = xylitol_tui::visible_width(text);
-            out.push_str(&self.paint_dock_chip(&*border, text, *active));
-            hits.push(FooterChipHit {
-                start: col,
-                end: col + w,
-                action: *action,
-            });
-            col += w;
-        }
-        if let Some(title) = title {
-            out.push(' ');
-            out.push_str(&self.theme.paint_muted(&title));
-        }
-        out.push('╮');
-        (out, hits)
+        let avail = width.saturating_sub(2 + title_w);
+        let interior = xylitol_tui::truncate_to_width(&interior, avail, "…", false);
+        let pad = avail.saturating_sub(xylitol_tui::visible_width(&interior));
+        let border = self.operation_zone_paint();
+        let mut out = border("╭");
+        out.push_str(&border(&interior));
+        out.push_str(&border(&"─".repeat(pad)));
+        out.push_str(&self.theme.paint_muted(&title));
+        out.push_str(&border("╮"));
+        (out, Vec::new())
     }
 
-    pub(super) fn paint_bottom_chrome(&self, width: usize) -> (String, Vec<FooterChipHit>) {
+    pub(super) fn paint_bottom_chrome(
+        &self,
+        line: &str,
+        width: usize,
+    ) -> (String, Vec<FooterChipHit>) {
         if width == 0 {
-            return (String::new(), Vec::new());
+            return (line.to_string(), Vec::new());
         }
         let chips = self.bottom_chip_actions();
         let mut labels = Vec::with_capacity(chips.len());
@@ -161,16 +104,26 @@ impl UiRoot {
             .sum::<usize>()
             + labels.len().saturating_sub(1);
         if labels.is_empty() || chip_w + 4 > width {
-            return (String::new(), Vec::new());
+            return (line.to_string(), Vec::new());
         }
-        let dash_w = width.saturating_sub(chip_w + 3);
+        let plain = xylitol_tui::utils::strip_ansi_codes(line);
+        let interior = if plain.contains("more") {
+            plain
+        } else {
+            plain
+                .trim_start_matches('╰')
+                .trim_end_matches('╯')
+                .to_string()
+        };
+        let avail = width.saturating_sub(2 + chip_w + 1);
+        let interior = xylitol_tui::truncate_to_width(&interior, avail, "…", false);
+        let pad = avail.saturating_sub(xylitol_tui::visible_width(&interior));
         let border = self.operation_zone_paint();
-        let mut out = String::from("╰");
-        if dash_w > 0 {
-            out.push_str(&border(&"─".repeat(dash_w)));
-        }
+        let mut out = border("╰");
+        out.push_str(&border(&interior));
+        out.push_str(&border(&"─".repeat(pad)));
         out.push(' ');
-        let mut col = dash_w + 2;
+        let mut col = 1 + avail + 1;
         let mut hits = Vec::with_capacity(labels.len());
         for (i, (action, text, active)) in labels.iter().enumerate() {
             if i > 0 {
@@ -186,7 +139,7 @@ impl UiRoot {
             });
             col += w;
         }
-        out.push('╯');
+        out.push_str(&border("╯"));
         (out, hits)
     }
 
@@ -194,6 +147,7 @@ impl UiRoot {
         let plain = xylitol_tui::utils::strip_ansi_codes(line);
         let width = xylitol_tui::visible_width(&plain);
         if plain.contains('◨') && col >= width.saturating_sub(2) {
+            self.click_footer_action(FooterAction::Sidebar);
             return true;
         }
         let action = self
@@ -238,14 +192,36 @@ impl UiRoot {
                 }
             }
             FooterAction::FoldSummary => {
+                let had_body = !self.ui_model.entries.is_empty();
                 self.cycle_display_level();
-            }
-            FooterAction::ResetFold => {
-                if !self.reset_chip_enabled() {
-                    return false;
+                if !had_body {
+                    let level = self.activity.settings.display_level;
+                    self.push_client_notice(
+                        super::ClientNoticeKind::Info,
+                        format!("显示等级: {level:?}"),
+                    );
                 }
-                self.reset_tools_blocks();
             }
+        }
+        true
+    }
+
+    pub(crate) fn try_right_click_summary(&mut self, col: usize, line: &str) -> bool {
+        let Some(_) = self
+            .chip_hits_for_painted(line)
+            .into_iter()
+            .find(|h| h.action == FooterAction::FoldSummary && col >= h.start && col < h.end)
+        else {
+            return false;
+        };
+        let changed = self.reset_fold_to_initial();
+        if changed {
+            self.push_client_notice(super::ClientNoticeKind::Success, "重置折叠成功".to_string());
+        } else {
+            self.push_client_notice(
+                super::ClientNoticeKind::Info,
+                "折叠已是初始状态".to_string(),
+            );
         }
         true
     }
@@ -265,14 +241,11 @@ impl UiRoot {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::widgets::ScrollbackFold;
-
     fn chip_row_for(level: &str) -> String {
         let mut root = super::super::UiRoot::new();
         root.set_term_cols(120);
         root.set_thinking_level_ui(level.to_string());
-        root.append_border_chips("", 120).0
+        root.paint_bottom_chrome("", 120).0
     }
 
     const SGR: &str = "\x1b[38;2;";
@@ -323,58 +296,10 @@ mod tests {
     fn inactive_chip_shares_the_border_colour() {
         let row = chip_row_for("high");
         let dashes = first_sgr(&row);
-        let chip = rgb_after(&row, "[侧栏]");
+        let chip = rgb_after(&row, "[▤ 摘要]");
         assert_eq!(
             chip, dashes,
             "inactive chip and border must share one colour"
         );
-    }
-
-    #[test]
-    fn default_fold_has_no_overrides_and_matches_defaults() {
-        let fold = ScrollbackFold::default();
-        assert!(!fold_has_overrides(&fold));
-        assert!(!fold_differs_from_defaults(&fold));
-    }
-
-    #[test]
-    fn each_override_map_flags_overrides() {
-        for apply in [
-            |f: &mut ScrollbackFold| {
-                f.tools_overrides.insert("t".into(), true);
-            },
-            |f: &mut ScrollbackFold| {
-                f.thinking_overrides.insert("t".into(), true);
-            },
-            |f: &mut ScrollbackFold| {
-                f.output_overrides.insert("t".into(), true);
-            },
-        ] {
-            let mut fold = ScrollbackFold::default();
-            apply(&mut fold);
-            assert!(fold_has_overrides(&fold));
-            assert!(
-                !fold_differs_from_defaults(&fold),
-                "override maps must not be confused with default flags"
-            );
-        }
-    }
-
-    #[test]
-    fn each_default_flag_flip_marks_a_difference() {
-        for apply in [
-            |f: &mut ScrollbackFold| f.thinking_expanded = !f.thinking_expanded,
-            |f: &mut ScrollbackFold| f.tools_expanded = !f.tools_expanded,
-            |f: &mut ScrollbackFold| f.tools_output_expanded = !f.tools_output_expanded,
-            |f: &mut ScrollbackFold| f.compaction_expanded = !f.compaction_expanded,
-        ] {
-            let mut fold = ScrollbackFold::default();
-            apply(&mut fold);
-            assert!(fold_differs_from_defaults(&fold));
-            assert!(
-                !fold_has_overrides(&fold),
-                "default flags must not be confused with override maps"
-            );
-        }
     }
 }

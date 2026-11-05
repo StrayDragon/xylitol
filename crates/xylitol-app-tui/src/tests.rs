@@ -972,10 +972,10 @@ fn dock_chip_click_opens_sidebar_in_host() {
         .find_map(|(idx, line)| {
             let plain = xylitol_tui::utils::strip_ansi_codes(line);
             plain
-                .find("[侧栏]")
+                .find('◨')
                 .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
         })
-        .expect("sidebar chip painted");
+        .expect("input marker painted");
     for kind in [
         MouseEventKind::Down(MouseButton::Left),
         MouseEventKind::Up(MouseButton::Left),
@@ -989,17 +989,9 @@ fn dock_chip_click_opens_sidebar_in_host() {
             })))
             .expect("mouse step");
     }
-    let column = col as usize;
-    assert!(
-        root.borrow()
-            .footer_chip_columns_for_test()
-            .into_iter()
-            .any(|(start, end, _)| column >= start && column < end),
-        "clicked column {column} must fall inside a painted chip range"
-    );
     assert!(
         root.borrow().has_pending_session_sidebar(),
-        "dock chip click must queue the sidebar open request"
+        "marker click must queue the sidebar open request"
     );
 }
 
@@ -2067,10 +2059,11 @@ fn layout_idle_status_is_one_blank_above_editor() {
         !lines.iter().any(|l| l.contains("Working")),
         "idle must not show busy status: {lines:?}"
     );
-    let editor_border = lines
+    let marker_row = lines
         .iter()
-        .position(|l| l.contains('╭') && l.contains("[侧栏]"))
-        .expect("editor top border");
+        .position(|l| xylitol_tui::utils::strip_ansi_codes(l).contains('◨'))
+        .expect("input marker row");
+    let editor_border = marker_row.saturating_sub(1);
     assert!(
         editor_border > 0 && lines[editor_border - 1].is_empty(),
         "idle must keep one blank above editor: {lines:?}"

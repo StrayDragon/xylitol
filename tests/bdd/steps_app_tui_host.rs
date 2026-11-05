@@ -2946,39 +2946,42 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-#[when("左键单击 编辑区上边框右端 [侧栏] chip")]
+#[when("左键单击输入行右端 ◨")]
 async fn w_c3027_click_sidebar_chip(host_pump_bdd: &HostPumpBdd) {
-    let clicked = click_footer_chip_label(host_pump_bdd, "侧栏").await;
-    if !clicked {
-        request_session_sidebar_via_action(host_pump_bdd).await;
-    }
-    LAST_CHIP_LABEL.with(|s| *s.borrow_mut() = Some("侧栏"));
+    assert!(
+        click_input_marker(host_pump_bdd).await,
+        "◨ marker must be painted"
+    );
+    LAST_CHIP_LABEL.with(|s| *s.borrow_mut() = Some("◨"));
 }
 
-#[when("再次左键单击该 chip")]
+#[when("再次左键单击该标记")]
 async fn w_c3027_click_same_chip_again(host_pump_bdd: &HostPumpBdd) {
     let label = LAST_CHIP_LABEL
         .with(|s| *s.borrow())
-        .expect("先前已单击过一个 chip");
+        .expect("先前已单击过一个标记");
+    assert_eq!(label, "◨", "only the input marker toggles twice");
     assert!(
-        click_footer_chip_label(host_pump_bdd, label).await,
-        "mat33: [{label}] chip 须仍绘制且可点"
+        click_input_marker(host_pump_bdd).await,
+        "◨ marker must stay clickable"
     );
 }
 
-pub(crate) async fn click_footer_chip_label(host_pump_bdd: &HostPumpBdd, label: &str) -> bool {
+pub(crate) async fn click_input_marker(host_pump_bdd: &HostPumpBdd) -> bool {
     use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-    let chip = format!("[{label}]");
     let coord = {
         let mut pump = take_pump(host_pump_bdd);
-        pump.session.render_now().expect("chip render");
+        pump.session.render_now().expect("marker render");
         let lines: Vec<String> = pump.session.tui.last_painted_lines().to_vec();
         put_pump(host_pump_bdd, pump);
         lines.iter().enumerate().find_map(|(idx, line)| {
             let plain = xylitol_tui::utils::strip_ansi_codes(line);
-            plain
-                .find(&chip)
-                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
+            plain.contains('◨').then(|| {
+                (
+                    xylitol_tui::visible_width(&plain).saturating_sub(2) as u16,
+                    idx as u16,
+                )
+            })
         })
     };
     let Some((col, row)) = coord else {
@@ -2998,12 +3001,12 @@ pub(crate) async fn click_footer_chip_label(host_pump_bdd: &HostPumpBdd, label: 
                     modifiers: crossterm::event::KeyModifiers::NONE,
                 },
             )))
-            .expect("chip click step");
+            .expect("marker click step");
     }
     let mut stream = None;
     pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
         .await
-        .expect("chip click pump");
+        .expect("marker click pump");
     put_pump(host_pump_bdd, pump);
     true
 }
@@ -3021,13 +3024,6 @@ async fn run_session_details_action(
         .await
         .expect("session action pump");
     put_pump(host_pump_bdd, pump);
-}
-
-pub(crate) async fn request_session_sidebar_via_action(host_pump_bdd: &HostPumpBdd) {
-    run_session_details_action(host_pump_bdd, |root| {
-        root.request_session_sidebar();
-    })
-    .await;
 }
 
 fn c2875_frame(host_pump_bdd: &HostPumpBdd) -> String {
@@ -3120,8 +3116,8 @@ fn t_c2875_busy_esc_abort(host_pump_bdd: &HostPumpBdd) {
 #[when("切换侧栏")]
 async fn w_c2905_sidebar_toggle(host_pump_bdd: &HostPumpBdd) {
     assert!(
-        click_footer_chip_label(host_pump_bdd, "侧栏").await,
-        "[侧栏] chip 须绘制且可点"
+        click_input_marker(host_pump_bdd).await,
+        "◨ marker 须绘制且可点"
     );
 }
 

@@ -1,8 +1,8 @@
 use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_host::{
-    HostPump, HostPumpBdd, c2826_slot, c2911_click, click_footer_chip_label, editor_text,
-    fresh_pump, open_busy, open_tree_ready, pump_once, put_pump, render_frame, set_editor, stats,
-    step_key, take_pump,
+    HostPump, HostPumpBdd, c2826_slot, c2911_click, click_input_marker, editor_text, fresh_pump,
+    open_busy, open_tree_ready, pump_once, put_pump, render_frame, set_editor, stats, step_key,
+    take_pump,
 };
 use crate::bdd::steps_app_tui_interaction::TuiInteraction;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
@@ -101,15 +101,9 @@ async fn w_mat31_pointer_only(tui_interaction: &TuiInteraction, host_pump_bdd: &
             .expect("思维块三角命中");
         assert!(fx.left_click(thinking.0, thinking.1), "思维块点击须被消费");
     }
-    assert!(
-        click_footer_chip_label(host_pump_bdd, "侧栏").await,
-        "[侧栏] chip"
-    );
+    assert!(click_input_marker(host_pump_bdd).await, "◨ marker");
     SAW_SIDEBAR_OPEN.with(|s| *s.borrow_mut() = host_root_sidebar_on(host_pump_bdd));
-    assert!(
-        click_footer_chip_label(host_pump_bdd, "侧栏").await,
-        "[侧栏] chip 复点"
-    );
+    assert!(click_input_marker(host_pump_bdd).await, "◨ marker 复点");
 }
 
 #[then("思维块与工具块可展开可收纳且侧栏可开关")]
@@ -258,21 +252,7 @@ fn g_mat33_wide_host(host_pump_bdd: &HostPumpBdd) {
     }
 }
 
-fn sgr_rgb_before(line: &str, needle: &str) -> Option<(u8, u8, u8)> {
-    let idx = line.find(needle)?;
-    let prefix = &line[..idx];
-    let marker = "\x1b[38;2;";
-    let start = prefix.rfind(marker)?;
-    let rest = &prefix[start + marker.len()..];
-    let end = rest.find('m')?;
-    let mut parts = rest[..end].split(';');
-    let r = parts.next()?.parse().ok()?;
-    let g = parts.next()?.parse().ok()?;
-    let b = parts.next()?.parse().ok()?;
-    Some((r, g, b))
-}
-
-#[then("右侧栏上屏且内容区让宽且 [侧栏] chip 反色")]
+#[then("右侧栏上屏且内容区让宽且 ◨ 反色")]
 fn t_mat33_sidebar_chip_active(host_pump_bdd: &HostPumpBdd) {
     assert!(host_root_sidebar_on(host_pump_bdd), "侧栏须上屏");
     let lines = painted_lines(host_pump_bdd);
@@ -280,32 +260,21 @@ fn t_mat33_sidebar_chip_active(host_pump_bdd: &HostPumpBdd) {
         .iter()
         .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
         .collect();
-    let chip_row = plain
+    let marker_row = plain
         .iter()
-        .position(|l| l.contains("[侧栏]"))
-        .expect("[侧栏] chip 行");
+        .position(|l| l.contains('◨'))
+        .expect("◨ marker row");
     assert!(
-        !plain[chip_row].contains("[详情]"),
-        "标准档不得再绘制 [详情] chip: {}",
-        plain[chip_row]
+        !plain[marker_row].contains("[侧栏]"),
+        "standard tier must not paint [侧栏]: {}",
+        plain[marker_row]
     );
-    let raw = &lines[chip_row];
+    let raw = &lines[marker_row];
     let palette = LayoutTheme::product_dark().palette();
-    let active = xylitol_tui::bold(&xylitol_tui::fg_rgb(palette.accent, "[侧栏]"));
+    let active = xylitol_tui::bold(&xylitol_tui::fg_rgb(palette.accent, "◨"));
     assert!(
         raw.contains(&active),
-        "mat33: 开启态 [侧栏] chip 须反色（accent+bold）: {raw:?}"
-    );
-    let border_rgb = sgr_rgb_before(raw, "─").expect("chip 行虚线取色");
-    let chip_rgb = sgr_rgb_before(raw, "[侧栏]").expect("chip 取色");
-    assert_ne!(
-        chip_rgb, border_rgb,
-        "mat33: 开启态 [侧栏] chip 须反色: {raw:?}"
-    );
-    assert_ne!(
-        chip_rgb,
-        (palette.muted.r, palette.muted.g, palette.muted.b),
-        "mat33: chip 行不得写死 muted，须走 thinking 边框档位色: {raw:?}"
+        "mat33: 开启态 ◨ 须反色（accent+bold）: {raw:?}"
     );
     let pump = take_pump(host_pump_bdd);
     let frame = pump
@@ -327,7 +296,7 @@ fn g_mat33_narrow_host(host_pump_bdd: &HostPumpBdd) {
     });
 }
 
-#[when("渲染编辑区上边框")]
+#[when("渲染编辑区")]
 fn w_mat33_render_editor_border(host_pump_bdd: &HostPumpBdd) {
     let lines = painted_lines(host_pump_bdd);
     let frame = lines
@@ -338,14 +307,22 @@ fn w_mat33_render_editor_border(host_pump_bdd: &HostPumpBdd) {
     host_pump_bdd.ansi_frames.borrow_mut().push(frame);
 }
 
-#[then("编辑区上边框右端无 [侧栏] chip 且无 [详情] chip")]
+#[then("无 ◨ 且无 [侧栏] chip 且无 [详情] chip")]
 fn t_mat33_narrow_details_only(host_pump_bdd: &HostPumpBdd) {
     let frame = host_pump_bdd
         .ansi_frames
         .borrow()
         .last()
         .cloned()
-        .expect("已渲染编辑区上边框");
+        .expect("已渲染编辑区");
+    assert!(
+        !frame.contains('◨'),
+        "mat33: narrow terminal must hide ◨:\n{frame}"
+    );
+    assert!(
+        !frame.contains("[侧栏]"),
+        "mat33: narrow terminal must hide [侧栏]:\n{frame}"
+    );
     assert!(
         !frame.contains("[详情]"),
         "mat33: [详情] chip must not be painted:\n{frame}"

@@ -8,8 +8,9 @@ use crate::widgets::{render_queue_strip, render_scrollback};
 
 impl UiRoot {
     fn paint_editor_chips(&mut self, editor: &mut [String], width: usize) -> bool {
+        let top_base = editor.first().cloned().unwrap_or_default();
         let (border, chip_hits) = if self.slot.is_editor() {
-            self.append_border_chips("", width)
+            self.append_border_chips(&top_base, width)
         } else {
             (String::new(), Vec::new())
         };
@@ -19,12 +20,13 @@ impl UiRoot {
             *first = border;
         }
         let mut chip_hits = chip_hits;
+        let bottom_base = editor.last().cloned().unwrap_or_default();
         if self.slot.is_editor()
             && editor.len() > 1
             && !self.editor_autocomplete_open()
             && let Some(last) = editor.last_mut()
         {
-            let (bottom, bottom_hits) = self.paint_bottom_chrome(width);
+            let (bottom, bottom_hits) = self.paint_bottom_chrome(&bottom_base, width);
             if !bottom.is_empty() {
                 *last = bottom;
                 chip_hits.extend(bottom_hits);
@@ -37,7 +39,12 @@ impl UiRoot {
             let pad = width
                 .saturating_sub(2)
                 .saturating_sub(xylitol_tui::visible_width(&content));
-            editor[1] = format!("{content}{} ◨", " ".repeat(pad));
+            let marker = if self.session_sidebar_on {
+                self.theme.paint_chip("◨", true)
+            } else {
+                self.operation_zone_paint()("◨")
+            };
+            editor[1] = format!("{content}{} {marker}", " ".repeat(pad));
         }
         self.last_slot_close_hit = None;
         if !self.slot.is_editor() {

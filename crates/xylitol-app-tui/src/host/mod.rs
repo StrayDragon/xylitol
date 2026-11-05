@@ -1175,6 +1175,16 @@ impl<T: Terminal> HostSession<T> {
                 ..
             })
         );
+        let right_down = matches!(
+            input,
+            InputEvent::Mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Right),
+                ..
+            })
+        );
+        if right_down && self.handle_chip_right_down(&input) {
+            return;
+        }
         if left_down {
             self.pointer_down_had_selection = self.tui.application_owned_has_selection();
             if self.handle_chip_left_down(&input) {
@@ -1216,6 +1226,33 @@ impl<T: Terminal> HostSession<T> {
         self.tui.request_render(false);
         self.pointer_down_had_selection = true;
         true
+    }
+
+    fn handle_chip_right_down(&mut self, input: &InputEvent) -> bool {
+        if self.pointer_down_had_selection || !self.try_right_click_painted_chip(input) {
+            return false;
+        }
+        self.tui.request_render(false);
+        true
+    }
+
+    fn try_right_click_painted_chip(&mut self, input: &InputEvent) -> bool {
+        let InputEvent::Mouse(mouse) = input else {
+            return false;
+        };
+        let Some(line) = self
+            .tui
+            .last_painted_lines()
+            .get(mouse.row as usize)
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        root.borrow_mut()
+            .try_right_click_summary(mouse.column as usize, &line)
     }
 
     fn handle_pointer_left_up(&mut self) {

@@ -538,6 +538,7 @@ fn g_ce21_host_down(attach_bdd: &AttachBdd) {
 #[given("本机 Host 未在听且关闭确保")]
 fn g_ce21_host_down_no_ensure(attach_bdd: &AttachBdd) {
     attach_bdd.no_ensure.set(true);
+    attach_bdd.attach.replace(Some("http://127.0.0.1:1".into()));
 }
 
 #[given("显式 attach 非本机确保口且该口未在听")]

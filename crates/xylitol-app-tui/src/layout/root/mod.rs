@@ -162,11 +162,13 @@ impl UiRoot {
         let accent = theme.palette().accent;
         let dim = mix_rgb(accent, theme.palette().surface, 0.55);
         let muted = theme.palette().muted;
-        let pulse = std::sync::Arc::new(AtomicBool::new(false));
+        let pulse_start = Instant::now();
         let status_loader = Loader::new(
             Box::new(move |s| {
-                let on = pulse.fetch_xor(true, Ordering::SeqCst);
-                fg_rgb(if on { accent } else { dim }, s)
+                let phase =
+                    (pulse_start.elapsed().as_secs_f32() * std::f32::consts::TAU / 1.2).sin() * 0.5
+                        + 0.5;
+                fg_rgb(mix_rgb(dim, accent, phase), s)
             }),
             Box::new(move |s| fg_rgb(muted, s)),
             String::new(),
@@ -429,6 +431,12 @@ impl UiRoot {
             crate::widgets::ArgsMode::Full => crate::widgets::ArgsMode::Hidden,
         };
         self.bump_upper_gen();
+    }
+
+    pub fn reset_fold_to_initial(&mut self) -> bool {
+        let before = self.fold.clone();
+        self.reset_fold_overrides();
+        self.fold != before
     }
 
     pub fn reset_fold_overrides(&mut self) {
@@ -1537,12 +1545,13 @@ mod tests {
     }
 
     #[test]
-    fn footer_chips_render_sidebar_and_fold_summary_at_standard_tier() {
+    fn footer_chips_render_marker_and_fold_summary_at_standard_tier() {
         let mut root = UiRoot::new();
         root.set_term_cols(120);
         let frame = root.render(120);
         let joined: String = frame.iter().map(|l| plain(l)).collect();
-        assert!(joined.contains("[侧栏]"), "{joined}");
+        assert!(!joined.contains("[侧栏]"), "{joined}");
+        assert!(joined.contains("◨"), "{joined}");
         assert!(joined.contains("[▤ 摘要]"), "{joined}");
         assert!(!joined.contains("[详情]"), "{joined}");
         let expected_screen_row = root
@@ -1559,6 +1568,8 @@ mod tests {
         let frame = root.render(70);
         let joined: String = frame.iter().map(|l| plain(l)).collect();
         assert!(!joined.contains("[详情]"), "{joined}");
+        assert!(!joined.contains("[侧栏]"), "{joined}");
+        assert!(!joined.contains('◨'), "{joined}");
         assert!(joined.contains("[▤ 摘要]"), "{joined}");
     }
 
@@ -1577,20 +1588,18 @@ mod tests {
     }
 
     #[test]
-    fn footer_chip_click_toggles_sidebar() {
+    fn marker_click_toggles_sidebar() {
         let mut root = UiRoot::new();
         root.set_term_cols(120);
-        let _ = root.render(120);
-        let actions = root.footer_chip_actions_for_test();
+        let lines = root.render(120);
+        let line = lines
+            .iter()
+            .find(|line| plain(line).contains('◨'))
+            .expect("marker row");
+        let width = xylitol_tui::visible_width(&plain(line));
         assert!(
-            actions
-                .iter()
-                .any(|(a, _, _)| *a == super::footer_chips::FooterAction::Sidebar),
-            "standard tier paints the sidebar chip"
-        );
-        assert!(
-            root.click_footer_action(super::footer_chips::FooterAction::Sidebar),
-            "chip must consume"
+            root.try_click_painted_chip(width.saturating_sub(2), line),
+            "marker must consume"
         );
         assert!(root.take_pending_session_sidebar(), "request queued");
     }
@@ -1644,13 +1653,25 @@ mod tests {
     }
 
     #[test]
-    fn footer_reset_chip_clears_overrides() {
+    fn right_click_summary_resets_fold() {
         let mut root = UiRoot::new();
         root.set_term_cols(120);
         root.toggle_fold_target(FoldTarget::Tool("t".into()));
-        let _ = root.render(120);
-        assert!(root.click_footer_action(super::footer_chips::FooterAction::ResetFold));
+        let lines = root.render(120);
+        let line = lines
+            .iter()
+            .find(|line| xylitol_tui::utils::strip_ansi_codes(line).contains("[▤ 摘要]"))
+            .expect("summary chip row");
+        let plain = xylitol_tui::utils::strip_ansi_codes(line);
+        let col = xylitol_tui::visible_width(&plain[..plain.find("[▤ 摘要]").unwrap()]);
+        assert!(root.try_right_click_summary(col, line));
         assert!(root.fold().tools_overrides.is_empty());
+        assert!(
+            root.client_notices
+                .iter()
+                .any(|notice| notice.body.contains("重置折叠成功")),
+            "reset must notify"
+        );
     }
 
     #[test]
@@ -1939,6 +1960,7 @@ mod tests {
             .into_iter()
             .find(|line| strip_ansi_codes(line).contains('⬢'))
             .expect("spinner row");
+        std::thread::sleep(std::time::Duration::from_millis(150));
         root.status_loader.set_message("working".into());
         let second = root
             .render(80)
@@ -1950,6 +1972,48 @@ mod tests {
             strip_ansi_codes(&first),
             strip_ansi_codes(&second),
             "spinner glyph must not change"
+        );
+    }
+
+    #[test]
+    fn multiline_input_keeps_more_cue_and_chrome() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(80);
+        root.set_term_rows(16);
+        root.set_editor_text("a\na\na\na\na\na");
+        let lines = root.render(80);
+        let joined: String = lines
+            .iter()
+            .map(|l| plain(l))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("↑ 1 more") || joined.contains("↓ 1 more"),
+            "multi-line input must keep the overflow cue:\n{joined}"
+        );
+        assert!(joined.contains("[▤ 摘要]"), "{joined}");
+        assert!(joined.contains('◨'), "{joined}");
+        assert!(!joined.contains("[侧栏]"), "{joined}");
+        assert!(!joined.contains("[重置折叠]"), "{joined}");
+    }
+
+    #[test]
+    fn summary_click_without_body_notifies_level() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        let lines = root.render(120);
+        let line = lines
+            .iter()
+            .find(|line| plain(line).contains("[▤ 摘要]"))
+            .expect("summary row");
+        let plain_line = plain(line);
+        let col = xylitol_tui::visible_width(&plain_line[..plain_line.find("[▤ 摘要]").unwrap()]);
+        assert!(root.try_click_painted_chip(col, line));
+        assert!(
+            root.client_notices
+                .iter()
+                .any(|notice| notice.body.contains("显示等级")),
+            "empty transcript click must notify the level"
         );
     }
 
