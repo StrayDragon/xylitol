@@ -64,4 +64,5 @@ plan 插件 crate、sdk session、runtime loop、kernel commands、protocol/wire
 
 - 用户判断：plan mode 是 turn 转换，不引入新能力；独立模式不灵活、KV cache 不友好、单对话体验减分。
 - 选 B；c3196 plan preview draft 已删除；c3106 codemode 已迁回 active。
-- 本 change 为 draft；design/tasks 未开始。
+- c3206 已归档，但实际代码仍保留 `plan_mode` / `plan_doc`（`crates/xylitol-plugin-sdk/src/session/mod.rs:47`；`plan_mode.rs`、`plan_doc.rs`）；c3206 归档提案中的“已删除模式切换”是错误表述。本 change 的删除范围不变。
+- 本 change 为 designed；design 已完成，tasks 未开始。

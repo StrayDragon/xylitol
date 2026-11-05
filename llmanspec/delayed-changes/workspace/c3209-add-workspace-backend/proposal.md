@@ -6,7 +6,7 @@ title: "Add workspace backend"
 
 ## Why
 
-Agent 改代码需要分支级工作区：当前 session 只绑定 cwd，没有 mount / commit / branch / merge / rewind。c3206 只留 WorkspaceRef 字段，没有后端。
+Agent 改代码需要分支级工作区：当前 session 只绑定 cwd，没有 mount / commit / branch / merge / rewind。c3206 只留 `WorkspaceRef { backend, commit }` 字段（manifest / branch），没有后端。
 
 ## What Changes
 
@@ -18,7 +18,7 @@ Agent 改代码需要分支级工作区：当前 session 只绑定 cwd，没有 
 
 ## Scope
 
-- 不在 c3206 内实现；c3206 只留 WorkspaceRef 字段。
+- 不在 c3206 内实现；c3206 只留 `WorkspaceRef { backend, commit }` 字段。
 - 不做中心化工作区服务；先本机。
 
 ## Related

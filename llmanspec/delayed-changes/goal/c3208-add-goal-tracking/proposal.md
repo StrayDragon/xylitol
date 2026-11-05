@@ -20,7 +20,7 @@ title: "Add goal tracking"
 
 ## Scope
 
-- 不在 c3206 内实现；c3206 只提供 branch 与事件基础。
+- 不在 c3206 内实现；c3206 只提供 branch 与图边基础。
 - 不做自动改写 acceptance 或无限自我迭代。
 
 ## Related

@@ -1,5 +1,5 @@
 ---
-depends_on: [c3055-add-mcp-scope-pool]
+depends_on: [c3055-add-mcp-scope-pool, c3206-refactor-session-graph]
 title: "MCP tool catalog per scope and agent profile"
 ---
 
@@ -12,7 +12,7 @@ MCP 工具当前进全局 `HostRegistries.tools`；adapter 忽略 `XyToolCtx`。
 - catalog 按 connection key 建立：本 change 只做 tools；prompts / resources 由 `c3070-add-mcp-prompts-resources` 负责。
 - agent profile 过滤：按 `tools` 列表 / capability overlay 在 session 侧过滤；工具名保持 `mcp__server__tool`。
 - connection key 含 config fingerprint；同名不同 config（args/env/url/headers）必须独立连接与 catalog。
-- resume 时按当前 profile 重建 agent tool set，reconcile MCP claims（新 server 连接、未用 release）。
+- resume 从 c3206 graph head / build_context 读取上下文，按当前 profile 重建 agent tool set，reconcile MCP claims（新 server 连接、未用 release）。
 - host 维护懒连接：未启动的 server 在需要时连接；不需要 per-profile 连接，除非 config fingerprint 不同。
 - tool list changed：刷新 catalog；下一轮失效并重建 agent tool set。
 - TUI snapshot 按 scope 展示；`/mcp` 面板字段由 `c3075-add-mcp-diagnostics` 负责，本 change 只提供 catalog 数据。
@@ -41,6 +41,8 @@ MCP plugin、runtime agent tools、host registry、TUI。
 - 依赖 `c3055-add-mcp-scope-pool`。
 - 后续：`c3070-add-mcp-prompts-resources` 做 prompts/resources；`c3075-add-mcp-diagnostics` 做 `/mcp` 面板。
 - 官方 2026-07-28 是 stateless；连接级 tools/list 差异主要来自 legacy/实现差异；config fingerprint 是隔离边界。
+- c3206 已落地：`build_context(head)` 是唯一投影；`ContextView` 有 `nodes` / `messages` / `llm_messages` / `epoch_id` / `prefix_hash`；`SessionContext` 仍只有 messages / thinking / model；`session_tree` 保留，`session_graph` 延后到 c3210。
+- resume 不得回退线性 load；以 graph head 为准。
 - 软过滤：profile 只过滤工具集，不新建连接；不同 config 才独立连接。
 
 ## Open Questions

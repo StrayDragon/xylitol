@@ -1,16 +1,17 @@
 ---
-depends_on: [c3060-add-mcp-tool-catalog]
+depends_on: [c3060-add-mcp-tool-catalog, c3206-refactor-session-graph]
 title: "Agent profile resume diff"
 ---
 
 ## Why
 
 agent profile 是 boot 级参数，不是 session 级；`SessionContext` 只存 messages / thinking_level / model，不存 profile。resume 会用 host 当前 profile。冻结 profile 不可靠：下一次 resume 时同名 profile 可能不存在或已变化。选择 Option B：resume 用当前 profile。
+c3206 已落地：`SessionHeader` 仍只有 cwd / parent / fork_at；manifest formatVersion 仍 7；`SessionContext` 仍只有 messages / thinking / model；profile metadata 需新增可选字段，不升 v8。
 
 ## What Changes
 
-- session header 存 profile name + fingerprint。
-- resume 时加载当前 profile，比较 fingerprint：
+- session header / manifest 存 profile name + fingerprint（c3206 未提供；新增可选字段，formatVersion 保持 7）。
+- resume 从 c3206 graph head / build_context 读取上下文，加载当前 profile，比较 fingerprint：
   - 相同：继续，不重注入。
   - 不同：检测提示；用户选择后处理。
   - profile 不存在：回退默认 profile 并提示；不得静默用错。
@@ -38,6 +39,8 @@ runtime agent assembly、session store、MCP claims、TUI。
 - 用户选择 Option B；粗粒度处理：profile 任意变动就全量重注入。
 - 检测提示复用 ask TUI 形态，不用 MCP elicitation slot。
 - 依赖 `c3060-add-mcp-tool-catalog`：resume 按当前 profile 重建 tool set / reconcile MCP claims；本 change 负责 session header fingerprint、提示与全量重注入。
+- c3206 已归档：SessionHeader 无 profile；manifest formatVersion 7；profile metadata 为新增可选字段，不升 v8。
+- resume 全量重注入以 graph head / build_context 为准，不回退线性 load。
 - 不与 `c3055-add-mcp-scope-pool` 依赖；profile 语义与 MCP scope pool 无交集。
 
 ## Open Questions

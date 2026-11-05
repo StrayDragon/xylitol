@@ -17,7 +17,7 @@ c3206 提供图数据（nodes / edges / branches / heads），但 TUI 仍是树�
 
 ## Scope
 
-- 不在 c3206 内实现；c3206 只提供图数据与协议字段。
+- 不在 c3206 内实现；c3206 只提供内部图数据（nodes / edges / branches / heads）；`session_graph` 协议与 TUI 图视图均未实现，由本 change 落地。
 - 先 TUI，后 nsh；nsh 先 spike。
 
 ## Related
