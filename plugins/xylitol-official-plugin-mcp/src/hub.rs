@@ -11,7 +11,10 @@ use xylitol_plugin_sdk::session_prepare::{SessionPrepareHub, SessionPrepareView}
 use xylitol_plugin_sdk::tool_name::mcp_tool_armed_prefix;
 use xylitol_plugin_sdk::tool_name::mcp_tool_public_name;
 
-use crate::assemble::{adapters_from_discovered, connect_and_discover_at};
+use crate::assemble::{
+    adapters_from_discovered, connect_and_discover_at, prompt_adapters_from_discovered,
+    resource_adapters_from_discovered,
+};
 use crate::client::{McpClientManager, McpConnectProgress};
 use crate::config::{McpScope, McpServerConfig};
 
@@ -30,6 +33,8 @@ struct PoolEntry {
     connected: Vec<(String, usize)>,
     diags: Vec<String>,
     rows: Vec<(String, String, String, serde_json::Value)>,
+    rows_prompts: Vec<(String, String, String, serde_json::Value)>,
+    rows_resources: Vec<(String, String, String, String)>,
     tools: Vec<Arc<dyn XyTool>>,
 }
 
@@ -40,6 +45,7 @@ pub struct McpToolDescriptor {
     pub name: String,
     pub description: String,
     pub schema: serde_json::Value,
+    pub kind: String,
 }
 
 struct HubState {
@@ -196,6 +202,8 @@ impl McpPrepareHub {
                                 connected: Vec::new(),
                                 diags: Vec::new(),
                                 rows: Vec::new(),
+                                rows_prompts: Vec::new(),
+                                rows_resources: Vec::new(),
                                 tools: Vec::new(),
                             },
                         );
@@ -239,13 +247,25 @@ impl McpPrepareHub {
                 .map(|diag| format!("{}: {}", diag.server, diag.message))
                 .collect();
             let rows = manager.list_all_tools().await;
-            let tools = adapters_from_discovered(manager.clone(), &rows);
+            let rows_prompts = manager.list_all_prompts().await;
+            let rows_resources = manager.list_all_resources().await;
+            let mut tools = adapters_from_discovered(manager.clone(), &rows);
+            tools.extend(prompt_adapters_from_discovered(
+                manager.clone(),
+                &rows_prompts,
+            ));
+            tools.extend(resource_adapters_from_discovered(
+                manager.clone(),
+                &rows_resources,
+            ));
             let mut pool = self.state.pool.lock().await;
             if let Some(entry) = pool.get_mut(&key) {
                 entry.manager = manager;
                 entry.connected = connected;
                 entry.diags = diags;
                 entry.rows = rows;
+                entry.rows_prompts = rows_prompts;
+                entry.rows_resources = rows_resources;
                 entry.tools = tools;
             }
         }
@@ -268,10 +288,22 @@ impl McpPrepareHub {
                 continue;
             };
             let rows = manager.list_all_tools().await;
-            let tools = adapters_from_discovered(manager, &rows);
+            let rows_prompts = manager.list_all_prompts().await;
+            let rows_resources = manager.list_all_resources().await;
+            let mut tools = adapters_from_discovered(manager.clone(), &rows);
+            tools.extend(prompt_adapters_from_discovered(
+                manager.clone(),
+                &rows_prompts,
+            ));
+            tools.extend(resource_adapters_from_discovered(
+                manager.clone(),
+                &rows_resources,
+            ));
             let mut pool = self.state.pool.lock().await;
             if let Some(entry) = pool.get_mut(&key) {
                 entry.rows = rows;
+                entry.rows_prompts = rows_prompts;
+                entry.rows_resources = rows_resources;
                 entry.tools = tools;
             }
         }
@@ -288,6 +320,35 @@ impl McpPrepareHub {
                     name: mcp_tool_public_name(server, name),
                     description: description.clone(),
                     schema: schema.clone(),
+                    kind: "tool".into(),
+                });
+            }
+            for (server, name, description, schema) in &entry.rows_prompts {
+                out.push(McpToolDescriptor {
+                    key: key.clone(),
+                    server: server.clone(),
+                    name: mcp_tool_public_name(server, &format!("prompt__{name}")),
+                    description: description.clone(),
+                    schema: schema.clone(),
+                    kind: "prompt".into(),
+                });
+            }
+            for (server, _uri, name, description) in &entry.rows_resources {
+                out.push(McpToolDescriptor {
+                    key: key.clone(),
+                    server: server.clone(),
+                    name: mcp_tool_public_name(server, "resource__read"),
+                    description: if description.is_empty() {
+                        format!("Read MCP resource {name} from {server}")
+                    } else {
+                        description.clone()
+                    },
+                    schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {"uri": {"type": "string"}},
+                        "required": ["uri"]
+                    }),
+                    kind: "resource".into(),
                 });
             }
         }

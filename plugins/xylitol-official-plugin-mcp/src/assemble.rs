@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use super::adapter::McpToolAdapter;
+use super::adapter::{McpPromptAdapter, McpResourceAdapter, McpToolAdapter};
 use super::client::McpClientManager;
 use super::types::McpServerConfig;
 use xylitol_plugin_sdk::XyTool;
@@ -22,6 +22,43 @@ pub fn adapters_from_discovered(
                 tool_name.clone(),
                 description.clone(),
                 Some(schema.clone()),
+                manager.clone(),
+            )) as Arc<dyn XyTool>
+        })
+        .collect()
+}
+
+pub fn prompt_adapters_from_discovered(
+    manager: Arc<McpClientManager>,
+    rows: &[(String, String, String, Value)],
+) -> Vec<Arc<dyn XyTool>> {
+    rows.iter()
+        .map(|(server_id, prompt_name, description, schema)| {
+            Arc::new(McpPromptAdapter::new(
+                server_id.clone(),
+                prompt_name.clone(),
+                description.clone(),
+                Some(schema.clone()),
+                manager.clone(),
+            )) as Arc<dyn XyTool>
+        })
+        .collect()
+}
+
+pub fn resource_adapters_from_discovered(
+    manager: Arc<McpClientManager>,
+    rows: &[(String, String, String, String)],
+) -> Vec<Arc<dyn XyTool>> {
+    rows.iter()
+        .map(|(server_id, _uri, name, description)| {
+            let description = if description.is_empty() {
+                format!("Read MCP resource {name} from {server_id}")
+            } else {
+                format!("{description} (resource {name} from {server_id})")
+            };
+            Arc::new(McpResourceAdapter::new(
+                server_id.clone(),
+                description,
                 manager.clone(),
             )) as Arc<dyn XyTool>
         })
@@ -48,7 +85,14 @@ pub async fn connect_and_discover_at(
         .connect_servers_with_progress(servers, workspace, progress.clone())
         .await;
     let rows = manager.list_all_tools().await;
-    let tools = adapters_from_discovered(manager.clone(), &rows);
+    let mut tools = adapters_from_discovered(manager.clone(), &rows);
+    let prompts = manager.list_all_prompts().await;
+    tools.extend(prompt_adapters_from_discovered(manager.clone(), &prompts));
+    let resources = manager.list_all_resources().await;
+    tools.extend(resource_adapters_from_discovered(
+        manager.clone(),
+        &resources,
+    ));
     if let Some(progress) = progress.as_ref() {
         let mut snap = progress.lock().await;
         snap.connecting = false;

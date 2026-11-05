@@ -132,3 +132,7 @@
   @req:r3239
   规则: mcp-custom-transport-seam
     transport 须接受 stdio / http / custom；custom 须提供 custom_transport 名称且名称已注册；已注册但无连接器时连接须返回稳定错误；不得静默回退；不实现 WebSocket；不假设连接器 API 形状。由单测覆盖，不扩 BDD step。
+
+  @req:r3240
+  规则: mcp-prompts-resources
+    MCP prompts 须以 `mcp__server__prompt__name` 暴露为模型工具，resources 须以 `mcp__server__resource__read` 暴露（uri 参数）；prompts/get 与 resources/read 须受 per-server call timeout；list 失败保留上一份 catalog 并诊断；profile tools 选择同样适用。由单测覆盖，不扩 BDD step。

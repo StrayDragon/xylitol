@@ -1,6 +1,9 @@
 ---
 depends_on: [c3060-add-mcp-tool-catalog]
 title: "MCP prompts and resources"
+branch: main
+base_branch: origin/main
+base_sha: 78d077258664b34c5b9147336d76994cb6f448b7
 ---
 
 ## Why

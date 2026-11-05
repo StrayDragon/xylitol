@@ -464,6 +464,187 @@ impl McpClientManager {
         }
     }
 
+    pub async fn list_all_prompts(&self) -> Vec<(String, String, String, Value)> {
+        #[cfg(not(feature = "mcp"))]
+        {
+            Vec::new()
+        }
+        #[cfg(feature = "mcp")]
+        {
+            let mut result = Vec::new();
+            let services = self.services.lock().await;
+            for (server_id, service) in services.iter() {
+                let prompts = match tokio::time::timeout(
+                    MCP_CALL_TIMEOUT,
+                    service.list_all_prompts(),
+                )
+                .await
+                {
+                    Ok(Ok(prompts)) => prompts,
+                    Ok(Err(e)) => {
+                        log::warn!("list_all_prompts failed server_id={server_id} error={e}");
+                        continue;
+                    }
+                    Err(_) => {
+                        log::warn!("list_all_prompts timed out server_id={server_id}");
+                        continue;
+                    }
+                };
+                for prompt in prompts {
+                    let description = prompt.description.unwrap_or_default();
+                    let mut properties = serde_json::Map::new();
+                    let mut required = Vec::new();
+                    for argument in prompt.arguments.unwrap_or_default() {
+                        properties.insert(
+                            argument.name.clone(),
+                            serde_json::json!({
+                                "type": "string",
+                                "description": argument.description.unwrap_or_default(),
+                            }),
+                        );
+                        if argument.required.unwrap_or(false) {
+                            required.push(argument.name);
+                        }
+                    }
+                    let schema = serde_json::json!({
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    });
+                    result.push((server_id.clone(), prompt.name, description, schema));
+                }
+            }
+            result
+        }
+    }
+
+    pub async fn get_prompt(
+        &self,
+        server_id: &str,
+        prompt_name: &str,
+        arguments: Option<Value>,
+    ) -> Result<Value, McpError> {
+        #[cfg(not(feature = "mcp"))]
+        {
+            let _ = (server_id, prompt_name, arguments);
+            Err(McpError::Config("binary built without feature mcp".into()))
+        }
+        #[cfg(feature = "mcp")]
+        {
+            use rmcp::model::GetPromptRequestParams;
+
+            let services = self.services.lock().await;
+            let service = services
+                .get(server_id)
+                .ok_or_else(|| McpError::ServerNotFound {
+                    server_id: server_id.to_string(),
+                })?;
+            let mut params = GetPromptRequestParams::new(prompt_name.to_string());
+            params.arguments = arguments.and_then(|value| value.as_object().cloned());
+            let call_timeout = self
+                .call_timeouts
+                .lock()
+                .await
+                .get(server_id)
+                .copied()
+                .unwrap_or(MCP_CALL_TIMEOUT);
+            let result = tokio::time::timeout(call_timeout, service.get_prompt(params))
+                .await
+                .map_err(|_| {
+                    McpError::Timeout(format!(
+                        "mcp prompt get timed out after {call_timeout:?} (server={server_id}, prompt={prompt_name})"
+                    ))
+                })?
+                .map_err(|source| McpError::Call {
+                    server_id: server_id.to_string(),
+                    tool_name: prompt_name.to_string(),
+                    source: Box::new(source),
+                })?;
+            serde_json::to_value(&result).map_err(McpError::Serialize)
+        }
+    }
+
+    pub async fn list_all_resources(&self) -> Vec<(String, String, String, String)> {
+        #[cfg(not(feature = "mcp"))]
+        {
+            Vec::new()
+        }
+        #[cfg(feature = "mcp")]
+        {
+            let mut result = Vec::new();
+            let services = self.services.lock().await;
+            for (server_id, service) in services.iter() {
+                let resources = match tokio::time::timeout(
+                    MCP_CALL_TIMEOUT,
+                    service.list_all_resources(),
+                )
+                .await
+                {
+                    Ok(Ok(resources)) => resources,
+                    Ok(Err(e)) => {
+                        log::warn!("list_all_resources failed server_id={server_id} error={e}");
+                        continue;
+                    }
+                    Err(_) => {
+                        log::warn!("list_all_resources timed out server_id={server_id}");
+                        continue;
+                    }
+                };
+                for resource in resources {
+                    result.push((
+                        server_id.clone(),
+                        resource.uri,
+                        resource.name,
+                        resource.description.unwrap_or_default(),
+                    ));
+                }
+            }
+            result
+        }
+    }
+
+    pub async fn read_resource(&self, server_id: &str, uri: &str) -> Result<Value, McpError> {
+        #[cfg(not(feature = "mcp"))]
+        {
+            let _ = (server_id, uri);
+            Err(McpError::Config("binary built without feature mcp".into()))
+        }
+        #[cfg(feature = "mcp")]
+        {
+            use rmcp::model::ReadResourceRequestParams;
+
+            let services = self.services.lock().await;
+            let service = services
+                .get(server_id)
+                .ok_or_else(|| McpError::ServerNotFound {
+                    server_id: server_id.to_string(),
+                })?;
+            let call_timeout = self
+                .call_timeouts
+                .lock()
+                .await
+                .get(server_id)
+                .copied()
+                .unwrap_or(MCP_CALL_TIMEOUT);
+            let result = tokio::time::timeout(
+                call_timeout,
+                service.read_resource(ReadResourceRequestParams::new(uri.to_string())),
+            )
+            .await
+            .map_err(|_| {
+                McpError::Timeout(format!(
+                    "mcp resource read timed out after {call_timeout:?} (server={server_id}, uri={uri})"
+                ))
+            })?
+            .map_err(|source| McpError::Call {
+                server_id: server_id.to_string(),
+                tool_name: uri.to_string(),
+                source: Box::new(source),
+            })?;
+            serde_json::to_value(&result).map_err(McpError::Serialize)
+        }
+    }
+
     pub async fn call_tool(
         &self,
         server_id: &str,
