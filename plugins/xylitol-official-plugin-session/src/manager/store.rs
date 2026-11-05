@@ -34,6 +34,13 @@ impl XySessionStore for SessionManager {
         self.get_branch(session_id, leaf_id.as_deref()).await
     }
 
+    async fn build_context_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        SessionManager::build_session_context_entries(self, session_id).await
+    }
+
     async fn append_session_entry(
         &self,
         session_id: &str,
@@ -58,6 +65,10 @@ impl XySessionStore for SessionManager {
             return Ok(xylitol_plugin_sdk::session::done_bash_ids(&entries));
         }
         let manifest = self.read_manifest(session_id).await?;
+        if manifest.parent.is_some() {
+            let entries = self.load_entries(session_id, &manifest).await?;
+            return Ok(xylitol_plugin_sdk::session::done_bash_ids(&entries));
+        }
         let mut done = self
             .read_segment(session_id, &manifest.active_segment)
             .await

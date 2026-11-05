@@ -7141,6 +7141,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "sha2",
  "strum",
  "thiserror 2.0.21",
  "time",

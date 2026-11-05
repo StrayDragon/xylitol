@@ -11,7 +11,7 @@ pub use xylitol_kernel::provider::factory::{
 pub use xylitol_official_plugin_compaction::should_compact;
 pub use xylitol_official_plugin_hooks::{DispatchResult, HookEvent, HookPhase};
 pub use xylitol_official_plugin_session::{
-    BranchSummaryEntry, CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManager,
+    CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManager,
     ThinkingLevelChangeEntry,
 };
 pub use xylitol_official_plugin_tools::{

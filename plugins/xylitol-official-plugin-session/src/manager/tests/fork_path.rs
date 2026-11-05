@@ -1,7 +1,8 @@
 use super::super::*;
 use xylitol_plugin_sdk::error::XySessionError;
 use xylitol_plugin_sdk::session::{
-    EntryBase, ForkPosition, MessageEntry, fixture_message_json, is_user_message, message_text,
+    EntryBase, ForkPosition, MessageEntry, fixture_message_json, is_user_message, message_role,
+    message_text,
 };
 
 fn fork_entry_ms(id: &str) -> u64 {
@@ -71,25 +72,38 @@ async fn fork_at_excludes_sibling_branch() {
         .await
         .unwrap();
 
-    let child = mgr.load(&child_id).await.unwrap();
-    let ids: Vec<_> = child.iter().filter_map(|e| e.entry_id()).collect();
+    let path = mgr.get_branch(&child_id, None).await.unwrap();
+    let ids: Vec<_> = path.iter().filter_map(|e| e.entry_id()).collect();
     assert!(
         ids.contains(&"u1") && ids.contains(&"a_right") && ids.contains(&"u_right"),
         "path must include u1→a_right→u_right: {ids:?}"
     );
     assert!(
         !ids.contains(&"a_left"),
-        "sibling a_left must NOT leak into child (file-order bug): {ids:?}"
+        "sibling a_left must NOT leak into child path: {ids:?}"
+    );
+
+    let stored = mgr.load(&child_id).await.unwrap();
+    let stored_ids: Vec<_> = stored.iter().filter_map(|e| e.entry_id()).collect();
+    assert!(
+        stored_ids.contains(&"u1") && stored_ids.contains(&"a_left"),
+        "COW child must reference parent storage: {stored_ids:?}"
+    );
+    assert!(
+        stored
+            .iter()
+            .any(|e| matches!(e, SessionEntry::BranchSummary(_))),
+        "child must append a branch summary: {stored:?}"
     );
 
     let parent = mgr.load(&parent_id).await.unwrap();
     assert_eq!(
         parent.iter().filter(|e| e.entry_id().is_some()).count(),
         4,
-        "parent must be unchanged"
+        "parent entries must be unchanged"
     );
-    let header = child.iter().find_map(|e| match e {
-        SessionEntry::Header(h) => Some(h),
+    let header = stored.iter().find_map(|e| match e {
+        SessionEntry::Header(h) if h.id == child_id => Some(h),
         _ => None,
     });
     assert_eq!(
@@ -100,14 +114,11 @@ async fn fork_at_excludes_sibling_branch() {
         header.and_then(|h| h.fork_at_entry_id.as_deref()),
         Some("u_right")
     );
-    let raw = tokio::fs::read_to_string(mgr.session_path(&child_id))
-        .await
-        .unwrap();
-    assert!(
-        raw.contains("\"forkAtEntryId\":\"u_right\"")
-            || raw.contains("\"forkAtEntryId\": \"u_right\""),
-        "cut must be on disk, not only in memory: {raw}"
-    );
+    let manifest = mgr.read_manifest(&child_id).await.unwrap();
+    let parent_ref = manifest.parent.as_ref().expect("parent ref");
+    assert_eq!(parent_ref.session_id, parent_id);
+    assert_eq!(parent_ref.fork_entry_id, "u_right");
+    assert!(!parent_ref.segments.is_empty());
 }
 
 #[tokio::test]
@@ -121,19 +132,21 @@ async fn fork_before_user_omits_user_and_prefills_source() {
         .await
         .unwrap();
 
-    let child = mgr.load(&child_id).await.unwrap();
-    let ids: Vec<_> = child.iter().filter_map(|e| e.entry_id()).collect();
+    let path = mgr.get_branch(&child_id, None).await.unwrap();
+    let ids: Vec<_> = path.iter().filter_map(|e| e.entry_id()).collect();
     assert!(
         ids.contains(&"u1") && ids.contains(&"a_right"),
         "before-user path ends at parent of u_right: {ids:?}"
     );
     assert!(
         !ids.contains(&"u_right"),
-        "selected user must not be copied (pi before): {ids:?}"
+        "selected user must not enter the branch path: {ids:?}"
     );
     assert!(!ids.contains(&"a_left"), "no sibling leak: {ids:?}");
-    let header = child.iter().find_map(|e| match e {
-        SessionEntry::Header(h) => Some(h),
+
+    let stored = mgr.load(&child_id).await.unwrap();
+    let header = stored.iter().find_map(|e| match e {
+        SessionEntry::Header(h) if h.id == child_id => Some(h),
         _ => None,
     });
     assert_eq!(
@@ -143,7 +156,7 @@ async fn fork_before_user_omits_user_and_prefills_source() {
     assert_eq!(
         header.and_then(|h| h.fork_at_entry_id.as_deref()),
         Some("u_right"),
-        "Before cut is the omitted user entry, not the copied path leaf"
+        "Before cut is the omitted user entry"
     );
 
     let parent = mgr.load(&parent_id).await.unwrap();
@@ -195,19 +208,41 @@ async fn fork_missing_entry_is_session_not_store() {
 }
 
 #[tokio::test]
-async fn persisted_fork_does_not_mutate_parent_file() {
+async fn persisted_fork_seals_parent_and_references_segments() {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.path().join("sessions"));
     let (parent_id, child_id) = unique_pair();
     seeded_sibling_tree(&mgr, &parent_id).await;
-    let before = tokio::fs::read(mgr.session_path(&parent_id)).await.unwrap();
+    let before_ids: Vec<_> = mgr
+        .load(&parent_id)
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|e| e.entry_id().map(str::to_string))
+        .collect();
 
     mgr.fork(&parent_id, &child_id, "u_right", ForkPosition::At)
         .await
         .unwrap();
 
-    let after = tokio::fs::read(mgr.session_path(&parent_id)).await.unwrap();
-    assert_eq!(before, after, "parent JSONL bytes must be identical");
+    let after_ids: Vec<_> = mgr
+        .load(&parent_id)
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|e| e.entry_id().map(str::to_string))
+        .collect();
+    assert_eq!(before_ids, after_ids, "parent entries must be unchanged");
+
+    let parent_manifest = mgr.read_manifest(&parent_id).await.unwrap();
+    assert!(
+        !parent_manifest.sealed_segments.is_empty(),
+        "fork must seal parent active into a snapshot"
+    );
+    let child_manifest = mgr.read_manifest(&child_id).await.unwrap();
+    let parent_ref = child_manifest.parent.as_ref().expect("parent ref");
+    assert_eq!(parent_ref.session_id, parent_id);
+    assert!(!parent_ref.segments.is_empty());
     assert!(mgr.session_path(&child_id).exists());
 }
 
@@ -235,7 +270,7 @@ async fn unflushed_parent_rejects_fork() {
 }
 
 #[tokio::test]
-async fn fork_user_only_path_defers_child_file() {
+async fn fork_user_only_path_writes_cow_child() {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.path().join("sessions"));
     let (parent_id, child_id) = unique_pair();
@@ -252,18 +287,22 @@ async fn fork_user_only_path_defers_child_file() {
         .await
         .unwrap();
     assert!(
-        !mgr.session_path(&child_id).exists(),
-        "pi: no assistant on path → no child file yet"
+        mgr.session_path(&child_id).exists(),
+        "COW fork writes a child manifest immediately"
     );
     let loaded = mgr.load(&child_id).await.unwrap();
-    let ids: Vec<_> = loaded.iter().filter_map(|e| e.entry_id()).collect();
-    assert_eq!(ids, vec!["u1"], "child pending body: {ids:?}");
+    assert!(
+        loaded.iter().any(|e| e.entry_id() == Some("u1")),
+        "child references parent entry: {loaded:?}"
+    );
     assert!(
         loaded
             .iter()
-            .any(|e| matches!(e, SessionEntry::Header(h) if h.parent_session.as_deref() == Some(parent_id.as_str()) && h.fork_at_entry_id.as_deref() == Some("u1"))),
-        "header parent_session + forkAtEntryId: {loaded:?}"
+            .any(|e| matches!(e, SessionEntry::BranchSummary(_))),
+        "child appends branch summary: {loaded:?}"
     );
+    let manifest = mgr.read_manifest(&child_id).await.unwrap();
+    assert!(manifest.parent.is_some());
 
     mgr.append(
         &child_id,
@@ -271,17 +310,16 @@ async fn fork_user_only_path_defers_child_file() {
     )
     .await
     .unwrap();
-    assert!(mgr.session_path(&child_id).exists());
     let flushed = mgr.load(&child_id).await.unwrap();
     assert!(
         flushed.iter().any(|e| e.entry_id() == Some("u1")),
-        "flushed keeps forked user: {flushed:?}"
+        "child keeps parent ref: {flushed:?}"
     );
     assert!(
-        flushed.iter().any(
-            |e| matches!(e, SessionEntry::Message(m) if message_role_of(m) == Some("assistant"))
-        ),
-        "assistant present after flush: {flushed:?}"
+        flushed
+            .iter()
+            .any(|e| matches!(e, SessionEntry::Message(m) if message_role(&m.message) == Some("assistant"))),
+        "assistant present after append: {flushed:?}"
     );
     assert!(
         flushed.iter().any(|e| matches!(
@@ -290,19 +328,8 @@ async fn fork_user_only_path_defers_child_file() {
                 if h.parent_session.as_deref() == Some(parent_id.as_str())
                     && h.fork_at_entry_id.as_deref() == Some("u1")
         )),
-        "deferred flush must keep forkAtEntryId: {flushed:?}"
+        "header keeps forkAtEntryId: {flushed:?}"
     );
-    let raw = tokio::fs::read_to_string(mgr.session_path(&child_id))
-        .await
-        .unwrap();
-    assert!(
-        raw.contains("\"forkAtEntryId\":\"u1\"") || raw.contains("\"forkAtEntryId\": \"u1\""),
-        "{raw}"
-    );
-}
-
-fn message_role_of(m: &MessageEntry) -> Option<&str> {
-    m.message.get("role").and_then(|r| r.as_str())
 }
 
 #[tokio::test]
@@ -344,14 +371,14 @@ async fn fork_strips_path_labels_and_rebuilds_at_end() {
         .await
         .unwrap();
 
-    let child_entries = mgr.load(child).await.unwrap();
-    let ids: Vec<_> = child_entries.iter().filter_map(|e| e.entry_id()).collect();
+    let path = mgr.get_branch(child, None).await.unwrap();
+    let ids: Vec<_> = path.iter().filter_map(|e| e.entry_id()).collect();
     assert!(ids.contains(&"u1") && ids.contains(&"a1"), "{ids:?}");
     assert!(
         !ids.contains(&"lbl1"),
-        "original label id must not be copied: {ids:?}"
+        "original label id must not enter the branch path: {ids:?}"
     );
-    let labels: Vec<_> = child_entries
+    let labels: Vec<_> = path
         .iter()
         .filter_map(|e| match e {
             SessionEntry::Label(l) => Some((l.target_id.as_str(), l.label.as_deref())),
@@ -359,10 +386,7 @@ async fn fork_strips_path_labels_and_rebuilds_at_end() {
         })
         .collect();
     assert_eq!(labels, vec![("u1", Some("checkpoint"))], "{labels:?}");
-    let a1 = child_entries
-        .iter()
-        .find(|e| e.entry_id() == Some("a1"))
-        .unwrap();
+    let a1 = path.iter().find(|e| e.entry_id() == Some("a1")).unwrap();
     assert_eq!(a1.parent_id(), Some("u1"));
 }
 

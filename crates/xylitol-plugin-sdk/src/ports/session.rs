@@ -59,6 +59,14 @@ pub trait XySessionStore: Send + Sync {
         self.load_entries(session_id).await
     }
 
+    async fn build_context_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        let entries = self.load_entries(session_id).await?;
+        Ok(crate::session::build_context_entries(&entries))
+    }
+
     async fn append_session_entry(
         &self,
         session_id: &str,

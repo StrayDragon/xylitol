@@ -5,7 +5,7 @@
 - 把 per-session 条目树重构为**节点 + 边 + epoch + head** 的会话图。
 - fork 改 copy-on-write：子会话引用父 sealed 段，不复制条目。
 - 上下文投影单一入口，输出 epoch_id 与 prefix_hash，钉住 KV cache 前缀不变量。
-- v8 manifest 记录 branches / edges / parent refs / workspace ref。
+- manifest 扩展记录 branches / edges / parent refs / workspace ref（formatVersion 保持 7）。
 - 协议与 TUI 改用 session_graph；删除旧 fork 复制与树构建。
 - workspace 与 scheduler 不在本 change 落地，只留字段。
 
@@ -22,16 +22,17 @@
 ### 1 图模型
 
 - Node = SessionEntry（Message / Compaction / BranchSummary / Custom / Label / SessionInfo 等）。
-- 新增 SessionEntry::Edge(EdgeEntry)：
+- 新增 EdgeRecord（独立 graph.jsonl 追加日志）：
 
 ~~~text
-EdgeEntry {
-  base: EntryBase,          // id, parent_id, timestamp
+EdgeRecord {
+  id: String,
   edge_kind: Parent | Context | Fork,
   from: String,             // 源节点 id
   to: String,               // 目标节点 id
   order: u32,               // 多父合并顺序
   enabled: bool,            // 墓碑边为 false
+  timestamp: u64,
 }
 ~~~
 
@@ -53,7 +54,7 @@ build_context(head) 是唯一入口，预览与实发共用：
 1. 读取本会话 + parent refs 的条目，建 node map 与入边 map（取每条边最新 enabled 事实）。
 2. 从 head 反向 DFS 入边，收集可达节点；按 edge.order 排序，缺省按 timestamp/id。
 3. 环检测：发现回边即返回稳定错误（不得静默截断）。
-4. 找最新 epoch 节点（Compaction / BranchSummary / Fork），前缀截断到该节点。
+4. 找最新 compaction epoch 节点，前缀截断到该节点。
 5. SessionEntry → AgentMessage → project_for_llm。
 6. 计算 prefix_hash，返回 ContextView。
 
@@ -71,7 +72,7 @@ sequenceDiagram
 
 ### 3 前缀 epoch 与 hash
 
-- epoch 节点：Compaction、BranchSummary、Fork。epoch_id = 节点 id。
+- epoch 节点：Compaction。epoch_id = 节点 id。
 - prefix_hash = 规范化 JSON（键排序、去时间戳噪声）的 sha256，覆盖 epoch 之后到当前 head 的投影消息。
 - 不变量：同一 epoch 追加尾部消息后 prefix_hash 不变；新 epoch 产生新 hash。
 - provider cache 断点仍由方言插件决定（system / tools / last message）；本 change 不改 provider 行为。
@@ -81,7 +82,8 @@ sequenceDiagram
 - fork 时把父 active 段 seal 成快照段（含到 fork 切点为止的条目）；父 manifest 更新为新的 active。
 - 子 manifest 写 parent ref：parent_session、fork_entry_id、segment refs（相对 sessions root）。
 - 子会话 load = 父 sealed 段 + 子 active；entry id 保持父 id，不重写。
-- 子会话追加 branchSummary（epoch）与 fork 边；子头保留 parent_session / fork_at_entry_id。
+- 子会话追加 branchSummary（handoff 标记）与 fork 边；子头保留 parent_session / fork_at_entry_id。
+- 初版只写 branchSummary，不做自动 summary / compaction / handoff；fork-time 上下文缩减延后到 c3211，避免触发式压缩失真。
 - 父段 sealed 后不可改写；子会话不复制条目。
 
 ~~~mermaid
@@ -92,11 +94,11 @@ flowchart LR
   PS -. "load 时拼接" .-> CM
 ~~~
 
-### 5 v8 manifest
+### 5 manifest 扩展
 
 ~~~text
 SessionManifest {
-  format_version: 8,
+  format_version: 7,
   session_id: String,
   branches: Vec<Branch>,
   parent: Option<ParentRef>,
@@ -107,40 +109,38 @@ SessionManifest {
 }
 ~~~
 
+- entry version 与 manifest formatVersion 均保持 7；新增字段可选。
 - Branch { id, head_entry_id, parent_session, fork_entry_id, workspace_ref }。
 - ParentRef { session_id, fork_entry_id, segments: Vec<SegmentRef> }。
 - SegmentRef 指向 sessions root 下的相对路径；sealed 段不可改写。
-- v7 → v8：父链映射为 parent 边；fork 头映射为 parent ref + fork 边；compaction 映射为 epoch 节点。
+- 旧 session 可丢弃，不迁移；v6 legacy 仍拒绝；单线 v7 可读。
 
 ### 6 协议与 TUI
 
-- Command::SessionGraph { kind }；Command::TravelSessionGraph { kind, id }；结果含 nodes / edges / branches。
-- 删除 session_tree / travel_session_tree 名称，不留双解析。
-- TUI 用图数据渲染树形布局；fork / travel 语义不变。
+- 图 UI 延后到 c3210；c3206 保持 session_tree / travel_session_tree 兼容单线模式。
+- 保留 build_session_tree / tree_prefix 供单线 TUI。
 
 ### 7 删除清单
 
-- fork_inner 复制路径与 clone_entry_with_ids。
-- build_session_tree 的树构建（保留 graph 构建替代）。
-- SessionListEntry.tree_prefix 与列表缩进。
-- session_tree / travel_session_tree 协议方法。
-- v7 fork 复制相关测试与 spec 场景改写。
+- fork_inner 复制路径。
+- clone_entry_with_ids 保留供 append / inject_ids。
+- v7 fork 复制相关测试与 spec 场景改为 COW 断言。
 
 ### 8 测试
 
 - 单测：边排序、墓碑边、环检测、epoch 裁切、prefix_hash 稳定性。
 - BDD：fork 子会话引用父条目（id 相同、无复制）；禁用边后子图不进上下文；同一 epoch 追加尾部 prefix_hash 不变。
-- 迁移：v7 fixture → v8，父链/fork/compaction 映射正确。
+- 旧 session：v7 单线可读；不迁移；v6 legacy 仍拒绝。
 
 ## 风险
 
-- fork 语义变化可能影响 TUI/协议客户端；改名是 breaking change。
+- fork 子会话 id 兼容当前模式；图 UI 延后，不改协议名。
 - 跨目录 segment refs 需要 sessions root 解析与安全校验（不得引用 root 外路径）。
 - 父 active seal 与 fork 并发：fork 走单写者准入；seal 失败不得留下半成品。
-- 迁移大文件耗时；需 dry-run 与可回滚备份。
+- 旧 session 丢弃的规模与回滚边界。
 
 ## 待确认
 
 - fork 保留子 session id（推荐）还是同 session branch。
 - 跨会话多父 context wire 是否首切片。
-- session_graph 改名是否接受。
+- 图 UI 的启动时点（c3210）。

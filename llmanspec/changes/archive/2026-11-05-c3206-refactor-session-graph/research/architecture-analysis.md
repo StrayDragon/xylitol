@@ -100,17 +100,17 @@ flowchart TB
 - branch 绑定 workspace commit；tools 在 mount 内运行。
 - scheduler：timer / channel / user 事件作为 trigger 事实；/loop 与 /goal 是策略，不是隐藏状态；admission 复用单写者。
 
-## 5 迁移与移除
+## 5 旧 session 与移除
 
-- v7 → v8：读旧会话，父链映射为 parent 边；fork 头映射为 fork 边；compaction 映射为 epoch 节点。
+- 旧 session 可丢弃；不迁移；单线 v7 可读。
 - 保留 manifest/seal 作为物理层；新增 graph 索引（边/分支/workspace ref）。
-- 移除：fork_inner 复制路径、build_session_tree 树构建、tree_prefix 列表缩进、session_tree 协议方法（改名 session_graph）。
-- 旧会话一次性迁移；不做双读双写，不留兼容 shim。
+- 移除：fork_inner 复制路径；保留 build_session_tree / tree_prefix 供单线 TUI；session_tree 协议方法延后到 c3210。
+- 旧会话不迁移；不做双读双写，不留兼容 shim。
 
 ## 6 风险与待确认
 
 - fork 语义：子 session 还是同 session 内的 branch？建议保留子 session id（兼容当前模式），图在 session 之间建立 fork 边。
 - 跨会话多父：先只支持 fork 单父；跨会话 context wire 后续。
-- 迁移规模：现有会话数量与段大小未知；需在 change 里做 dry-run 统计。
-- 协议改名：session_tree → session_graph 是 breaking change；TUI 同步更新，不留双解析。
+- 旧会话规模：现有会话数量与段大小未知；丢弃策略需评估。
+- 协议图方法：session_graph / 图视图延后到 c3210；不 breaking 改名 session_tree。
 - LayerFS 集成：平台限制（Linux/macOS via DSH、Windows WSL2）、进程边界、权限模型需单独评估。

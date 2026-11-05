@@ -6,6 +6,7 @@ use super::types::*;
 use crate::sync::{lock_rwlock_read, lock_rwlock_write};
 
 mod context;
+mod edges;
 mod load;
 mod persist;
 mod seal;
@@ -26,6 +27,8 @@ pub struct SessionManager {
     leaf_ids: Arc<RwLock<HashMap<String, Option<String>>>>,
     active_session: Arc<RwLock<Option<String>>>,
     in_memory_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
+    in_memory_edges: Arc<RwLock<HashMap<String, Vec<xylitol_plugin_sdk::session::EdgeRecord>>>>,
+    in_memory_parents: Arc<RwLock<HashMap<String, String>>>,
     pending_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
     write_locks: Arc<Mutex<HashMap<String, write_lock::SessionWriteLock>>>,
     #[cfg(test)]
@@ -40,6 +43,8 @@ impl Default for SessionManager {
             leaf_ids: Arc::new(RwLock::new(HashMap::new())),
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            in_memory_edges: Arc::new(RwLock::new(HashMap::new())),
+            in_memory_parents: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
             write_locks: Arc::new(Mutex::new(HashMap::new())),
             #[cfg(test)]
@@ -56,6 +61,8 @@ impl SessionManager {
             leaf_ids: Arc::new(RwLock::new(HashMap::new())),
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            in_memory_edges: Arc::new(RwLock::new(HashMap::new())),
+            in_memory_parents: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
             write_locks: Arc::new(Mutex::new(HashMap::new())),
             #[cfg(test)]
@@ -70,6 +77,8 @@ impl SessionManager {
             leaf_ids: Arc::new(RwLock::new(HashMap::new())),
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            in_memory_edges: Arc::new(RwLock::new(HashMap::new())),
+            in_memory_parents: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
             write_locks: Arc::new(Mutex::new(HashMap::new())),
             #[cfg(test)]

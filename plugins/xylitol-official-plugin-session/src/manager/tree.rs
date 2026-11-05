@@ -6,6 +6,8 @@ use super::SessionManager;
 use crate::sync::{lock_rwlock_read, lock_rwlock_write};
 use crate::types::*;
 use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
+use xylitol_plugin_sdk::message::now_ms;
+use xylitol_plugin_sdk::session::{Branch, EdgeKind, EdgeRecord};
 
 impl SessionManager {
     #[allow(dead_code)]
@@ -68,7 +70,10 @@ impl SessionManager {
         at_entry_id: &str,
         position: xylitol_plugin_sdk::session::ForkPosition,
     ) -> Result<(), XySessionError> {
-        use xylitol_plugin_sdk::session::{ForkPosition, is_assistant_message, is_user_message};
+        use std::collections::HashSet;
+        use xylitol_plugin_sdk::session::{
+            BranchSummaryEntry, ForkPosition, ParentRef, is_user_message,
+        };
 
         if matches!(&self.backend, SessionBackend::Persisted)
             && !self.session_file_exists(parent_id)
@@ -99,24 +104,21 @@ impl SessionManager {
             None => Vec::new(),
             Some(leaf) => self.get_branch(parent_id, Some(leaf)).await?,
         };
+        let from_id = path_leaf.unwrap_or(at_entry_id).to_string();
+        let path_ids: HashSet<&str> = path.iter().filter_map(|e| e.entry_id()).collect();
+        let skipped: Vec<SessionEntry> = parent_entries
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::Message(_)))
+            .filter(|e| e.entry_id().is_some_and(|id| !path_ids.contains(id)))
+            .cloned()
+            .collect();
+        let summary = self.generate_branch_summary(&skipped);
+        let summary = if summary.is_empty() {
+            format!("{child_id}: no skipped entries")
+        } else {
+            format!("{child_id}: {summary}")
+        };
 
-        let mut rechanneled = Vec::with_capacity(path.len());
-        let mut prev_id: Option<String> = None;
-        for entry in &path {
-            if matches!(entry, SessionEntry::Label(_)) {
-                continue;
-            }
-            let Some(eid) = entry.entry_id() else {
-                continue;
-            };
-            let ts = entry.base().map(|b| b.timestamp).unwrap_or(0);
-            let rewritten = Self::clone_entry_with_ids(entry, eid, prev_id.as_deref(), ts);
-            prev_id = Some(eid.to_string());
-            rechanneled.push(rewritten);
-        }
-
-        let path_ids: std::collections::HashSet<&str> =
-            rechanneled.iter().filter_map(|e| e.entry_id()).collect();
         let mut labels_by_target: HashMap<String, (Option<String>, u64)> = HashMap::new();
         for entry in &parent_entries {
             if let SessionEntry::Label(l) = entry
@@ -133,29 +135,6 @@ impl SessionManager {
         let mut label_targets: Vec<_> = labels_by_target.into_iter().collect();
         label_targets.sort_by(|a, b| a.1.1.cmp(&b.1.1).then_with(|| a.0.cmp(&b.0)));
 
-        let mut label_entries = Vec::with_capacity(label_targets.len());
-        let mut label_parent = rechanneled
-            .last()
-            .and_then(|e| e.entry_id())
-            .map(str::to_string);
-        for (target_id, (label, timestamp)) in label_targets {
-            let id = Uuid::new_v4().to_string();
-            label_entries.push(SessionEntry::Label(LabelEntry {
-                base: EntryBase {
-                    entry_type: "label".into(),
-                    id: id.clone(),
-                    parent_id: label_parent.clone(),
-                    timestamp,
-                },
-                target_id,
-                label,
-            }));
-            label_parent = Some(id);
-        }
-
-        let mut child_body = rechanneled;
-        child_body.extend(label_entries);
-
         let parent_cwd = parent_entries.iter().find_map(|e| {
             if let SessionEntry::Header(h) = e {
                 Some(h.cwd.as_str())
@@ -163,44 +142,117 @@ impl SessionManager {
                 None
             }
         });
+
+        let parent_segments = if matches!(&self.backend, SessionBackend::Persisted) {
+            Some(self.seal_active_for_fork(parent_id).await?)
+        } else {
+            None
+        };
+
         self.create(child_id, parent_cwd, Some(parent_id)).await?;
         self.stamp_header_fork_at_entry_id(child_id, at_entry_id);
 
-        let has_assistant = child_body.iter().any(is_assistant_message);
+        let summary_id = Uuid::new_v4().to_string();
+        let summary_entry = SessionEntry::BranchSummary(BranchSummaryEntry {
+            base: EntryBase {
+                entry_type: "branchSummary".into(),
+                id: summary_id.clone(),
+                parent_id: Some(from_id.clone()),
+                timestamp: now_ms(),
+            },
+            from_id: from_id.clone(),
+            summary,
+            details: None,
+            from_hook: None,
+        });
 
         match &self.backend {
             SessionBackend::Persisted => {
-                if has_assistant {
-                    self.flush_pending_to_disk(child_id).await?;
-                    for entry in &child_body {
-                        self.append_with_id(child_id, entry).await?;
-                    }
-                } else {
-                    let mut pending = lock_rwlock_write(&self.pending_store);
-                    pending
-                        .entry(child_id.to_string())
-                        .or_default()
-                        .extend(child_body.iter().cloned());
+                self.flush_pending_to_disk(child_id).await?;
+                self.append_with_id(child_id, &summary_entry).await?;
+                let mut label_parent = Some(summary_id.clone());
+                for (target_id, (label, timestamp)) in label_targets {
+                    let id = Uuid::new_v4().to_string();
+                    let entry = SessionEntry::Label(LabelEntry {
+                        base: EntryBase {
+                            entry_type: "label".into(),
+                            id: id.clone(),
+                            parent_id: label_parent.clone(),
+                            timestamp,
+                        },
+                        target_id,
+                        label,
+                    });
+                    self.append_with_id(child_id, &entry).await?;
+                    label_parent = Some(id);
                 }
+                let mut manifest = self.read_manifest(child_id).await?;
+                manifest.parent = Some(ParentRef {
+                    session_id: parent_id.to_string(),
+                    fork_entry_id: at_entry_id.to_string(),
+                    segments: parent_segments.unwrap_or_default(),
+                });
+                manifest.branches = vec![Branch {
+                    id: child_id.to_string(),
+                    head_entry_id: self.get_leaf(child_id),
+                    parent_session: Some(parent_id.to_string()),
+                    fork_entry_id: Some(at_entry_id.to_string()),
+                    workspace_ref: None,
+                }];
+                self.write_manifest_atomically(child_id, &manifest).await?;
             }
             SessionBackend::InMemory => {
-                let mut store = lock_rwlock_write(&self.in_memory_store);
-                store
-                    .entry(child_id.to_string())
-                    .or_default()
-                    .extend(child_body.iter().cloned());
+                {
+                    let mut store = lock_rwlock_write(&self.in_memory_store);
+                    store
+                        .entry(child_id.to_string())
+                        .or_default()
+                        .push(summary_entry);
+                }
+                self.set_leaf(child_id, Some(summary_id.clone()));
+                let mut label_parent = Some(summary_id);
+                for (target_id, (label, timestamp)) in label_targets {
+                    let id = Uuid::new_v4().to_string();
+                    let entry = SessionEntry::Label(LabelEntry {
+                        base: EntryBase {
+                            entry_type: "label".into(),
+                            id: id.clone(),
+                            parent_id: label_parent.clone(),
+                            timestamp,
+                        },
+                        target_id,
+                        label,
+                    });
+                    {
+                        let mut store = lock_rwlock_write(&self.in_memory_store);
+                        store.entry(child_id.to_string()).or_default().push(entry);
+                    }
+                    self.set_leaf(child_id, Some(id.clone()));
+                    label_parent = Some(id);
+                }
+                lock_rwlock_write(&self.in_memory_parents)
+                    .insert(child_id.to_string(), parent_id.to_string());
             }
         }
 
-        if let Some(last) = child_body.last().and_then(|e| e.entry_id()) {
-            self.set_leaf(child_id, Some(last.to_string()));
-        } else {
-            self.set_leaf(child_id, None);
+        if let Some(leaf) = self.get_leaf(child_id) {
+            self.append_edge(
+                child_id,
+                &EdgeRecord {
+                    id: format!("fork:{child_id}"),
+                    edge_kind: EdgeKind::Fork,
+                    from: at_entry_id.to_string(),
+                    to: leaf,
+                    order: 0,
+                    enabled: true,
+                    timestamp: now_ms(),
+                },
+            )
+            .await?;
         }
 
         Ok(())
     }
-
     #[allow(dead_code)]
     pub fn active_session_id(&self) -> Option<String> {
         lock_rwlock_read(&self.active_session).clone()

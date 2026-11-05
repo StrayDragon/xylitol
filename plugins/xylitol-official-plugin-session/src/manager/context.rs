@@ -4,16 +4,51 @@ use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
 
 impl SessionManager {
+    pub async fn build_session_context_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        let entries = self.read_entries(session_id).await?;
+        let head = self
+            .get_leaf(session_id)
+            .or_else(|| xylitol_plugin_sdk::session::transcript_leaf_anchor(&entries, None))
+            .or_else(|| {
+                entries
+                    .iter()
+                    .rev()
+                    .find_map(|e| e.entry_id().map(str::to_string))
+            });
+        let Some(head) = head else {
+            return Ok(Vec::new());
+        };
+        let edges = self.read_edges(session_id, &entries).await?;
+        let done = self
+            .load_done_bash_ids(session_id)
+            .await
+            .unwrap_or_default();
+        let view = xylitol_plugin_sdk::session::build_context(&head, &entries, &edges, &done)
+            .map_err(|error| XySessionStoreError::validation(format!("session graph: {error}")))?;
+        Ok(view.nodes)
+    }
+
     pub async fn build_session_context(
         &self,
         session_id: &str,
     ) -> Result<SessionContext, XySessionStoreError> {
-        let leaf_id = self.get_leaf(session_id);
-        let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
+        let entries = self.read_entries(session_id).await?;
+        let head = self
+            .get_leaf(session_id)
+            .or_else(|| xylitol_plugin_sdk::session::transcript_leaf_anchor(&entries, None))
+            .or_else(|| {
+                entries
+                    .iter()
+                    .rev()
+                    .find_map(|e| e.entry_id().map(str::to_string))
+            });
 
         let mut thinking_level = String::from("off");
         let mut model: Option<(String, String)> = None;
-        for entry in &branch {
+        for entry in &entries {
             match entry {
                 SessionEntry::ModelChange(mc) => {
                     model = Some((mc.provider.clone(), mc.model_id.clone()));
@@ -25,20 +60,25 @@ impl SessionManager {
             }
         }
 
-        let context_entries = xylitol_plugin_sdk::session::build_context_entries(&branch);
-        let mut msgs: Vec<_> = context_entries
-            .iter()
-            .filter_map(|e| e.as_agent_message())
-            .collect();
-        if let Ok(done) = self.load_done_bash_ids(session_id).await {
-            msgs = xylitol_plugin_sdk::session::fold_interrupted_bash_rows(msgs, &done);
-        }
-        let mut messages = Vec::new();
-        for msg in &msgs {
-            if let Ok(v) = serde_json::to_value(msg) {
-                messages.push(v);
+        let messages = match head {
+            Some(head) => {
+                let edges = self.read_edges(session_id, &entries).await?;
+                let done = self
+                    .load_done_bash_ids(session_id)
+                    .await
+                    .unwrap_or_default();
+                let view =
+                    xylitol_plugin_sdk::session::build_context(&head, &entries, &edges, &done)
+                        .map_err(|error| {
+                            XySessionStoreError::validation(format!("session graph: {error}"))
+                        })?;
+                view.messages
+                    .iter()
+                    .filter_map(|message| serde_json::to_value(message).ok())
+                    .collect()
             }
-        }
+            None => Vec::new(),
+        };
 
         Ok(SessionContext {
             messages,

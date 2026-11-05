@@ -403,6 +403,9 @@
   @req:r2971
   规则: 状态条目跨压缩保留
     Compaction 须保留最新状态类 CustomEntry：plan_mode、plan_doc（每个 plan_id 最新）、plan_ref、workflow、todo_checkpoint 与 agent_todo。切点 firstKeptEntryId 之前的状态条目 须在 compaction 后重新追加，使 load_leaf_branch 与 build_context_entries 可见；不得因压缩把计划模式重置为 execute，或丢失活动 workflow / 计划文档。
+  @req:r3215
+  规则: compaction 作为 epoch
+    compaction 条目 须作为上下文 epoch 边界；投影 须只保留该条目及其后节点，firstKeptEntryId 之前已被摘要的消息 不得再进入上下文。seal 成功后 cold 段 不得再被改写。
 
     场景: 压缩后保留 plan 模式
       假如 会话处于 plan 模式且有 50 个轮次

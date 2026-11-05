@@ -22,7 +22,6 @@ pub async fn load_conversation_history_from_store(
     session_id: &str,
 ) -> Result<Vec<AgentMessage>, XyError> {
     let entries = load_branch_with_migration(store, session_id).await?;
-    let entries = xylitol_plugin_sdk::session::build_context_entries(&entries);
     let messages: Vec<AgentMessage> = entries
         .iter()
         .filter_map(|entry| entry.as_agent_message())
@@ -35,13 +34,13 @@ async fn load_branch_with_migration(
     session_id: &str,
 ) -> Result<Vec<SessionEntry>, XyError> {
     let mut entries = store
-        .load_leaf_branch(session_id)
+        .build_context_entries(session_id)
         .await
         .map_err(XyError::from)?;
     if xylitol_plugin_sdk::session::has_unmigrated_legacy_custom_types(&entries) {
         migrate_legacy_on_load(store, session_id).await;
         entries = store
-            .load_leaf_branch(session_id)
+            .build_context_entries(session_id)
             .await
             .map_err(XyError::from)?;
     }

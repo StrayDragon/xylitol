@@ -382,6 +382,9 @@ async fn leaf_branch_stops_at_compaction_cut_before_older_segment() {
             },
         ],
         leaf_entry_id: Some("tail".into()),
+        parent: None,
+        branches: Vec::new(),
+        workspace_ref: None,
     };
     tokio::fs::write(
         session_dir.join("manifest.json"),

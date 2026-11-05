@@ -84,8 +84,7 @@
     场景: 分叉
       假如 存在会话 "parent" 包含 10 条记录
       当 在记录 5 处分叉创建会话 "child"
-      那么 会话 "child" 包含 5 条记录
-      并且 会话 "child" 包含一个 branch_summary 记录
+      那么 会话 "child" 包含一个 branch_summary 记录
 
     场景: 树导航
       假如 存在会话树: "root" → "branch-a" → "branch-b"
@@ -118,7 +117,7 @@
 
   @req:r1110
   规则: 会话 fork
-    SessionManager 须支持 fork(parent_id, child_id, at_entry_id)，将父当前 leaf 路径（需要时按需读取 cold 段）复制到新子会话的 v7 active 段并 append branch_summary 条目；子会话 不得保存对父 session 段文件的跨目录引用。System 须支持 fork_session(at_entry_id)：经 SessionManager::fork() 创建新子会话并返回子 session id。fork 创建子会话时，子会话头 须记录父会话 id，且 须记录切点条目 id（fork 时所选条目，含 Before 切位时未拷入子会话的那条）；非 fork 创建的会话头 不得写入切点字段。加载缺少该切点字段的旧会话文件时 须视为无切点，不得因此失败。
+    SessionManager 须支持 fork(parent_id, child_id, at_entry_id)，将父当前 leaf 路径（需要时按需读取 cold 段）以 copy-on-write 引用到子会话：fork 时 seal 父 active 快照，子 manifest parent 引用父 sealed 段并 append branch_summary；子会话 不得复制父条目或重写父条目 id。System 须支持 fork_session(at_entry_id)：经 SessionManager::fork() 创建新子会话并返回子 session id。fork 创建子会话时，子会话头 须记录父会话 id，且 须记录切点条目 id（fork 时所选条目，含 Before 切位时未拷入子会话的那条）；非 fork 创建的会话头 不得写入切点字段。加载缺少该切点字段的旧会话文件时 须视为无切点，不得因此失败。
 
     场景: 分叉复制裁切点与摘要
       假如 存在会话 "parent" 包含 6 条记录
@@ -409,3 +408,10 @@
   @req:r2970
   规则: nested-workflow-entry
     workflow CustomEntry 的 steps 可含 `sub_workflow`（递归同构）；`resume_cursor` 为 `/` 分隔的步骤路径。读取 须取叶分支最新一条并按路径解析；不得为子 workflow 新建独立条目。由 SDK 单测覆盖。
+  @req:r3210
+  规则: 会话图边日志
+    会话存储 须维护只追加的边日志；每条边记录含 edgeKind（parent / context / fork）、from、to、order、enabled 与 timestamp。禁用一条边 须追加 enabled=false 的新记录，不得删除节点或既有边；上下文投影 须按 order 排序取每个 (from, to) 的最新记录。
+
+  @req:r3211
+  规则: 分支与父引用
+    会话 manifest 须记录 branches、parent 引用与 workspaceRef；parent 引用 须只指向 sessions root 内已封存的段。fork 子会话 须引用父段并写 fork 边，不得复制父条目或重写父条目 id；子会话头 须保留 parent_session 与 fork_at_entry_id。

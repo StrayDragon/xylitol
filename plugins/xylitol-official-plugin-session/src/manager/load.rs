@@ -21,6 +21,27 @@ impl SessionManager {
             return self.read_entries(session_id).await;
         }
         let manifest = self.read_manifest(session_id).await?;
+        if manifest.parent.is_some() {
+            let entries = self.read_entries(session_id).await?;
+            let edges = self.read_edges(session_id, &entries).await?;
+            let head = leaf_hint
+                .map(str::to_owned)
+                .or_else(|| self.get_leaf(session_id))
+                .or_else(|| manifest.leaf_entry_id.clone())
+                .or_else(|| xylitol_plugin_sdk::session::transcript_leaf_anchor(&entries, None));
+            let Some(head) = head else {
+                return Ok(Vec::new());
+            };
+            let view = xylitol_plugin_sdk::session::build_context(
+                &head,
+                &entries,
+                &edges,
+                &std::collections::HashSet::new(),
+            )
+            .map_err(|error| XySessionStoreError::validation(format!("session graph: {error}")))?;
+            self.set_leaf(session_id, Some(head));
+            return Ok(view.nodes);
+        }
         let active_entries = self
             .read_segment(session_id, &manifest.active_segment)
             .await?;
@@ -149,10 +170,29 @@ impl SessionManager {
     ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
         let entries = match &self.backend {
             SessionBackend::InMemory => {
-                let entries = lock_rwlock_read(&self.in_memory_store)
-                    .get(session_id)
-                    .cloned()
-                    .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
+                let store = lock_rwlock_read(&self.in_memory_store);
+                let parents = lock_rwlock_read(&self.in_memory_parents);
+                let mut chain: Vec<Vec<SessionEntry>> = Vec::new();
+                let mut current = session_id.to_string();
+                let mut seen = std::collections::HashSet::new();
+                while seen.insert(current.clone()) {
+                    let Some(entries) = store.get(&current) else {
+                        break;
+                    };
+                    chain.push(entries.clone());
+                    match parents.get(&current) {
+                        Some(parent) => current = parent.clone(),
+                        None => break,
+                    }
+                }
+                if chain.is_empty() {
+                    return Err(XySessionStoreError::not_found(session_id));
+                }
+                chain.reverse();
+                let mut entries = Vec::new();
+                for chunk in chain {
+                    entries.extend(chunk);
+                }
                 xylitol_plugin_sdk::session::enforce_session_version(&entries)?;
                 entries
             }
@@ -254,6 +294,7 @@ impl SessionManager {
             SessionBackend::InMemory => {
                 let mut store = lock_rwlock_write(&self.in_memory_store);
                 store.remove(session_id);
+                lock_rwlock_write(&self.in_memory_parents).remove(session_id);
                 Ok(())
             }
             SessionBackend::Persisted => {
@@ -363,14 +404,7 @@ impl SessionManager {
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
         match &self.backend {
-            SessionBackend::InMemory => {
-                let entries = lock_rwlock_read(&self.in_memory_store)
-                    .get(session_id)
-                    .cloned()
-                    .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
-                xylitol_plugin_sdk::session::enforce_session_version(&entries)?;
-                Ok(entries)
-            }
+            SessionBackend::InMemory => self.read_entries(session_id).await,
             SessionBackend::Persisted => {
                 if self.manifest_path(session_id).exists() {
                     let manifest = self.read_manifest(session_id).await?;

@@ -1,6 +1,7 @@
 mod capability;
 mod checkpoint;
 mod entries;
+mod graph;
 mod helpers;
 mod manifest;
 mod parse;
@@ -22,6 +23,9 @@ pub use entries::{
     SessionContext, SessionEntry, SessionHeader, SessionInfoEntry, ThinkingLevelChangeEntry,
     build_context_entries, done_bash_ids, fold_interrupted_bash_rows,
 };
+pub use graph::{
+    Branch, ContextView, EdgeKind, EdgeRecord, GraphError, WorkspaceRef, build_context, prefix_hash,
+};
 pub(crate) use helpers::legacy_custom_type_target;
 pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json,
@@ -30,7 +34,7 @@ pub use helpers::{
     message_text, paginate_entries, session_fork_edge, tool_call_name, tool_file_paths,
     transcript_ancestry_ids, transcript_leaf_anchor,
 };
-pub use manifest::{SealedIndex, SessionManifest, SessionSegment};
+pub use manifest::{ParentRef, SealedIndex, SessionManifest, SessionSegment};
 pub use parse::{
     enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
     parse_session_jsonl_lines,

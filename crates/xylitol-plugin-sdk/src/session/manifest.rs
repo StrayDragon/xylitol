@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::entries::SESSION_VERSION;
+use super::graph::{Branch, WorkspaceRef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +52,15 @@ impl SealedIndex {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ParentRef {
+    pub session_id: String,
+    pub fork_entry_id: String,
+    #[serde(default)]
+    pub segments: Vec<SessionSegment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionManifest {
     pub format_version: u32,
     pub session_id: String,
@@ -59,6 +69,12 @@ pub struct SessionManifest {
     pub sealed_segments: Vec<SessionSegment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leaf_entry_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<ParentRef>,
+    #[serde(default)]
+    pub branches: Vec<Branch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_ref: Option<WorkspaceRef>,
 }
 
 impl SessionManifest {
@@ -69,6 +85,9 @@ impl SessionManifest {
             active_segment,
             sealed_segments: Vec::new(),
             leaf_entry_id: None,
+            parent: None,
+            branches: Vec::new(),
+            workspace_ref: None,
         }
     }
 }

@@ -156,6 +156,17 @@ impl SessionManager {
             )));
         }
 
+        if let Some(parent) = &manifest.parent {
+            if parent.session_id.is_empty() {
+                return Err(XySessionStoreError::validation(
+                    "session manifest parent ref has an empty session id",
+                ));
+            }
+            for segment in &parent.segments {
+                self.resolve_segment_path(&parent.session_id, &segment.path)?;
+            }
+        }
+
         let mut paths = std::collections::HashSet::new();
         let mut index_paths = std::collections::HashSet::new();
         for segment in manifest
@@ -202,12 +213,48 @@ impl SessionManager {
         Ok(entries)
     }
 
+    pub(super) async fn seal_active_for_fork(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionSegment>, XySessionStoreError> {
+        self.acquire_write_lock(session_id)?;
+        let mut manifest = self.read_manifest(session_id).await?;
+        let active_entries = self
+            .read_segment(session_id, &manifest.active_segment)
+            .await?;
+        if active_entries.is_empty() {
+            return Ok(manifest.sealed_segments.clone());
+        }
+        let generation = Self::next_generation(&manifest);
+        let sealed_path = format!("segments/{generation:020}-sealed.jsonl");
+        let sealed = Self::segment_descriptor(sealed_path, generation, &active_entries);
+        self.write_segment_atomically(session_id, &sealed, &active_entries)
+            .await?;
+        let active_path = format!("active-{generation}.jsonl");
+        let empty: Vec<SessionEntry> = Vec::new();
+        let active = Self::segment_descriptor(active_path, generation, &empty);
+        self.write_segment_atomically(session_id, &active, &empty)
+            .await?;
+        let old_active = self.resolve_segment_path(session_id, &manifest.active_segment.path)?;
+        manifest.sealed_segments.push(sealed);
+        manifest.active_segment = active;
+        self.write_manifest_atomically(session_id, &manifest)
+            .await?;
+        let _ = tokio::fs::remove_file(old_active).await;
+        Ok(manifest.sealed_segments)
+    }
+
     pub(super) async fn load_entries(
         &self,
         session_id: &str,
         manifest: &SessionManifest,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
         let mut entries = Vec::new();
+        if let Some(parent) = &manifest.parent {
+            for segment in &parent.segments {
+                entries.extend(self.read_segment(&parent.session_id, segment).await?);
+            }
+        }
         for segment in &manifest.sealed_segments {
             entries.extend(self.read_segment(session_id, segment).await?);
         }
@@ -226,6 +273,14 @@ impl SessionManager {
         limit: Option<usize>,
         before_entry_id: Option<&str>,
     ) -> Result<(Vec<SessionEntry>, bool), XySessionStoreError> {
+        if manifest.parent.is_some() {
+            let entries = self.load_entries(session_id, manifest).await?;
+            return Ok(xylitol_plugin_sdk::session::paginate_entries(
+                entries,
+                limit,
+                before_entry_id,
+            ));
+        }
         let mut segments: Vec<&SessionSegment> = manifest.sealed_segments.iter().collect();
         segments.push(&manifest.active_segment);
 

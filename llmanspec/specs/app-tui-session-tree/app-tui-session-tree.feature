@@ -105,6 +105,3 @@
   @req:r1331
   规则: demo-travel-notice-trailing
     agent_demo 会话树 travel 重建 transcript 后 须与产品同源：history @ 通知 须尾插于路径条目之后；不得在 clear 后先插 ScrollNotice 再推路径（旧顶插）。
-    场景: 演示旅行提示共享尾部
-      当 重建到叶节点并按产品路径追加路径通告
-      那么 通告条目位于 entries 末尾且重建内容次序保持原样

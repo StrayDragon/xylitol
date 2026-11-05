@@ -201,11 +201,10 @@ pub(crate) async fn force_compact_once(
         )
         .await
         .map_err(|e| e.to_string())?;
-    let entries = store
-        .load_leaf_branch(session_id)
+    let cut = store
+        .build_context_entries(session_id)
         .await
         .map_err(|e| e.to_string())?;
-    let cut = xylitol_plugin_sdk::session::build_context_entries(&entries);
     let mut history: Vec<AgentMessage> = cut.iter().filter_map(|e| e.as_agent_message()).collect();
     let env_snap = crate::agent::prompt::snapshot_for_cwd(cwd);
     if crate::agent::prompt::ensure_session_env_in_history(&mut history, &env_snap) {
@@ -240,10 +239,10 @@ pub(crate) async fn settle_turn_context(
     use crate::agent::compaction::{
         ContextTokenSettlementReason, EstimateOpts, settle_from_session_entries,
     };
-    let entries = match store.load_leaf_branch(session_id).await {
+    let entries = match store.build_context_entries(session_id).await {
         Ok(e) => e,
         Err(e) => {
-            log::warn!("turn-end settlement: load leaf failed: {e}");
+            log::warn!("turn-end settlement: load context failed: {e}");
             return None;
         }
     };
@@ -339,9 +338,8 @@ pub(crate) async fn try_turn_end_compaction(
         Ok(OverflowCompactOutcome::Ran { will_retry }) => {
             if will_retry {
                 *overflow_recovery_attempted = true;
-                match store.load_leaf_branch(session_id).await {
-                    Ok(entries) => {
-                        let cut = xylitol_plugin_sdk::session::build_context_entries(&entries);
+                match store.build_context_entries(session_id).await {
+                    Ok(cut) => {
                         *history = cut.iter().filter_map(|e| e.as_agent_message()).collect();
                         let env_snap = crate::agent::prompt::snapshot_for_cwd(cwd);
                         if crate::agent::prompt::ensure_session_env_in_history(history, &env_snap) {

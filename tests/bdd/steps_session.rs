@@ -45,63 +45,16 @@ async fn seed_linked_messages(mgr: &SessionManager, sid: &str, count: u32) {
     }
 }
 
-async fn append_branch_summary(
-    mgr: &SessionManager,
-    parent_id: &str,
-    child_id: &str,
-    at_entry_id: &str,
-    label: &str,
-) {
-    let parent_entries = mgr.load(parent_id).await.unwrap();
-    let child_path = mgr
-        .get_branch(child_id, mgr.get_leaf_id(child_id).as_deref())
-        .await
-        .unwrap_or_default();
-    let child_ids: std::collections::HashSet<&str> =
-        child_path.iter().filter_map(|e| e.entry_id()).collect();
-    let skipped: Vec<SessionEntry> = parent_entries
-        .iter()
-        .filter(|e| matches!(e, SessionEntry::Message(_)))
-        .filter(|e| e.entry_id().is_some_and(|id| !child_ids.contains(id)))
-        .cloned()
-        .collect();
-    let mut summary = mgr.generate_branch_summary(&skipped);
-    if summary.is_empty() {
-        summary = format!("summary for {label}");
-    } else {
-        summary = format!("{label}: {summary}");
-    }
-    let leaf = mgr.get_leaf_id(child_id);
-    mgr.append_with_id(
-        child_id,
-        &SessionEntry::BranchSummary(BranchSummaryEntry {
-            base: EntryBase {
-                entry_type: "branchSummary".into(),
-                id: format!("bs-{child_id}"),
-                parent_id: leaf,
-                timestamp: 1704067210000,
-            },
-            from_id: at_entry_id.into(),
-            summary,
-            details: None,
-            from_hook: None,
-        }),
-    )
-    .await
-    .unwrap();
-}
-
 async fn fork_with_branch_summary(
     mgr: &SessionManager,
     parent_id: &str,
     child_id: &str,
     at_entry_id: &str,
-    label: &str,
+    _label: &str,
 ) {
     mgr.fork(parent_id, child_id, at_entry_id, ForkPosition::At)
         .await
         .unwrap_or_else(|e| panic!("fork {parent_id}->{child_id} at {at_entry_id}: {e}"));
-    append_branch_summary(mgr, parent_id, child_id, at_entry_id, label).await;
 }
 
 fn count_messages(entries: &[SessionEntry]) -> usize {
@@ -1039,10 +992,35 @@ async fn when_corrupt_sidecar(sess: &XySessionStore) {
 }
 
 fn first_disk_line(sess: &XySessionStore, id: &str) -> serde_json::Value {
-    let path = active_session_file(sess, id);
-    let raw = std::fs::read_to_string(&path).expect("active segment readable");
-    let line = raw.lines().next().expect("header line present");
-    serde_json::from_str(line).expect("header line is JSON")
+    let dir = sess_dir(sess).join(id);
+    let manifest_raw = std::fs::read(dir.join("manifest.json")).expect("manifest readable");
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest_raw).expect("manifest JSON");
+    let mut paths: Vec<String> = Vec::new();
+    if let Some(active) = manifest["activeSegment"]["path"].as_str() {
+        paths.push(active.to_string());
+    }
+    if let Some(sealed) = manifest["sealedSegments"].as_array() {
+        for segment in sealed {
+            if let Some(path) = segment["path"].as_str() {
+                paths.push(path.to_string());
+            }
+        }
+    }
+    for relative in paths {
+        let path = dir.join(relative);
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in raw.lines() {
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            if value.get("version").is_some() && value.get("cwd").is_some() {
+                return value;
+            }
+        }
+    }
+    panic!("header line present");
 }
 
 #[then("会话 {id:string} 头含父会话与切点条目 id")]

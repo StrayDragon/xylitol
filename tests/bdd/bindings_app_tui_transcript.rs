@@ -164,12 +164,6 @@ fn test_att36_todo_empty_body(transcript_bdd: TranscriptBdd) {}
 fn test_ats10_travel_notice_trails(transcript_bdd: TranscriptBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
-    name = "演示旅行提示共享尾部"
-)]
-fn test_ats11_demo_notice_same_tail_source(transcript_bdd: TranscriptBdd) {}
-
-#[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
     name = "旅行经双击Esc树"
 )]

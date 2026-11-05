@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Refactor session graph: append-only edges, prefix epochs, copy-on-write fork"
+branch: sdd/c3206-refactor-session-graph
+base_branch: main
+base_sha: d752d77d80de38791c5078545033788872ae84f0
 ---
 
 ## Why
@@ -12,18 +15,19 @@ title: "Refactor session graph: append-only edges, prefix epochs, copy-on-write 
 3. **KV cache 前缀没有不变量**：provider 侧有 cache_control / prompt_cache_key，但会话侧没有 epoch 与 prefix hash；compaction / branchSummary / fork 改变前缀是隐式的，测试只覆盖折叠串稳定。
 4. **workspace 与调度缺位**：session 只绑定 cwd，没有分支级 workspace commit；没有 trigger 事实，/loop 与 /goal 无处落地。
 
-本 change 把会话存储重构成**会话图**：节点（事实）+ 边（上下文/分叉）+ epoch（前缀边界）+ branch head。fork 改 copy-on-write；上下文投影单一入口并输出 prefix hash；旧 fork 复制与树构建代码删除。workspace 与 scheduler 作为后续 change，在本 change 里只定义它们需要的 branch/workspace 字段。
+本 change 把会话存储重构成**会话图**：节点（事实）+ 边（上下文/分叉）+ epoch（前缀边界）+ branch head。fork 改 copy-on-write；上下文投影单一入口并输出 prefix hash；旧 fork 复制路径删除，树视图保留给单线 TUI。workspace 与 scheduler 作为后续 change，在本 change 里只定义它们需要的 branch/workspace 字段。
 
 ## What Changes
 
-- **图模型**：Node = 现有 SessionEntry；新增 Edge 条目（parent / context / fork；from、to、order、enabled）；Head/Branch 指向图中的一个节点。
+- **图模型**：Node = 现有 SessionEntry；新增 EdgeRecord（独立 graph.jsonl 追加日志；parent / context / fork；from、to、order、enabled）；Head/Branch 指向图中的一个节点。
 - **边只追加**：禁用一条边 = 追加 enabled=false 的边事实；遍历跳过，不删节点。多父按 edge order 排序，缺省按创建序。
-- **单一投影**：build_context(head) 反向 DFS 入边，得拓扑序；最新 epoch 节点截断前缀；返回 ContextView（nodes、epoch_id、prefix_hash、breakpoints）。预览与实发共用这一入口。
-- **前缀 epoch**：Compaction / BranchSummary / Fork 节点是 epoch 边界；prefix_hash = 规范化 JSON 的 sha256；同一 epoch 追加尾部后 hash 不变。
+- **单一投影**：build_context(head) 反向 DFS 入边，得拓扑序；最新 compaction epoch 截断前缀；返回 ContextView（nodes、epoch_id、prefix_hash、breakpoints）。预览与实发共用这一入口。
+- **前缀 epoch**：Compaction 是 epoch 边界；BranchSummary 是 handoff 标记，不截断父前缀；Fork 只写边，不改前缀。prefix_hash = 规范化 JSON 的 sha256；同一 epoch 追加尾部后 hash 不变。
 - **fork copy-on-write**：子会话 manifest 引用父会话 sealed 段（fork 时 seal 父 active 快照），不复制条目；子会话头保留 parent_session / fork_at_entry_id；fork 边写入图。
-- **v8 manifest**：记录 branches、edges、parent segment refs、workspace ref；v7 一次性迁移。
-- **协议**：session_tree 改名 session_graph，返回 nodes/edges/branches；travel_session_tree 同步改名；TUI 树视图改为图视图（MVP 仍树形布局）。
-- **删除**：fork_inner 复制路径、build_session_tree 树构建、tree_prefix 列表缩进、v7 fork 语义。
+- **fork 初版不做自动压缩**：fork 只写 branchSummary；fork-time summary / compaction / handoff 延后到 c3211，避免触发式压缩失真。
+- **manifest 扩展**：记录 branches、edges、parent segment refs、workspace ref；旧 session 可丢弃，不迁移；单线 v7 可读。
+- **协议**：c3206 保持 session_tree / travel_session_tree；session_graph 与图视图延后到 c3210。
+- **删除**：fork_inner 复制路径；保留 build_session_tree / tree_prefix 供单线 TUI。
 - **保留**：manifest/seal 物理层、compaction 摘要与切点、单写者、seq/journal、provider cache 断点。
 
 ## Invariants
@@ -49,16 +53,15 @@ title: "Refactor session graph: append-only edges, prefix epochs, copy-on-write 
 
 ## Capabilities
 
-- agent-session-store：v8 图存储、边条目、COW fork、迁移。
+- agent-session-store：图存储、边条目、COW fork；旧 session 不迁移。
 - agent-session：build_context 单一投影、epoch 裁切、prefix hash。
 - domain-compaction：compaction 作为 epoch 节点，seal 语义不变。
-- protocol-app：session_graph / travel_session_graph。
-- app-tui-session-tree：图视图与 fork/travel。
 - layer-architecture：会话图与单写者边界。
+- protocol-app / app-tui-session-tree：图协议与图视图延后到 c3210，本 change 不改名。
 
 ## Impact
 
-xylitol-plugin-sdk（session 类型 + ports）、xylitol-runtime（session ops + context 播种）、xylitol-official-plugin-session（manager/load/segments/seal/tree）、xylitol-protocol（command/registry）、xylitol-serve（session slot 与 graph 读取）、xylitol-app-tui（session tree）、specs 与 BDD。
+xylitol-plugin-sdk（session 类型 + ports）、xylitol-runtime（session ops + context 播种）、xylitol-official-plugin-session（manager/load/segments/seal/tree）、specs 与 BDD；protocol / serve / TUI 图面延后到 c3210。
 
 ## Further Notes
 
@@ -72,5 +75,5 @@ xylitol-plugin-sdk（session 类型 + ports）、xylitol-runtime（session ops +
 
 - fork 语义：保留子 session id（推荐，兼容当前模式）还是同 session 内 branch？
 - 跨会话多父 context wire 是否首切片？推荐先只做 fork 单父。
-- session_tree → session_graph 改名是否接受 breaking change？
-- v7 迁移 dry-run 的会话规模与耗时。
+- 图 UI（session_graph）启动时点：c3210。
+- 旧 session 丢弃的规模与回滚边界。

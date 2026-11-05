@@ -52,6 +52,14 @@ impl XySessionStore for MemoryStore {
         self.load_entries(session_id).await
     }
 
+    async fn build_context_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        let entries = self.load_leaf_branch(session_id).await?;
+        Ok(xylitol_plugin_sdk::session::build_context_entries(&entries))
+    }
+
     async fn load_entries(
         &self,
         session_id: &str,
