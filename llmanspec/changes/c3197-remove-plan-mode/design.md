@@ -115,7 +115,7 @@ Plan mode 跨 8 层：
 - 旧 plan 文件 orphaned；需文档说明。
 - Compaction 不再保留 plan 条目；旧会话压缩后计划状态消失。
 - Specs/BDD/AGENTS 大面积改动；需 `llman-sdd validate` 与 `just qa`。
-- `Cargo.lock` / crate graph / 其他 change 引用 plan 类型（c3106 parked design 仅文档）需同步。
+- `Cargo.lock` / crate graph / 其他 change 引用 plan 类型（c3106 active planned design 仅文档）需同步。
 - `agent-llm-projection` 的 workflow `<plan>` 块不是 plan mode，不得误删。
 
 ## 实施顺序

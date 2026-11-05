@@ -34,7 +34,7 @@ MCP plugin、runtime prepare、serve host、TUI snapshot。
 
 - 依赖 `c3050-add-host-workspace-binding`。
 - 后续：`c3060-add-mcp-tool-catalog`、`c3065-add-mcp-oauth-credentials`。
-- 现有 `view()` 的 `try_lock` 兜底会返回 configured=0，是闪烁的直接来源；本 change 需保留上次已知快照，避免把“未知”当“未配置”。
+- 现有 `view()` 的 `try_lock` 兜底会返回 configured=0，是瞬态 view 的来源；闪烁表象已由 `c3205-fix-mcp-welcome-flicker` 的 UI 合并修复挡住；本 change 需保留上次已知快照，避免把“未知”当“未配置”。
 - 1:N workspace set 下，pool 需要按 workspace 分别 claim/release；不能假设 session 只有一个 workspace。
 
 ## Open Questions

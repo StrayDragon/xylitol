@@ -2,12 +2,13 @@
 
 > 性质：change 附属调研，不是 live spec。
 > 触发：Boa in-process 是否缺少沙箱、是否应改 WASM。
+> 决策（2026-11-05）：Wasmtime 50 + rquickjs WASI；Boa 不采用；Wasmi 保留 fallback。
 
 ## 结论
 
 - Boa in-process 是能力沙箱（只暴露 host 函数），不是隔离边界；引擎 bug/panic/OOM 可影响 host；无 heap limit、无 hard interrupt。
 - WASM（QuickJS WASM / Eryx）提供线性内存隔离、fuel/memory/timeout、崩溃隔离；host 函数仍受 permission 约束。
-- 若 codemode 会执行不可信/被注入的代码，建议 QuickJS WASM；若只对可信模型开放，Boa 的风险可接受但要文档化。
+- 决策：选 Wasmtime 50 + rquickjs WASI；Boa 不采用。Wasmtime 仍有安全公告/缓存 unsafe 风险；需 pin/patch。
 - catalog/exposure/dispatch 设计与 runtime 无关；切 WASM 只改 runtime 段。
 
 ## Boa 风险
@@ -30,8 +31,8 @@
 
 ## 建议
 
-- 切 QuickJS WASM（保留 JS）：jsdet-core 先 spike；若 Bridge 不适配，用 quickjs-wasm-rs + wasmtime。
-- MVP host bridge 同步（顺序工具调用）；并行 nested calls 后续（promise bridge）。
+- 选 rquickjs 0.14 WASI + Wasmtime 50；jsdet-core fork 仅参考；quickjs-wasm-rs 已 deprecated。
+- MVP host bridge 顺序工具调用；async host import 由 Wasmtime 挂起；并行 nested calls 后续。
 - WASM 不替代 permission；host 函数仍走 dispatch/prepare_call/run_one。
 - 文档明示：WASM 隔离引擎 bug/DoS，不隔离工具误用。
 

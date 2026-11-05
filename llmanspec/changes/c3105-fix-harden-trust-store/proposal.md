@@ -5,11 +5,11 @@ title: "Harden trust store"
 
 ## Why
 
-`trust.json` 由 `fs::write` 写入，默认权限（当前实际 0644），同用户 agent 或其他进程可以直接改写并自信任 workspace，绕过 trust 门禁。
+`trust.json` 由 `fs::write` 写入，未显式设权限；默认 umask 下通常 0644（实盘当前 0644）。同用户 agent 或其他进程可以直接改写并自信任 workspace，绕过 trust 门禁。
 
 ## What Changes
 
-- trust store 0600 原子写；lock 文件 0600；schema version；写入前校验。
+- trust store 0600 原子写；lock 文件 0600；schema version 与旧 0644 文件迁移；写入前校验。
 - HMAC key 放 agent dir（`~/.xylitol/trust.key`，0600）；trust.json 带 HMAC；篡改检测。
 - trust 决策只允许人类操作：TUI 交互确认；host unary 需要 client capability / 确认；不得暴露为 LLM 可调用工具。
 - resume 时重新校验 workspace set 的 trust；不得盲目信任 session 存储的 set。
@@ -25,7 +25,7 @@ title: "Harden trust store"
 - 字段：`ts`（RFC3339）、`event`、`actor`（tui / host / cli / system）、`session_id`、`workspace`（canonical path）、`decision`、`source`（tui_prompt / host_unary / resume / startup）、`hmac_ok`、`reason`。
 - 轮转：10MB × 5；保留 90 天；可配置；不记录 secrets。
 - 用途：用户 review、排查异常 trust 变更、取证；不是安全边界（同用户 agent 可改/删日志）。
-- 默认开启；`trust.audit: false` 可关。
+- 默认开启；配置键 `trust.audit`（默认 true，`false` 可关）；需落 `runtime-config` specs。
 
 ## Capabilities
 

@@ -15,13 +15,12 @@ config 的 `sse` 实际映射 Streamable HTTP，命名误导；legacy HTTP+SSE �
 - remote 用 `url`；stdio 用 `command` / `args`；headers / env 保持。
 - per-server connect / call timeout 配置；默认保持 8s / 120s。
 - custom transport seam 预留（`websocket` / `custom` 后续）。
-- config 校验与文档；`/mcp` 面板显示 transport。
+- config 校验与文档；transport 字段供 `/mcp` 面板显示。
 
 ## Capabilities
 
 - `infra-mcp`：transport 配置与校验。
 - `cli-*`：配置迁移错误。
-- `app-tui-commands`：`/mcp` 显示 transport。
 
 ## Impact
 
@@ -31,6 +30,7 @@ MCP plugin、config、host、TUI。
 
 - item 4 调研结论：主流用 `http` / `streamable-http` / `streamableHttp`；`sse` 留给 legacy；Claude Code 用 `http`。
 - 决策：canonical `http`；`sse` 破坏性拒绝；legacy SSE 明确不支持。
+- 本 change 独占 per-server timeout 配置与 legacy SSE 拒绝 / 报错；`c3075-add-mcp-diagnostics` 只显示，不重复实现。
 - 依赖 `c3055-add-mcp-scope-pool`。
 
 ## Open Questions

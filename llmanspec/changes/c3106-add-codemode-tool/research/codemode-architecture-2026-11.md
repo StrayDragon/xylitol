@@ -2,10 +2,11 @@
 
 > 性质：change 附属调研，不是 live spec。
 > 范围：pi codemode 的工具暴露模型；无 Node 的内嵌语言/沙箱候选；xylitol 的落点与缺口。
-> 决策（2026-11-04）：本 change 选 Boa 0.22；WASM/多语言不在本 change。
+> 决策（2026-11-05）：本 change 选 Wasmtime 50 stable + rquickjs 0.14 WASI guest；Boa 不再采用；多语言保留 core wasm ABI。
 
 ## 结论
 
+- 运行时决策：Wasmtime 50 + rquickjs WASI；Boa 不采用；Wasmi 保留 fallback。
 - pi codemode 的核心不是沙箱，而是“工具暴露 + 声明生成 + 动态发现”：exposure modes、namespace、TypeScript declarations、deferred、searchTools/describeTool、codemode.mode on/only。
 - xylitol 已有工具注册表、ToolSet、selection/replaces、MCP/外进程插件工具；缺 exposure 元数据、catalog/declaration 生成、dispatch 端口、沙箱运行时、输出 schema/规范化。
 - 语言候选：JS（QuickJS WASM / Boa / rquickjs）；Python（Eryx / Monty）；Rust DSL/DAG 不作为主语言。

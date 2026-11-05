@@ -41,3 +41,4 @@ MCP plugin、host、TUI、protocol。
 - form 渲染范围（flat primitive schema）与默认值。
 - url 同意的 UI 与域名展示。
 - 权限模型：每次同意 / session 内记住 / 按 server 记住。
+- MRTR 的 `InputRequiredResult` / `requestState` 是否被 rmcp 3.8.0 完整暴露：未验证，design 前查一次。

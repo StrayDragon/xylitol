@@ -52,7 +52,7 @@ plan 插件 crate、sdk session、runtime loop、kernel commands、protocol/wire
 - 旧会话含 plan_mode/plan_doc 条目；需确认忽略不报错。
 - 删除 ModeStrip 影响固定区 layout/footprint；需同步 spec/测试。
 - 现有 .xylitol/plans 文件失去工具入口；用户可手工读取。
-- c3106 codemode 的 plan mode catalog 交互消失；c3106 parked。
+- c3106 codemode 的 plan mode catalog 交互消失；c3106 已迁回 active，依赖本 change。
 
 ## Open Questions
 
@@ -63,5 +63,5 @@ plan 插件 crate、sdk session、runtime loop、kernel commands、protocol/wire
 ## Further Notes
 
 - 用户判断：plan mode 是 turn 转换，不引入新能力；独立模式不灵活、KV cache 不友好、单对话体验减分。
-- 选 B；c3196 plan preview draft 已删除；c3106 codemode parked。
+- 选 B；c3196 plan preview draft 已删除；c3106 codemode 已迁回 active。
 - 本 change 为 draft；design/tasks 未开始。

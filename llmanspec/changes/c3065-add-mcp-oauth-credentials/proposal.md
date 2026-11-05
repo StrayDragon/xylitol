@@ -29,7 +29,7 @@ MCP plugin、host、TUI、secret store、connection pool。
 
 - 依赖 `c3055-add-mcp-scope-pool`。
 - 规范：MCP authorization 2026-07-28。
-- 后续：`c3075-add-mcp-diagnostics` 显示 credential 状态。
+- credential 状态由 `c3075-add-mcp-diagnostics` 显示；本 change 提供数据，`c3075` 依赖本 change。
 
 ## Open Questions
 
