@@ -707,7 +707,7 @@ fn then_frame_unchanged_after_chords(tui_interaction: &TuiInteraction) {
         frame
             .lines()
             .map(|line| {
-                if line.contains("[▤ 摘要]") {
+                if line.contains("[步骤显示级别:") {
                     "[bottom]"
                 } else {
                     line

@@ -14,11 +14,24 @@ pub struct FooterChipHit {
 }
 
 impl UiRoot {
-    fn bottom_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
-        vec![(FooterAction::FoldSummary, "▤ 摘要", false)]
+    fn display_level_label(&self) -> &'static str {
+        match self.activity.settings.display_level {
+            crate::activity_fold::DisplayLevel::Summary => "摘要",
+            crate::activity_fold::DisplayLevel::Recent => "最近",
+            crate::activity_fold::DisplayLevel::Full => "完整",
+            crate::activity_fold::DisplayLevel::Quiet => "安静",
+        }
     }
 
-    pub(crate) fn footer_chip_actions(&self) -> Vec<(FooterAction, &'static str, bool)> {
+    fn bottom_chip_actions(&self) -> Vec<(FooterAction, String, bool)> {
+        vec![(
+            FooterAction::FoldSummary,
+            format!("步骤显示级别: {}", self.display_level_label()),
+            false,
+        )]
+    }
+
+    pub(crate) fn footer_chip_actions(&self) -> Vec<(FooterAction, String, bool)> {
         self.bottom_chip_actions()
     }
 
@@ -196,16 +209,6 @@ impl UiRoot {
             }
             FooterAction::FoldSummary => {
                 self.cycle_display_level();
-                let label = match self.activity.settings.display_level {
-                    crate::activity_fold::DisplayLevel::Summary => "摘要",
-                    crate::activity_fold::DisplayLevel::Recent => "最近",
-                    crate::activity_fold::DisplayLevel::Full => "完整",
-                    crate::activity_fold::DisplayLevel::Quiet => "安静",
-                };
-                self.push_client_notice(
-                    super::ClientNoticeKind::Info,
-                    format!("显示等级: {label}"),
-                );
             }
         }
         true
@@ -232,7 +235,7 @@ impl UiRoot {
     }
 
     #[cfg(test)]
-    pub fn footer_chip_actions_for_test(&self) -> Vec<(FooterAction, &'static str, bool)> {
+    pub fn footer_chip_actions_for_test(&self) -> Vec<(FooterAction, String, bool)> {
         self.footer_chip_actions()
     }
 
@@ -302,7 +305,7 @@ mod tests {
         let palette = crate::layout::LayoutTheme::product_dark().palette();
         let row = chip_row_for("high");
         let dashes = first_sgr(&row);
-        let chip = rgb_after(&row, "[▤ 摘要]");
+        let chip = rgb_after(&row, "[步骤显示级别: 摘要]");
         assert_eq!(
             chip,
             (palette.muted.r, palette.muted.g, palette.muted.b),

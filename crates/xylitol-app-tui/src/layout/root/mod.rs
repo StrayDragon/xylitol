@@ -1552,7 +1552,7 @@ mod tests {
         let joined: String = frame.iter().map(|l| plain(l)).collect();
         assert!(!joined.contains("[侧栏]"), "{joined}");
         assert!(joined.contains("◨"), "{joined}");
-        assert!(joined.contains("[▤ 摘要]"), "{joined}");
+        assert!(joined.contains("[步骤显示级别: 摘要]"), "{joined}");
         assert!(!joined.contains("[详情]"), "{joined}");
         let expected_screen_row = root
             .term_rows
@@ -1570,7 +1570,7 @@ mod tests {
         assert!(!joined.contains("[详情]"), "{joined}");
         assert!(!joined.contains("[侧栏]"), "{joined}");
         assert!(!joined.contains('◨'), "{joined}");
-        assert!(joined.contains("[▤ 摘要]"), "{joined}");
+        assert!(joined.contains("[步骤显示级别: 摘要]"), "{joined}");
     }
 
     #[test]
@@ -1660,10 +1660,12 @@ mod tests {
         let lines = root.render(120);
         let line = lines
             .iter()
-            .find(|line| xylitol_tui::utils::strip_ansi_codes(line).contains("[▤ 摘要]"))
+            .find(|line| {
+                xylitol_tui::utils::strip_ansi_codes(line).contains("[步骤显示级别: 摘要]")
+            })
             .expect("summary chip row");
         let plain = xylitol_tui::utils::strip_ansi_codes(line);
-        let col = xylitol_tui::visible_width(&plain[..plain.find("[▤ 摘要]").unwrap()]);
+        let col = xylitol_tui::visible_width(&plain[..plain.find("[步骤显示级别: 摘要]").unwrap()]);
         assert!(root.try_right_click_summary(col, line));
         assert!(root.fold().tools_overrides.is_empty());
         assert!(
@@ -1991,7 +1993,7 @@ mod tests {
             joined.contains("↑ 1 more") || joined.contains("↓ 1 more"),
             "multi-line input must keep the overflow cue:\n{joined}"
         );
-        assert!(joined.contains("[▤ 摘要]"), "{joined}");
+        assert!(joined.contains("[步骤显示级别: 摘要]"), "{joined}");
         assert!(
             joined.contains('❯'),
             "input prompt must be painted:\n{joined}"
@@ -2011,10 +2013,11 @@ mod tests {
         );
         let bottom_line = lines
             .iter()
-            .find(|line| plain(line).contains('╰') && plain(line).contains("[▤ 摘要]"))
+            .find(|line| plain(line).contains('╰') && plain(line).contains("[步骤显示级别: 摘要]"))
             .expect("bottom border");
         assert!(
-            plain(bottom_line).ends_with('╯') && plain(bottom_line).contains("[▤ 摘要]"),
+            plain(bottom_line).ends_with('╯')
+                && plain(bottom_line).contains("[步骤显示级别: 摘要]"),
             "bottom border must keep ╯ below the marker:\n{}",
             plain(bottom_line)
         );
@@ -2063,7 +2066,7 @@ mod tests {
     }
 
     #[test]
-    fn summary_click_with_body_notifies_level() {
+    fn summary_click_with_body_updates_chip_in_place() {
         let mut root = UiRoot::new();
         root.set_term_cols(120);
         let mut model = UiModel::new();
@@ -2077,16 +2080,24 @@ mod tests {
         let lines = root.render(120);
         let line = lines
             .iter()
-            .find(|line| plain(line).contains("[▤ 摘要]"))
+            .find(|line| plain(line).contains("[步骤显示级别: 摘要]"))
             .expect("summary row");
         let plain_line = plain(line);
-        let col = xylitol_tui::visible_width(&plain_line[..plain_line.find("[▤ 摘要]").unwrap()]);
+        let col = xylitol_tui::visible_width(
+            &plain_line[..plain_line.find("[步骤显示级别: 摘要]").unwrap()],
+        );
         assert!(root.try_click_painted_chip(col, line));
+        let after = plain(&root.render(120).join("\n"));
         assert!(
-            root.client_notices
+            after.contains("[步骤显示级别: 最近]"),
+            "click must update chip in place: {after}"
+        );
+        assert!(
+            !root
+                .client_notices
                 .iter()
                 .any(|notice| notice.body.contains("显示等级")),
-            "summary click must always notify"
+            "in-place chip must not push a notice"
         );
     }
 
@@ -2113,22 +2124,30 @@ mod tests {
     }
 
     #[test]
-    fn summary_click_without_body_notifies_level() {
+    fn summary_click_without_body_updates_chip_in_place() {
         let mut root = UiRoot::new();
         root.set_term_cols(120);
         let lines = root.render(120);
         let line = lines
             .iter()
-            .find(|line| plain(line).contains("[▤ 摘要]"))
+            .find(|line| plain(line).contains("[步骤显示级别: 摘要]"))
             .expect("summary row");
         let plain_line = plain(line);
-        let col = xylitol_tui::visible_width(&plain_line[..plain_line.find("[▤ 摘要]").unwrap()]);
+        let col = xylitol_tui::visible_width(
+            &plain_line[..plain_line.find("[步骤显示级别: 摘要]").unwrap()],
+        );
         assert!(root.try_click_painted_chip(col, line));
+        let after = plain(&root.render(120).join("\n"));
         assert!(
-            root.client_notices
+            after.contains("[步骤显示级别: 最近]"),
+            "empty transcript click must update chip in place: {after}"
+        );
+        assert!(
+            !root
+                .client_notices
                 .iter()
                 .any(|notice| notice.body.contains("显示等级")),
-            "empty transcript click must notify the level"
+            "in-place chip must not push a notice"
         );
     }
 
