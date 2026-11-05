@@ -4719,7 +4719,7 @@ fn live_agent_end_sets_worked_for_clock() {
     root.borrow_mut().touch_activity();
     let plain = xylitol_tui::utils::strip_ansi_codes(&root.borrow_mut().render(100).join("\n"));
     assert!(
-        plain.contains("Worked for ~1s"),
+        plain.contains("Worked for <1s"),
         "live AgentEnd must stamp the segment clock: {plain}"
     );
 }
@@ -4755,8 +4755,8 @@ fn activity_fold_worked_for_sub_second_is_approx() {
     root.touch_activity();
     let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
-        plain.contains("Worked for ~1s"),
-        "sub-second segment must show ~1s: {plain}"
+        plain.contains("Worked for <1s"),
+        "sub-second segment must show <1s: {plain}"
     );
 }
 
@@ -5635,8 +5635,8 @@ fn activity_fold_thought_sub_second_is_approx() {
     root.touch_activity();
     let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
-        plain.contains("Thought ~1s"),
-        "sub-second thought must show ~1s: {plain}"
+        plain.contains("Thought <1s"),
+        "sub-second thought must show <1s: {plain}"
     );
 }
 

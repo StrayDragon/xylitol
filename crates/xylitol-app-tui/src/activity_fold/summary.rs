@@ -284,7 +284,7 @@ pub fn format_duration(start: OffsetDateTime, end: OffsetDateTime) -> Option<Str
 
 pub fn format_elapsed_secs(secs: u64) -> String {
     if secs == 0 {
-        "~1s".to_string()
+        "<1s".to_string()
     } else if secs < 60 {
         format!("{secs}s")
     } else if secs < 3600 {
@@ -497,7 +497,7 @@ mod tests {
         assert!(!s.contains("Explored"));
         assert_eq!(thought_header_body(Some("17s")), "Thought 17s");
         assert_eq!(format_elapsed_secs(17), "17s");
-        assert_eq!(format_elapsed_secs(0), "~1s");
+        assert_eq!(format_elapsed_secs(0), "<1s");
         crate::keybindings::ensure_product_catalog();
         let glyphs = GlyphSet::from_env();
         let streaming =
