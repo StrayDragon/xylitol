@@ -1341,6 +1341,35 @@
       "title": "Array_of_string",
       "type": "array"
     },
+    "trust": {
+      "additionalProperties": false,
+      "properties": {
+        "audit": {
+          "default": true,
+          "type": "boolean"
+        },
+        "audit_keep_files": {
+          "default": 5,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "audit_max_bytes": {
+          "default": 10485760,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "audit_retention_days": {
+          "default": 90,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "TrustConfig",
+      "type": "object"
+    },
     "tui": {
       "properties": {
         "activity_fold": {

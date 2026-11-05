@@ -751,3 +751,7 @@
       假如 Host 已写入注册文件并在听
       当 执行 serve stop
       那么 该 pid 已退出且注册文件不残留
+
+  @req:r3222
+  规则: host-trust-decision
+    host 的 trust 决策 unary 须要求已认证 client；resume 物化 writer 时 须重新校验 workspace trust 并记 trust_recheck 审计；不得把 trust 决策暴露为模型工具。

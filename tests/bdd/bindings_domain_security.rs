@@ -86,6 +86,27 @@ fn test_ds_cmd_persists() {}
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "trust存储私有权限"
+)]
+fn test_ds_trust_private() {}
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "trust篡改拒绝"
+)]
+fn test_ds_trust_tamper() {}
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "trust审计事件"
+)]
+fn test_ds_trust_audit() {}
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "resume重校验"
+)]
+fn test_ds_trust_recheck() {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
     name = "Xy工具审批"
 )]
 fn test_ds_xy_tool_approval(_agent: AgentState) {}

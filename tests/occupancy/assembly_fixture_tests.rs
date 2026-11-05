@@ -1632,6 +1632,7 @@ async fn model_tool_runs_in_client_workspace() {
             agent_dir: xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir(),
             project_trusted: true,
             default_model_id: Some("fake-ws".into()),
+            trust_audit: xylitol_runtime::TrustAuditConfig::default(),
         },
         Arc::new(xylitol_kernel::occupancy::ProductOccupancyFactory::new(
             ports.clone(),

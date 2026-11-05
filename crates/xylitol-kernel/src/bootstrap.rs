@@ -72,6 +72,7 @@ pub struct BootstrappedAgent {
     pub mcp_servers: Option<Vec<crate::mcp_spec::McpServerSpec>>,
     tool_features: crate::driver::ToolFeatures,
     driver_context: crate::driver::DriverContext,
+    trust_audit: xylitol_runtime::TrustAuditConfig,
 }
 
 pub struct BootstrappedRuntime {
@@ -193,6 +194,7 @@ impl BootstrappedAgent {
             self.driver_context,
         );
         driver.set_mcp_server_ids(mcp_ids);
+        driver.set_trust_audit_config(self.trust_audit);
         let todo_gw = driver.todo_gateway();
         let sid = self.session_id.clone();
         let _ = block_on_bootstrap_task("bind todo session", async move {
@@ -236,6 +238,7 @@ pub struct ResolvedAssembly {
     pub stage_name_config: xylitol_runtime::agent::stage_name::StageNameConfig,
     pub tool_features: crate::driver::ToolFeatures,
     pub project_trusted: bool,
+    pub trust_audit: xylitol_runtime::TrustAuditConfig,
 }
 
 impl ResolvedAssembly {
@@ -406,16 +409,23 @@ fn resolve_project_trust(
     agent_home: &Path,
     cwd: &str,
     input: &BootstrapInput,
+    trust_audit: &xylitol_runtime::TrustAuditConfig,
     warnings: &mut Vec<BootstrapWarning>,
 ) -> bool {
-    let trust_manager = xylitol_runtime::trust::TrustManager::new(agent_home);
+    let trust_manager =
+        xylitol_runtime::trust::TrustManager::with_audit(agent_home, trust_audit.clone());
     let trust_cwd = cwd.to_string();
+    let audit = xylitol_runtime::TrustAuditContext::new(
+        xylitol_runtime::TrustActor::Cli,
+        xylitol_runtime::TrustSource::Startup,
+    );
     let trust_resolution = xylitol_runtime::trust::resolve_project_trusted(
         &trust_manager,
         cwd,
         input.trust_override,
         xylitol_runtime::trust::DefaultProjectTrust::default(),
         input.interactive,
+        &audit,
         |options| {
             if input.interactive {
                 xylitol_runtime::trust::prompt_trust_options_stdio(&trust_cwd, options)
@@ -584,7 +594,22 @@ pub fn resolve_assembly_with(
         .unwrap_or_default();
     let cwd = cwd_path.to_string_lossy().to_string();
 
-    let project_trusted = resolve_project_trust(&agent_home, &cwd, input, &mut warnings);
+    let trust_config = app_config
+        .as_ref()
+        .and_then(|c| {
+            c.section::<xylitol_official_plugin_config::types::TrustConfig>("trust")
+                .ok()
+                .flatten()
+        })
+        .unwrap_or_default();
+    let trust_audit = xylitol_runtime::TrustAuditConfig {
+        enabled: trust_config.audit,
+        max_bytes: trust_config.audit_max_bytes,
+        keep_files: trust_config.audit_keep_files,
+        retention_days: trust_config.audit_retention_days,
+    };
+    let project_trusted =
+        resolve_project_trust(&agent_home, &cwd, input, &trust_audit, &mut warnings);
 
     let resources = load_resources(&agent_home, &cwd_path, project_trusted);
     let context_files = resources.context_files;
@@ -715,6 +740,7 @@ pub fn resolve_assembly_with(
         stage_name_config,
         tool_features: resolve_tool_features(app_config.as_ref(), profile_tools),
         project_trusted,
+        trust_audit,
     })
 }
 
@@ -743,6 +769,7 @@ pub fn bootstrap_with(
     let stage_name_config = assembly.stage_name_config.clone();
     let session_file_exists = assembly.session_file_exists;
     let tool_features = assembly.tool_features.clone();
+    let trust_audit = assembly.trust_audit.clone();
     let driver_context = crate::driver::DriverContext {
         project_root: std::path::PathBuf::from(&assembly.cwd),
         trusted: assembly.project_trusted,
@@ -799,6 +826,7 @@ pub fn bootstrap_with(
         mcp_servers,
         tool_features,
         driver_context,
+        trust_audit,
     })
 }
 

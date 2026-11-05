@@ -406,6 +406,7 @@ fn host_state_for_test_with(
             agent_dir,
             project_trusted: true,
             default_model_id: default_model,
+            trust_audit: xylitol_runtime::TrustAuditConfig::default(),
         },
         factory,
         "test-session".into(),

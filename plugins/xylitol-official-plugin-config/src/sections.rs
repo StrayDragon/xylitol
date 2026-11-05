@@ -3,7 +3,7 @@ use schemars::schema_for;
 use super::types::{
     AgentsConfig, DapPluginConfig, ExecutionConfig, ExternalPluginConfig, HooksConfig,
     LspPluginConfig, McpServerConfig, ModelsConfig, OtelConfig, SecurityConfig, ServeConfig,
-    SessionConfig, SubagentConfig, ToolBatchConfig, TuiConfig,
+    SessionConfig, SubagentConfig, ToolBatchConfig, TrustConfig, TuiConfig,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,6 +151,12 @@ const SECTIONS: &[ConfigSection] = &[
         schema: schema_serve,
         default: default_serve,
     },
+    ConfigSection {
+        key: "trust",
+        domain: ConfigDomain::App,
+        schema: schema_trust,
+        default: default_trust,
+    },
 ];
 
 fn schema_models() -> serde_json::Value {
@@ -220,6 +226,9 @@ fn schema_subagent() -> serde_json::Value {
 fn schema_serve() -> serde_json::Value {
     serde_json::to_value(schema_for!(ServeConfig)).expect("serve schema")
 }
+fn schema_trust() -> serde_json::Value {
+    serde_json::to_value(schema_for!(TrustConfig)).expect("trust schema")
+}
 
 fn default_null() -> serde_json::Value {
     serde_json::Value::Null
@@ -269,4 +278,7 @@ fn default_external_plugins() -> serde_json::Value {
 }
 fn default_serve() -> serde_json::Value {
     serde_json::to_value(ServeConfig::default()).expect("serve default")
+}
+fn default_trust() -> serde_json::Value {
+    serde_json::to_value(TrustConfig::default()).expect("trust default")
 }

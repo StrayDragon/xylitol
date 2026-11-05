@@ -1,4 +1,4 @@
-use super::store::{TrustManager, TrustOption};
+use super::store::{TrustAuditContext, TrustManager, TrustOption};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DefaultProjectTrust {
@@ -27,12 +27,19 @@ pub fn resolve_project_trusted<F>(
     trust_override: Option<bool>,
     _default_policy: DefaultProjectTrust,
     has_ui: bool,
+    audit: &TrustAuditContext,
     on_prompt: F,
 ) -> TrustResolution
 where
     F: FnOnce(&[TrustOption]) -> Option<usize>,
 {
     if let Some(overridden) = trust_override {
+        let event = if overridden {
+            "trust_grant"
+        } else {
+            "trust_deny"
+        };
+        manager.record_decision(event, cwd, Some(overridden), audit, "override");
         return TrustResolution {
             trusted: overridden,
             reason: TrustReason::Override,
@@ -40,6 +47,7 @@ where
     }
 
     if !manager.has_trust_inputs(cwd) {
+        manager.record_decision("trust_grant", cwd, Some(true), audit, "no_trust_inputs");
         return TrustResolution {
             trusted: true,
             reason: TrustReason::NoTrustInputs,
@@ -54,6 +62,7 @@ where
     }
 
     if !has_ui {
+        manager.record_decision("trust_deny", cwd, None, audit, "no_ui");
         return TrustResolution {
             trusted: false,
             reason: TrustReason::FallbackNoUi,
@@ -65,7 +74,14 @@ where
         && let Some(selected) = trust_options.get(selected_idx)
     {
         if !selected.updates.is_empty() {
-            let _ = manager.apply_updates(&selected.updates);
+            let _ = manager.apply_updates(&selected.updates, audit);
+        } else {
+            let event = if selected.trusted {
+                "trust_grant"
+            } else {
+                "trust_deny"
+            };
+            manager.record_decision(event, cwd, Some(selected.trusted), audit, "session_only");
         }
         return TrustResolution {
             trusted: selected.trusted,
@@ -73,6 +89,7 @@ where
         };
     }
 
+    manager.record_decision("trust_deny", cwd, None, audit, "prompt_cancelled");
     TrustResolution {
         trusted: false,
         reason: TrustReason::FallbackNoUi,
@@ -89,6 +106,7 @@ pub fn format_trust_prompt(cwd: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::store::{TrustActor, TrustSource};
     use super::*;
     use std::fs;
 
@@ -98,13 +116,24 @@ mod tests {
         (mgr, dir)
     }
 
+    fn ctx() -> TrustAuditContext {
+        TrustAuditContext::new(TrustActor::Cli, TrustSource::Startup)
+    }
+
     #[test]
     fn test_resolve_override_trusted() {
         let (mgr, dir) = store();
         fs::create_dir_all(dir.path().join(".xylitol")).unwrap();
         let cwd = dir.path().to_string_lossy().to_string();
-        let result =
-            resolve_project_trusted(&mgr, &cwd, Some(true), Default::default(), true, |_| None);
+        let result = resolve_project_trusted(
+            &mgr,
+            &cwd,
+            Some(true),
+            Default::default(),
+            true,
+            &ctx(),
+            |_| None,
+        );
         assert!(result.trusted);
         assert_eq!(result.reason, TrustReason::Override);
     }
@@ -114,8 +143,15 @@ mod tests {
         let (mgr, dir) = store();
         fs::create_dir_all(dir.path().join(".xylitol")).unwrap();
         let cwd = dir.path().to_string_lossy().to_string();
-        let result =
-            resolve_project_trusted(&mgr, &cwd, Some(false), Default::default(), true, |_| None);
+        let result = resolve_project_trusted(
+            &mgr,
+            &cwd,
+            Some(false),
+            Default::default(),
+            true,
+            &ctx(),
+            |_| None,
+        );
         assert!(!result.trusted);
         assert_eq!(result.reason, TrustReason::Override);
     }
@@ -124,7 +160,8 @@ mod tests {
     fn test_resolve_no_inputs_auto_trust() {
         let (mgr, dir) = store();
         let cwd = dir.path().to_string_lossy().to_string();
-        let result = resolve_project_trusted(&mgr, &cwd, None, Default::default(), true, |_| None);
+        let result =
+            resolve_project_trusted(&mgr, &cwd, None, Default::default(), true, &ctx(), |_| None);
         assert!(result.trusted);
         assert_eq!(result.reason, TrustReason::NoTrustInputs);
     }
@@ -134,9 +171,17 @@ mod tests {
         let (mgr, dir) = store();
         fs::create_dir_all(dir.path().join(".xylitol")).unwrap();
         let cwd = dir.path().to_string_lossy().to_string();
-        mgr.set_trust(&cwd, Some(false)).unwrap();
+        mgr.apply_updates(
+            &[super::super::store::TrustUpdate {
+                path: cwd.clone(),
+                decision: Some(false),
+            }],
+            &ctx(),
+        )
+        .unwrap();
 
-        let result = resolve_project_trusted(&mgr, &cwd, None, Default::default(), true, |_| None);
+        let result =
+            resolve_project_trusted(&mgr, &cwd, None, Default::default(), true, &ctx(), |_| None);
         assert!(!result.trusted);
         assert_eq!(result.reason, TrustReason::Store);
     }
@@ -147,8 +192,15 @@ mod tests {
         fs::create_dir_all(dir.path().join(".xylitol")).unwrap();
         let cwd = dir.path().to_string_lossy().to_string();
 
-        let result =
-            resolve_project_trusted(&mgr, &cwd, None, DefaultProjectTrust::Ask, false, |_| None);
+        let result = resolve_project_trusted(
+            &mgr,
+            &cwd,
+            None,
+            DefaultProjectTrust::Ask,
+            false,
+            &ctx(),
+            |_| None,
+        );
         assert!(!result.trusted);
         assert_eq!(result.reason, TrustReason::FallbackNoUi);
     }
@@ -165,6 +217,7 @@ mod tests {
             None,
             DefaultProjectTrust::Ask,
             true,
+            &ctx(),
             |options| {
                 assert!(!options.is_empty());
                 Some(0)
@@ -182,8 +235,15 @@ mod tests {
         fs::create_dir_all(dir.path().join(".xylitol")).unwrap();
         let cwd = dir.path().to_string_lossy().to_string();
 
-        let result =
-            resolve_project_trusted(&mgr, &cwd, None, DefaultProjectTrust::Ask, true, |_| None);
+        let result = resolve_project_trusted(
+            &mgr,
+            &cwd,
+            None,
+            DefaultProjectTrust::Ask,
+            true,
+            &ctx(),
+            |_| None,
+        );
         assert!(!result.trusted);
         assert_eq!(result.reason, TrustReason::FallbackNoUi);
     }

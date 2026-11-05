@@ -529,6 +529,28 @@ impl AppConfig {
         Ok(())
     }
 
+    pub fn validate_trust_audit(&self) -> Result<(), LoadError> {
+        let Some(trust) = self.section::<TrustConfig>("trust")? else {
+            return Ok(());
+        };
+        if trust.audit_max_bytes == 0 {
+            return Err(LoadError::validation(
+                "trust.audit_max_bytes must be a positive integer",
+            ));
+        }
+        if trust.audit_keep_files == 0 {
+            return Err(LoadError::validation(
+                "trust.audit_keep_files must be at least 1",
+            ));
+        }
+        if trust.audit_retention_days == 0 {
+            return Err(LoadError::validation(
+                "trust.audit_retention_days must be at least 1",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn validate_tools_selection(&self) -> Result<(), LoadError> {
         let tools: Vec<String> = self.section_or_default("tools")?;
         for (index, raw) in tools.iter().enumerate() {
@@ -639,6 +661,42 @@ pub use xylitol_official_plugin_loop_policies::LoopPoliciesConfig;
 pub use xylitol_official_plugin_plan::PlanConfig;
 pub use xylitol_official_plugin_todo::TodoConfig;
 pub use xylitol_official_plugin_workflow::WorkflowConfig;
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct TrustConfig {
+    #[serde(default = "default_true")]
+    pub audit: bool,
+    #[serde(default = "default_audit_max_bytes")]
+    pub audit_max_bytes: u64,
+    #[serde(default = "default_audit_keep_files")]
+    pub audit_keep_files: usize,
+    #[serde(default = "default_audit_retention_days")]
+    pub audit_retention_days: u64,
+}
+
+fn default_audit_max_bytes() -> u64 {
+    10 * 1024 * 1024
+}
+
+fn default_audit_keep_files() -> usize {
+    5
+}
+
+fn default_audit_retention_days() -> u64 {
+    90
+}
+
+impl Default for TrustConfig {
+    fn default() -> Self {
+        Self {
+            audit: true,
+            audit_max_bytes: default_audit_max_bytes(),
+            audit_keep_files: default_audit_keep_files(),
+            audit_retention_days: default_audit_retention_days(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct SecurityConfig {
@@ -1609,6 +1667,47 @@ serve:
             get::<ServeConfig>(&cfg, "serve").lifecycle,
             ServeLifecycleConfig::LastClient
         );
+    }
+
+    #[test]
+    fn trust_config_defaults_and_parse() {
+        let cfg: AppConfig = yaml_serde::from_str("models: {}\n").expect("parse");
+        let trust = get::<TrustConfig>(&cfg, "trust");
+        assert!(trust.audit);
+        assert_eq!(trust.audit_max_bytes, 10 * 1024 * 1024);
+        assert_eq!(trust.audit_keep_files, 5);
+        assert_eq!(trust.audit_retention_days, 90);
+
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+trust:
+  audit: false
+  audit_max_bytes: 2048
+  audit_keep_files: 2
+  audit_retention_days: 7
+"#,
+        )
+        .expect("trust section");
+        let trust = get::<TrustConfig>(&cfg, "trust");
+        assert!(!trust.audit);
+        assert_eq!(trust.audit_max_bytes, 2048);
+        assert_eq!(trust.audit_keep_files, 2);
+        assert_eq!(trust.audit_retention_days, 7);
+        cfg.validate_trust_audit().expect("valid trust config");
+    }
+
+    #[test]
+    fn trust_config_rejects_zero_keep_files() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+trust:
+  audit_keep_files: 0
+"#,
+        )
+        .expect("parse");
+        assert!(cfg.validate_trust_audit().is_err());
     }
 
     #[test]

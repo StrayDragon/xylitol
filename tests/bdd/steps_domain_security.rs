@@ -14,6 +14,14 @@ mod trust_bdd {
         static M: RefCell<Option<(tempfile::TempDir, TrustManager)>> = const { RefCell::new(None) };
         static R: RefCell<Option<xylitol_runtime::trust::TrustResolution>> = const { RefCell::new(None) };
         static BASE: RefCell<Option<String>> = const { RefCell::new(None) };
+        static P: RefCell<Option<String>> = const { RefCell::new(None) };
+    }
+
+    fn audit_ctx(
+        actor: xylitol_runtime::trust::TrustActor,
+        source: xylitol_runtime::trust::TrustSource,
+    ) -> xylitol_runtime::trust::TrustAuditContext {
+        xylitol_runtime::trust::TrustAuditContext::new(actor, source)
     }
 
     fn ensure() {
@@ -41,7 +49,16 @@ mod trust_bdd {
     fn set(path: &str, v: bool) {
         ensure();
         M.with(|c| {
-            let _ = c.borrow().as_ref().unwrap().1.set_trust(path, Some(v));
+            let _ = c.borrow().as_ref().unwrap().1.apply_updates(
+                &[xylitol_runtime::trust::TrustUpdate {
+                    path: path.to_string(),
+                    decision: Some(v),
+                }],
+                &audit_ctx(
+                    xylitol_runtime::trust::TrustActor::Cli,
+                    xylitol_runtime::trust::TrustSource::Startup,
+                ),
+            );
         });
     }
 
@@ -51,9 +68,18 @@ mod trust_bdd {
             let g = c.borrow();
             let m = &g.as_ref().unwrap().1;
             R.with(|r| {
-                r.replace(Some(resolve_project_trusted(m, cwd, ovr, pol, ui, |_| {
-                    None
-                })))
+                r.replace(Some(resolve_project_trusted(
+                    m,
+                    cwd,
+                    ovr,
+                    pol,
+                    ui,
+                    &audit_ctx(
+                        xylitol_runtime::trust::TrustActor::Cli,
+                        xylitol_runtime::trust::TrustSource::Startup,
+                    ),
+                    |_| None,
+                )))
             });
         });
     }
@@ -158,12 +184,12 @@ mod trust_bdd {
                     None,
                     DPT::Ask,
                     true,
-                    |opts| {
-                        let i = opts.iter().position(|o| o.trusted).unwrap_or(0);
-                        for u in &opts[i].updates {
-                            let _ = m.set_trust(&u.path, u.decision);
-                        }
-                        Some(i)
+                    &audit_ctx(
+                        xylitol_runtime::trust::TrustActor::Cli,
+                        xylitol_runtime::trust::TrustSource::Startup,
+                    ),
+                    |opts: &[xylitol_runtime::trust::TrustOption]| {
+                        opts.iter().position(|o| o.trusted)
                     },
                 )))
             });
@@ -235,6 +261,171 @@ mod trust_bdd {
         ensure();
         M.with(|c| {
             assert!(c.borrow().as_ref().unwrap().1.is_trusted(&base_dir()));
+        });
+    }
+
+    fn project_path() -> String {
+        P.with(|p| p.borrow().as_ref().unwrap().clone())
+    }
+
+    fn audit_log(dir: &tempfile::TempDir) -> String {
+        std::fs::read_to_string(dir.path().join("audit/trust.log")).unwrap_or_default()
+    }
+
+    #[given("trust store 首次写入")]
+    pub fn g_store_written() {
+        ensure();
+        let path = mkdir("private-project");
+        set(&path, true);
+        P.with(|p| p.replace(Some(path)));
+    }
+
+    #[when("检查文件权限与格式")]
+    pub fn w_check_permissions() {}
+
+    #[then("store/key 均为 0600 且 store 含 version 与 hmac")]
+    pub fn t_private_store() {
+        ensure();
+        M.with(|c| {
+            let g = c.borrow();
+            let (dir, mgr) = g.as_ref().unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                for path in [
+                    mgr.trust_file_path().to_path_buf(),
+                    dir.path().join("trust.key"),
+                ] {
+                    let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+                    assert_eq!(mode, 0o600, "{} must be 0600", path.display());
+                }
+            }
+            let value: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(mgr.trust_file_path()).unwrap())
+                    .unwrap();
+            assert_eq!(value["version"], 2);
+            assert!(value["hmac"].as_str().is_some_and(|hmac| hmac.len() == 64));
+        });
+    }
+
+    #[given("trust store 条目被改写但 hmac 未更新")]
+    pub fn g_tampered() {
+        ensure();
+        let path = mkdir("tampered-project");
+        set(&path, true);
+        P.with(|p| p.replace(Some(path)));
+        M.with(|c| {
+            let g = c.borrow();
+            let mgr = &g.as_ref().unwrap().1;
+            let raw = std::fs::read_to_string(mgr.trust_file_path()).unwrap();
+            let mut value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            if let Some(entries) = value["entries"].as_object_mut() {
+                for decision in entries.values_mut() {
+                    *decision = serde_json::json!(false);
+                }
+            }
+            std::fs::write(
+                mgr.trust_file_path(),
+                serde_json::to_string_pretty(&value).unwrap(),
+            )
+            .unwrap();
+        });
+    }
+
+    #[when("查询项目 trust")]
+    pub fn w_query_project_trust() {}
+
+    #[then("返回未决且审计含 trust_tamper")]
+    pub fn t_tamper() {
+        ensure();
+        M.with(|c| {
+            let g = c.borrow();
+            let (dir, mgr) = g.as_ref().unwrap();
+            assert_eq!(mgr.is_project_trusted(&project_path()), None);
+            assert!(audit_log(dir).contains("trust_tamper"));
+        });
+    }
+
+    #[given("用户在 TUI 授予项目 trust")]
+    pub fn g_tui_grant() {
+        ensure();
+        let path = mkdir("audit-project");
+        P.with(|p| p.replace(Some(path.clone())));
+        M.with(|c| {
+            c.borrow()
+                .as_ref()
+                .unwrap()
+                .1
+                .apply_updates(
+                    &[xylitol_runtime::trust::TrustUpdate {
+                        path,
+                        decision: Some(true),
+                    }],
+                    &audit_ctx(
+                        xylitol_runtime::trust::TrustActor::Tui,
+                        xylitol_runtime::trust::TrustSource::TuiPrompt,
+                    ),
+                )
+                .unwrap();
+        });
+    }
+
+    #[when("写入 trust store")]
+    pub fn w_store_write() {}
+
+    #[then("审计含 trust_grant 且 actor=tui、source=tui_prompt")]
+    pub fn t_audit_grant() {
+        ensure();
+        M.with(|c| {
+            let g = c.borrow();
+            let (dir, _) = g.as_ref().unwrap();
+            let grant = audit_log(dir)
+                .lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                .find(|value| value["event"] == "trust_grant")
+                .expect("trust_grant audit event");
+            assert_eq!(grant["actor"], "tui");
+            assert_eq!(grant["source"], "tui_prompt");
+        });
+    }
+
+    #[given("session resume 到已存 trust 决策的 workspace")]
+    pub fn g_resume_workspace() {
+        ensure();
+        let path = mkdir("resume-project");
+        set(&path, true);
+        P.with(|p| p.replace(Some(path)));
+    }
+
+    #[when("host 物化 writer")]
+    pub fn w_materialize() {
+        ensure();
+        M.with(|c| {
+            let g = c.borrow();
+            let mgr = &g.as_ref().unwrap().1;
+            mgr.recheck(
+                &project_path(),
+                &audit_ctx(
+                    xylitol_runtime::trust::TrustActor::Host,
+                    xylitol_runtime::trust::TrustSource::Resume,
+                ),
+            );
+        });
+    }
+
+    #[then("审计含 trust_recheck 且 source=resume")]
+    pub fn t_recheck() {
+        ensure();
+        M.with(|c| {
+            let g = c.borrow();
+            let (dir, _) = g.as_ref().unwrap();
+            let recheck = audit_log(dir)
+                .lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                .find(|value| value["event"] == "trust_recheck")
+                .expect("trust_recheck audit event");
+            assert_eq!(recheck["source"], "resume");
+            assert_eq!(recheck["actor"], "host");
         });
     }
 }

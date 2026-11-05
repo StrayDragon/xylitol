@@ -183,6 +183,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
     });
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
+    let trust_audit = assembly.trust_audit.clone();
     let ports = build_ports(config, assembly)?;
     ctx.provide(xylitol_plugin_sdk::RuntimeSessionStore(ports.store.clone()))
         .map_err(|e| format!("provide runtime session store: {e}"))?;
@@ -205,6 +206,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
             agent_dir,
             project_trusted,
             default_model_id,
+            trust_audit,
         },
         factory,
         fallback_session,

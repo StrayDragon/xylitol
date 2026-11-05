@@ -66,6 +66,7 @@ pub struct ReloadBaseline {
     pub agent_dir: PathBuf,
     pub project_trusted: bool,
     pub default_model_id: Option<String>,
+    pub trust_audit: xylitol_runtime::TrustAuditConfig,
 }
 
 pub struct SessionSlot {
@@ -896,20 +897,31 @@ fn same_workspace(a: &Path, b: &Path) -> bool {
 }
 
 fn project_trusted_for(host: &HostState, workspace: &Path) -> bool {
-    if same_workspace(workspace, &host.reload.cwd) {
-        return host.reload.project_trusted;
-    }
-    let mgr = xylitol_runtime::trust::TrustManager::new(&host.reload.agent_dir);
+    let mgr = xylitol_runtime::trust::TrustManager::with_audit(
+        &host.reload.agent_dir,
+        host.reload.trust_audit.clone(),
+    );
     let cwd = workspace.to_string_lossy();
-    xylitol_runtime::trust::resolve_project_trusted(
-        &mgr,
-        &cwd,
-        None,
-        xylitol_runtime::trust::DefaultProjectTrust::default(),
-        false,
-        |_| None,
-    )
-    .trusted
+    let audit = xylitol_runtime::TrustAuditContext::new(
+        xylitol_runtime::TrustActor::Host,
+        xylitol_runtime::TrustSource::Resume,
+    );
+    match mgr.recheck(&cwd, &audit) {
+        Some(decision) => decision,
+        None if same_workspace(workspace, &host.reload.cwd) => host.reload.project_trusted,
+        None => {
+            xylitol_runtime::trust::resolve_project_trusted(
+                &mgr,
+                &cwd,
+                None,
+                xylitol_runtime::trust::DefaultProjectTrust::default(),
+                false,
+                &audit,
+                |_| None,
+            )
+            .trusted
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -1931,6 +1943,7 @@ mod tests {
                 agent_dir: PathBuf::from("."),
                 project_trusted: false,
                 default_model_id: None,
+                trust_audit: xylitol_runtime::TrustAuditConfig::default(),
             },
             Arc::new(RegistryFactory(Arc::new(
                 xylitol_plugin_sdk::LoopMiddlewareRegistry::new(),

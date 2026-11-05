@@ -38,3 +38,7 @@
     场景: 信任斜杠持久化无自动重载
       当 读取 trust slash 的缝接线
       那么 经 Driver 缝持久化且本会话不自动重载
+
+  @req:r3223
+  规则: trust-human-confirm-only
+    产品 TUI 的 trust 决策 只由人类确认产生；不得经 agent 工具或 elicitation 触发；提交 须带 tui 审计来源。

@@ -93,6 +93,10 @@ impl XyInProcessDriver {
         self.reload_agent_dir.as_ref()
     }
 
+    pub fn set_trust_audit_config(&mut self, config: crate::trust::TrustAuditConfig) {
+        self.trust_audit = config;
+    }
+
     pub async fn mcp_status_summary(&self) -> Option<String> {
         let view = match &self.prepare_hub {
             Some(hub) => hub.view(),

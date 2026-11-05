@@ -185,3 +185,41 @@
       假如 进程环境含 XYLITOL_SERVE_TOKEN
       当 构建 bash 工具子进程环境
       那么 该变量被移除
+
+  @req:r3216
+  规则: trust-store-hardening
+    trust store 须以 0600 权限原子写入，lock 文件 0600；store 须含 schema version 与 HMAC-SHA256 完整性字段，密钥存于 agent dir（0600）；旧格式或宽权限文件 须迁移；HMAC 不匹配或密钥缺失 须按未决处理并记篡改审计，不得静默信任。
+
+    场景: trust存储私有权限
+      假如 trust store 首次写入
+      当 检查文件权限与格式
+      那么 store/key 均为 0600 且 store 含 version 与 hmac
+
+    场景: trust篡改拒绝
+      假如 trust store 条目被改写但 hmac 未更新
+      当 查询项目 trust
+      那么 返回未决且审计含 trust_tamper
+  @req:r3217
+  规则: trust-audit-log
+    trust 决策 须写 JSONL 审计（agent dir 下 audit/trust.log，0600），事件含 trust_grant / trust_deny / trust_revoke / trust_tamper / trust_recheck / trust_store_write，字段含 ts / event / actor / session_id / workspace / decision / source / hmac_ok / reason；轮转默认 10 MiB × 5、保留 90 天且可配置；trust.audit 默认 true；审计写失败 不得改变决策。
+
+    场景: trust审计事件
+      假如 用户在 TUI 授予项目 trust
+      当 写入 trust store
+      那么 审计含 trust_grant 且 actor=tui、source=tui_prompt
+  @req:r3218
+  规则: trust-advisory-boundary
+    trust store 是 advisory，不是安全边界；文档 须明示同用户进程可改 store / key / audit，真隔离依赖 OS sandbox / 独立用户 / 容器；不得把 HMAC 描述为防同用户攻击。
+
+  @req:r3219
+  规则: trust-human-only
+    trust 决策 只允许人类操作（CLI/TUI 交互或 host unary 已认证 client）；不得注册为 LLM 可调用工具。
+
+  @req:r3220
+  规则: trust-resume-recheck
+    resume / 物化 writer 时 须按 workspace 重新解析 trust 并记 trust_recheck；不得直接复用启动缓存作为唯一来源。
+
+    场景: resume重校验
+      假如 session resume 到已存 trust 决策的 workspace
+      当 host 物化 writer
+      那么 审计含 trust_recheck 且 source=resume

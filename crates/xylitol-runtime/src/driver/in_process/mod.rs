@@ -67,6 +67,7 @@ pub struct XyInProcessDriver {
     reload_cwd: Option<std::path::PathBuf>,
     reload_agent_dir: Option<std::path::PathBuf>,
     reload_config_path: Option<std::path::PathBuf>,
+    trust_audit: crate::trust::TrustAuditConfig,
     reload_registry: Arc<ReloadRegistry>,
     last_ui_mcp_label: Option<Option<String>>,
     mcp_gate_notice: Option<String>,
@@ -111,6 +112,7 @@ impl XyInProcessDriver {
             reload_cwd: None,
             reload_agent_dir: None,
             reload_config_path: None,
+            trust_audit: crate::trust::TrustAuditConfig::default(),
             last_ui_mcp_label: None,
             mcp_gate_notice: None,
             prepare_acked: true,
@@ -357,10 +359,11 @@ impl XyInProcessDriver {
             .as_ref()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| self.agent.cwd().to_string());
-        let mgr = crate::trust::TrustManager::new(
+        let mgr = crate::trust::TrustManager::with_audit(
             self.reload_agent_dir
                 .clone()
                 .unwrap_or_else(crate::trust::TrustManager::default_dir),
+            self.trust_audit.clone(),
         );
         let options = mgr.get_trust_options(&cwd, false);
         let opt = match mode {
@@ -378,8 +381,19 @@ impl XyInProcessDriver {
                 _ => XyDriverError::invalid_input("trust option unavailable"),
             });
         };
+        let audit = crate::trust::TrustAuditContext::new(
+            crate::trust::TrustActor::Host,
+            crate::trust::TrustSource::HostUnary,
+        );
         if !opt.updates.is_empty() {
-            mgr.apply_updates(&opt.updates)?;
+            mgr.apply_updates(&opt.updates, &audit)?;
+        } else {
+            let event = if opt.trusted {
+                "trust_grant"
+            } else {
+                "trust_deny"
+            };
+            mgr.record_decision(event, &cwd, Some(opt.trusted), &audit, "session_only");
         }
         let saved = opt.saved_path.clone().unwrap_or_else(|| cwd.clone());
         let verb = if opt.trusted { "trusted" } else { "denied" };

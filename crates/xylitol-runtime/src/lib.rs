@@ -23,8 +23,9 @@ pub use permission::{
 };
 pub use resource::DefaultResourceLoader;
 pub use trust::{
-    DefaultProjectTrust, TrustManager, TrustOption, TrustReason, TrustResolution,
-    format_trust_prompt, prompt_trust_options_stdio, resolve_project_trusted,
+    DefaultProjectTrust, TrustActor, TrustAuditConfig, TrustAuditContext, TrustManager,
+    TrustOption, TrustReason, TrustResolution, TrustSource, format_trust_prompt,
+    prompt_trust_options_stdio, resolve_project_trusted,
 };
 pub use xylitol_plugin_sdk::lifecycle::XyEventError;
 pub use xylitol_plugin_sdk::model::{ContextTokenEstimate, TokenProvenance};
