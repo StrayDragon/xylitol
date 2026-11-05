@@ -223,3 +223,7 @@
       假如 session resume 到已存 trust 决策的 workspace
       当 host 物化 writer
       那么 审计含 trust_recheck 且 source=resume
+
+  @req:r3243
+  规则: mcp-token-store
+    MCP token 须存于 agent 目录下 0600 文件；写入须原子替换；Debug 输出须脱敏；token 不得进 config / secret.env / 日志 / 工具子进程 env。由单测覆盖，不扩 BDD step。

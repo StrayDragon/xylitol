@@ -140,3 +140,7 @@
   @req:r3241
   规则: mcp-elicitation-secrets
     MCP elicitation 表单不得收集秘密；requestedSchema 字段命中 password / secret / token / api_key / credential / private_key 须拒绝；默认不弹 UI，返回 decline；不得记录 message 或字段值。由单测覆盖，不扩 BDD step。
+
+  @req:r3244
+  规则: mcp-credential-key
+    credential ID 须进入 connection key；同 server 不同 credential 须独立连接与 catalog；credential 值不得进入日志或工具子进程 env。由单测覆盖，不扩 BDD step。

@@ -18,3 +18,4 @@ pub use hub::McpPrepareHub;
 pub use truncate::{MCP_RESULT_MAX_BYTES, McpResultTruncate};
 
 pub mod config;
+pub mod credential_store;
