@@ -1,6 +1,6 @@
 [package]
 name = "xylitol"
-version = "0.0.0-pre"
+version.workspace = true
 edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
@@ -38,6 +38,9 @@ members = [
     "plugins/xylitol-official-plugin-lsp",
     "plugins/xylitol-official-plugin-dap",
 ]
+
+[workspace.package]
+version = "0.0.0-pre"
 
 [workspace.dependencies]
 xylitol-plugin-sdk = { path = "crates/xylitol-plugin-sdk" }
@@ -107,6 +110,7 @@ rstest-bdd = "0.6.0"
 rstest-bdd-macros = "0.6.0"
 salvo = { version = "1.0.1", default-features = false }
 schemars = "1"
+semver = "1"
 serde = "1"
 serde_json = "1"
 serial_test = "4.0.1"

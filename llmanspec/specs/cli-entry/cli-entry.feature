@@ -186,7 +186,7 @@
       那么 stderr 不含 resume 提示行
   @req:r1391
   规则: tui-ensure-host
-    产品 TUI（含 TTY 默认进入 TUI 表面与 debug 构建的 tui designing）在 attach 目标为本机回环默认口或仅 --port 指定的回环口、且 Host 未在听时，必须确保一个独立 Host 进程并在就绪后 attach；已有健康 Host 则直接 attach。不得静默改走同进程直握操作器。显式 --attach 指向非该确保口时，未在听必须非零退出且不得拉起 Host。`--no-ensure-host` 时未在听必须非零退出。print 与库嵌入不得适用本条。`server` feature 关闭时未在听必须非零退出。
+    产品 TUI（含 TTY 默认进入 TUI 表面与 debug 构建的 tui designing）在 attach 目标为本机回环默认口或仅 --port 指定的回环口、且 Host 未在听时，必须确保一个独立 Host 进程并在就绪后 attach。已有健康 Host 时：版本与客户端相同则直接 attach；版本旧于客户端必须替换该 Host（请求旧进程退出，新进程就绪后再 attach）；版本新于客户端必须非零退出且不得杀该进程；版本无法比较时不得替换。不得静默改走同进程直握操作器。显式 --attach 指向非该确保口时，未在听必须非零退出且不得拉起 Host；该口 Host 版本不符时也不得替换。`--no-ensure-host` 时未在听必须非零退出。print 与库嵌入不得适用本条。`server` feature 关闭时未在听必须非零退出。
 
     场景: 关闭确保时未在听失败
       假如 本机 Host 未在听且关闭确保
@@ -201,6 +201,26 @@
     场景: 本机默认口判定为确保目标
       当 解析本机默认 attach URL 的确保策略
       那么 该 URL 为确保目标且不改走同进程直握
+
+    场景: 旧版Host在确保口被替换
+      假如 本机确保口上 Host 版本旧于客户端
+      当 产品 TUI 执行确保
+      那么 请求旧 Host 退出并在新 Host 就绪后 attach
+
+    场景: 新版Host不被杀
+      假如 确保口上 Host 版本新于客户端
+      当 产品 TUI 执行确保
+      那么 非零退出且不向该进程发退出请求
+
+    场景: 非xylitol占用不杀不拉起
+      假如 本机确保口被非 xylitol 进程占用
+      当 产品 TUI 执行确保
+      那么 不杀该进程也不拉起 Host 并给出可操作诊断
+
+    场景: 显式attach不替换
+      假如 显式 attach 非本机确保口且该口 Host 版本旧于客户端
+      当 产品 TUI 尝试 attach
+      那么 非零退出且不替换该 Host
 
   @req:r3073
   规则: config-subcommands

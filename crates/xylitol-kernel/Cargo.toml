@@ -1,6 +1,6 @@
 [package]
 name = "xylitol-kernel"
-version = "0.0.0-pre"
+version.workspace = true
 edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
@@ -41,6 +41,7 @@ futures = { workspace = true }
 jsonschema = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
+semver = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["unbounded_depth"] }
 thiserror = { workspace = true }
@@ -58,7 +59,7 @@ wiremock = { workspace = true }
 
 [features]
 default = ["server", "mcp", "fff"]
-server = ["xylitol-serve/listen"]
+server = ["xylitol-serve/listen", "dep:semver"]
 mcp = ["xylitol-official-plugin-mcp/mcp"]
 fff = ["dep:xylitol-official-plugin-tools-fff"]
 otel = ["xylitol-official-plugin-obs/otel"]

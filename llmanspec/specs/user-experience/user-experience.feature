@@ -31,11 +31,26 @@
 
   @req:r3065
   规则: ensure-host-diagnostics
-    确保 Host 失败时必须给出可操作诊断，区分拉起失败、就绪超时、端口被非 xylitol 占用与版本不符；不得只提示先手 xylitol serve。
+    确保 Host 失败时必须给出可操作诊断，区分拉起失败、就绪超时、端口被非 xylitol 占用、版本不符与替换旧 Host 失败；版本不符须分开给出客户端过旧与 Host 过旧两种处置；不得只提示先手 xylitol serve。
 
     场景: 确保失败诊断可操作
       当 读取拉起失败与就绪超时与非 xylitol 占用的诊断
       那么 各诊断可操作且不只提示先手 serve
+
+    场景: 替换失败诊断可操作
+      假如 旧 Host 在五秒内未退出
+      当 确保口尝试替换
+      那么 诊断含该 pid 与手停建议且不承诺强制结束进程
+
+    场景: 客户端过旧诊断可操作
+      假如 确保口上 Host 版本新于客户端
+      当 产品 TUI 执行确保
+      那么 诊断建议升级客户端或执行 xylitol serve stop
+
+    场景: Host过旧处置可操作
+      假如 显式 attach 非本机确保口且该口 Host 版本旧于客户端
+      当 产品 TUI 尝试 attach
+      那么 诊断说明确保口会替换旧 Host 且显式 attach 不替换并给出手停建议
 
   @req:r3249
   规则: ensure-host-fast-failure

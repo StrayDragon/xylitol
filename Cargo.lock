@@ -7522,6 +7522,7 @@ dependencies = [
  "reqwest",
  "rutis",
  "rutis-loader",
+ "semver",
  "serde",
  "serde_json",
  "serial_test",

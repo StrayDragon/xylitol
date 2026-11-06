@@ -110,6 +110,30 @@ fn test_ce21_ensure_target(attach_bdd: AttachBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "旧版Host在确保口被替换"
+)]
+fn test_ce21_replace_older(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "新版Host不被杀"
+)]
+fn test_ce21_no_kill_newer(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "非xylitol占用不杀不拉起"
+)]
+fn test_ce21_foreign_no_spawn(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "显式attach不替换"
+)]
+fn test_ce21_explicit_no_replace(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
     name = "旧版短名称不已解析"
 )]
 fn test_c2826_legacy_names(cli_entry_bdd: CliEntryBdd) {}

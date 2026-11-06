@@ -402,6 +402,24 @@ fn test_ux_no_key() {}
 fn test_ux_ensure_diag(attach_bdd: AttachBdd) {}
 
 #[scenario(
+    path = "llmanspec/specs/user-experience/user-experience.feature",
+    name = "替换失败诊断可操作"
+)]
+fn test_ux_replace_timeout(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/user-experience/user-experience.feature",
+    name = "客户端过旧诊断可操作"
+)]
+fn test_ux_client_too_old(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/user-experience/user-experience.feature",
+    name = "Host过旧处置可操作"
+)]
+fn test_ux_host_too_old(attach_bdd: AttachBdd) {}
+
+#[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
     name = "拖选选择复制誊本"
 )]

@@ -209,4 +209,27 @@ mod tests {
         assert!(msg.contains("not running") || msg.contains("pid"), "{msg}");
         assert!(pid_alive(std::process::id()));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn request_exit_rejects_unrepresentable_pid() {
+        let err = request_exit(u32::MAX).expect_err("must not signal");
+        assert!(err.contains("invalid pid"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn request_exit_terminates_a_child() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("sleep");
+        let pid = child.id();
+        request_exit(pid).expect("SIGTERM child");
+        let status = child.wait().expect("reap");
+        assert!(!status.success(), "SIGTERM must end the child");
+    }
 }

@@ -1,6 +1,11 @@
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use xylitol_kernel::attach::{
+    HealthzInfo, ReadyDecision, classify_running, ready_decision, replace_timeout_message,
+};
+
+const OWN_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct SurfaceBdd {
     pub(crate) mode: Cell<Option<xylitol::cli::SurfaceMode>>,
@@ -511,6 +516,10 @@ pub struct AttachBdd {
     pub(crate) attach: RefCell<Option<String>>,
     pub(crate) spawned: Cell<bool>,
     pub(crate) ensure_target: Cell<bool>,
+    pub(crate) peer_version: RefCell<Option<String>>,
+    pub(crate) foreign_occupant: Cell<bool>,
+    pub(crate) replace_timed_out: Cell<bool>,
+    pub(crate) decision: Cell<Option<ReadyDecision>>,
 }
 
 impl AttachBdd {
@@ -521,6 +530,10 @@ impl AttachBdd {
             attach: RefCell::new(None),
             spawned: Cell::new(false),
             ensure_target: Cell::new(false),
+            peer_version: RefCell::new(None),
+            foreign_occupant: Cell::new(false),
+            replace_timed_out: Cell::new(false),
+            decision: Cell::new(None),
         }
     }
 }
@@ -550,6 +563,13 @@ fn g_ce21_explicit_other(attach_bdd: &AttachBdd) {
 fn w_ce21_attach(attach_bdd: &AttachBdd) {
     let attach = attach_bdd.attach.borrow().clone();
     let url = xylitol::resolve_attach_url(attach.as_deref(), None);
+    if let Some(version) = attach_bdd.peer_version.borrow().clone() {
+        let hz = HealthzInfo { pid: 4242, version };
+        attach_bdd.err.replace(Some(
+            classify_running(Some(hz), None, &url, OWN_VERSION).unwrap_or_default(),
+        ));
+        return;
+    }
     let should = xylitol::should_ensure_host(attach.as_deref(), None, attach_bdd.no_ensure.get());
     if should {
         attach_bdd.spawned.set(true);
@@ -603,6 +623,127 @@ fn t_ce21_ensure_target(attach_bdd: &AttachBdd) {
     assert!(attach_bdd.ensure_target.get());
     let inprocess = std::any::type_name::<xylitol::XyInProcessDriver>();
     assert!(inprocess.contains("XyInProcessDriver"), "{inprocess}");
+}
+
+#[given("本机确保口上 Host 版本旧于客户端")]
+fn g_ce21_older_host(attach_bdd: &AttachBdd) {
+    attach_bdd.peer_version.replace(Some("0.0.0-aa".into()));
+}
+
+#[given("确保口上 Host 版本新于客户端")]
+fn g_ce21_newer_host(attach_bdd: &AttachBdd) {
+    attach_bdd.peer_version.replace(Some("9.9.9".into()));
+}
+
+#[given("本机确保口被非 xylitol 进程占用")]
+fn g_ce21_foreign_occupant(attach_bdd: &AttachBdd) {
+    attach_bdd.foreign_occupant.set(true);
+}
+
+#[given("显式 attach 非本机确保口且该口 Host 版本旧于客户端")]
+fn g_ce21_explicit_older_host(attach_bdd: &AttachBdd) {
+    attach_bdd.attach.replace(Some("http://127.0.0.1:1".into()));
+    attach_bdd.peer_version.replace(Some("0.0.0-aa".into()));
+}
+
+#[given("旧 Host 在五秒内未退出")]
+fn g_ce21_replace_timed_out(attach_bdd: &AttachBdd) {
+    attach_bdd.replace_timed_out.set(true);
+}
+
+#[when("产品 TUI 执行确保")]
+fn w_ce21_ensure(attach_bdd: &AttachBdd) {
+    if attach_bdd.foreign_occupant.get() {
+        attach_bdd
+            .decision
+            .set(Some(ready_decision(None, OWN_VERSION)));
+        attach_bdd.err.replace(Some(
+            classify_running(None, None, "http://127.0.0.1:18790", OWN_VERSION).unwrap_or_default(),
+        ));
+        return;
+    }
+    let hz = attach_bdd
+        .peer_version
+        .borrow()
+        .clone()
+        .map(|version| HealthzInfo { pid: 4242, version });
+    let decision = ready_decision(hz.as_ref(), OWN_VERSION);
+    attach_bdd.decision.set(Some(decision));
+    if decision == ReadyDecision::FailClosed {
+        attach_bdd.err.replace(Some(
+            classify_running(hz, None, "http://127.0.0.1:18790", OWN_VERSION).unwrap_or_default(),
+        ));
+    }
+}
+
+#[when("确保口尝试替换")]
+fn w_ce21_attempt_replace(attach_bdd: &AttachBdd) {
+    assert!(
+        attach_bdd.replace_timed_out.get(),
+        "given must arm the replace timeout"
+    );
+    attach_bdd.err.replace(Some(replace_timeout_message(
+        4242,
+        std::time::Duration::from_secs(5),
+    )));
+}
+
+#[then("请求旧 Host 退出并在新 Host 就绪后 attach")]
+fn t_ce21_replace_decision(attach_bdd: &AttachBdd) {
+    assert_eq!(attach_bdd.decision.get(), Some(ReadyDecision::Replace));
+}
+
+#[then("非零退出且不向该进程发退出请求")]
+fn t_ce21_no_exit_request(attach_bdd: &AttachBdd) {
+    assert_eq!(attach_bdd.decision.get(), Some(ReadyDecision::FailClosed));
+}
+
+#[then("不杀该进程也不拉起 Host 并给出可操作诊断")]
+fn t_ce21_foreign_fail_closed(attach_bdd: &AttachBdd) {
+    assert_eq!(attach_bdd.decision.get(), Some(ReadyDecision::FailClosed));
+    let msg = attach_bdd
+        .err
+        .borrow()
+        .clone()
+        .expect("foreign occupant diagnostic");
+    assert!(msg.contains("not xylitol"), "{msg}");
+    assert!(msg.contains("xylitol tui --port"), "{msg}");
+}
+
+#[then("非零退出且不替换该 Host")]
+fn t_ce21_explicit_no_replace(attach_bdd: &AttachBdd) {
+    let msg = attach_bdd.err.borrow().clone().expect("attach diagnostic");
+    assert!(msg.contains("explicit attach cannot"), "{msg}");
+    assert!(!xylitol::should_ensure_host(
+        attach_bdd.attach.borrow().as_deref(),
+        None,
+        false
+    ));
+}
+
+#[then("诊断含该 pid 与手停建议且不承诺强制结束进程")]
+fn t_ux_replace_timeout_diag(attach_bdd: &AttachBdd) {
+    let msg = attach_bdd.err.borrow().clone().expect("diagnostic");
+    assert!(msg.contains("4242"), "{msg}");
+    assert!(
+        msg.contains("xylitol serve stop") || msg.contains("kill 4242"),
+        "{msg}"
+    );
+    assert!(!msg.contains("SIGKILL"), "{msg}");
+}
+
+#[then("诊断建议升级客户端或执行 xylitol serve stop")]
+fn t_ux_client_too_old(attach_bdd: &AttachBdd) {
+    let msg = attach_bdd.err.borrow().clone().expect("diagnostic");
+    assert!(msg.contains("Upgrade this client"), "{msg}");
+    assert!(msg.contains("serve stop"), "{msg}");
+}
+
+#[then("诊断说明确保口会替换旧 Host 且显式 attach 不替换并给出手停建议")]
+fn t_ux_host_too_old(attach_bdd: &AttachBdd) {
+    let msg = attach_bdd.err.borrow().clone().expect("diagnostic");
+    assert!(msg.contains("explicit attach cannot"), "{msg}");
+    assert!(msg.contains("xylitol serve stop"), "{msg}");
 }
 
 #[when("读取拉起失败与就绪超时与非 xylitol 占用的诊断")]

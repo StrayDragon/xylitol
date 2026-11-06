@@ -164,6 +164,110 @@ pub struct HealthzInfo {
 }
 
 #[cfg(feature = "server")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VersionVerdict {
+    Same,
+    Older,
+    Newer,
+    Unparsable,
+}
+
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadyDecision {
+    Attach,
+    Replace,
+    FailClosed,
+}
+
+#[cfg(feature = "server")]
+pub fn version_verdict(own: &str, peer: &str) -> VersionVerdict {
+    let (Ok(own), Ok(peer)) = (semver::Version::parse(own), semver::Version::parse(peer)) else {
+        return VersionVerdict::Unparsable;
+    };
+    match peer.cmp(&own) {
+        std::cmp::Ordering::Equal => VersionVerdict::Same,
+        std::cmp::Ordering::Less => VersionVerdict::Older,
+        std::cmp::Ordering::Greater => VersionVerdict::Newer,
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn ready_decision(hz: Option<&HealthzInfo>, own: &str) -> ReadyDecision {
+    let Some(hz) = hz else {
+        return ReadyDecision::FailClosed;
+    };
+    match version_verdict(own, &hz.version) {
+        VersionVerdict::Same => ReadyDecision::Attach,
+        VersionVerdict::Older => ReadyDecision::Replace,
+        VersionVerdict::Newer | VersionVerdict::Unparsable => ReadyDecision::FailClosed,
+    }
+}
+
+#[cfg(feature = "server")]
+#[derive(Clone, Copy)]
+enum VersionContext {
+    Ensure,
+    ExplicitAttach,
+}
+
+#[cfg(feature = "server")]
+fn version_mismatch_message(
+    hz: &HealthzInfo,
+    url: &str,
+    own: &str,
+    context: VersionContext,
+) -> Option<String> {
+    match version_verdict(own, &hz.version) {
+        VersionVerdict::Same => None,
+        VersionVerdict::Older => Some(match context {
+            VersionContext::Ensure => format!(
+                "Host at {url} runs xylitol version {} (pid {}), older than this client ({own}). \
+                 Restart the Host: xylitol serve stop && xylitol serve",
+                hz.version, hz.pid
+            ),
+            VersionContext::ExplicitAttach => format!(
+                "Host at {url} runs xylitol version {} (pid {}), older than this client ({own}). \
+                 The local ensure path replaces an older Host; explicit attach cannot. \
+                 Restart it: xylitol serve stop && xylitol serve",
+                hz.version, hz.pid
+            ),
+        }),
+        VersionVerdict::Newer => Some(format!(
+            "Host at {url} runs xylitol version {} (pid {}), newer than this client ({own}). \
+             Upgrade this client, or run: xylitol serve stop",
+            hz.version, hz.pid
+        )),
+        VersionVerdict::Unparsable => Some(format!(
+            "Host at {url} reports version {:?} (pid {}) that cannot be compared with this client ({own}). \
+             Stop it manually: xylitol serve stop",
+            hz.version, hz.pid
+        )),
+    }
+}
+
+#[cfg(feature = "server")]
+fn fail_closed_running(
+    url: &str,
+    hz: HealthzInfo,
+    reg: Option<xylitol_serve::Registration>,
+) -> String {
+    if let Some(msg) =
+        version_mismatch_message(&hz, url, env!("CARGO_PKG_VERSION"), VersionContext::Ensure)
+    {
+        return msg;
+    }
+    classify_running(Some(hz), reg, url, env!("CARGO_PKG_VERSION"))
+        .unwrap_or_else(|| format!("Host at {url} cannot be replaced automatically"))
+}
+
+#[cfg(feature = "server")]
+fn ensure_running_message(url: &str, hz: HealthzInfo) -> String {
+    version_mismatch_message(&hz, url, env!("CARGO_PKG_VERSION"), VersionContext::Ensure)
+        .unwrap_or_else(|| ready_timeout_message(url))
+}
+
+#[cfg(feature = "server")]
 pub fn classify_running(
     hz: Option<HealthzInfo>,
     reg: Option<xylitol_serve::Registration>,
@@ -177,12 +281,10 @@ pub fn classify_running(
              xylitol tui --port <port>"
         ));
     };
-    if hz.version != own_version {
-        return Some(format!(
-            "Host at {url} runs xylitol version {} but this client is {own_version}. \
-             Restart the daemon: kill {} && xylitol serve",
-            hz.version, hz.pid
-        ));
+    if let Some(msg) =
+        version_mismatch_message(&hz, url, own_version, VersionContext::ExplicitAttach)
+    {
+        return Some(msg);
     }
     if let Some(reg) = reg
         && reg.pid != hz.pid
@@ -470,6 +572,12 @@ pub async fn attach_preflight_with(
 const READY_WAIT: Duration = Duration::from_secs(30);
 
 #[cfg(feature = "server")]
+const REPLACE_EXIT_WAIT: Duration = Duration::from_secs(5);
+
+#[cfg(feature = "server")]
+const REPLACE_LOCK_WAIT: Duration = Duration::from_secs(30);
+
+#[cfg(feature = "server")]
 pub struct EnsureHostOpts {
     pub registration_path: Option<std::path::PathBuf>,
     pub ready_timeout: Duration,
@@ -585,6 +693,16 @@ pub async fn ensure_host_with(
     opts: EnsureHostOpts,
     spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<SpawnedHost>,
 ) -> Result<(), String> {
+    ensure_host_with_hooks(url, opts, spawn, crate::occupancy::subcommand::request_exit).await
+}
+
+#[cfg(feature = "server")]
+async fn ensure_host_with_hooks(
+    url: &str,
+    opts: EnsureHostOpts,
+    spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<SpawnedHost>,
+    exit: impl Fn(u32) -> Result<(), String>,
+) -> Result<(), String> {
     let reg_path = opts
         .registration_path
         .clone()
@@ -592,7 +710,13 @@ pub async fn ensure_host_with(
     let reg = xylitol_serve::read_registration(&reg_path).ok();
     let token = discover_token(url, &reg_path);
     match inspect_live(url, token.as_deref()).await {
-        LiveHost::Ready(hz) => return finish_running(url, hz, reg),
+        LiveHost::Ready(hz) => {
+            return match ready_decision(Some(&hz), env!("CARGO_PKG_VERSION")) {
+                ReadyDecision::Attach => finish_running(url, hz, reg),
+                ReadyDecision::FailClosed => Err(fail_closed_running(url, hz, reg)),
+                ReadyDecision::Replace => replace_running(url, &reg_path, &opts, spawn, exit).await,
+            };
+        }
         LiveHost::Starting | LiveHost::Absent | LiveHost::Unauthorized => {}
     }
     if probe_host(url).is_err() {
@@ -604,6 +728,134 @@ pub async fn ensure_host_with(
         Err(err) => return Err(spawn_failed_message(url, &err.to_string())),
     };
     wait_until_ready(url, &reg_path, opts.ready_timeout, &mut spawned).await
+}
+
+#[cfg(feature = "server")]
+async fn replace_running(
+    url: &str,
+    registration_path: &std::path::Path,
+    opts: &EnsureHostOpts,
+    spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<SpawnedHost>,
+    exit: impl Fn(u32) -> Result<(), String>,
+) -> Result<(), String> {
+    let _lock = acquire_replace_lock(registration_path).await?;
+    let token = discover_token(url, registration_path);
+    let target = match inspect_live(url, token.as_deref()).await {
+        LiveHost::Ready(current) => match ready_decision(Some(&current), env!("CARGO_PKG_VERSION"))
+        {
+            ReadyDecision::Attach => {
+                return finish_running(
+                    url,
+                    current,
+                    xylitol_serve::read_registration(registration_path).ok(),
+                );
+            }
+            ReadyDecision::FailClosed => {
+                return Err(fail_closed_running(url, current, None));
+            }
+            ReadyDecision::Replace => Some(current),
+        },
+        LiveHost::Starting | LiveHost::Absent | LiveHost::Unauthorized => None,
+    };
+    if let Some(target) = target {
+        exit(target.pid)?;
+        wait_for_exit(target.pid, REPLACE_EXIT_WAIT).await?;
+        if let Ok(reg) = xylitol_serve::read_registration(registration_path)
+            && reg.pid == target.pid
+        {
+            xylitol_serve::remove_registration(registration_path);
+        }
+    }
+    let mut spawned = match spawn(url, opts.lifecycle, opts.idle_timeout) {
+        Ok(spawned) => spawned,
+        Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => SpawnedHost::detached(),
+        Err(err) => return Err(spawn_failed_message(url, &err.to_string())),
+    };
+    wait_until_ready(url, registration_path, opts.ready_timeout, &mut spawned).await
+}
+
+#[cfg(all(feature = "server", unix))]
+fn replace_lock_path(registration_path: &std::path::Path) -> std::path::PathBuf {
+    let mut path = registration_path.as_os_str().to_os_string();
+    path.push(".replace.lock");
+    std::path::PathBuf::from(path)
+}
+
+#[cfg(feature = "server")]
+#[cfg_attr(not(unix), allow(dead_code))]
+struct ReplaceLock {
+    #[cfg(unix)]
+    _file: std::fs::File,
+}
+
+#[cfg(feature = "server")]
+async fn acquire_replace_lock(registration_path: &std::path::Path) -> Result<ReplaceLock, String> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+
+        let lock_path = replace_lock_path(registration_path);
+        let display = lock_path.display().to_string();
+        let file = tokio::task::spawn_blocking(move || -> Result<std::fs::File, String> {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(&lock_path)
+                .map_err(|err| format!("Failed to open Host replace lock {display}: {err}"))?;
+            let deadline = std::time::Instant::now() + REPLACE_LOCK_WAIT;
+            loop {
+                let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+                if rc == 0 {
+                    return Ok(file);
+                }
+                let err = std::io::Error::last_os_error();
+                if err.kind() != std::io::ErrorKind::WouldBlock {
+                    return Err(format!("Failed to lock {display}: {err}"));
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!(
+                        "Another client is replacing the Host (lock {display}); retry shortly."
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        })
+        .await
+        .map_err(|err| format!("Host replace lock task failed: {err}"))??;
+        Ok(ReplaceLock { _file: file })
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = registration_path;
+        Err(
+            "Replacing an older Host is not supported on this platform; \
+             run `xylitol serve stop` and restart."
+                .into(),
+        )
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn replace_timeout_message(pid: u32, timeout: Duration) -> String {
+    format!(
+        "Host pid {pid} did not exit within {}s after SIGTERM. \
+         Stop it manually (kill {pid} or xylitol serve stop), then retry.",
+        timeout.as_secs()
+    )
+}
+
+#[cfg(feature = "server")]
+async fn wait_for_exit(pid: u32, timeout: Duration) -> Result<(), String> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    while pid_alive(pid) {
+        if tokio::time::Instant::now() >= deadline {
+            return Err(replace_timeout_message(pid, timeout));
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    Ok(())
 }
 
 #[cfg(feature = "server")]
@@ -678,13 +930,15 @@ async fn wait_until_ready(
                         return Err(auth_required_message(url, registration_path));
                     }
                     HealthzProbe::Info(hz) | HealthzProbe::Starting(hz) => {
+                        return Err(ensure_running_message(url, hz));
+                    }
+                    HealthzProbe::Unreachable => {
                         if let Some(msg) =
-                            classify_running(Some(hz), None, url, env!("CARGO_PKG_VERSION"))
+                            classify_running(None, None, url, env!("CARGO_PKG_VERSION"))
                         {
                             return Err(msg);
                         }
                     }
-                    HealthzProbe::Unreachable => {}
                 }
             }
             return Err(ready_timeout_message(url));
@@ -1012,7 +1266,7 @@ mod c2475_tests {
     }
 
     #[tokio::test]
-    async fn ensure_host_does_not_spawn_on_version_mismatch() {
+    async fn ensure_host_does_not_spawn_when_host_is_newer() {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/healthz"))
@@ -1020,7 +1274,7 @@ mod c2475_tests {
                 wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
                     "status": "ok",
                     "pid": 3,
-                    "version": "0.0.0-other",
+                    "version": "9.9.9",
                 })),
             )
             .mount(&server)
@@ -1101,5 +1355,410 @@ mod c2475_tests {
         .await
         .expect("ensure recovers token after spawn");
         assert!(spawned.load(std::sync::atomic::Ordering::SeqCst));
+    }
+}
+
+#[cfg(all(test, feature = "server"))]
+mod c3040_tests {
+    use super::*;
+
+    fn healthz_ok() -> wiremock::ResponseTemplate {
+        wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": "ok",
+            "pid": 3,
+            "version": env!("CARGO_PKG_VERSION"),
+        }))
+    }
+
+    #[test]
+    fn version_verdict_orders_semver() {
+        assert_eq!(version_verdict("0.2.0", "0.2.0"), VersionVerdict::Same);
+        assert_eq!(version_verdict("0.2.0", "0.1.9"), VersionVerdict::Older);
+        assert_eq!(version_verdict("0.2.0", "0.3.0"), VersionVerdict::Newer);
+        assert_eq!(version_verdict("0.2.0", "0.2.0-pre"), VersionVerdict::Older);
+        assert_eq!(version_verdict("0.2.0-pre", "0.2.0"), VersionVerdict::Newer);
+        assert_eq!(
+            version_verdict("0.2.0", "not-a-version"),
+            VersionVerdict::Unparsable
+        );
+        assert_eq!(version_verdict("nope", "0.2.0"), VersionVerdict::Unparsable);
+    }
+
+    #[test]
+    fn ready_decision_covers_replace_and_fail_closed() {
+        let older = HealthzInfo {
+            pid: 1,
+            version: "0.1.0".into(),
+        };
+        let same = HealthzInfo {
+            pid: 2,
+            version: "0.2.0".into(),
+        };
+        let newer = HealthzInfo {
+            pid: 3,
+            version: "0.3.0".into(),
+        };
+        let unparsable = HealthzInfo {
+            pid: 4,
+            version: "weird".into(),
+        };
+        assert_eq!(ready_decision(None, "0.2.0"), ReadyDecision::FailClosed);
+        assert_eq!(
+            ready_decision(Some(&older), "0.2.0"),
+            ReadyDecision::Replace
+        );
+        assert_eq!(ready_decision(Some(&same), "0.2.0"), ReadyDecision::Attach);
+        assert_eq!(
+            ready_decision(Some(&newer), "0.2.0"),
+            ReadyDecision::FailClosed
+        );
+        assert_eq!(
+            ready_decision(Some(&unparsable), "0.2.0"),
+            ReadyDecision::FailClosed
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_for_exit_returns_when_pid_is_gone() {
+        wait_for_exit(u32::MAX, Duration::from_millis(100))
+            .await
+            .expect("dead pid must not block");
+    }
+
+    #[tokio::test]
+    async fn wait_for_exit_times_out_for_live_pid() {
+        let pid = std::process::id();
+        let err = wait_for_exit(pid, Duration::from_millis(80))
+            .await
+            .expect_err("live pid must time out");
+        assert!(err.contains(&pid.to_string()), "{err}");
+        assert!(err.contains("SIGTERM"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn replace_lock_serializes_clients() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let reg_path = dir.path().join("serve.json");
+        let first = acquire_replace_lock(&reg_path).await.expect("first lock");
+        let path = reg_path.clone();
+        let second = tokio::spawn(async move { acquire_replace_lock(&path).await });
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert!(
+            !second.is_finished(),
+            "second client must wait for the replace lock"
+        );
+        drop(first);
+        let second = tokio::time::timeout(Duration::from_secs(2), second)
+            .await
+            .expect("second acquire timed out")
+            .expect("join")
+            .expect("second lock");
+        drop(second);
+    }
+
+    #[tokio::test]
+    async fn replace_running_replaces_older_host() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "status": "ok",
+                    "pid": u32::MAX,
+                    "version": "0.0.0-aa",
+                })),
+            )
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(healthz_ok())
+            .with_priority(5)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let reg_path = dir.path().join("serve.json");
+        xylitol_serve::write_registration(
+            &reg_path,
+            &xylitol_serve::Registration {
+                url: server.uri(),
+                pid: u32::MAX,
+                version: "0.0.0-aa".into(),
+                token: None,
+                lifecycle: None,
+            },
+        )
+        .expect("write registration");
+
+        let exited = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let exited_for_closure = exited.clone();
+        let spawned = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = spawned.clone();
+        let spawn_reg_path = reg_path.clone();
+        let spawn_url = server.uri();
+        replace_running(
+            &server.uri(),
+            &reg_path,
+            &EnsureHostOpts {
+                registration_path: Some(reg_path.clone()),
+                ready_timeout: Duration::from_millis(800),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            move |_, _, _| {
+                xylitol_serve::write_registration(
+                    &spawn_reg_path,
+                    &xylitol_serve::Registration {
+                        url: spawn_url.clone(),
+                        pid: 3,
+                        version: env!("CARGO_PKG_VERSION").into(),
+                        token: None,
+                        lifecycle: None,
+                    },
+                )
+                .expect("write new registration");
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(SpawnedHost::detached())
+            },
+            move |pid| {
+                exited_for_closure.store(pid, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .expect("replace older host");
+        assert_eq!(exited.load(std::sync::atomic::Ordering::SeqCst), u32::MAX);
+        assert!(spawned.load(std::sync::atomic::Ordering::SeqCst));
+        let reg = xylitol_serve::read_registration(&reg_path).expect("new registration");
+        assert_eq!(reg.pid, 3, "new registration must point at the fresh Host");
+        assert_eq!(reg.version, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[tokio::test]
+    async fn ensure_host_replaces_older_host() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "status": "ok",
+                    "pid": u32::MAX,
+                    "version": "0.0.0-aa",
+                })),
+            )
+            .up_to_n_times(2)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(healthz_ok())
+            .with_priority(5)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let reg_path = dir.path().join("serve.json");
+        xylitol_serve::write_registration(
+            &reg_path,
+            &xylitol_serve::Registration {
+                url: server.uri(),
+                pid: u32::MAX,
+                version: "0.0.0-aa".into(),
+                token: None,
+                lifecycle: None,
+            },
+        )
+        .expect("write registration");
+        let exited = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let exited_for_closure = exited.clone();
+        let spawned = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = spawned.clone();
+        let spawn_reg_path = reg_path.clone();
+        let spawn_url = server.uri();
+        ensure_host_with_hooks(
+            &server.uri(),
+            EnsureHostOpts {
+                registration_path: Some(reg_path.clone()),
+                ready_timeout: Duration::from_millis(800),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            move |_, _, _| {
+                xylitol_serve::write_registration(
+                    &spawn_reg_path,
+                    &xylitol_serve::Registration {
+                        url: spawn_url.clone(),
+                        pid: 3,
+                        version: env!("CARGO_PKG_VERSION").into(),
+                        token: None,
+                        lifecycle: None,
+                    },
+                )
+                .expect("write new registration");
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(SpawnedHost::detached())
+            },
+            move |pid| {
+                exited_for_closure.store(pid, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .expect("ensure replaces older host");
+        assert_eq!(exited.load(std::sync::atomic::Ordering::SeqCst), u32::MAX);
+        assert!(spawned.load(std::sync::atomic::Ordering::SeqCst));
+        let reg = xylitol_serve::read_registration(&reg_path).expect("new registration");
+        assert_eq!(reg.pid, 3);
+    }
+
+    #[tokio::test]
+    async fn ensure_host_reports_foreign_occupant_after_ready_timeout() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(wiremock::ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let spawned = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = spawned.clone();
+        let err = ensure_host_with(
+            &server.uri(),
+            EnsureHostOpts {
+                registration_path: Some(dir.path().join("serve.json")),
+                ready_timeout: Duration::from_millis(200),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            move |_, _, _| {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Err(std::io::Error::from(std::io::ErrorKind::AddrInUse))
+            },
+        )
+        .await
+        .expect_err("foreign occupant must fail closed");
+        assert!(err.contains("not xylitol"), "{err}");
+        assert!(err.contains("xylitol tui --port"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn ensure_host_rejects_unparsable_version() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "status": "ok",
+                    "pid": 3,
+                    "version": "weird",
+                })),
+            )
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = ensure_host_with(
+            &server.uri(),
+            EnsureHostOpts {
+                registration_path: Some(dir.path().join("serve.json")),
+                ready_timeout: Duration::from_millis(200),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            |_, _, _| Ok(SpawnedHost::detached()),
+        )
+        .await
+        .expect_err("unparsable version must fail closed");
+        assert!(err.contains("cannot be compared"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn concurrent_replace_requests_only_one_exit() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "status": "ok",
+                    "pid": u32::MAX,
+                    "version": "0.0.0-aa",
+                })),
+            )
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(healthz_ok())
+            .with_priority(5)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let reg_path = dir.path().join("serve.json");
+        xylitol_serve::write_registration(
+            &reg_path,
+            &xylitol_serve::Registration {
+                url: server.uri(),
+                pid: u32::MAX,
+                version: "0.0.0-aa".into(),
+                token: None,
+                lifecycle: None,
+            },
+        )
+        .expect("write registration");
+        let opts = EnsureHostOpts {
+            registration_path: Some(reg_path.clone()),
+            ready_timeout: Duration::from_millis(800),
+            lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+            idle_timeout: Duration::from_millis(30),
+        };
+        let exits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let spawns = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let exits_a = exits.clone();
+        let exits_b = exits.clone();
+        let spawns_a = spawns.clone();
+        let spawns_b = spawns.clone();
+        let url = server.uri();
+        let first = replace_running(
+            &url,
+            &reg_path,
+            &opts,
+            move |_, _, _| {
+                spawns_a.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(SpawnedHost::detached())
+            },
+            move |_| {
+                exits_a.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        );
+        let second = replace_running(
+            &url,
+            &reg_path,
+            &opts,
+            move |_, _, _| {
+                spawns_b.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(SpawnedHost::detached())
+            },
+            move |_| {
+                exits_b.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        );
+        let (first, second) = tokio::join!(first, second);
+        first.expect("first replace");
+        second.expect("second replace");
+        assert_eq!(
+            exits.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "only one client may signal the older Host"
+        );
+        assert_eq!(spawns.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

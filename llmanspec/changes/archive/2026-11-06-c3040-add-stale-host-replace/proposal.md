@@ -3,6 +3,9 @@ depends_on:
   - c3035-add-ensure-host
 title: 确保口上新二进制替换过期 Host
 needs_specs_change: true
+branch: sdd/c3040-add-stale-host-replace
+base_branch: main
+base_sha: 4bfa86f10441932a5a5fcb02ecb7fe5b60eeb3f9
 ---
 
 # 确保口上新二进制替换过期 Host

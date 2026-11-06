@@ -1,6 +1,6 @@
 [package]
 name = "xylitol-serve"
-version = "0.0.0-pre"
+version.workspace = true
 edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
