@@ -341,15 +341,6 @@ fn optional_plugin_rows(
             "config": workflow,
         }));
     }
-    let plan: xylitol_official_plugin_config::types::PlanConfig =
-        config.app.section_or_default("plan").unwrap_or_default();
-    if plan.is_active() {
-        rows.push(serde_json::json!({
-            "id": "plan",
-            "name": "plan",
-            "config": plan,
-        }));
-    }
     rows.extend(lsp_dap_rows(config));
     rows
 }

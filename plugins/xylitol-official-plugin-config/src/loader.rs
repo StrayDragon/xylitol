@@ -286,9 +286,30 @@ fn reject_legacy_config_keys(merged: &Value) -> Result<(), LoadError> {
              (or use `models.d/` for generated model catalogs)",
         ));
     }
+    reject_plan_mode_removed(merged)?;
     reject_legacy_loop_example_section(merged)?;
     reject_legacy_loop_policies_keys(merged)?;
     reject_legacy_provider_preset(merged)?;
+    Ok(())
+}
+
+fn reject_plan_mode_removed(merged: &Value) -> Result<(), LoadError> {
+    if merged.get("plan").is_some() {
+        return Err(LoadError::validation(
+            "plan mode has been removed; delete the top-level `plan` section \
+             (see `xylitol config schema`)",
+        ));
+    }
+    if merged
+        .get("loop_policies")
+        .and_then(Value::as_object)
+        .is_some_and(|loop_policies| loop_policies.contains_key("plan_mode"))
+    {
+        return Err(LoadError::validation(
+            "plan mode has been removed; delete `loop_policies.plan_mode` \
+             (see `xylitol config schema`)",
+        ));
+    }
     Ok(())
 }
 
@@ -296,7 +317,7 @@ fn reject_legacy_loop_example_section(merged: &Value) -> Result<(), LoadError> {
     if merged.get("loop_example").is_some() {
         return Err(LoadError::validation(
             "loop_example is no longer supported; use `loop_policies`; \
-             todo/workflow/plan keys moved to top-level `todo`/`workflow`/`plan` \
+             todo/workflow keys moved to top-level `todo`/`workflow` \
              (see `xylitol config schema`)",
         ));
     }
@@ -312,7 +333,6 @@ fn reject_legacy_loop_policies_keys(merged: &Value) -> Result<(), LoadError> {
         ("todo_reminder", "todo.reminder"),
         ("todo_reminder_stale_after", "todo.reminder_stale_after"),
         ("todo_checkpoint", "todo.checkpoint"),
-        ("plan_mode", "plan.enabled"),
         ("workflow", "workflow"),
     ];
     for (old, new) in legacy {
@@ -863,9 +883,25 @@ compaction:
                 .is_active(),
             "workflow plugin is opt-in"
         );
-        let plan: crate::types::PlanConfig = config.section_or_default("plan").unwrap();
-        assert!(plan.is_active(), "plan plugin keeps the c2973 default");
-        assert!(plan.read_only, "plan mode is read-only by default");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn plan_mode_config_rejected_after_removal() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(global.join("config.yaml"), "plan:\n  enabled: true\n").unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let msg = err.to_string();
+        assert!(msg.contains("plan mode has been removed"), "got: {msg}");
     }
 
     #[test]

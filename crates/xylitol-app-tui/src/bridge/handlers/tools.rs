@@ -1,8 +1,8 @@
 use crate::bridge::preview::humanize_ask_result;
 use crate::bridge::session_tree::sync_todo_checklist;
 use crate::bridge::{
-    AskPhase, ModeStripState, UiEntry, UiModel, UiPhase, apply_tool_result_to_entries,
-    find_tool_mut, upsert_tool_entry,
+    AskPhase, UiEntry, UiModel, UiPhase, apply_tool_result_to_entries, find_tool_mut,
+    upsert_tool_entry,
 };
 use crate::driver::XyEvent;
 use crate::tool_display::is_ask_tool;
@@ -13,11 +13,7 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             sync_todo_checklist(model, list.clone());
             true
         }
-        XyEvent::PlanModeChanged { mode, plan_id } => {
-            model.mode_strip = mode_strip_for(mode, plan_id);
-            true
-        }
-        XyEvent::PlanDocUpdated { .. } | XyEvent::WorkflowUpdated { .. } => true,
+        XyEvent::WorkflowUpdated { .. } => true,
         XyEvent::ToolExecutionStart { id, name, args } => {
             apply_tool_start(model, id, name, args);
             true
@@ -36,22 +32,6 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             true
         }
         _ => false,
-    }
-}
-
-fn mode_strip_for(
-    mode: &xylitol_plugin_sdk::session::PlanModeKind,
-    plan_id: &Option<String>,
-) -> Option<ModeStripState> {
-    match mode {
-        xylitol_plugin_sdk::session::PlanModeKind::Plan => Some(ModeStripState {
-            label: "plan".into(),
-        }),
-        xylitol_plugin_sdk::session::PlanModeKind::Execute => {
-            plan_id.as_ref().map(|id| ModeStripState {
-                label: format!("execute · {id}"),
-            })
-        }
     }
 }
 

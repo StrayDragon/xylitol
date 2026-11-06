@@ -22,9 +22,6 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 Ok(DispatchOutcome::Models(XyDriver::available_models(self)))
             }
             Command::SetThinkingLevel { level, .. } => exec_set_thinking_level(self, level).await,
-            Command::SetPlanMode { mode, plan_id } => {
-                exec_set_plan_mode(self, &mode, plan_id).await
-            }
             Command::Bash {
                 command,
                 exclude_from_context,
@@ -176,37 +173,6 @@ async fn exec_set_thinking_level(
     validate_nonempty_thinking_level(&level)?;
     driver.set_thinking_level(level.clone()).await?;
     Ok(DispatchOutcome::ThinkingLevel(level))
-}
-
-async fn exec_set_plan_mode(
-    driver: &mut XyInProcessDriver,
-    mode: &str,
-    plan_id: Option<String>,
-) -> Result<DispatchOutcome, XyDriverError> {
-    let session_id = XyDriver::session_id(driver)
-        .ok_or_else(|| XyDriverError::invalid_input("no active session"))?;
-    let branch = load_plan_branch(driver, &session_id).await?;
-    let next = next_plan_mode(mode, plan_id, &branch)?;
-    driver
-        .store
-        .append_session_entry(&session_id, &next.to_custom_entry_shell())
-        .await
-        .map_err(XyDriverError::from)?;
-    Ok(DispatchOutcome::PlanMode {
-        mode: plan_mode_label(next.mode),
-        plan_id: next.plan_id,
-    })
-}
-
-async fn load_plan_branch(
-    driver: &XyInProcessDriver,
-    session_id: &str,
-) -> Result<Vec<xylitol_plugin_sdk::session::SessionEntry>, XyDriverError> {
-    match driver.store.load_leaf_branch(session_id).await {
-        Ok(branch) => Ok(branch),
-        Err(xylitol_plugin_sdk::error::XySessionStoreError::NotFound { .. }) => Ok(Vec::new()),
-        Err(err) => Err(XyDriverError::from(err)),
-    }
 }
 
 async fn exec_bash(
@@ -474,33 +440,6 @@ fn session_stats_json(stats: crate::driver::SessionStats) -> serde_json::Value {
             serde_json::json!({ "provider": provider, "model_id": model_id })
         }),
     })
-}
-
-fn next_plan_mode(
-    mode: &str,
-    plan_id: Option<String>,
-    branch: &[xylitol_plugin_sdk::session::SessionEntry],
-) -> Result<xylitol_plugin_sdk::session::PlanMode, XyDriverError> {
-    use xylitol_plugin_sdk::session::{PlanMode, PlanModeKind, latest_plan_mode};
-
-    match mode {
-        "toggle" => match latest_plan_mode(branch).mode {
-            PlanModeKind::Plan => Ok(PlanMode::execute()),
-            PlanModeKind::Execute => Ok(PlanMode::plan(plan_id)),
-        },
-        "plan" => Ok(PlanMode::plan(plan_id)),
-        "execute" => Ok(PlanMode::execute()),
-        other => Err(XyDriverError::invalid_input(format!(
-            "unknown plan mode: {other}"
-        ))),
-    }
-}
-
-fn plan_mode_label(kind: xylitol_plugin_sdk::session::PlanModeKind) -> String {
-    match kind {
-        xylitol_plugin_sdk::session::PlanModeKind::Plan => "plan".into(),
-        xylitol_plugin_sdk::session::PlanModeKind::Execute => "execute".into(),
-    }
 }
 
 fn sdk_session_tree_kind(

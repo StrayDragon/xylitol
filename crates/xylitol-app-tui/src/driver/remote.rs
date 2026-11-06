@@ -1446,7 +1446,6 @@ where
             Command::SetModel { model_id, .. } => self.exec_set_model(model_id).await,
             Command::CycleModel { .. } => self.exec_cycle_model().await,
             Command::SetThinkingLevel { level, .. } => self.exec_set_thinking_level(level).await,
-            Command::SetPlanMode { mode, plan_id } => self.exec_set_plan_mode(mode, plan_id).await,
             Command::Bash {
                 command,
                 exclude_from_context,
@@ -1564,17 +1563,6 @@ where
         .await?;
         *self.thinking.lock().unwrap() = level.clone();
         Ok(DispatchOutcome::ThinkingLevel(level))
-    }
-
-    async fn exec_set_plan_mode(
-        &mut self,
-        mode: String,
-        plan_id: Option<String>,
-    ) -> Result<DispatchOutcome, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::SetPlanMode { mode, plan_id })
-            .await?;
-        Ok(plan_mode_outcome(&data))
     }
 
     async fn exec_bash(
@@ -2040,20 +2028,6 @@ where
             steer_count: stats.steer_count,
             follow_up_count: stats.follow_up_count,
         }
-    }
-}
-
-fn plan_mode_outcome(data: &Value) -> DispatchOutcome {
-    DispatchOutcome::PlanMode {
-        mode: data
-            .get("mode")
-            .and_then(Value::as_str)
-            .unwrap_or("execute")
-            .to_string(),
-        plan_id: data
-            .get("plan_id")
-            .and_then(Value::as_str)
-            .map(str::to_string),
     }
 }
 

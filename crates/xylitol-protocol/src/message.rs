@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::Event;
 
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 pub const WIRE_FORMAT_JSONRPC: &str = "jsonrpc";
 
@@ -237,8 +237,8 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_five() {
-        assert_eq!(PROTOCOL_VERSION, 5);
+    fn protocol_version_is_six() {
+        assert_eq!(PROTOCOL_VERSION, 6);
         assert_eq!(WIRE_FORMAT_JSONRPC, "jsonrpc");
     }
 }

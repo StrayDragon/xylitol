@@ -110,9 +110,7 @@ where
             | XyEvent::SessionInfoChanged { .. }
             | XyEvent::ContextTokenSettlement { .. }
             | XyEvent::TodoUpdated { .. }
-            | XyEvent::PlanDocUpdated { .. }
-            | XyEvent::WorkflowUpdated { .. }
-            | XyEvent::PlanModeChanged { .. } => {}
+            | XyEvent::WorkflowUpdated { .. } => {}
             XyEvent::AgentEnd { .. } => break,
         }
     }

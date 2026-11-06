@@ -192,14 +192,14 @@
 
     场景: 产物覆盖当前顶层节
       当 读取仓库配置 schema 的顶层属性
-      那么 含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan 与 tools 与 serve
+      那么 含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 tools 与 serve
 
   @req:r2959
   规则: feature-plugin-config-sections
-    todo / workflow / plan 须为顶层配置节。todo 缺省启用（progress / reminder / checkpoint 缺省停用）；workflow 缺省停用；plan 缺省启用且 read_only 缺省 true。旧 `loop_example` 配置节 须被拒绝，并提示迁移到 `loop_policies`；`loop_policies.todo_progress / todo_reminder / todo_reminder_stale_after / todo_checkpoint / plan_mode / workflow` 键 须被拒绝，并提示迁移到新节。默认值与旧键拒绝 由配置 crate 单测覆盖。
+    todo / workflow 须为顶层配置节。todo 缺省启用（progress / reminder / checkpoint 缺省停用）；workflow 缺省停用。旧 `loop_example` 配置节 须被拒绝，并提示迁移到 `loop_policies`；`loop_policies.todo_progress / todo_reminder / todo_reminder_stale_after / todo_checkpoint / workflow` 键 须被拒绝，并提示迁移到新节；顶层 `plan` 与 `loop_policies.plan_mode` 须被拒绝并提示 plan mode 已移除。默认值与旧键拒绝 由配置 crate 单测覆盖。
 
     场景: 顶层功能配置节
-      假如 配置含 todo / workflow / plan 节
+      假如 配置含 todo / workflow 节
       当 加载配置
       那么 各节按缺省启用状态生效且旧 loop_example 被拒绝并提示迁移
 

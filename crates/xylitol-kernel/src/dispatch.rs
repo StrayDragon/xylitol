@@ -27,10 +27,6 @@ pub enum DispatchOutcome {
     Model(ModelInfo),
     Models(Vec<ModelInfo>),
     ThinkingLevel(String),
-    PlanMode {
-        mode: String,
-        plan_id: Option<String>,
-    },
     Bash(XyBashResult),
     Compacted(bool),
     SessionStats(serde_json::Value),
@@ -88,9 +84,6 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
             json!({ "models": models.iter().map(model_data).collect::<Vec<_>>() })
         }
         DispatchOutcome::ThinkingLevel(level) => json!({ "thinking_level": level }),
-        DispatchOutcome::PlanMode { mode, plan_id } => {
-            json!({ "mode": mode, "plan_id": plan_id })
-        }
         DispatchOutcome::Bash(r) => json!({
             "output": r.output,
             "exit_code": r.exit_code,
@@ -430,13 +423,6 @@ mod tests {
         assert_eq!(
             outcome_to_value(DispatchOutcome::ThinkingLevel("high".into())),
             json!({ "thinking_level": "high" })
-        );
-        assert_eq!(
-            outcome_to_value(DispatchOutcome::PlanMode {
-                mode: "plan".into(),
-                plan_id: Some("p".into()),
-            }),
-            json!({ "mode": "plan", "plan_id": "p" })
         );
         assert_eq!(
             outcome_to_value(DispatchOutcome::Bash(xylitol_plugin_sdk::XyBashResult {

@@ -20,11 +20,6 @@ pub enum Command {
     SetThinkingLevel {
         level: String,
     },
-    SetPlanMode {
-        mode: String,
-        #[serde(default)]
-        plan_id: Option<String>,
-    },
     Bash {
         command: String,
         #[serde(default)]

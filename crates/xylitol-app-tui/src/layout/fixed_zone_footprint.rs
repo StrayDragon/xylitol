@@ -65,7 +65,6 @@ pub fn reserved_lower_fixed_zone(
     queue_lines: usize,
     todo_lines: usize,
     toast_present: bool,
-    mode_lines: usize,
 ) -> usize {
     let status = if status_busy {
         STATUS_BUSY_ROWS
@@ -75,7 +74,6 @@ pub fn reserved_lower_fixed_zone(
     let toast = usize::from(toast_present);
     queue_lines
         .saturating_add(todo_lines)
-        .saturating_add(mode_lines)
         .saturating_add(toast)
         .saturating_add(status)
         .saturating_add(FOOTER_ROWS)
@@ -94,7 +92,7 @@ mod tests {
 
     #[test]
     fn short_terminal_resume_budget_keeps_status_room() {
-        let reserved = reserved_lower_fixed_zone(true, 0, 0, false, 0);
+        let reserved = reserved_lower_fixed_zone(true, 0, 0, false);
         assert_eq!(reserved, 3);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
         assert_eq!(body, 8);
@@ -105,7 +103,7 @@ mod tests {
     #[test]
     fn toast_and_queue_shrink_resume_body_so_lower_stack_fits() {
         assert_eq!(queue_strip_line_count(1, 0), 3);
-        let reserved = reserved_lower_fixed_zone(true, 3, 0, true, 0);
+        let reserved = reserved_lower_fixed_zone(true, 3, 0, true);
         assert_eq!(reserved, 7);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
         assert_eq!(body, 4);
@@ -114,17 +112,9 @@ mod tests {
 
     #[test]
     fn todo_bar_rows_count_in_lower_reserved() {
-        let reserved = reserved_lower_fixed_zone(true, 0, 3, false, 0);
+        let reserved = reserved_lower_fixed_zone(true, 0, 3, false);
         assert_eq!(reserved, 6);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
         assert_eq!(body, 5);
-    }
-
-    #[test]
-    fn mode_strip_counts_one_lower_row() {
-        let reserved = reserved_lower_fixed_zone(true, 0, 0, false, 1);
-        assert_eq!(reserved, 4);
-        let body = slot_body_budget(16, reserved, RESUME_SLOT);
-        assert_eq!(body, 7);
     }
 }

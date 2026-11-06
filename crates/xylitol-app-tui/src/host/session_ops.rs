@@ -1,10 +1,7 @@
-use crate::bridge::ModeStripState;
 use crate::debug_fixtures::FixedZoneOp;
 use crate::driver::{ModelInfo, XyDriver};
 use crate::layout::{WidthTier, width_tier};
-use xylitol_plugin_sdk::session::{
-    PlanModeKind, SessionEntry, SessionTreeTravel, latest_plan_mode,
-};
+use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion, Terminal, TreeNode};
 
 use super::super::bridge::session_tree::{rebuild_scrollback_from_travel, travel_history_note};
@@ -539,7 +536,6 @@ impl<T: Terminal> HostSession<T> {
             .as_ref()
             .map_or(has_more, |history| history.has_more);
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
-        self.ui_model.mode_strip = mode_strip_for_entries(&entries);
         let restored_stage_name = entries.iter().rev().find_map(|entry| {
             if let SessionEntry::SessionInfo(info) = entry {
                 info.name
@@ -679,7 +675,6 @@ impl<T: Terminal> HostSession<T> {
         };
         let anchor = self.capture_scroll_anchor();
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
-        self.ui_model.mode_strip = mode_strip_for_entries(&entries);
         crate::history_window::show_notice(&mut self.ui_model, has_more);
         self.sync_ui_root_from_model();
         let _ = self.render_now();
@@ -727,7 +722,6 @@ impl<T: Terminal> HostSession<T> {
             editor_text: None,
         };
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
-        self.ui_model.mode_strip = mode_strip_for_entries(&entries);
         crate::history_window::show_notice(&mut self.ui_model, has_more);
         self.sync_ui_root_from_model();
     }
@@ -735,17 +729,5 @@ impl<T: Terminal> HostSession<T> {
     pub fn clear_earlier_hint(&mut self) {
         crate::history_window::show_notice(&mut self.ui_model, false);
         self.sync_ui_root_from_model();
-    }
-}
-
-fn mode_strip_for_entries(entries: &[SessionEntry]) -> Option<ModeStripState> {
-    let mode = latest_plan_mode(entries);
-    match mode.mode {
-        PlanModeKind::Plan => Some(ModeStripState {
-            label: "plan".into(),
-        }),
-        PlanModeKind::Execute => mode.plan_id.as_ref().map(|id| ModeStripState {
-            label: format!("execute · {id}"),
-        }),
     }
 }

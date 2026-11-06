@@ -36,7 +36,7 @@
 
   @req:r42
   规则: 默认内置工具闭集
-    产品 default_tools（Print 与 TUI builtins 基座）须包含且以闭集提供：read、bash、edit、write、grep、find、ls（共 7 个）。todo 工具 由 todo 插件提供，plan 工具 由 plan 插件提供，不得计入核心闭集。ask 等面专属工具 不得计入该闭集（见 t28）。不得向模型暴露 todo_list。模型可见工具集 可经工具选择与 `replaces` 解析替换 grep / find；default_tools 闭集本身不变（见 tool-selection-list）。文件类七工具行为 对齐既有 pi 等价语义；Todo 两工具 由 todo 插件提供，行为见 agent-todo。
+    产品 default_tools（Print 与 TUI builtins 基座）须包含且以闭集提供：read、bash、edit、write、grep、find、ls（共 7 个）。todo 工具 由 todo 插件提供，不得计入核心闭集。ask 等面专属工具 不得计入该闭集（见 t28）。不得向模型暴露 todo_list。模型可见工具集 可经工具选择与 `replaces` 解析替换 grep / find；default_tools 闭集本身不变（见 tool-selection-list）。文件类七工具行为 对齐既有 pi 等价语义；Todo 两工具 由 todo 插件提供，行为见 agent-todo。
 
     场景: 全部核心工具冒烟
       假如 工具注册表含全部 7 个核心工具
@@ -603,10 +603,6 @@
       当 以会话工作区调用bash命令 "pwd"
       那么 bash 输出为会话工作区目录
 
-  @req:r2961
-  规则: plan-mode-before-tool-gate
-    plan 模式闸 须在工具执行前返回拒绝；被拒工具 不得产生任何副作用、不得进入工具执行与历史回写；闸 只 可收紧，不得绕过 core 权限裁决。由 plan 插件单测覆盖。
-
   @req:r2976
   规则: tool-selection-list
     System 须支持配置 `tools` 字符串列表：`+name` 启用、`-name` 禁用、裸 `name` 等同启用；按配置顺序应用，后者覆盖前者。未知工具名 须在装配期告警并忽略，不得使配置加载失败；空词元 / 仅前缀词元 须使配置加载失败（见 runtime-config tools-selection-list）。工具 须可声明 `replaces`；若替换工具与被替换工具同时启用，替换工具 须胜出且只保留一个；被替换工具由显式 `+` 启用时 须告警。被替换工具 不得因替换而永久移出候选集：替换工具被禁用后，被替换工具 须自动回到可见集。同类冲突告警 不得使装配失败。
@@ -633,7 +629,7 @@
 
   @req:r2977
   规则: static-tool-source
-    模型可见静态工具 须来自插件注册表（内置工具插件 + 工具源插件）；内核 不得为单个工具插件硬编码工具名。插件未装配或 feature 关闭时 须回落内置闭集；session 专属工具（todo / plan / workflow / ask）仍由装配层按会话能力注入。注册表快照 须过滤 `mcp__` 前缀的动态工具，避免把 session 级 MCP 工具混入静态基座。
+    模型可见静态工具 须来自插件注册表（内置工具插件 + 工具源插件）；内核 不得为单个工具插件硬编码工具名。插件未装配或 feature 关闭时 须回落内置闭集；session 专属工具（todo / workflow / ask）仍由装配层按会话能力注入。注册表快照 须过滤 `mcp__` 前缀的动态工具，避免把 session 级 MCP 工具混入静态基座。
 
     场景: 插件工具进入可见集
       假如 tools-fff 插件已装配

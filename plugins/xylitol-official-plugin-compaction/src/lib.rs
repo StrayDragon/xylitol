@@ -399,12 +399,9 @@ async fn ensure_state_entries_after_compact(
     session_id: &str,
     entries_before: &[SessionEntry],
 ) {
-    use std::collections::HashSet;
-
     use xylitol_plugin_sdk::session::{
-        CUSTOM_TYPE_PLAN_DOC, CUSTOM_TYPE_PLAN_MODE, CUSTOM_TYPE_PLAN_REF,
-        CUSTOM_TYPE_TODO_CHECKPOINT, CUSTOM_TYPE_WORKFLOW, PlanMode, build_context_entries,
-        latest_plan_ref, latest_todo_checkpoint, latest_workflow, plan_docs,
+        CUSTOM_TYPE_TODO_CHECKPOINT, CUSTOM_TYPE_WORKFLOW, build_context_entries,
+        latest_todo_checkpoint, latest_workflow,
     };
 
     let entries = match store.load_leaf_branch(session_id).await {
@@ -422,22 +419,6 @@ async fn ensure_state_entries_after_compact(
     };
 
     let mut snapshots: Vec<SessionEntry> = Vec::new();
-    if !has_custom(CUSTOM_TYPE_PLAN_MODE) {
-        let mode = entries_before.iter().rev().find_map(|entry| match entry {
-            SessionEntry::Custom(custom) if custom.custom_type == CUSTOM_TYPE_PLAN_MODE => {
-                PlanMode::from_data_value(&custom.data)
-            }
-            _ => None,
-        });
-        if let Some(mode) = mode {
-            snapshots.push(mode.to_custom_entry_shell());
-        }
-    }
-    if !has_custom(CUSTOM_TYPE_PLAN_REF)
-        && let Some(plan_ref) = latest_plan_ref(entries_before)
-    {
-        snapshots.push(plan_ref.to_custom_entry_shell());
-    }
     if !has_custom(CUSTOM_TYPE_WORKFLOW)
         && let Some(workflow) = latest_workflow(entries_before)
     {
@@ -447,25 +428,6 @@ async fn ensure_state_entries_after_compact(
         && let Some(checkpoint) = latest_todo_checkpoint(entries_before)
     {
         snapshots.push(checkpoint.to_custom_entry_shell());
-    }
-
-    let mut seen = HashSet::new();
-    for doc in plan_docs(entries_before).into_iter().rev() {
-        if !seen.insert(doc.plan_id.clone()) {
-            continue;
-        }
-        let present = cut.iter().any(|entry| {
-            matches!(
-                entry,
-                SessionEntry::Custom(custom)
-                    if custom.custom_type == CUSTOM_TYPE_PLAN_DOC
-                        && custom.data.get("plan_id").and_then(|id| id.as_str())
-                            == Some(doc.plan_id.as_str())
-            )
-        });
-        if !present {
-            snapshots.push(doc.to_custom_entry_shell());
-        }
     }
 
     for snapshot in snapshots {
@@ -568,9 +530,8 @@ mod tests {
 
     use super::*;
     use xylitol_plugin_sdk::session::{
-        ForkPosition, PlanDoc, PlanDocStatus, PlanDocStep, PlanMode, PlanRef, PlanScope,
-        SessionContext, SessionEntry, TodoCheckpoint, TodoCheckpointStep, TodoStatus, Workflow,
-        WorkflowStep,
+        ForkPosition, SessionContext, SessionEntry, TodoCheckpoint, TodoCheckpointStep, TodoStatus,
+        Workflow, WorkflowStep,
     };
     use xylitol_plugin_sdk::{XySessionError, XySessionStoreError};
 
@@ -627,24 +588,6 @@ mod tests {
         }
     }
 
-    fn doc(plan_id: &str, updated_at: u64) -> PlanDoc {
-        PlanDoc {
-            plan_id: plan_id.into(),
-            title: format!("Plan {plan_id}"),
-            status: PlanDocStatus::Draft,
-            scope: PlanScope::Session,
-            steps: vec![PlanDocStep {
-                id: "s1".into(),
-                content: "do it".into(),
-                depends_on: Vec::new(),
-                verification: None,
-                status: TodoStatus::Pending,
-            }],
-            created_at: 1,
-            updated_at,
-        }
-    }
-
     fn workflow() -> Workflow {
         Workflow {
             goal: "ship".into(),
@@ -698,16 +641,8 @@ mod tests {
     #[tokio::test]
     async fn compact_restores_every_state_custom_type() {
         let before = vec![
-            PlanMode::plan(Some("p1".into())).to_custom_entry_shell(),
-            PlanRef {
-                scope: PlanScope::Session,
-                plan_id: "p1".into(),
-                path: None,
-            }
-            .to_custom_entry_shell(),
             workflow().to_custom_entry_shell(),
             checkpoint().to_custom_entry_shell(),
-            doc("p1", 1).to_custom_entry_shell(),
         ];
         let store = Arc::new(MemStore::default());
         ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
@@ -715,58 +650,24 @@ mod tests {
         let appended = store.appended.lock().unwrap().clone();
         let types = custom_types(&appended);
         for expected in [
-            xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_MODE,
-            xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_REF,
             xylitol_plugin_sdk::session::CUSTOM_TYPE_WORKFLOW,
             xylitol_plugin_sdk::session::CUSTOM_TYPE_TODO_CHECKPOINT,
-            xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_DOC,
         ] {
             assert!(types.contains(&expected.to_string()), "missing {expected}");
         }
-        assert_eq!(appended.len(), 5);
+        assert_eq!(appended.len(), 2);
     }
 
     #[tokio::test]
     async fn compact_skips_state_already_in_the_context() {
-        let plan_mode = PlanMode::plan(Some("p1".into())).to_custom_entry_shell();
         let workflow = workflow().to_custom_entry_shell();
-        let before = vec![plan_mode.clone(), workflow.clone()];
+        let before = vec![workflow.clone()];
         let store = Arc::new(MemStore::default());
-        store.branch.lock().unwrap().extend([plan_mode, workflow]);
+        store.branch.lock().unwrap().extend([workflow]);
         ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
         assert!(
             store.appended.lock().unwrap().is_empty(),
             "state already present in the cut must not be duplicated"
         );
-    }
-
-    #[tokio::test]
-    async fn compact_keeps_only_the_latest_plan_doc_per_id() {
-        let before = vec![
-            doc("p1", 1).to_custom_entry_shell(),
-            doc("p1", 2).to_custom_entry_shell(),
-            doc("p2", 3).to_custom_entry_shell(),
-        ];
-        let store = Arc::new(MemStore::default());
-        ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
-
-        let appended = store.appended.lock().unwrap().clone();
-        let docs: Vec<_> = appended
-            .iter()
-            .filter_map(|entry| match entry {
-                SessionEntry::Custom(custom)
-                    if custom.custom_type == xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_DOC =>
-                {
-                    Some(custom.data.clone())
-                }
-                _ => None,
-            })
-            .collect();
-        assert_eq!(docs.len(), 2, "one snapshot per plan_id");
-        let p1 = docs
-            .iter()
-            .find(|data| data["plan_id"] == "p1")
-            .expect("p1");
-        assert_eq!(p1["updated_at"], 2, "the latest p1 must win");
     }
 }

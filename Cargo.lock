@@ -6713,7 +6713,6 @@ dependencies = [
  "xylitol-official-plugin-loop-policies",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-obs",
- "xylitol-official-plugin-plan",
  "xylitol-official-plugin-provider-anthropic",
  "xylitol-official-plugin-provider-openai",
  "xylitol-official-plugin-session",
@@ -6809,7 +6808,6 @@ dependencies = [
  "xylitol-official-plugin-lsp",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-obs",
- "xylitol-official-plugin-plan",
  "xylitol-official-plugin-provider-anthropic",
  "xylitol-official-plugin-provider-openai",
  "xylitol-official-plugin-session",
@@ -6862,7 +6860,6 @@ dependencies = [
  "xylitol-official-plugin-loop-policies",
  "xylitol-official-plugin-lsp",
  "xylitol-official-plugin-mcp",
- "xylitol-official-plugin-plan",
  "xylitol-official-plugin-todo",
  "xylitol-official-plugin-workflow",
  "xylitol-plugin-sdk",
@@ -6970,24 +6967,6 @@ dependencies = [
  "tokio",
  "xylitol-official-plugin-config",
  "xylitol-plugin-sdk",
-]
-
-[[package]]
-name = "xylitol-official-plugin-plan"
-version = "0.0.0-pre"
-dependencies = [
- "anyhow",
- "async-trait",
- "dirs 7.0.0",
- "log",
- "schemars",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "xylitol-official-plugin-session",
- "xylitol-plugin-sdk",
- "yaml_serde",
 ]
 
 [[package]]

@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Remove plan mode"
+branch: sdd/c3197-remove-plan-mode
+base_branch: main
+base_sha: b6501f5292d4b946e935c672b2e84bcfdba81dd6
 ---
 
 ## Why

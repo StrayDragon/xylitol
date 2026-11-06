@@ -661,7 +661,6 @@ fn g_tools_all_core(_ws: &Workspace) {
     let tools = xylitol_official_plugin_tools::default_tools();
     assert_eq!(tools.len(), 7);
     assert!(tools.iter().all(|t| t.name() != "todo_rewrite"));
-    assert!(tools.iter().all(|t| t.name() != "plan_write"));
 }
 
 #[when("各工具以合法参数调用")]

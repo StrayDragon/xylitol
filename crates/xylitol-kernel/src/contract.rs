@@ -240,8 +240,8 @@ mod tests {
             .expect("loop middleware registry service");
         assert_eq!(
             registry.ids(),
-            vec!["plan-mode".to_string(), "plan-tool-surface".to_string()],
-            "default boot enables the plan plugin but not workflow/todo middleware"
+            Vec::<String>::new(),
+            "default boot registers no loop middleware"
         );
         let _ = ctx.shutdown().await;
     }
@@ -266,7 +266,7 @@ mod tests {
             .expect("loop middleware registry service");
         assert_eq!(
             registry.ids(),
-            vec!["plan-mode".to_string(), "plan-tool-surface".to_string()],
+            Vec::<String>::new(),
             "unconfigured loop example must not add middleware"
         );
         let fiber = ctx.plugin(
@@ -283,23 +283,16 @@ mod tests {
             .expect("loop policies plugin"),
         );
         for _ in 0..64 {
-            if registry.ids().len() == 3 {
+            if registry.ids().len() == 1 {
                 break;
             }
             tokio::task::yield_now().await;
         }
-        assert_eq!(
-            registry.ids(),
-            vec![
-                "loop-policies".to_string(),
-                "plan-mode".to_string(),
-                "plan-tool-surface".to_string()
-            ]
-        );
+        assert_eq!(registry.ids(), vec!["loop-policies".to_string()]);
         fiber.dispose().await.expect("dispose");
         assert_eq!(
             registry.ids(),
-            vec!["plan-mode".to_string(), "plan-tool-surface".to_string()],
+            Vec::<String>::new(),
             "unload must leave no loop-policies middleware behind"
         );
         let _ = ctx.shutdown().await;

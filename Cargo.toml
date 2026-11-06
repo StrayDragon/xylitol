@@ -34,7 +34,6 @@ members = [
     "plugins/xylitol-official-plugin-loop-policies",
     "plugins/xylitol-official-plugin-todo",
     "plugins/xylitol-official-plugin-workflow",
-    "plugins/xylitol-official-plugin-plan",
     "plugins/xylitol-official-plugin-lsp",
     "plugins/xylitol-official-plugin-dap",
 ]
@@ -64,7 +63,6 @@ xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks"
 xylitol-official-plugin-loop-policies = { path = "plugins/xylitol-official-plugin-loop-policies" }
 xylitol-official-plugin-todo = { path = "plugins/xylitol-official-plugin-todo" }
 xylitol-official-plugin-workflow = { path = "plugins/xylitol-official-plugin-workflow" }
-xylitol-official-plugin-plan = { path = "plugins/xylitol-official-plugin-plan" }
 xylitol-official-plugin-lsp = { path = "plugins/xylitol-official-plugin-lsp" }
 xylitol-official-plugin-dap = { path = "plugins/xylitol-official-plugin-dap" }
 
@@ -189,7 +187,6 @@ xylitol-official-plugin-hooks = { workspace = true }
 xylitol-official-plugin-loop-policies = { workspace = true }
 xylitol-official-plugin-todo = { workspace = true }
 xylitol-official-plugin-workflow = { workspace = true }
-xylitol-official-plugin-plan = { workspace = true }
 crossterm = { workspace = true, optional = true, features = ["event-stream"] }
 http = { workspace = true }
 

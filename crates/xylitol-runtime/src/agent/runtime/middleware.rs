@@ -485,7 +485,6 @@ mod tests {
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
-            plan_mode: None,
             session_id: None,
         };
         let base = before_llm_request_fingerprint(&ctx);

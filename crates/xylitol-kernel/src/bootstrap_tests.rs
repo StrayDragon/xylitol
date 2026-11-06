@@ -614,54 +614,6 @@ fn missing_session_still_applies_settings_thinking_default() {
     assert_eq!(boot.agent.thinking_level(), "high");
 }
 
-#[tokio::test]
-async fn plan_mode_toggles_before_the_first_prompt() {
-    use crate::dispatch::{DispatchOutcome, SessionCommandExecutor};
-    use xylitol_protocol::Command;
-
-    let mut driver = make_driver();
-    let session_id = "plan-mode-before-first-prompt";
-    driver
-        .agent
-        .bind_session(session_id.to_string())
-        .expect("bind session");
-    assert!(!driver.store.exists(session_id).await);
-
-    let outcome = driver
-        .execute_session_command(Command::SetPlanMode {
-            mode: "toggle".into(),
-            plan_id: None,
-        })
-        .await
-        .expect("toggle before first prompt");
-    assert!(matches!(
-        outcome,
-        DispatchOutcome::PlanMode { ref mode, plan_id: None } if mode == "plan"
-    ));
-
-    let branch = driver
-        .store
-        .load_leaf_branch(session_id)
-        .await
-        .expect("pending branch");
-    assert_eq!(
-        xylitol_plugin_sdk::session::latest_plan_mode(&branch).mode,
-        xylitol_plugin_sdk::session::PlanModeKind::Plan
-    );
-
-    let outcome = driver
-        .execute_session_command(Command::SetPlanMode {
-            mode: "toggle".into(),
-            plan_id: None,
-        })
-        .await
-        .expect("second toggle");
-    assert!(matches!(
-        outcome,
-        DispatchOutcome::PlanMode { ref mode, plan_id: None } if mode == "execute"
-    ));
-}
-
 #[test]
 fn bootstrap_error_display_covers_all_variants() {
     let cases = [

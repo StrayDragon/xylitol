@@ -7,7 +7,6 @@ pub mod hook;
 pub mod http;
 pub mod model;
 pub mod permission;
-pub mod plan;
 pub mod secret;
 pub mod session;
 pub mod session_list;
@@ -28,7 +27,6 @@ pub use hook::{NoopHookBus, XyHookBus, XyHookOutcome};
 pub use http::{HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request};
 pub use model::{XyModel, XyModelBuilder, XyStream};
 pub use permission::{XyPermission, XyPermissionVerdict};
-pub use plan::PlanGateway;
 pub use secret::XySecretResolver;
 pub use session::{
     RuntimeSessionStore, SessionListEntry, XySessionStore, fallback_stage_name,

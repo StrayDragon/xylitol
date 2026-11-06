@@ -85,6 +85,5 @@ mod tests {
         }
         assert!(!names.contains(&"ask"));
         assert!(!names.contains(&"todo_rewrite"));
-        assert!(!names.contains(&"plan_write"));
     }
 }

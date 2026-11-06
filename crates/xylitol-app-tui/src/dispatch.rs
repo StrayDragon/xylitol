@@ -27,10 +27,6 @@ pub enum DispatchOutcome {
     Model(ModelInfo),
     Models(Vec<ModelInfo>),
     ThinkingLevel(String),
-    PlanMode {
-        mode: String,
-        plan_id: Option<String>,
-    },
     Bash(XyBashResult),
     Compacted(bool),
     SessionStats(serde_json::Value),

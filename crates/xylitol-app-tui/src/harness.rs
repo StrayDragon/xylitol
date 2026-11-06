@@ -905,13 +905,6 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                 plugin,
                 text: format!("plugin command ran: {args}"),
             }),
-            Command::SetPlanMode { mode, plan_id } => Ok(DispatchOutcome::PlanMode {
-                mode: match mode.as_str() {
-                    "toggle" => "plan".into(),
-                    other => other.to_string(),
-                },
-                plan_id,
-            }),
             Command::SetThinkingLevel { level, .. } => {
                 if !self.thinking_levels.is_empty()
                     && !self

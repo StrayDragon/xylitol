@@ -1,7 +1,6 @@
 mod fold_hit;
 mod glyphs;
 mod loaded_resources;
-mod mode_strip;
 mod queue;
 mod scrollback;
 mod todo_bar;
@@ -9,7 +8,6 @@ mod todo_bar;
 pub use fold_hit::{FoldHitTable, FoldTarget};
 pub use glyphs::GlyphSet;
 pub use loaded_resources::render_loaded_resources;
-pub use mode_strip::render_mode_strip;
 pub use queue::render_queue_strip;
 #[cfg(test)]
 pub use scrollback::find_stable_markdown_prefix_end;

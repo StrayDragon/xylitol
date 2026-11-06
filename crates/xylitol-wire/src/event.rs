@@ -107,9 +107,7 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             follow_up_count: *follow_up_count,
         }),
         XyEvent::TodoUpdated { list } => todo_updated_to_wire(list),
-        XyEvent::PlanDocUpdated { doc } => plan_doc_updated_to_wire(doc),
         XyEvent::WorkflowUpdated { workflow } => workflow_updated_to_wire(workflow),
-        XyEvent::PlanModeChanged { mode, plan_id } => plan_mode_changed_to_wire(mode, plan_id),
         XyEvent::AutoRetryStart {
             attempt,
             max_retries,
@@ -235,9 +233,7 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             follow_up_count: *follow_up_count,
         }),
         Event::TodoUpdated { list } => todo_updated_from_wire(list),
-        Event::PlanDocUpdated { doc } => plan_doc_updated_from_wire(doc),
         Event::WorkflowUpdated { workflow } => workflow_updated_from_wire(workflow),
-        Event::PlanModeChanged { mode, plan_id } => plan_mode_changed_from_wire(mode, plan_id),
         Event::AutoRetryStart {
             attempt,
             max_retries,
@@ -567,32 +563,11 @@ fn todo_updated_to_wire(list: &DomainTodoList) -> Result<Event, WireEventError> 
     })
 }
 
-fn plan_doc_updated_to_wire(
-    doc: &xylitol_plugin_sdk::session::PlanDoc,
-) -> Result<Event, WireEventError> {
-    Ok(Event::PlanDocUpdated {
-        doc: serde_json::to_value(doc)?,
-    })
-}
-
 fn workflow_updated_to_wire(
     workflow: &xylitol_plugin_sdk::session::Workflow,
 ) -> Result<Event, WireEventError> {
     Ok(Event::WorkflowUpdated {
         workflow: serde_json::to_value(workflow)?,
-    })
-}
-
-fn plan_mode_changed_to_wire(
-    mode: &xylitol_plugin_sdk::session::PlanModeKind,
-    plan_id: &Option<String>,
-) -> Result<Event, WireEventError> {
-    Ok(Event::PlanModeChanged {
-        mode: serde_json::to_value(mode)?
-            .as_str()
-            .unwrap_or("execute")
-            .to_string(),
-        plan_id: plan_id.clone(),
     })
 }
 
@@ -622,26 +597,10 @@ fn todo_updated_from_wire(list: &WireTodoList) -> Result<XyEvent, WireEventError
     })
 }
 
-fn plan_doc_updated_from_wire(doc: &Value) -> Result<XyEvent, WireEventError> {
-    Ok(XyEvent::PlanDocUpdated {
-        doc: serde_json::from_value::<xylitol_plugin_sdk::session::PlanDoc>(doc.clone())?,
-    })
-}
-
 fn workflow_updated_from_wire(workflow: &Value) -> Result<XyEvent, WireEventError> {
     Ok(XyEvent::WorkflowUpdated {
         workflow: serde_json::from_value::<xylitol_plugin_sdk::session::Workflow>(
             workflow.clone(),
         )?,
-    })
-}
-
-fn plan_mode_changed_from_wire(
-    mode: &str,
-    plan_id: &Option<String>,
-) -> Result<XyEvent, WireEventError> {
-    Ok(XyEvent::PlanModeChanged {
-        mode: serde_json::from_value(Value::String(mode.to_string()))?,
-        plan_id: plan_id.clone(),
     })
 }

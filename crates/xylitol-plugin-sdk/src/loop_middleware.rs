@@ -112,7 +112,6 @@ pub struct BeforeLlmRequestCtx {
     pub tool_schemas: Vec<XyToolSchema>,
     pub options: XyGenerateOptions,
     pub todo: Option<TodoList>,
-    pub plan_mode: Option<crate::session::PlanMode>,
     pub session_id: Option<String>,
 }
 

@@ -5,7 +5,6 @@ use xylitol_official_plugin_hooks::plugin::HooksPlugin;
 use xylitol_official_plugin_loop_policies::plugin::LoopPoliciesPlugin;
 use xylitol_official_plugin_lsp::LspPlugin;
 use xylitol_official_plugin_mcp::plugin::McpPlugin;
-use xylitol_official_plugin_plan::plugin::PlanPlugin;
 use xylitol_official_plugin_provider_anthropic::plugin::AnthropicPlugin;
 use xylitol_official_plugin_provider_openai::fake_plugin::FakePlugin;
 use xylitol_official_plugin_provider_openai::plugin::OpenAiPlugin;
@@ -30,7 +29,6 @@ pub fn official_builtins() -> Builtins {
     builtins.register("loop-policies", LoopPoliciesPlugin::new);
     builtins.register("todo", TodoPlugin::new);
     builtins.register("workflow", WorkflowPlugin::new);
-    builtins.register("plan", PlanPlugin::new);
     builtins.register("lsp", LspPlugin::new);
     builtins.register("dap", DapPlugin::new);
     builtins.register("provider-openai", OpenAiPlugin::new);

@@ -5,7 +5,7 @@
 
   @req:r1693
   规则: Command 枚举
-    protocol 须定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、SetPlanMode、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；command-backed 方法 须反序列化为此枚举。方法 须按方法名寻址，不得引入数字 method_id。
+    protocol 须定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；command-backed 方法 须反序列化为此枚举。方法 须按方法名寻址，不得引入数字 method_id。
 
     场景: 命令往返保真
       当 对产品命令样例做线协议序列化与反序列化往返
@@ -34,7 +34,7 @@
 
   @req:r1698
   规则: Event 变体完整
-    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、PlanDocUpdated、PlanModeChanged、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。MessageUpdate 须只携带 message（完整 AgentMessage 快照），不得另带累积 text 或 thinking：二者是 message 的子集且无生产消费方，重复载荷会放大线协议帧体。ContextTokenSettlement 须携带 prompt cache 三态：`prompt_cache` ∈ {hit, unknown, not_applicable} 与可选 `prompt_cache_tokens`（仅 hit 时出现）；旧载荷缺省字段 须按 not_applicable 处理，未知字符串 须按 unknown，不得 panic。
+    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。MessageUpdate 须只携带 message（完整 AgentMessage 快照），不得另带累积 text 或 thinking：二者是 message 的子集且无生产消费方，重复载荷会放大线协议帧体。ContextTokenSettlement 须携带 prompt cache 三态：`prompt_cache` ∈ {hit, unknown, not_applicable} 与可选 `prompt_cache_tokens`（仅 hit 时出现）；旧载荷缺省字段 须按 not_applicable 处理，未知字符串 须按 unknown，不得 panic。
 
     场景: agent流式事件往返
       当 对 Agent 流族事件做线协议序列化与反序列化往返
@@ -43,15 +43,6 @@
     场景: 上下文结算缓存三态往返
       当 对上下文结算缓存三态事件做线协议往返
       那么 缓存三态保真且未上报不伪造 token 数
-
-  @req:r2947
-  规则: plan-mode-rpc
-    产品 须提供 `set_plan_mode` unary（Auth=Writer、Exec=Inline）：参数 mode ∈ {toggle, plan, execute} 与可选 plan_id；toggle 须在 plan/execute 间翻转。成功 须返回当前 mode 与 plan_id，并发布 `planModeChanged` 下行动；plan 文档更新 须发布 `planDocUpdated`，载荷含文档 JSON。事件 须经 xylitol-wire 唯一映射，不得在客户端另造模式状态来源。
-
-    场景: set_plan_mode unary 往返
-      假如 客户端调用 set_plan_mode 且 mode 为 toggle
-      当 Host 处理该 unary
-      那么 返回当前 mode 与 plan_id 并发布 planModeChanged
 
   @req:r1699
   规则: 会话命令分发

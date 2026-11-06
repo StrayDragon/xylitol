@@ -1,7 +1,6 @@
 #[macro_use]
 mod helpers;
 mod bindings_agent_hooks;
-mod bindings_agent_plan;
 mod bindings_agent_runtime;
 mod bindings_agent_session;
 mod bindings_agent_session_store;

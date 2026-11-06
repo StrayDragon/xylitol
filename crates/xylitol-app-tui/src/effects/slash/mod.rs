@@ -43,7 +43,6 @@ pub(super) async fn handle_slash<T: Terminal>(
         | PendingSlash::OpenMcp
         | PendingSlash::OpenCapabilities
         | PendingSlash::OpenDesigningScenes
-        | PendingSlash::SetPlanMode(_)
         | PendingSlash::Usage(_)) => handle_misc_slash(session, driver, slash).await,
     }
 }
@@ -61,7 +60,6 @@ async fn handle_misc_slash<T: Terminal>(
         PendingSlash::OpenMcp => misc::open_mcp(session, driver).await,
         PendingSlash::OpenCapabilities => misc::open_capabilities(session, driver).await,
         PendingSlash::OpenDesigningScenes => misc::open_designing_scenes(session).await,
-        PendingSlash::SetPlanMode(mode) => misc::plan(session, driver, mode).await,
         PendingSlash::Usage(msg) => misc::usage(session, msg).await,
         _ => unreachable!("misc slash"),
     }

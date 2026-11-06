@@ -116,12 +116,6 @@ const SECTIONS: &[ConfigSection] = &[
         default: default_workflow,
     },
     ConfigSection {
-        key: "plan",
-        domain: ConfigDomain::Agent,
-        schema: schema_plan,
-        default: default_plan,
-    },
-    ConfigSection {
         key: "external_plugins",
         domain: ConfigDomain::App,
         schema: schema_external_plugins,
@@ -208,9 +202,6 @@ fn schema_todo() -> serde_json::Value {
 fn schema_workflow() -> serde_json::Value {
     serde_json::to_value(schema_for!(super::types::WorkflowConfig)).expect("workflow schema")
 }
-fn schema_plan() -> serde_json::Value {
-    serde_json::to_value(schema_for!(super::types::PlanConfig)).expect("plan schema")
-}
 fn schema_external_plugins() -> serde_json::Value {
     serde_json::to_value(schema_for!(Vec<ExternalPluginConfig>)).expect("external_plugins schema")
 }
@@ -269,9 +260,6 @@ fn default_todo() -> serde_json::Value {
 }
 fn default_workflow() -> serde_json::Value {
     serde_json::to_value(super::types::WorkflowConfig::default()).expect("workflow default")
-}
-fn default_plan() -> serde_json::Value {
-    serde_json::to_value(super::types::PlanConfig::default()).expect("plan default")
 }
 fn default_external_plugins() -> serde_json::Value {
     serde_json::json!([])

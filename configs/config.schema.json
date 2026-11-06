@@ -1218,28 +1218,6 @@
       "title": "OtelConfig",
       "type": "object"
     },
-    "plan": {
-      "additionalProperties": false,
-      "properties": {
-        "allowed_tools": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "enabled": {
-          "default": true,
-          "type": "boolean"
-        },
-        "read_only": {
-          "default": true,
-          "type": "boolean"
-        }
-      },
-      "title": "PlanConfig",
-      "type": "object"
-    },
     "security": {
       "properties": {
         "enabled": {

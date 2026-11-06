@@ -495,7 +495,6 @@ mod tests {
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
-            plan_mode: None,
             session_id: session_id.map(str::to_string),
         }
     }
@@ -719,7 +718,6 @@ mod nested_tests {
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
-            plan_mode: None,
             session_id: Some(session_id.into()),
         }
     }

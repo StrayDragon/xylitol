@@ -253,7 +253,6 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::OpenMcp
                 | PendingSlash::OpenCapabilities
                 | PendingSlash::OpenDesigningScenes
-                | PendingSlash::SetPlanMode(_)
                 | PendingSlash::PluginCommand { .. }
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);

@@ -38,7 +38,6 @@ impl Default for DriverContext {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolFeatures {
     pub todo: bool,
-    pub plan: bool,
     pub workflow: bool,
     pub workflow_max_depth: u32,
     pub workflow_max_total_steps: usize,
@@ -49,7 +48,6 @@ impl Default for ToolFeatures {
     fn default() -> Self {
         Self {
             todo: true,
-            plan: true,
             workflow: false,
             workflow_max_depth: xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
             workflow_max_total_steps: xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
@@ -62,14 +60,11 @@ impl ToolFeatures {
     pub fn from_config(config: &xylitol_official_plugin_config::types::AppConfig) -> Self {
         let todo: xylitol_official_plugin_config::types::TodoConfig =
             config.section_or_default("todo").unwrap_or_default();
-        let plan: xylitol_official_plugin_config::types::PlanConfig =
-            config.section_or_default("plan").unwrap_or_default();
         let workflow: xylitol_official_plugin_config::types::WorkflowConfig =
             config.section_or_default("workflow").unwrap_or_default();
         let tool_selection: Vec<String> = config.section_or_default("tools").unwrap_or_default();
         Self {
             todo: todo.is_active(),
-            plan: plan.is_active(),
             workflow: workflow.is_active(),
             workflow_max_depth: workflow.max_depth,
             workflow_max_total_steps: workflow.max_total_steps,
@@ -143,17 +138,11 @@ pub fn assemble_driver_with_ops_and_features_and_context(
     context: DriverContext,
 ) -> RuntimeDriver {
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone());
-    let plan = xylitol_official_plugin_plan::SessionPlanGateway::new(
-        store.clone(),
-        context.project_root.clone(),
-        context.trusted,
-    );
     let workflow = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone());
     let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
     inner.set_todo_gateway(todo.clone());
-    inner.set_plan_gateway(plan.clone());
     inner.set_workflow_gateway(workflow.clone());
-    let tools = compose_tools(features, &context, todo, plan, workflow, None);
+    let tools = compose_tools(features, &context, todo, workflow, None);
     inner.set_base_tools(tools.clone());
     inner.set_tools(tools);
     inner.set_slash_commands(
@@ -178,17 +167,11 @@ pub fn install_product_ask_tool(
 ) {
     driver.install_ask_tool(gateway.clone());
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(driver.store.clone());
-    let plan = xylitol_official_plugin_plan::SessionPlanGateway::new(
-        driver.store.clone(),
-        context.project_root.clone(),
-        context.trusted,
-    );
     let workflow =
         xylitol_official_plugin_workflow::SessionWorkflowGateway::new(driver.store.clone());
     driver.set_todo_gateway(todo.clone());
-    driver.set_plan_gateway(plan.clone());
     driver.set_workflow_gateway(workflow.clone());
-    let tools = compose_tools(features, &context, todo, plan, workflow, Some(gateway));
+    let tools = compose_tools(features, &context, todo, workflow, Some(gateway));
     driver.set_base_tools(tools.clone());
     driver.set_tools(tools);
 }
@@ -205,23 +188,12 @@ fn compose_tools(
     features: ToolFeatures,
     context: &DriverContext,
     todo: Arc<xylitol_official_plugin_todo::SessionAgentTodoGateway>,
-    plan: Arc<xylitol_official_plugin_plan::SessionPlanGateway>,
     workflow: Arc<xylitol_official_plugin_workflow::SessionWorkflowGateway>,
     ask: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
 ) -> xylitol_runtime::agent::tools::ToolSet {
     let mut tools = static_tool_base(context);
     if features.todo {
         tools.extend(xylitol_official_plugin_todo::todo_tools(todo.clone()));
-    }
-    if features.plan {
-        let todo_handoff = features
-            .todo
-            .then_some(todo as Arc<dyn xylitol_plugin_sdk::AgentTodoGateway>);
-        tools.extend(xylitol_official_plugin_plan::plan_tools(
-            plan,
-            todo_handoff,
-            ask.clone(),
-        ));
     }
     if features.workflow {
         tools.extend(xylitol_official_plugin_workflow::workflow_tools(

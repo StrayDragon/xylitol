@@ -121,7 +121,6 @@ pub struct UiRoot {
     last_status_rows: usize,
     last_editor_rows: usize,
     last_queue_rows: usize,
-    last_mode_rows: usize,
     queue_strip_row: usize,
     last_footer_hits: Vec<footer_chips::FooterChipHit>,
     last_chip_row: Option<usize>,
@@ -242,7 +241,6 @@ impl UiRoot {
             last_status_rows: 1,
             last_editor_rows: 3,
             last_queue_rows: 0,
-            last_mode_rows: 0,
             queue_strip_row: 0,
             last_footer_hits: Vec::new(),
             last_chip_row: None,
@@ -743,7 +741,6 @@ impl UiRoot {
             queue_rows,
             todo_rows,
             self.toast_notice.is_some(),
-            usize::from(self.ui_model.mode_strip.is_some()),
         )
         .saturating_add(4)
         .max(4)

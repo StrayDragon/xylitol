@@ -20,7 +20,7 @@ Plan mode 跨 8 层：
 7. TUI/Print：`/plan` 解析与 pending；remote unary；`DispatchOutcome::PlanMode`；ModeStrip 状态/渲染/固定区 footprint；bridge handler；input policy；print 忽略事件。
 8. compaction/config/specs/BDD：compaction 保留 plan_mode/plan_doc/plan_ref；`plan` 配置节；`agent-plan` spec；BDD bindings/steps；AGENTS 文档。
 
-2026-11-06 复核：c3197 仍为 designed；上述代码仍保留 plan mode。c3206 归档未删除 `plan_mode` / `plan_doc`；本次复核补入的引用集中在 `boot.rs`、`contract.rs`、`sections.rs`、`config.schema.json` 与 `steps_runtime_config.rs`，已补入删除清单。
+2026-11-06 复核：上述代码仍保留 plan mode。c3206 归档未删除 `plan_mode` / `plan_doc`；本次复核补入的引用集中在 `boot.rs`、`contract.rs`、`sections.rs`、`config.schema.json` 与 `steps_runtime_config.rs`，已补入删除清单。
 
 ## 决策
 
@@ -111,7 +111,7 @@ Plan mode 跨 8 层：
 - 单测：`compose_tools` 无 plan 参数；`ToolFeatures` 无 plan；`builtins` 不注册 PlanPlugin；`boot.rs` plugin rows 不含 plan；`contract.rs` 默认 loop middleware 不含 `plan-mode` / `plan-tool-surface`；`sections.rs` 无 plan 节；`steps_runtime_config` 配置节列表无 plan；旧 session 的 plan CustomEntry 忽略；配置 `plan` / `loop_policies.plan_mode` 报「plan mode 已移除」错误；`PROTOCOL_VERSION` 为 6；wire 无 plan 事件；serve 无 plan 快照；TUI 无 ModeStrip；print 无 plan 事件。
 - BDD：删除 `bindings_agent_plan`；删除 plan 中间件/compaction 场景；删除 `plan_write` 断言；保留 workflow/todo/compaction 其余场景。
 - 门禁：`just fmt` / `just lint` / `just test` / `just qa`；BDD runner。
-- 残留检查：`rg -n "PlanMode|plan_mode|ModeStrip|plan_write|plan_submit|plan_doc" crates plugins src tests llmanspec/specs`，排除 archive/delayed/research 与本 change；应为空。不得把 workflow 的 legacy `plan` custom_type 当 plan mode 删除。
+- 残留检查：`rg -n "PlanMode|plan_mode|ModeStrip|plan_write|plan_submit|plan_doc" crates plugins src tests llmanspec/specs`，排除 archive/delayed/research 与本 change；再排除 `plugins/xylitol-official-plugin-config/src/loader.rs` 的旧键拒绝文本与 `runtime-config` 的旧键条款；其余应为空。不得把 workflow 的 legacy `plan` custom_type 当 plan mode 删除。
 - 手测：旧会话 resume 不崩；`/plan` 未知命令；配置含 `plan` 报迁移错误；协议 `host.describe` 为 6。
 
 ## 风险
