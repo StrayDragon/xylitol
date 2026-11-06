@@ -59,6 +59,12 @@
 - 嵌套事件被抑制后，外层结果必须携带足够 details；否则只能显示计数。
 - 面板字段过多会挤压固定区；用分组与折叠，不新增常驻 header 文案。
 
+## 未决问题
+
+- `CodemodeStatus` 走 `LoadedResourcesSnapshot` 扩展还是新 unary；前者无协议 bump，后者需 registry / wire。
+- 未启用时如何区分“配置关闭”与“插件未装配”；是否需要 config 快照。
+- catalog 列表大小与截断策略；面板只显示计数 + 按需列表，还是全量快照。
+
 ## 迁移
 
 - 不改变 `run_code` schema / guest ABI。

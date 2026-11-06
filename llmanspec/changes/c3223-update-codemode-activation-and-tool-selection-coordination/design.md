@@ -64,6 +64,12 @@ config: codemode.enabled / tools +/-
 - 跨 section warning 可能被忽略；要进入现有诊断面。
 - 插件仍注册但不可见时，声明中间件不应列出 run_code；与 c3218 协同。
 
+## 未决问题
+
+- warning 面：boot log / `config check` / TUI 诊断，是否需要结构化 warning。
+- 惰性 runner 创建失败是否重试；配置校验是否在 boot 先做。
+- `run_code` 被禁用时插件是否仍注册声明中间件；与 c3218 的 catalog 空态协同。
+
 ## 迁移
 
 - 不改变配置 schema 字段；只增加校验与惰性行为。

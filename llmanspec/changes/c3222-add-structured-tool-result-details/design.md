@@ -68,6 +68,12 @@
 - after_tool / hook 可能丢弃 details；需要显式合并策略。
 - 旧工具不实现 outcome；默认适配必须保持行为。
 
+## 未决问题
+
+- 新 `XyToolOutcome` 还是复用 `XyToolCallResult`；是否需要可序列化的 `error_kind`。
+- `ToolExecutionEnd.details` 是否需要 `PROTOCOL_VERSION` bump；旧客户端兼容策略。
+- details 的脱敏 / 截断：嵌套 args 可能含 secret，不能原样透传。
+
 ## 迁移
 
 - 旧工具无需改签名；逐步迁移需要 details 的工具。

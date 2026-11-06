@@ -58,6 +58,12 @@
 - 二进制资产仍可能被人工替换；hash 与 CI 是主要护栏。
 - WASI SDK 版本漂移会改变 wasm；必须 pin 版本并记录。
 
+## 未决问题
+
+- 长期 artifact 存储未定：GitHub Release / 对象存储 / 本地缓存。
+- `include_bytes!` 是编译期；移除源码内资产后需 `build.rs` 或 `just setup` 把校验后的 wasm 放到固定路径；不能运行时下载。
+- WASI SDK pin 方式与 CI runner 未定；需要可复现的 SDK 版本来源。
+
 ## 迁移
 
 - 短期不改变 host 嵌入方式；中期改为 setup/build 阶段获取资产。

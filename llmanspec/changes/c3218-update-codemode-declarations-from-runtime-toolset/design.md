@@ -75,6 +75,12 @@ driver assembly
 - 运行期快照可能包含未冻结工具；声明生成须尊重 freeze 语义。
 - 插件激活与工具选择仍分层；本 change 只保证声明基于选择后的 catalog，不解决 `-run_code` 仍启动插件 / `+run_code` 不激活插件的联动。
 
+## 未决问题
+
+- `BeforeLlmRequestCtx` 目前只有 `tool_schemas`，没有 catalog / `ToolSet`（`loop_middleware.rs:109`）。需决定新增 catalog 快照字段（`Vec<XyToolDescriptor>`）还是 `Arc<dyn XyToolCatalog>` 服务；后者要处理 `Debug` / `Clone`。
+- 声明缓存键是否包含 `tools` 选择 fingerprint；仅 freeze generation 是否足够。
+- tool-exposure middleware 与 codemode 声明 middleware 的 order 关系；声明是否必须在 policy 之后生成。
+
 ## 迁移
 
 - 不改变 `run_code` schema、guest ABI、权限映射。
