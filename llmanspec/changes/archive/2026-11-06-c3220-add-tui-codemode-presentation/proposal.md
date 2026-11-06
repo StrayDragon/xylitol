@@ -3,6 +3,9 @@ depends_on:
   - c3106-add-codemode-tool
   - c3222-add-structured-tool-result-details
 title: 在 TUI 呈现 run_code 运行结果
+branch: sdd/c3220-add-tui-codemode-presentation
+base_branch: main
+base_sha: 5e8ab4d9c3c84fae3673e3a2b81ae779ebc66371
 ---
 
 ## Why

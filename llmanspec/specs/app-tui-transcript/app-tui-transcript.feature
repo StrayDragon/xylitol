@@ -397,3 +397,17 @@
   @req:r3090
   规则: mermaid-final-fence
     产品 TUI markdown 代码块 须显式使用 `MermaidFenceMode::Final`；流式期间 不得把 mermaid fence 当裸文本铺开；引擎默认不变；无产品配置。由产品 snapshot 覆盖。
+
+  @req:r3263
+  规则: run-code-outer-presentation
+    `run_code` 外层工具块 须按结构化 `details` 显示脚本摘要、结果、错误类别、截断标记、耗时与嵌套调用摘要；`details` 缺失 须回退通用文本，不得解析脚本 JSON 或伪造嵌套摘要。不得新增 `/codemode` 命令、面板或常驻状态短标识。
+
+    场景: run-code-details-visible
+      假如 run_code 完成且 details 含脚本摘要与嵌套调用
+      当 TUI 应用工具结束事件
+      那么 工具块显示脚本摘要与嵌套摘要
+
+    场景: run-code-no-details-fallback
+      假如 run_code 完成但无 details
+      当 TUI 应用工具结束事件
+      那么 工具块只显示结果文本

@@ -1,3 +1,4 @@
+use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
@@ -168,3 +169,15 @@ fn test_ats10_travel_notice_trails(transcript_bdd: TranscriptBdd) {}
     name = "旅行经双击Esc树"
 )]
 fn test_att_tree_travel(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "run-code-details-visible"
+)]
+fn test_run_code_details(bridge_bdd: BridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "run-code-no-details-fallback"
+)]
+fn test_run_code_no_details(bridge_bdd: BridgeBdd) {}

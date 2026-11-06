@@ -1000,3 +1000,91 @@ fn t_window_notice(bridge_bdd: &BridgeBdd) {
     );
     assert!(model.has_earlier);
 }
+
+#[given("run_code 完成且 details 含脚本摘要与嵌套调用")]
+fn g_run_code_details(bridge_bdd: &BridgeBdd) {
+    let mut model = bridge_bdd.model.borrow_mut();
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ToolExecutionStart {
+            id: "rc1".into(),
+            name: "run_code".into(),
+            args: serde_json::json!({"code": "return 42"}),
+        },
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ToolExecutionEnd {
+            id: "rc1".into(),
+            name: "run_code".into(),
+            result: "42".into(),
+            details: Some(serde_json::json!({
+                "script_summary": "return 42",
+                "elapsed_ms": 12,
+                "truncated": false,
+                "nested_calls": [
+                    {"name": "read", "args_preview": "Cargo.toml", "ok": true, "elapsed_ms": 3}
+                ]
+            })),
+            is_error: false,
+        },
+    );
+}
+
+#[when("TUI 应用工具结束事件")]
+fn w_tui_tool_end(bridge_bdd: &BridgeBdd) {
+    let _ = bridge_bdd;
+}
+
+#[then("工具块显示脚本摘要与嵌套摘要")]
+fn t_run_code_details(bridge_bdd: &BridgeBdd) {
+    let model = bridge_bdd.model.borrow();
+    let output = model
+        .entries
+        .iter()
+        .find_map(|entry| match entry {
+            UiEntry::Tool { name, output, .. } if name == "run_code" => Some(output.as_str()),
+            _ => None,
+        })
+        .expect("run_code tool entry");
+    assert!(output.contains("script: return 42"), "{output}");
+    assert!(output.contains("nested calls: 1"), "{output}");
+}
+
+#[given("run_code 完成但无 details")]
+fn g_run_code_no_details(bridge_bdd: &BridgeBdd) {
+    let mut model = bridge_bdd.model.borrow_mut();
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ToolExecutionStart {
+            id: "rc2".into(),
+            name: "run_code".into(),
+            args: serde_json::json!({"code": "return 42"}),
+        },
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ToolExecutionEnd {
+            id: "rc2".into(),
+            name: "run_code".into(),
+            result: "plain result".into(),
+            details: None,
+            is_error: false,
+        },
+    );
+}
+
+#[then("工具块只显示结果文本")]
+fn t_run_code_no_details(bridge_bdd: &BridgeBdd) {
+    let model = bridge_bdd.model.borrow();
+    let output = model
+        .entries
+        .iter()
+        .find_map(|entry| match entry {
+            UiEntry::Tool { name, output, .. } if name == "run_code" => Some(output.as_str()),
+            _ => None,
+        })
+        .expect("run_code tool entry");
+    assert!(output.contains("plain result"), "{output}");
+    assert!(!output.contains("nested calls"), "{output}");
+}
