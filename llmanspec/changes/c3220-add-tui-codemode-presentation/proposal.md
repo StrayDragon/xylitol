@@ -1,6 +1,7 @@
 ---
 depends_on:
   - c3106-add-codemode-tool
+  - c3222-add-structured-tool-result-details
 title: 在 TUI 呈现 codemode 运行与目录
 ---
 
