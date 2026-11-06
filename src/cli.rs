@@ -105,6 +105,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             surface.port,
             surface.no_ensure_host,
         ) {
+            if xylitol_kernel::attach::attach_preflight(&url)
+                .await
+                .is_err()
+            {
+                eprintln!("starting local Host at {url} ...");
+            }
             xylitol_kernel::attach::ensure_host_from_config(
                 &url,
                 surface.config.as_ref().map(std::path::Path::new),

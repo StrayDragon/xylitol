@@ -531,10 +531,59 @@ pub async fn ensure_host_from_config(
 }
 
 #[cfg(feature = "server")]
+pub struct SpawnedHost {
+    child: Option<std::process::Child>,
+    stderr_path: Option<std::path::PathBuf>,
+}
+
+#[cfg(feature = "server")]
+impl SpawnedHost {
+    pub fn detached() -> Self {
+        Self {
+            child: None,
+            stderr_path: None,
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl Drop for SpawnedHost {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        if let Some(path) = self.stderr_path.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+fn read_stderr_excerpt(path: &std::path::Path, limit: usize) -> String {
+    let bytes = std::fs::read(path).unwrap_or_default();
+    let start = bytes.len().saturating_sub(limit);
+    String::from_utf8_lossy(&bytes[start..]).trim().to_string()
+}
+
+#[cfg(feature = "server")]
+fn host_exited_message(url: &str, status: std::process::ExitStatus, stderr: &str) -> String {
+    let mut message =
+        format!("local Host exited before becoming ready at {url} (status: {status}).");
+    if !stderr.is_empty() {
+        message.push_str("\nHost stderr:\n");
+        message.push_str(stderr);
+    }
+    message.push_str("\nSee ~/.xylitol/logs/xylitol.log for details.");
+    message
+}
+
+#[cfg(feature = "server")]
 pub async fn ensure_host_with(
     url: &str,
     opts: EnsureHostOpts,
-    spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<()>,
+    spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<SpawnedHost>,
 ) -> Result<(), String> {
     let reg_path = opts
         .registration_path
@@ -549,12 +598,12 @@ pub async fn ensure_host_with(
     if probe_host(url).is_err() {
         let _ = dead_registration_message(reg.as_ref(), url, &reg_path);
     }
-    if let Err(err) = spawn(url, opts.lifecycle, opts.idle_timeout)
-        && err.kind() != std::io::ErrorKind::AddrInUse
-    {
-        return Err(spawn_failed_message(url, &err.to_string()));
-    }
-    wait_until_ready(url, &reg_path, opts.ready_timeout).await
+    let mut spawned = match spawn(url, opts.lifecycle, opts.idle_timeout) {
+        Ok(spawned) => spawned,
+        Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => SpawnedHost::detached(),
+        Err(err) => return Err(spawn_failed_message(url, &err.to_string())),
+    };
+    wait_until_ready(url, &reg_path, opts.ready_timeout, &mut spawned).await
 }
 
 #[cfg(feature = "server")]
@@ -595,9 +644,21 @@ async fn wait_until_ready(
     url: &str,
     registration_path: &std::path::Path,
     timeout: Duration,
+    spawned: &mut SpawnedHost,
 ) -> Result<(), String> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
+        if let Some(child) = spawned.child.as_mut()
+            && let Ok(Some(status)) = child.try_wait()
+        {
+            spawned.child = None;
+            let stderr = spawned
+                .stderr_path
+                .as_deref()
+                .map(|path| read_stderr_excerpt(path, 4096))
+                .unwrap_or_default();
+            return Err(host_exited_message(url, status, &stderr));
+        }
         let token = discover_token(url, registration_path);
         match fetch_healthz(url, token.as_deref()).await {
             HealthzProbe::Info(hz) => {
@@ -637,11 +698,27 @@ pub fn spawn_detached_serve(
     url: &str,
     lifecycle: xylitol_serve::ServeLifecycle,
     idle_timeout: Duration,
-) -> std::io::Result<()> {
+) -> std::io::Result<SpawnedHost> {
     let parsed = url::Url::parse(url).map_err(std::io::Error::other)?;
     let host = parsed.host_str().unwrap_or("127.0.0.1");
     let port = parsed.port_or_known_default().unwrap_or(18790);
     let exe = std::env::current_exe()?;
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let stderr_path = std::env::temp_dir().join(format!(
+        "xylitol-host-stderr-{}-{unique}.log",
+        std::process::id()
+    ));
+    let mut stderr_opts = std::fs::OpenOptions::new();
+    stderr_opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        stderr_opts.mode(0o600);
+    }
+    let stderr_file = stderr_opts.open(&stderr_path)?;
     let mut cmd = std::process::Command::new(exe);
     cmd.arg("serve")
         .arg("--host")
@@ -654,7 +731,7 @@ pub fn spawn_detached_serve(
         .arg(xylitol_serve::format_idle_timeout(idle_timeout))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::from(stderr_file));
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -676,11 +753,10 @@ pub fn spawn_detached_serve(
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
     let child = cmd.spawn()?;
-    std::thread::spawn(move || {
-        let mut child = child;
-        let _ = child.wait();
-    });
-    Ok(())
+    Ok(SpawnedHost {
+        child: Some(child),
+        stderr_path: Some(stderr_path),
+    })
 }
 
 #[cfg(all(test, feature = "server"))]
@@ -868,7 +944,7 @@ mod c2475_tests {
             },
             move |_, _, _| {
                 flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                Ok(())
+                Ok(SpawnedHost::detached())
             },
         )
         .await
@@ -894,13 +970,45 @@ mod c2475_tests {
             },
             move |_, _, _| {
                 flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                Ok(())
+                Ok(SpawnedHost::detached())
             },
         )
         .await
         .expect_err("absent host times out");
         assert!(spawned.load(std::sync::atomic::Ordering::SeqCst));
         assert!(err.contains("Timed out"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ensure_host_reports_child_exit_before_ready() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let stderr_path = dir.path().join("host.err");
+        std::fs::write(&stderr_path, "config section boom\n").expect("write stderr");
+        let child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("exit 3")
+            .spawn()
+            .expect("spawn sh");
+        let err = ensure_host_with(
+            "http://127.0.0.1:1",
+            EnsureHostOpts {
+                registration_path: Some(dir.path().join("serve.json")),
+                ready_timeout: Duration::from_secs(5),
+                lifecycle: xylitol_serve::ServeLifecycle::LastClient,
+                idle_timeout: Duration::from_millis(30),
+            },
+            move |_, _, _| {
+                Ok(SpawnedHost {
+                    child: Some(child),
+                    stderr_path: Some(stderr_path),
+                })
+            },
+        )
+        .await
+        .expect_err("child exit must fail fast");
+        assert!(err.contains("exited before becoming ready"), "{err}");
+        assert!(err.contains("config section boom"), "{err}");
     }
 
     #[tokio::test]
@@ -930,7 +1038,7 @@ mod c2475_tests {
             },
             move |_, _, _| {
                 flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                Ok(())
+                Ok(SpawnedHost::detached())
             },
         )
         .await
@@ -987,7 +1095,7 @@ mod c2475_tests {
                 )
                 .expect("write");
                 flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                Ok(())
+                Ok(SpawnedHost::detached())
             },
         )
         .await

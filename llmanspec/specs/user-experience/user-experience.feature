@@ -36,6 +36,10 @@
     场景: 确保失败诊断可操作
       当 读取拉起失败与就绪超时与非 xylitol 占用的诊断
       那么 各诊断可操作且不只提示先手 serve
+
+  @req:r3249
+  规则: ensure-host-fast-failure
+    确保 Host 时 须 先输出 starting local Host at <url> 提示；子进程在就绪前退出 须 立即返回可操作诊断（退出状态、stderr 摘要、日志路径），不得等到 ready timeout；诊断不得只提示先手 serve。由单测与启动手测覆盖，不扩 BDD step。
   @req:r3066
   规则: product-display-identity
     产品给人看的名字必须是 XYlitol（前两字母大写、其余小写）；命令名、crate、配置目录、数据目录与环境变量必须保持 xylitol 或 XYLITOL_*。面向人的文案（TUI 头卡、README 标题、CLI about）必须用 XYlitol，不得把 xylitol 当作产品展示名，不得展示木糖醇中文标签。
