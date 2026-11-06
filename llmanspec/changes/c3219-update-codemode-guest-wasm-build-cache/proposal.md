@@ -10,7 +10,7 @@ c3106 把约 880 KB 的 `guest.wasm` 提交进 git。它是 rquickjs / QuickJS �
 
 ## What Changes
 
-- 从源码树移除 `guest.wasm`；源码只保留 guest crate、`Cargo.lock`、构建 recipe、校验与获取脚本。
+- 从源码树移除 `guest.wasm`；`.gitignore` 忽略本地构建产物；源码只保留 guest crate、`Cargo.lock`、构建 recipe、校验与获取脚本。
 - CI 用固定 WASI SDK 构建 guest，发布不可变 release artifact，附 SHA256 与 provenance。
 - `build.rs` / `just setup` 按固定版本与 hash 获取 artifact，校验后放入构建缓存 / `OUT_DIR`；host 用 `include_bytes!(concat!(env!("OUT_DIR"), "/guest.wasm"))`。
 - 不在运行时下载；离线使用缓存或 `XYLITOL_CODEMODE_GUEST_WASM` 本地路径。

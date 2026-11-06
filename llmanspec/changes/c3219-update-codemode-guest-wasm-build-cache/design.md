@@ -17,7 +17,7 @@
 
 ### 1. 资产生命周期
 
-- 源码不提交 `guest.wasm`；提交 guest crate、`Cargo.lock`、recipe、获取脚本、hash 清单。
+- 源码不提交 `guest.wasm`；`.gitignore` 忽略本地构建产物；提交 guest crate、`Cargo.lock`、recipe、获取脚本、hash 清单。
 - CI 构建 guest，生成 `guest.wasm` + SHA256；发布为 release asset（文件名含版本 / hash）。
 - 发布附 provenance / SBOM（工具待调研）；至少 SHA256SUMS。
 
