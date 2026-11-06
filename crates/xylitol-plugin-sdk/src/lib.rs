@@ -1,4 +1,5 @@
 pub mod accounting;
+pub mod codemode;
 pub mod compaction_binding;
 pub mod compaction_config;
 pub mod compaction_error;
@@ -38,6 +39,11 @@ pub mod tool_wire;
 pub use accounting::{
     EstimateContextOpts, HEURISTIC_BYTES_PER_TOKEN, estimate_context, heuristic_token_count,
     total_context_tokens,
+};
+pub use codemode::{
+    CodemodeConfig, CodemodeExposurePolicy, CodemodeMode, CodemodeRuntime,
+    codemode_exposure_overrides, codemode_exposure_policy, codemode_max_nested_calls,
+    set_codemode_exposure_overrides, set_codemode_exposure_policy, set_codemode_max_nested_calls,
 };
 pub use compaction_binding::{CompactionModelAttribution, CompactionSummaryBinding};
 pub use compaction_error::CompactionError;
@@ -99,7 +105,8 @@ pub use ports::{
     TypedTool, WorkflowGateway, XyBashExecutor, XyBashResult, XyBatchMode, XyCompaction,
     XyCompactionFactory, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel,
     XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream,
-    XyTool, XyToolCtx, XyToolExecutionMode, ask, bash, fallback_stage_name, flatten_session_forest,
+    XyTool, XyToolCallResult, XyToolCatalog, XyToolCtx, XyToolDescriptor, XyToolDispatch,
+    XyToolExecutionMode, XyToolExposure, ask, bash, fallback_stage_name, flatten_session_forest,
     format_session_age, noop_compaction_factory, normalize_stage_name, parse_tool_args,
     run_after_response, run_before_headers, run_before_request, sanitize_session_display_name,
     should_compact, truncate_utf8, typed,

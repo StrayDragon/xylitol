@@ -1,4 +1,5 @@
 use schemars::schema_for;
+use xylitol_plugin_sdk::CodemodeConfig;
 
 use super::types::{
     AgentsConfig, DapPluginConfig, ExecutionConfig, ExternalPluginConfig, HooksConfig,
@@ -116,6 +117,12 @@ const SECTIONS: &[ConfigSection] = &[
         default: default_workflow,
     },
     ConfigSection {
+        key: "codemode",
+        domain: ConfigDomain::Agent,
+        schema: schema_codemode,
+        default: default_codemode,
+    },
+    ConfigSection {
         key: "external_plugins",
         domain: ConfigDomain::App,
         schema: schema_external_plugins,
@@ -199,6 +206,10 @@ fn schema_loop_policies() -> serde_json::Value {
 fn schema_todo() -> serde_json::Value {
     serde_json::to_value(schema_for!(super::types::TodoConfig)).expect("todo schema")
 }
+fn schema_codemode() -> serde_json::Value {
+    serde_json::to_value(schema_for!(CodemodeConfig)).unwrap_or_default()
+}
+
 fn schema_workflow() -> serde_json::Value {
     serde_json::to_value(schema_for!(super::types::WorkflowConfig)).expect("workflow schema")
 }
@@ -258,6 +269,10 @@ fn default_loop_policies() -> serde_json::Value {
 fn default_todo() -> serde_json::Value {
     serde_json::to_value(super::types::TodoConfig::default()).expect("todo default")
 }
+fn default_codemode() -> serde_json::Value {
+    serde_json::to_value(CodemodeConfig::default()).unwrap_or_default()
+}
+
 fn default_workflow() -> serde_json::Value {
     serde_json::to_value(super::types::WorkflowConfig::default()).expect("workflow default")
 }

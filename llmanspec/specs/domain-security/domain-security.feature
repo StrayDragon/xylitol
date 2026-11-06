@@ -223,3 +223,7 @@
   @req:r3243
   规则: mcp-token-store
     MCP token 须存于 agent 目录下 0600 文件；写入须原子替换；Debug 输出须脱敏；token 不得进 config / secret.env / 日志 / 工具子进程 env。由单测覆盖，不扩 BDD step。
+
+  @req:r3258
+  规则: codemode-exec-permission
+    run_code 须映射 check_process(workspace)；嵌套调用须逐次走权限；凭据不得进入 guest；文档须明示 permission 非安全边界。由单测覆盖，不扩 BDD step。

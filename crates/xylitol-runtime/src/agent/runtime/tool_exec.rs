@@ -224,10 +224,17 @@ pub(crate) async fn run_one(
     let tool_missing = tool.is_none();
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<String>(64);
     let (state_tx, mut state_rx) = mpsc::unbounded_channel::<XyEvent>();
+    let dispatch = Arc::new(super::dispatch::DispatchHandle::new(
+        env,
+        id,
+        xylitol_plugin_sdk::codemode_max_nested_calls(),
+        Some(out_tx.clone()),
+    ));
     let ctx = XyToolCtx::with_cancel(id, env.cancel.clone())
         .with_output_tx(out_tx)
         .with_state_event_tx(state_tx)
-        .with_workspace(env.workspace);
+        .with_workspace(env.workspace)
+        .with_dispatch(dispatch);
 
     let args_io = serde_json::to_string(tool_args).unwrap_or_else(|_| "{}".into());
     emit(

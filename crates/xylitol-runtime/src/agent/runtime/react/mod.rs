@@ -723,6 +723,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
     let t_schemas = std::time::Instant::now();
     let tool_schemas: Vec<XyToolSchema> = tools
         .iter()
+        .filter(|tool| tool.exposure().model_visible())
         .map(|t| XyToolSchema {
             name: t.name().to_string(),
             description: t.description().to_string(),

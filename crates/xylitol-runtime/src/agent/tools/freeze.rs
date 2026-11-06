@@ -29,12 +29,24 @@ impl ToolTableFingerprint {
             let description = tool.description().to_string();
             let schema = tool.parameters_schema();
             let schema_canon = serde_json::to_string(&schema).unwrap_or_else(|_| "{}".into());
+            let exposure = serde_json::to_string(&tool.exposure()).unwrap_or_default();
+            let namespace = tool.namespace().unwrap_or_default();
+            let output_schema = tool
+                .output_schema()
+                .map(|schema| serde_json::to_string(&schema).unwrap_or_else(|_| "{}".into()))
+                .unwrap_or_default();
             names.push(name.clone());
             hasher.update(name.as_bytes());
             hasher.update([0xff]);
             hasher.update(description.as_bytes());
             hasher.update([0xff]);
             hasher.update(schema_canon.as_bytes());
+            hasher.update([0xff]);
+            hasher.update(exposure.as_bytes());
+            hasher.update([0xff]);
+            hasher.update(namespace.as_bytes());
+            hasher.update([0xff]);
+            hasher.update(output_schema.as_bytes());
             hasher.update([0xfe]);
         }
         Self {
@@ -63,12 +75,13 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use xylitol_plugin_sdk::XyTool;
+    use xylitol_plugin_sdk::{XyTool, XyToolExposure};
 
     struct Named {
         name: &'static str,
         description: &'static str,
         schema: serde_json::Value,
+        exposure: XyToolExposure,
     }
 
     #[async_trait::async_trait]
@@ -81,6 +94,9 @@ mod tests {
         }
         fn parameters_schema(&self) -> serde_json::Value {
             self.schema.clone()
+        }
+        fn exposure(&self) -> XyToolExposure {
+            self.exposure
         }
         async fn execute(
             &self,
@@ -100,6 +116,7 @@ mod tests {
             name,
             description,
             schema,
+            exposure: XyToolExposure::Direct,
         })
     }
 
@@ -118,6 +135,26 @@ mod tests {
         assert!(f1.matches(&f2));
         assert_eq!(f1.names, vec!["a".to_string(), "b".to_string()]);
         assert_eq!(f1.content_digest.len(), 64);
+    }
+
+    #[test]
+    fn fingerprint_changes_on_exposure() {
+        let direct = ToolSet::from_iter(vec![Arc::new(Named {
+            name: "t",
+            description: "d",
+            schema: serde_json::json!({"type": "object"}),
+            exposure: XyToolExposure::Direct,
+        }) as Arc<dyn XyTool>]);
+        let deferred = ToolSet::from_iter(vec![Arc::new(Named {
+            name: "t",
+            description: "d",
+            schema: serde_json::json!({"type": "object"}),
+            exposure: XyToolExposure::Deferred,
+        }) as Arc<dyn XyTool>]);
+        assert!(
+            !ToolTableFingerprint::from_toolset(&direct)
+                .matches(&ToolTableFingerprint::from_toolset(&deferred))
+        );
     }
 
     #[test]

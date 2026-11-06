@@ -304,3 +304,7 @@
   @req:r3221
   规则: trust-audit-config
     config.yaml 须支持 trust 节：audit（布尔，缺省 true）、audit_max_bytes（正整数，缺省 10485760）、audit_keep_files（正整数，缺省 5）、audit_retention_days（正整数，缺省 90）；audit=false 时 不得写审计；非法值 须使配置校验失败。由配置单测覆盖，不扩 BDD step。
+
+  @req:r3259
+  规则: codemode-config
+    config.yaml 须支持 codemode 节：enabled（缺省 false）、runtime=wasmtime、mode=on、timeout_ms、max_output_tokens、max_result_bytes、max_nested_calls、fuel、max_memory_bytes、module_cache、inline_budget、exposure。未配置零装配；非法 runtime/mode 须加载失败。由配置单测覆盖，不扩 BDD step。

@@ -34,6 +34,28 @@
       },
       "type": "object"
     },
+    "codemode_CodemodeMode": {
+      "enum": [
+        "on"
+      ],
+      "type": "string"
+    },
+    "codemode_CodemodeRuntime": {
+      "enum": [
+        "wasmtime"
+      ],
+      "type": "string"
+    },
+    "codemode_XyToolExposure": {
+      "enum": [
+        "direct",
+        "model_only",
+        "codemode",
+        "deferred",
+        "hidden"
+      ],
+      "type": "string"
+    },
     "compaction_XyModality": {
       "enum": [
         "text",
@@ -933,6 +955,77 @@
         }
       },
       "title": "AgentsConfig",
+      "type": "object"
+    },
+    "codemode": {
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "exposure": {
+          "additionalProperties": {
+            "$ref": "#/$defs/codemode_XyToolExposure"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "fuel": {
+          "default": 1000000000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inline_budget": {
+          "default": 3000,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_memory_bytes": {
+          "default": 67108864,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_nested_calls": {
+          "default": 100,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "default": 10000,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_result_bytes": {
+          "default": 102400,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/codemode_CodemodeMode",
+          "default": "on"
+        },
+        "module_cache": {
+          "default": true,
+          "type": "boolean"
+        },
+        "runtime": {
+          "$ref": "#/$defs/codemode_CodemodeRuntime",
+          "default": "wasmtime"
+        },
+        "timeout_ms": {
+          "default": 120000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "CodemodeConfig",
       "type": "object"
     },
     "compaction": {

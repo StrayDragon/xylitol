@@ -39,6 +39,7 @@ REQUIRED_MEMBERS: dict[str, str] = {
     "plugins/xylitol-official-plugin-obs": "xylitol-official-plugin-obs",
     "plugins/xylitol-official-plugin-todo": "xylitol-official-plugin-todo",
     "plugins/xylitol-official-plugin-workflow": "xylitol-official-plugin-workflow",
+    "plugins/xylitol-official-plugin-codemode": "xylitol-official-plugin-codemode",
     "plugins/xylitol-official-plugin-lsp": "xylitol-official-plugin-lsp",
     "plugins/xylitol-official-plugin-dap": "xylitol-official-plugin-dap",
 }
@@ -67,6 +68,7 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-official-plugin-loop-policies": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-todo": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-workflow": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-official-plugin-codemode": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-lsp": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-dap": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-config": frozenset(
@@ -105,6 +107,7 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
             "xylitol-official-plugin-obs",
             "xylitol-official-plugin-todo",
             "xylitol-official-plugin-workflow",
+            "xylitol-official-plugin-codemode",
             "xylitol-official-plugin-lsp",
             "xylitol-official-plugin-dap",
         }
@@ -119,6 +122,8 @@ FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
     "salvo": ALL_PACKAGES - {"xylitol-serve"},
     "lspz": ALL_PACKAGES - {"xylitol-official-plugin-lsp"},
     "dapz": ALL_PACKAGES - {"xylitol-official-plugin-dap"},
+    "wasmtime": ALL_PACKAGES - {"xylitol-official-plugin-codemode"},
+    "wasmtime-wasi": ALL_PACKAGES - {"xylitol-official-plugin-codemode"},
 }
 
 PLUGIN_PREFIX = "xylitol-official-plugin-"

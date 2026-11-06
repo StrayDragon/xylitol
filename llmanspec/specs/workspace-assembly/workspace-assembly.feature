@@ -50,3 +50,7 @@
     场景: 启动自检超时报告缺失服务
       当 构造等待缺失服务的启动自检超时
       那么 错误文案含服务名与缺失原因
+
+  @req:r3260
+  规则: codemode-plugin-assembly
+    codemode 为官方可替换插件；未配置或 enabled=false 时 不得注册 run_code/中间件/catalog；配置启用时 须经 kernel 装配并注入 catalog/dispatch。由装配单测覆盖，不扩 BDD step。

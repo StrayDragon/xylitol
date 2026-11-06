@@ -34,6 +34,9 @@ pub use session::{
 };
 pub use session_list::{flatten_session_forest, format_session_age};
 pub use todo::AgentTodoGateway;
-pub use tool::{XyBatchMode, XyTool, XyToolCtx, XyToolExecutionMode};
+pub use tool::{
+    XyBatchMode, XyTool, XyToolCallResult, XyToolCatalog, XyToolCtx, XyToolDescriptor,
+    XyToolDispatch, XyToolExecutionMode, XyToolExposure,
+};
 pub use typed::{FS_TOOL_TIMEOUT_SECS, TypedTool, parse_tool_args};
 pub use workflow::WorkflowGateway;

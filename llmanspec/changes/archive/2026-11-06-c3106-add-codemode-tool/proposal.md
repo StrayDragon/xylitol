@@ -2,6 +2,9 @@
 depends_on:
   - c3197-remove-plan-mode
 title: "Add codemode tool on Wasmtime"
+branch: sdd/c3106-add-codemode-tool
+base_branch: main
+base_sha: 158b573ecae46ff16eacf054cc28afac4eb1fbc9
 ---
 
 ## Why

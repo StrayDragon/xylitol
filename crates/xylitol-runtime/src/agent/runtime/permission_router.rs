@@ -7,6 +7,7 @@ pub(crate) enum SandboxCapability {
     Read,
     Write,
     Network,
+    Exec,
 }
 
 pub(crate) fn sandbox_capability(tool_name: &str) -> Option<SandboxCapability> {
@@ -14,6 +15,7 @@ pub(crate) fn sandbox_capability(tool_name: &str) -> Option<SandboxCapability> {
         "read" => Some(SandboxCapability::Read),
         "write" | "edit" => Some(SandboxCapability::Write),
         "bash" => Some(SandboxCapability::Network),
+        "run_code" => Some(SandboxCapability::Exec),
         _ => None,
     }
 }
@@ -30,6 +32,11 @@ pub(crate) fn permission_target(name: &str, args: &Value) -> String {
             .and_then(|v| v.as_str())
             .map(extract_first_domain)
             .unwrap_or_default(),
+        Some(SandboxCapability::Exec) => args
+            .get("workspace")
+            .and_then(|v| v.as_str())
+            .unwrap_or(".")
+            .to_string(),
         None => String::new(),
     }
 }
@@ -43,6 +50,7 @@ pub(crate) fn check_tool_permission(
         SandboxCapability::Read => engine.check_read(target),
         SandboxCapability::Write => engine.check_write(target),
         SandboxCapability::Network => engine.check_network(target),
+        SandboxCapability::Exec => engine.check_process(target),
     };
     match verdict {
         XyPermissionVerdict::Deny { reason } => Some(reason),
@@ -75,6 +83,10 @@ mod tests {
         assert_eq!(sandbox_capability("write"), Some(SandboxCapability::Write));
         assert_eq!(sandbox_capability("edit"), Some(SandboxCapability::Write));
         assert_eq!(sandbox_capability("bash"), Some(SandboxCapability::Network));
+        assert_eq!(
+            sandbox_capability("run_code"),
+            Some(SandboxCapability::Exec)
+        );
         assert_eq!(sandbox_capability("ask"), None);
     }
 

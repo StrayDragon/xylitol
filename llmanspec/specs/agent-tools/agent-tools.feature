@@ -640,3 +640,7 @@
       假如 tools-fff 插件未装配
       当 装配工具集
       那么 含 grep 与 find 且不含 ffgrep
+
+  @req:r3256
+  规则: codemode-tool-registration
+    XyTool 须可声明 exposure / namespace / output_schema；默认 direct。run_code 须经插件注册表注册，不进核心 7 工具闭集；并发类 Sequential；catalog 与 dispatch 须按 exposure 过滤。由插件/运行时单测覆盖，不扩 BDD step。

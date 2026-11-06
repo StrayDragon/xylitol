@@ -635,3 +635,7 @@
   @req:r3230
   规则: session-prepare-workspaces
     SessionPrepare 事件 须携带 workspaces（primary 在前）；无 workspace 时回退 agent cwd；MCP hub 按 workspace set 建 claim，stdio 连接 current_dir 为对应 workspace。由单测 / fixture 覆盖，不扩 BDD step。
+
+  @req:r3257
+  规则: codemode-nested-dispatch
+    嵌套工具调用 须复用 prepare_call/run_one 的 before_tool/after_tool/权限/hooks；递归 run_code 须拒绝；嵌套结果不得写入模型上下文或 session；取消须传播。由 runtime 单测覆盖，不扩 BDD step。

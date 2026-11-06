@@ -341,6 +341,25 @@ fn optional_plugin_rows(
             "config": workflow,
         }));
     }
+    let mut codemode: xylitol_plugin_sdk::CodemodeConfig = config
+        .app
+        .section_or_default("codemode")
+        .unwrap_or_default();
+    if loop_policies.tool_exposure.enabled {
+        codemode.tool_exposure = Some(xylitol_plugin_sdk::CodemodeExposurePolicy {
+            allow: loop_policies.tool_exposure.allow.clone(),
+            deny: loop_policies.tool_exposure.deny.clone(),
+            read_only: loop_policies.tool_exposure.read_only,
+            write_tools: loop_policies.tool_exposure.write_tools.clone(),
+        });
+    }
+    if codemode.is_active() {
+        rows.push(serde_json::json!({
+            "id": "codemode",
+            "name": "codemode",
+            "config": codemode,
+        }));
+    }
     rows.extend(lsp_dap_rows(config));
     rows
 }
@@ -590,6 +609,26 @@ for line in sys.stdin:
         assert!(
             registries.tools.get("fixture__echo").is_some(),
             "trusted external plugin tool must be registered"
+        );
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn boot_ctx_registers_codemode_when_enabled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config_path = dir.path().join("config.yaml");
+        std::fs::write(
+            &config_path,
+            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\ncodemode:\n  enabled: true\n",
+        )
+        .expect("config");
+        let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
+        let registries = ctx
+            .get::<xylitol_plugin_sdk::HostRegistries>()
+            .expect("registries");
+        assert!(
+            registries.tools.get("run_code").is_some(),
+            "enabled codemode must register run_code"
         );
         let _ = ctx.shutdown().await;
     }

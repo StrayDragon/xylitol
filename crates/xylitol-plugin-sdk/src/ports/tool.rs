@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -16,6 +17,7 @@ pub struct XyToolCtx {
     pub output_tx: Option<mpsc::Sender<String>>,
     state_events: Option<mpsc::UnboundedSender<XyEvent>>,
     pub workspace: PathBuf,
+    dispatch: Option<Arc<dyn XyToolDispatch>>,
 }
 
 impl XyToolCtx {
@@ -26,6 +28,7 @@ impl XyToolCtx {
             output_tx: None,
             state_events: None,
             workspace: fallback_workspace(),
+            dispatch: None,
         }
     }
 
@@ -36,6 +39,7 @@ impl XyToolCtx {
             output_tx: None,
             state_events: None,
             workspace: fallback_workspace(),
+            dispatch: None,
         }
     }
 
@@ -59,6 +63,15 @@ impl XyToolCtx {
         self.workspace = workspace.as_ref().to_path_buf();
         self
     }
+
+    pub fn with_dispatch(mut self, dispatch: Arc<dyn XyToolDispatch>) -> Self {
+        self.dispatch = Some(dispatch);
+        self
+    }
+
+    pub fn dispatch(&self) -> Option<&Arc<dyn XyToolDispatch>> {
+        self.dispatch.as_ref()
+    }
 }
 
 fn fallback_workspace() -> PathBuf {
@@ -78,6 +91,77 @@ pub enum XyToolExecutionMode {
     Parallel,
     #[default]
     Sequential,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum XyToolExposure {
+    #[default]
+    Direct,
+    ModelOnly,
+    Codemode,
+    Deferred,
+    Hidden,
+}
+
+impl XyToolExposure {
+    pub fn model_visible(self) -> bool {
+        matches!(self, Self::Direct | Self::ModelOnly)
+    }
+
+    pub fn codemode_visible(self) -> bool {
+        matches!(self, Self::Direct | Self::Codemode | Self::Deferred)
+    }
+
+    pub fn inline_declaration(self) -> bool {
+        matches!(self, Self::Direct | Self::Codemode | Self::ModelOnly)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct XyToolDescriptor {
+    pub name: String,
+    pub identifier: String,
+    pub namespace: Option<String>,
+    pub description: String,
+    pub parameters: Value,
+    pub output_schema: Option<Value>,
+    pub exposure: XyToolExposure,
+    pub guidelines: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct XyToolCallResult {
+    pub parts: Vec<AgentPart>,
+    pub details: Option<Value>,
+    pub is_error: bool,
+}
+
+pub trait XyToolCatalog: Send + Sync {
+    fn snapshot(&self) -> Vec<XyToolDescriptor>;
+    fn describe(&self, name: &str) -> Option<XyToolDescriptor>;
+    fn search(&self, query: &str, limit: usize) -> Vec<XyToolDescriptor>;
+}
+
+#[async_trait]
+pub trait XyToolDispatch: Send + Sync {
+    async fn call(
+        &self,
+        parent_call_id: &str,
+        name: &str,
+        args: Value,
+    ) -> Result<XyToolCallResult, XyToolError>;
+    fn catalog(&self) -> Arc<dyn XyToolCatalog>;
 }
 
 #[async_trait]
@@ -114,6 +198,18 @@ pub trait XyTool: Send + Sync {
 
     fn prepare_arguments(&self, args: Value) -> Value {
         args
+    }
+
+    fn exposure(&self) -> XyToolExposure {
+        XyToolExposure::Direct
+    }
+
+    fn namespace(&self) -> Option<&str> {
+        None
+    }
+
+    fn output_schema(&self) -> Option<Value> {
+        None
     }
 }
 

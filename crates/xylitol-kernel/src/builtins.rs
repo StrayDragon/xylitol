@@ -1,4 +1,5 @@
 use rutis_loader::Builtins;
+use xylitol_official_plugin_codemode::CodemodePlugin;
 use xylitol_official_plugin_compaction::plugin::CompactionPlugin;
 use xylitol_official_plugin_dap::DapPlugin;
 use xylitol_official_plugin_hooks::plugin::HooksPlugin;
@@ -29,6 +30,7 @@ pub fn official_builtins() -> Builtins {
     builtins.register("loop-policies", LoopPoliciesPlugin::new);
     builtins.register("todo", TodoPlugin::new);
     builtins.register("workflow", WorkflowPlugin::new);
+    builtins.register("codemode", CodemodePlugin::new);
     builtins.register("lsp", LspPlugin::new);
     builtins.register("dap", DapPlugin::new);
     builtins.register("provider-openai", OpenAiPlugin::new);

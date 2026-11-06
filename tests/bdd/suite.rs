@@ -1,5 +1,6 @@
 #[macro_use]
 mod helpers;
+mod bindings_agent_codemode;
 mod bindings_agent_hooks;
 mod bindings_agent_runtime;
 mod bindings_agent_session;
@@ -55,6 +56,7 @@ mod fixtures;
 mod fold_probe;
 mod prelude;
 mod steps_agent;
+mod steps_agent_codemode;
 mod steps_agent_profile;
 mod steps_agent_runtime;
 mod steps_agent_session_extra;

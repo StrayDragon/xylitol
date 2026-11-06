@@ -1,4 +1,5 @@
 pub mod baseline;
+pub(crate) mod dispatch;
 pub mod event;
 pub mod hooks;
 pub(crate) mod middleware;

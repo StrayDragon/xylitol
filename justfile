@@ -135,6 +135,19 @@ test-changed:
 gen-config-schema:
     cargo run -q -p xylitol-official-plugin-config --bin gen-config-schema
 
+# Rebuild the rquickjs WASI guest and refresh the checked-in asset.
+# Requires WASI SDK 24 (`WASI_SDK_PATH=/path/to/wasi-sdk`).
+codemode-guest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${WASI_SDK_PATH:?set WASI_SDK_PATH to a wasi-sdk 24 install}"
+    cd plugins/xylitol-official-plugin-codemode/guest
+    CC_wasm32_wasip1="$WASI_SDK_PATH/bin/clang" \
+      AR_wasm32_wasip1="$WASI_SDK_PATH/bin/llvm-ar" \
+      CFLAGS_wasm32_wasip1="--sysroot=$WASI_SDK_PATH/share/wasi-sysroot" \
+      cargo build --release --target wasm32-wasip1
+    cp target/wasm32-wasip1/release/xylitol_codemode_guest.wasm ../assets/guest.wasm
+
 # Provider-safe MCP tool naming gate (registry SSOT + wire encode on all three APIs).
 # Not live-network; safe in qa loops. Prefer this after changing MCP_PUBLIC_DELIMITER.
 [arg('verbosity', pattern='quiet|normal|verbose')]

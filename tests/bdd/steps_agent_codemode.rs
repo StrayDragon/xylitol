@@ -1,0 +1,336 @@
+use std::cell::RefCell;
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex};
+
+use async_trait::async_trait;
+use rstest_bdd_macros::{given, then, when};
+use serde_json::{Value, json};
+
+use crate::bdd::fixtures::*;
+use xylitol_official_plugin_codemode::{
+    CodemodeErrorKind, CodemodePlugin, CodemodeRunner, render_declarations,
+};
+use xylitol_plugin_sdk::rt::CtxHost;
+use xylitol_plugin_sdk::{
+    AgentPart, CodemodeConfig, HostRegistries, XyTool, XyToolCallResult, XyToolCatalog, XyToolCtx,
+    XyToolDescriptor, XyToolDispatch, XyToolError, XyToolExposure,
+};
+use xylitol_runtime::agent::tools::{ToolCatalog, ToolSet};
+
+#[derive(Default)]
+struct CodemodeState {
+    set: Option<ToolSet>,
+    allowed: Option<BTreeSet<String>>,
+    model: Vec<String>,
+    catalog: Vec<XyToolDescriptor>,
+    declarations: String,
+    script: String,
+    fuel: u64,
+    error: Option<CodemodeErrorKind>,
+    calls: Arc<Mutex<Vec<String>>>,
+    registered: bool,
+}
+
+impl std::fmt::Debug for CodemodeState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CodemodeState")
+            .field("model", &self.model)
+            .field("catalog", &self.catalog)
+            .field("error", &self.error)
+            .field("registered", &self.registered)
+            .finish()
+    }
+}
+
+thread_local! {
+    static CODEMODE: RefCell<Option<CodemodeState>> = const { RefCell::new(None) };
+}
+
+fn reset() {
+    CODEMODE.with(|cell| {
+        *cell.borrow_mut() = Some(CodemodeState {
+            fuel: 10_000_000,
+            ..Default::default()
+        });
+    });
+}
+
+fn update(f: impl FnOnce(&mut CodemodeState)) {
+    CODEMODE.with(|cell| {
+        let mut guard = cell.borrow_mut();
+        let state = guard.as_mut().expect("codemode state");
+        f(state);
+    });
+}
+
+fn read<T>(f: impl FnOnce(&CodemodeState) -> T) -> T {
+    CODEMODE.with(|cell| {
+        let guard = cell.borrow();
+        let state = guard.as_ref().expect("codemode state");
+        f(state)
+    })
+}
+
+struct StubTool {
+    name: &'static str,
+    exposure: XyToolExposure,
+}
+
+#[async_trait]
+impl XyTool for StubTool {
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn description(&self) -> &str {
+        "stub"
+    }
+    fn parameters_schema(&self) -> Value {
+        json!({"type": "object"})
+    }
+    fn exposure(&self) -> XyToolExposure {
+        self.exposure
+    }
+    async fn execute(&self, _: &XyToolCtx, _: Value) -> Result<String, XyToolError> {
+        Ok("ok".into())
+    }
+}
+
+fn stub(name: &'static str, exposure: XyToolExposure) -> Arc<dyn XyTool> {
+    Arc::new(StubTool { name, exposure })
+}
+
+struct StubCatalog;
+
+impl XyToolCatalog for StubCatalog {
+    fn snapshot(&self) -> Vec<XyToolDescriptor> {
+        vec![XyToolDescriptor {
+            name: "write".into(),
+            identifier: "write".into(),
+            namespace: Some("core".into()),
+            description: "write".into(),
+            parameters: json!({"type": "object"}),
+            output_schema: None,
+            exposure: XyToolExposure::Direct,
+            guidelines: Vec::new(),
+        }]
+    }
+    fn describe(&self, name: &str) -> Option<XyToolDescriptor> {
+        self.snapshot().into_iter().find(|tool| tool.name == name)
+    }
+    fn search(&self, _: &str, _: usize) -> Vec<XyToolDescriptor> {
+        self.snapshot()
+    }
+}
+
+struct StubDispatch {
+    calls: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl XyToolDispatch for StubDispatch {
+    async fn call(
+        &self,
+        _: &str,
+        name: &str,
+        args: Value,
+    ) -> Result<XyToolCallResult, XyToolError> {
+        self.calls.lock().expect("calls").push(name.to_string());
+        if name == "run_code" {
+            return Err(XyToolError::InvalidArgs(
+                "run_code cannot be called recursively".into(),
+            ));
+        }
+        Ok(XyToolCallResult {
+            parts: vec![AgentPart::text(format!("{name}:{args}"))],
+            details: None,
+            is_error: false,
+        })
+    }
+    fn catalog(&self) -> Arc<dyn XyToolCatalog> {
+        Arc::new(StubCatalog)
+    }
+}
+
+#[given("工具集含 direct/model-only/codemode/deferred/hidden 工具")]
+fn _g_exposure_tools(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.set = Some(ToolSet::from_iter(vec![
+            stub("direct", XyToolExposure::Direct),
+            stub("model_only", XyToolExposure::ModelOnly),
+            stub("code_only", XyToolExposure::Codemode),
+            stub("deferred", XyToolExposure::Deferred),
+            stub("hidden", XyToolExposure::Hidden),
+        ]));
+    });
+}
+
+#[when("生成模型工具表与 codemode catalog")]
+fn _w_generate_surfaces(_ws: &Workspace) {
+    update(|state| {
+        let set = state.set.as_ref().expect("set");
+        state.model = set
+            .iter()
+            .filter(|tool| tool.exposure().model_visible())
+            .map(|tool| tool.name().to_string())
+            .collect();
+        state.catalog = ToolCatalog::from_toolset(set, None).snapshot();
+    });
+}
+
+#[then("模型只含 direct 与 model-only 且 catalog 含 direct/codemode/deferred")]
+fn _t_exposure_surfaces(_ws: &Workspace) {
+    let state = read(|state| (state.model.clone(), state.catalog.clone()));
+    assert_eq!(state.0, vec!["direct", "model_only"]);
+    let names: Vec<_> = state.1.into_iter().map(|tool| tool.name).collect();
+    assert_eq!(names, vec!["code_only", "deferred", "direct"]);
+}
+
+#[given("loop_policies.tool_exposure 拒绝 write")]
+fn _g_tool_exposure(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.set = Some(ToolSet::from_iter(vec![
+            stub("read", XyToolExposure::Direct),
+            stub("write", XyToolExposure::Direct),
+        ]));
+        state.allowed = Some(BTreeSet::from(["read".to_string()]));
+    });
+}
+
+#[when("生成 codemode catalog")]
+fn _w_generate_catalog(_ws: &Workspace) {
+    update(|state| {
+        let set = state.set.as_ref().expect("set");
+        state.catalog = ToolCatalog::from_toolset(set, state.allowed.as_ref()).snapshot();
+    });
+}
+
+#[then("catalog 不含 write")]
+fn _t_catalog_without_write(_ws: &Workspace) {
+    let catalog = read(|state| state.catalog.clone());
+    assert!(catalog.iter().all(|tool| tool.name != "write"));
+}
+
+#[given("catalog 含 deferred 工具")]
+fn _g_deferred_catalog(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.catalog = vec![
+            XyToolDescriptor {
+                name: "read".into(),
+                identifier: "read".into(),
+                namespace: Some("core".into()),
+                description: "read".into(),
+                parameters: json!({"type": "object"}),
+                output_schema: None,
+                exposure: XyToolExposure::Direct,
+                guidelines: Vec::new(),
+            },
+            XyToolDescriptor {
+                name: "deferred".into(),
+                identifier: "deferred".into(),
+                namespace: Some("official".into()),
+                description: "deferred".into(),
+                parameters: json!({"type": "object"}),
+                output_schema: None,
+                exposure: XyToolExposure::Deferred,
+                guidelines: Vec::new(),
+            },
+        ];
+    });
+}
+
+#[when("生成声明")]
+fn _w_declarations(_ws: &Workspace) {
+    update(|state| {
+        state.declarations = render_declarations(&state.catalog, 10_000);
+    });
+}
+
+#[then("声明不含该工具且 ALL_TOOLS 可发现")]
+fn _t_declarations(_ws: &Workspace) {
+    let text = read(|state| state.declarations.clone());
+    assert!(!text.contains("- deferred"));
+    assert!(text.contains("Deferred tools: deferred"));
+    assert!(text.contains("ALL_TOOLS"));
+}
+
+#[given("run_code 脚本调用 write 与 run_code")]
+fn _g_nested_script(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.script = "tools.write({}); tools.run_code({});".into();
+        state.calls = Arc::new(Mutex::new(Vec::new()));
+    });
+}
+
+#[when("执行脚本")]
+async fn _w_run_script(_ws: &Workspace) {
+    let (script, fuel, calls) =
+        read(|state| (state.script.clone(), state.fuel, state.calls.clone()));
+    let runner = CodemodeRunner::new(CodemodeConfig {
+        enabled: true,
+        fuel,
+        timeout_ms: 5_000,
+        ..Default::default()
+    })
+    .expect("runner");
+    let ctx = XyToolCtx::new("bdd-call").with_dispatch(Arc::new(StubDispatch { calls }));
+    let error = runner.run(&ctx, &script).await.expect_err("script");
+    update(|state| state.error = Some(error.kind));
+}
+
+#[then("write 经 before_tool 与权限且 run_code 被拒绝")]
+fn _t_nested_dispatch(_ws: &Workspace) {
+    let (calls, error) = read(|state| (state.calls.clone(), state.error));
+    let calls = calls.lock().expect("calls").clone();
+    assert!(calls.iter().any(|name| name == "write"), "{calls:?}");
+    assert!(calls.iter().any(|name| name == "run_code"), "{calls:?}");
+    assert_eq!(error, Some(CodemodeErrorKind::Script));
+}
+
+#[given("run_code 执行无限循环或收到取消")]
+fn _g_infinite_loop(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.script = "while (true) {}".into();
+        state.fuel = 1_000_000;
+    });
+}
+
+#[then("返回 fuel_exhausted 或 cancelled 错误")]
+fn _t_fuel_or_cancel(_ws: &Workspace) {
+    let error = read(|state| state.error);
+    assert!(
+        matches!(
+            error,
+            Some(CodemodeErrorKind::FuelExhausted | CodemodeErrorKind::Cancelled)
+        ),
+        "{error:?}"
+    );
+}
+
+#[given("配置没有 codemode 节")]
+fn _g_zero_assembly(_ws: &Workspace) {
+    reset();
+}
+
+#[when("装配工具与中间件")]
+async fn _w_assemble(_ws: &Workspace) {
+    let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("root");
+    ctx.provide(HostRegistries::new()).expect("registries");
+    let plugin = CodemodePlugin::new(&CodemodeConfig::default()).expect("plugin");
+    let fiber = ctx.plugin(plugin);
+    fiber.dispose().await.expect("dispose");
+    let registries = ctx.get::<HostRegistries>().expect("registries");
+    update(|state| {
+        state.registered = registries.tools.get("run_code").is_some();
+    });
+    let _ = ctx.shutdown().await;
+}
+
+#[then("不含 run_code 且无 codemode 中间件")]
+fn _t_zero_assembly(_ws: &Workspace) {
+    assert!(!read(|state| state.registered));
+}

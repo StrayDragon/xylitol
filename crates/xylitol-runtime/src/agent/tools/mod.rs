@@ -1,4 +1,5 @@
 pub mod capability;
+pub mod catalog;
 pub mod freeze;
 pub mod provider_safe_names;
 pub mod selection;
@@ -7,6 +8,7 @@ pub mod toolset;
 pub use capability::{
     capability_snapshot, filter_tools_by_capability_overlay, mcp_capability_id, tool_capability_id,
 };
+pub use catalog::ToolCatalog;
 pub use freeze::{MCP_FIRST_TURN_GATE_TIMEOUT, ToolFreezePhase, ToolTableFingerprint};
 pub use selection::resolve_tool_selection;
 pub use toolset::ToolSet;
