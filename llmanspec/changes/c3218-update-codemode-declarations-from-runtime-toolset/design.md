@@ -21,6 +21,13 @@
 - 三者若各自从不同来源生成，会再次漂移；必须共享同一份选择后的 catalog 快照。
 - 推荐在 `BeforeLlmRequestCtx` 增加 `Arc<[XyToolDescriptor]>` 快照（Clone 便宜、Debug 可行）；`ToolSet` 只留在 dispatch 侧，不必进中间件。
 
+## XyToolSchema 是否重写
+
+- `XyToolSchema` 是 provider 投影（name / description / parameters），保持最小；不要把 catalog metadata 塞进去。
+- `XyToolDescriptor` 是 canonical catalog 条目；若觉得字段组合不够合理，可单独评估拆成 identity / schema / policy / prompt 分组。
+- 该字段重组是 SDK 公共类型重构，影响所有工具与 provider；不建议塞进 c3218。c3218 只增加 descriptor 快照，保持 provider schema 不变。
+- 如果后续要做，单独开 refactor change，先确认所有 provider / catalog / middleware 消费方。
+
 ## 决策
 
 ### 1. 生成时机

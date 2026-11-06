@@ -3,7 +3,7 @@
 ## 目标
 
 - 给工具结果一个稳定的结构化通道，承载 `run_code` 的嵌套摘要、截断、错误类别。
-- 保持现有工具兼容：没有 details 的工具行为不变。
+- 一步到位统一结果类型；所有工具迁移，不保留旧入口。
 - 让 TUI 只消费结构化字段，不解析工具特定的文本格式。
 
 ## 现状
@@ -16,34 +16,32 @@
 
 ## 决策
 
-### 1. SDK 结果类型
+### 1. 统一结果类型
 
-- 新增 `XyToolOutcome`（或复用 `XyToolCallResult`）：
+- 用 `XyToolOutcome` 作为唯一工具结果：
   - `parts: Vec<AgentPart>`
   - `details: Option<Value>`
   - `is_error: bool`
   - `error_kind: Option<XyToolErrorKind>`（可序列化）
-- `XyTool` 增加默认 `execute_outcome`：
-  - 默认调用 `execute_as_parts`，`details=None`，`is_error=false`。
-  - 保持 `execute` / `execute_as_parts` 旧入口，避免全量迁移。
-- `XyToolCallResult` 与 `XyToolOutcome` 的字段对齐；嵌套 dispatch 可复用。
+- `XyTool` 改为 `execute_outcome`；删除 `execute` / `execute_as_parts` / `XyToolCallResult` 旧路径。
+- 嵌套 dispatch 与 outer tool 共用 `XyToolOutcome`；不再维护两套结果类型。
 
 ### 2. 事件与 wire
 
-- `ToolExecutionEnd` 增加 `#[serde(default, skip_serializing_if = "Option::is_none")] details: Option<Value>`。
-- wire 映射透传；旧客户端忽略未知字段。
+- `ToolExecutionEnd` 增加 `details: Option<Value>`，始终序列化（可为 null）。
+- 不做旧客户端兼容；若 wire 形状破坏，bump `PROTOCOL_VERSION`。
 - `ToolExecutionUpdate` 不增加 details；details 只在 End 出现，避免流式重复。
 
 ### 3. run_one
 
-- `run_one` 调 `execute_outcome`，得到 parts / details / is_error。
+- `run_one` 调 `execute_outcome`，得到 parts / details / is_error / error_kind。
 - after_tool 修改时，details 随 parts / is_error 一起更新；不得只改 parts。
 - 事件发射使用同一份 details；AgentMessage 也使用同一份。
 - hook 修改结果时保留 details，除非 hook 明确替换。
 
 ### 4. run_code details
 
-- `RunCodeTool` 覆盖 `execute_outcome`：
+- `RunCodeTool` 返回 `XyToolOutcome`：
   - `parts`：脚本结果文本（保持现有输出）。
   - `details`：`{ script_summary, elapsed_ms, nested_calls: [{name, args_preview, ok, error_kind, elapsed_ms}], truncated, output_bytes }`。
   - 错误：`error_kind` 取 timeout / cancelled / script / runtime / invalid_args。
@@ -57,9 +55,9 @@
 
 ## Seams 与测试
 
-- 单测：默认 outcome 适配；details 透传；after_tool 修改 details。
+- 单测：所有工具 outcome 迁移；details 透传；after_tool 修改 details。
 - 单测：run_code details 的嵌套调用、截断、错误类别。
-- wire 测试：旧 payload 缺 details 仍可解析。
+- wire 测试：新 payload 形状；不测试旧客户端兼容。
 - TUI harness：有 details / 无 details 两种渲染。
 
 ## 示例
@@ -68,7 +66,7 @@
 
     {"parts":[{"type":"text","text":"42"}],"details":null,"is_error":false}
 
-TUI 只能显示整段 JSON。目标结构：
+目标结构：
 
     XyToolOutcome {
       parts: [text("42")],
@@ -90,15 +88,15 @@ TUI 从 `details` 读取摘要、耗时、截断与嵌套调用；不再解析 `
 
 - 事件体积增加；details 只放摘要，不放完整脚本 / 大输出；嵌套参数按现有展示策略截断，不额外脱敏。
 - after_tool / hook 可能丢弃 details；需要显式合并策略。
-- 旧工具不实现 outcome；默认适配必须保持行为。
+- 全量迁移工具 API 会带来一次性改动；不保留兼容 shim，需一次性修完。
 
 ## 未决问题
 
-- 新 `XyToolOutcome` 还是复用 `XyToolCallResult`；是否需要可序列化的 `error_kind`。
-- `ToolExecutionEnd.details` 是否需要 `PROTOCOL_VERSION` bump；旧客户端兼容策略。
+- `XyToolErrorKind` 的序列化形状与现有 `XyToolError::kind()` 的映射。
+- `ToolExecutionEnd.details` 是否触发 `PROTOCOL_VERSION` bump；按破坏性变更评估。
 - details 的大小 / 截断：嵌套 args 沿用现有 tool 参数展示策略；本地 TUI 不做额外脱敏。
 
 ## 迁移
 
-- 旧工具无需改签名；逐步迁移需要 details 的工具。
+- 所有工具迁移到 `execute_outcome`；删除旧 `execute` / `execute_as_parts` / `XyToolCallResult`。
 - 不改变工具权限、执行顺序、取消语义。

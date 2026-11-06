@@ -19,9 +19,10 @@
 
 ## 候选方案
 
-1. **GitHub Release + `build.rs` 下载**：实现简单；构建需要网络；离线需缓存 / env。
-2. **GitHub Release + `just setup` 预取**：`build.rs` 只校验本地文件；`cargo build` 不联网；多一步 setup。
-3. **对象存储 + 内部缓存**：适合企业；需要额外基础设施。
+1. **源码构建优先 + 分发资产回退**：本地 `just codemode-guest` 从 guest crate 构建；CI 发布 release artifact + SHA256；`build.rs` 解析 env / 缓存 / 预取资产。本地自然、可审计；无 WASI SDK 时用分发资产。
+2. **GitHub Release + `build.rs` 下载**：实现简单；构建需要网络；离线需缓存 / env。
+3. **GitHub Release + `just setup` 预取**：`build.rs` 只校验本地文件；`cargo build` 不联网；多一步 setup。
+4. **对象存储 + 内部缓存**：适合企业；需要额外基础设施。
 
 ## 待决策
 
