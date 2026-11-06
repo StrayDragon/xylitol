@@ -558,6 +558,7 @@ fn when_rebuild_from_parts(transcript_bdd: &TranscriptBdd) {
             id: "tc1".into(),
             name: "read".into(),
             result: "contents".into(),
+            details: None,
             is_error: false,
         },
     );
@@ -688,6 +689,7 @@ fn when_mount_three_status_tools(tui_interaction: &TuiInteraction) {
         id: "t-err".into(),
         name: "read".into(),
         result: "boom".into(),
+        details: None,
         is_error: true,
     });
     seal_and_open_cluster(&mut fx);
@@ -849,6 +851,7 @@ fn when_mount_edit_success(tui_interaction: &TuiInteraction) {
             "display_diff": "@@ -1,2 +1,3 @@\n ctx\n-removed\n+added"
         })
         .to_string(),
+        details: None,
         is_error: false,
     });
     seal_and_open_cluster(&mut fx);
@@ -906,6 +909,7 @@ fn mount_bash_tool(tui_interaction: &TuiInteraction, result: String) {
         id: "b1".into(),
         name: "bash".into(),
         result,
+        details: None,
         is_error: false,
     });
     seal_and_open_cluster(&mut fx);
@@ -964,6 +968,7 @@ fn when_mount_hard_truncated_bash(tui_interaction: &TuiInteraction) {
         id: "b1".into(),
         name: "bash".into(),
         result: truncated_bash_result(24),
+        details: None,
         is_error: false,
     });
     seal_and_open_cluster(&mut fx);
@@ -1599,6 +1604,7 @@ fn when_todo_block_live_and_rebuild(transcript_bdd: &TranscriptBdd) {
             id: "tc-todo".into(),
             name: "todo_rewrite".into(),
             result: todo_result,
+            details: None,
             is_error: false,
         },
     );
@@ -2074,6 +2080,7 @@ fn when_todo_empty_live_and_rebuild(transcript_bdd: &TranscriptBdd) {
             id: "tc-todo-empty".into(),
             name: "todo_rewrite".into(),
             result: r#"{"items":[]}"#.into(),
+            details: None,
             is_error: false,
         },
     );

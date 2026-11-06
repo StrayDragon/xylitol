@@ -46,11 +46,13 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             id,
             name,
             result,
+            details,
             is_error,
         } => Ok(Event::ToolExecutionEnd {
             id: id.clone(),
             name: name.clone(),
             result: result.clone(),
+            details: details.clone(),
             is_error: *is_error,
         }),
         XyEvent::CompactionStart { reason } => Ok(Event::CompactionStart {
@@ -165,11 +167,13 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             id,
             name,
             result,
+            details,
             is_error,
         } => Ok(XyEvent::ToolExecutionEnd {
             id: id.clone(),
             name: name.clone(),
             result: result.clone(),
+            details: details.clone(),
             is_error: *is_error,
         }),
         Event::CompactionStart { reason } => Ok(XyEvent::CompactionStart {
@@ -367,6 +371,7 @@ mod tests {
                 id: "t".into(),
                 name: "read".into(),
                 result: "r".into(),
+                details: None,
                 is_error: true,
             },
             XyEvent::CompactionStart {

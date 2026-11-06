@@ -192,12 +192,12 @@ mod tests {
         fn namespace(&self) -> Option<&str> {
             self.namespace
         }
-        async fn execute(
+        async fn execute_outcome(
             &self,
             _: &XyToolCtx,
             _: Value,
-        ) -> Result<String, xylitol_plugin_sdk::XyToolError> {
-            Ok("ok".into())
+        ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::XyToolError> {
+            Ok(xylitol_plugin_sdk::XyToolOutcome::text("ok"))
         }
     }
 

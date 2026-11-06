@@ -89,6 +89,8 @@ pub enum XyEvent {
         id: String,
         name: String,
         result: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        details: Option<Value>,
         #[serde(default)]
         is_error: bool,
     },

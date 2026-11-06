@@ -67,6 +67,7 @@ pub(super) fn run_preview_live_xy<T: Terminal>(session: &mut HostSession<T>) {
             id: "r1".into(),
             name: "read".into(),
             result: "ok".into(),
+            details: None,
             is_error: false,
         },
     ];

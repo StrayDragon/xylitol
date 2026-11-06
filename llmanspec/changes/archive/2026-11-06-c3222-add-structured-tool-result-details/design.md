@@ -23,8 +23,9 @@
   - `details: Option<Value>`
   - `is_error: bool`
   - `error_kind: Option<XyToolErrorKind>`（可序列化）
-- `XyTool` 改为 `execute_outcome`；删除 `execute` / `execute_as_parts` / `XyToolCallResult` 旧路径。
+- `XyTool` 增加 `execute_outcome`；删除 `execute_as_parts` / `XyToolCallResult` 旧路径。`execute` 保留为文本便捷适配（默认从 outcome 提取），不作为事件路径。
 - 嵌套 dispatch 与 outer tool 共用 `XyToolOutcome`；不再维护两套结果类型。
+- 所有工具实现 `execute_outcome`；`TypedTool` 由 blanket impl 自动适配。
 - `XyToolErrorKind` 用 snake_case 枚举：`invalid_args` / `execution_failed` / `permission_denied` / `timeout` / `aborted`；从现有 `XyToolError::kind()` 映射。
 
 ### 2. 事件与 wire
@@ -99,5 +100,5 @@ TUI 从 `details` 读取摘要、耗时、截断与嵌套调用；不再解析 `
 
 ## 迁移
 
-- 所有工具迁移到 `execute_outcome`；删除旧 `execute` / `execute_as_parts` / `XyToolCallResult`。
+- 所有工具迁移到 `execute_outcome`；删除 `execute_as_parts` / `XyToolCallResult`；保留 `execute` 文本便捷适配。
 - 不改变工具权限、执行顺序、取消语义。

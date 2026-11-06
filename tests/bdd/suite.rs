@@ -61,6 +61,7 @@ mod steps_agent_profile;
 mod steps_agent_runtime;
 mod steps_agent_session_extra;
 mod steps_agent_subagent;
+mod steps_agent_tools_outcome;
 mod steps_app_tui_ask;
 mod steps_app_tui_bridge;
 mod steps_app_tui_fixed_zone;

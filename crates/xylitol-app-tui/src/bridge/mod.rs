@@ -207,6 +207,7 @@ pub(crate) fn apply_tool_result_to_entries(
     id: &str,
     name: &str,
     result: &str,
+    details: Option<&serde_json::Value>,
     is_error: bool,
 ) -> bool {
     let Some(UiEntry::Tool {
@@ -224,6 +225,15 @@ pub(crate) fn apply_tool_result_to_entries(
     };
 
     use crate::tool_display::{extract_mcp_args_value, is_mcp_tool_name, mcp_tool_body};
+
+    if name == "run_code"
+        && let Some(human) = humanize_run_code_details(details, result)
+    {
+        *output = human;
+        *done = true;
+        *err = is_error;
+        return true;
+    }
 
     if let Some(truncated_display) = extract_truncated_tool_display(result) {
         *output = truncated_display;
@@ -275,6 +285,74 @@ pub(crate) fn apply_tool_result_to_entries(
     *err = is_error;
     *done = true;
     true
+}
+
+fn humanize_run_code_details(details: Option<&serde_json::Value>, result: &str) -> Option<String> {
+    let details = details?.as_object()?;
+    let mut lines = Vec::new();
+    if let Some(summary) = details
+        .get("script_summary")
+        .and_then(serde_json::Value::as_str)
+        && !summary.is_empty()
+    {
+        lines.push(format!("script: {summary}"));
+    }
+    if let Some(ms) = details
+        .get("elapsed_ms")
+        .and_then(serde_json::Value::as_u64)
+    {
+        lines.push(format!("elapsed: {ms}ms"));
+    }
+    if details
+        .get("truncated")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+    {
+        lines.push("[truncated]".into());
+    }
+    if let Some(kind) = details
+        .get("error_kind")
+        .and_then(serde_json::Value::as_str)
+    {
+        lines.push(format!("error: {kind}"));
+    }
+    if let Some(calls) = details
+        .get("nested_calls")
+        .and_then(serde_json::Value::as_array)
+        && !calls.is_empty()
+    {
+        lines.push(format!("nested calls: {}", calls.len()));
+        for call in calls {
+            let name = call
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("?");
+            let ok = call
+                .get("ok")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let elapsed = call
+                .get("elapsed_ms")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let args = call
+                .get("args_preview")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let status = if ok { "ok" } else { "err" };
+            let kind = call
+                .get("error_kind")
+                .and_then(serde_json::Value::as_str)
+                .map(|kind| format!(" [{kind}]"))
+                .unwrap_or_default();
+            lines.push(format!("  - {name}({args}) {status}{kind} {elapsed}ms"));
+        }
+    }
+    if !result.trim().is_empty() {
+        lines.push(String::new());
+        lines.push(result.to_string());
+    }
+    Some(lines.join("\n"))
 }
 
 pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {

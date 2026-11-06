@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use xylitol_plugin_sdk::{
     AgentMessage, AgentPart, LoopChain, ObsSessionContext, XyBatchMode, XyEvent, XyHookBus,
-    XyLlmMessage, XyToolCallResult, XyToolCatalog, XyToolDispatch, XyToolError,
+    XyLlmMessage, XyToolCatalog, XyToolDispatch, XyToolError, XyToolErrorKind, XyToolOutcome,
 };
 
 use super::hooks::AgentHooks;
@@ -35,6 +35,7 @@ pub(crate) struct DispatchHandle {
     nested: AtomicUsize,
     sequence: AtomicUsize,
     progress_tx: Option<mpsc::Sender<String>>,
+    nested_calls: std::sync::Mutex<Vec<serde_json::Value>>,
 }
 
 impl DispatchHandle {
@@ -64,6 +65,7 @@ impl DispatchHandle {
             nested: AtomicUsize::new(0),
             sequence: AtomicUsize::new(0),
             progress_tx,
+            nested_calls: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -97,7 +99,7 @@ impl XyToolDispatch for DispatchHandle {
         _parent_call_id: &str,
         name: &str,
         args: serde_json::Value,
-    ) -> Result<XyToolCallResult, XyToolError> {
+    ) -> Result<XyToolOutcome, XyToolError> {
         if name == "run_code" {
             return Err(XyToolError::InvalidArgs(
                 "run_code cannot be called recursively".into(),
@@ -140,7 +142,9 @@ impl XyToolDispatch for DispatchHandle {
             return Err(XyToolError::PermissionDenied(reason));
         }
         let (tx, mut rx) = mpsc::unbounded_channel::<XyEvent>();
+        let started = std::time::Instant::now();
         let outcome = run_one(&env, &call, tx, None, 0).await;
+        let elapsed_ms = started.elapsed().as_millis();
         while let Ok(event) = rx.try_recv() {
             if let XyEvent::ToolExecutionUpdate { output, .. } = event
                 && let Some(progress) = &self.progress_tx
@@ -168,16 +172,54 @@ impl XyToolDispatch for DispatchHandle {
             }) => (content, details, is_error),
             other => (vec![AgentPart::text(other.text())], None, false),
         };
-        Ok(XyToolCallResult {
+        let args_preview = preview(&args, 120);
+        let nested_error_kind = details
+            .as_ref()
+            .and_then(|details| details.get("error_kind"))
+            .cloned()
+            .or_else(|| is_error.then_some(serde_json::json!("execution_failed")));
+        self.nested_calls
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(serde_json::json!({
+                "name": name,
+                "args_preview": args_preview,
+                "ok": !is_error,
+                "error_kind": nested_error_kind,
+                "elapsed_ms": elapsed_ms,
+            }));
+        Ok(XyToolOutcome {
             parts,
             details,
             is_error,
+            error_kind: is_error.then_some(XyToolErrorKind::ExecutionFailed),
         })
     }
 
     fn catalog(&self) -> Arc<dyn XyToolCatalog> {
         self.catalog.clone()
     }
+
+    fn nested_summary(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!(
+            self.nested_calls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone()
+        ))
+    }
+}
+
+fn preview(value: &serde_json::Value, limit: usize) -> String {
+    let text = value.to_string();
+    if text.len() <= limit {
+        return text;
+    }
+    let mut cut = limit;
+    while !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}…", &text[..cut])
 }
 
 #[cfg(test)]
@@ -206,8 +248,12 @@ mod tests {
         fn exposure(&self) -> XyToolExposure {
             self.1
         }
-        async fn execute(&self, _: &XyToolCtx, _: Value) -> Result<String, XyToolError> {
-            Ok("ok".into())
+        async fn execute_outcome(
+            &self,
+            _: &XyToolCtx,
+            _: Value,
+        ) -> Result<XyToolOutcome, XyToolError> {
+            Ok(XyToolOutcome::text("ok"))
         }
     }
 
@@ -252,5 +298,8 @@ mod tests {
         let handle = DispatchHandle::new(&env(&set), "outer", 4, None);
         let result = handle.call("outer", "read", json!({})).await.expect("call");
         assert!(!result.is_error);
+        let summary = handle.nested_summary().expect("nested summary");
+        assert_eq!(summary[0]["name"], "read");
+        assert_eq!(summary[0]["ok"], true);
     }
 }

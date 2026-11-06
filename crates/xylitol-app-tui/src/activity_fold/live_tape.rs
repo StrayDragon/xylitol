@@ -38,6 +38,7 @@ fn tool_end(id: &str, name: &str) -> XyEvent {
         id: id.into(),
         name: name.into(),
         result: "ok".into(),
+        details: None,
         is_error: false,
     }
 }
@@ -52,6 +53,7 @@ pub fn live_ask_close_events(result: &str) -> Vec<XyEvent> {
             id: LIVE_ASK_TOOL_ID.into(),
             name: "ask".into(),
             result: result.into(),
+            details: None,
             is_error: false,
         },
         XyEvent::TextDelta(LIVE_ASK_CLOSE_TEXT.into()),

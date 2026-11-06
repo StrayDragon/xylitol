@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use super::tool::{XyTool, XyToolCtx, XyToolExecutionMode};
+use super::tool::{XyTool, XyToolCtx, XyToolExecutionMode, XyToolOutcome};
 use crate::error::XyToolError;
 use crate::message::AgentPart;
 use crate::tool_timeout::ToolTimeout;
@@ -72,30 +72,14 @@ where
         TypedTool::parameters_schema(self)
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let typed = parse_tool_args(args)?;
-        match self.wait_bound() {
-            None => self.execute_typed(ctx, typed).await,
-            Some(bound) => tokio::time::timeout(bound, self.execute_typed(ctx, typed))
-                .await
-                .unwrap_or_else(|_| {
-                    Err(XyToolError::Timeout(
-                        ToolTimeout::After(bound)
-                            .duration()
-                            .expect("bound is a duration"),
-                    ))
-                }),
-        }
-    }
-
-    async fn execute_as_parts(
+    async fn execute_outcome(
         &self,
         ctx: &XyToolCtx,
         args: Value,
-    ) -> Result<Vec<AgentPart>, XyToolError> {
+    ) -> Result<XyToolOutcome, XyToolError> {
         let typed = parse_tool_args(args)?;
-        match self.wait_bound() {
-            None => self.execute_as_parts_typed(ctx, typed).await,
+        let parts = match self.wait_bound() {
+            None => self.execute_as_parts_typed(ctx, typed).await?,
             Some(bound) => tokio::time::timeout(bound, self.execute_as_parts_typed(ctx, typed))
                 .await
                 .unwrap_or_else(|_| {
@@ -104,8 +88,9 @@ where
                             .duration()
                             .expect("bound is a duration"),
                     ))
-                }),
-        }
+                })?,
+        };
+        Ok(XyToolOutcome::from_parts(parts))
     }
 
     fn prompt_snippet(&self) -> Option<&str> {

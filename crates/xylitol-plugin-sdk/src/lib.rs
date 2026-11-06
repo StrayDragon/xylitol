@@ -105,11 +105,11 @@ pub use ports::{
     TypedTool, WorkflowGateway, XyBashExecutor, XyBashResult, XyBatchMode, XyCompaction,
     XyCompactionFactory, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel,
     XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream,
-    XyTool, XyToolCallResult, XyToolCatalog, XyToolCtx, XyToolDescriptor, XyToolDispatch,
-    XyToolExecutionMode, XyToolExposure, ask, bash, fallback_stage_name, flatten_session_forest,
-    format_session_age, noop_compaction_factory, normalize_stage_name, parse_tool_args,
-    run_after_response, run_before_headers, run_before_request, sanitize_session_display_name,
-    should_compact, truncate_utf8, typed,
+    XyTool, XyToolCatalog, XyToolCtx, XyToolDescriptor, XyToolDispatch, XyToolErrorKind,
+    XyToolExecutionMode, XyToolExposure, XyToolOutcome, ask, bash, fallback_stage_name,
+    flatten_session_forest, format_session_age, noop_compaction_factory, normalize_stage_name,
+    parse_tool_args, run_after_response, run_before_headers, run_before_request,
+    sanitize_session_display_name, should_compact, truncate_utf8, typed,
 };
 pub use registry::{HostRegistries, Registry, SkillEntry, XyPluginCommand};
 pub use reload::{ReloadEvent, ReloadHub, ReloadParticipant};

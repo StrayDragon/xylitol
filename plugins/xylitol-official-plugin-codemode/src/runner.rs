@@ -9,7 +9,7 @@ use wasmtime::{
 };
 use wasmtime_wasi::WasiCtxBuilder;
 use wasmtime_wasi::p1::{self, WasiP1Ctx};
-use xylitol_plugin_sdk::{CodemodeConfig, XyToolCallResult, XyToolCtx, XyToolDispatch};
+use xylitol_plugin_sdk::{CodemodeConfig, XyToolCtx, XyToolDispatch, XyToolOutcome};
 
 const GUEST_WASM: &[u8] = include_bytes!("../assets/guest.wasm");
 
@@ -145,6 +145,19 @@ impl CodemodeRunner {
         code: &str,
         timeout_ms: Option<u64>,
     ) -> Result<String, CodemodeError> {
+        self.run_with_details(ctx, code, timeout_ms)
+            .await
+            .map(|(text, _)| text)
+    }
+
+    pub async fn run_with_details(
+        &self,
+        ctx: &XyToolCtx,
+        code: &str,
+        timeout_ms: Option<u64>,
+    ) -> Result<(String, serde_json::Value), CodemodeError> {
+        let started = std::time::Instant::now();
+        let script_summary = summarize_script(code);
         let Some(dispatch) = ctx.dispatch().cloned() else {
             return Err(CodemodeError::new(
                 CodemodeErrorKind::DispatchMissing,
@@ -249,10 +262,12 @@ impl CodemodeRunner {
         if code == 3 {
             return Err(CodemodeError::new(CodemodeErrorKind::Runtime, text));
         }
+        let output_bytes = text.len();
         let limit = self
             .settings
             .max_result_bytes
             .min(self.settings.max_output_tokens.saturating_mul(4));
+        let mut truncated = false;
         if text.len() > limit {
             let mut cut = limit;
             while !text.is_char_boundary(cut) {
@@ -260,9 +275,38 @@ impl CodemodeRunner {
             }
             text.truncate(cut);
             text.push_str("\n[truncated]");
+            truncated = true;
         }
-        Ok(text)
+        let nested_calls = store
+            .data()
+            .dispatch
+            .nested_summary()
+            .unwrap_or_else(|| serde_json::json!([]));
+        let details = serde_json::json!({
+            "script_summary": script_summary,
+            "elapsed_ms": started.elapsed().as_millis(),
+            "nested_calls": nested_calls,
+            "truncated": truncated,
+            "output_bytes": output_bytes,
+        });
+        Ok((text, details))
     }
+}
+
+fn summarize_script(code: &str) -> String {
+    let line = code
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if line.len() <= 120 {
+        return line.to_string();
+    }
+    let mut cut = 120;
+    while !line.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}…", &line[..cut])
 }
 
 fn preamble_for(catalog: &[xylitol_plugin_sdk::XyToolDescriptor]) -> String {
@@ -351,13 +395,14 @@ fn write_host_error(caller: &mut Caller<'_, HostState>, message: String) -> Resu
     Ok(host_buffer)
 }
 
-fn serialize_result(result: &XyToolCallResult) -> Result<Vec<u8>> {
+fn serialize_result(result: &XyToolOutcome) -> Result<Vec<u8>> {
     Ok(serde_json::to_vec(&serde_json::json!({
         "ok": true,
         "value": {
             "parts": result.parts,
             "details": result.details,
             "is_error": result.is_error,
+            "error_kind": result.error_kind,
         },
     }))?)
 }
@@ -425,8 +470,8 @@ mod tests {
 
     use super::*;
     use xylitol_plugin_sdk::{
-        AgentPart, XyToolCallResult, XyToolCatalog, XyToolCtx, XyToolDescriptor, XyToolDispatch,
-        XyToolError, XyToolExposure,
+        AgentPart, XyToolCatalog, XyToolCtx, XyToolDescriptor, XyToolDispatch, XyToolError,
+        XyToolExposure, XyToolOutcome,
     };
 
     struct StubCatalog;
@@ -461,15 +506,25 @@ mod tests {
             _: &str,
             name: &str,
             args: Value,
-        ) -> Result<XyToolCallResult, XyToolError> {
-            Ok(XyToolCallResult {
+        ) -> Result<XyToolOutcome, XyToolError> {
+            Ok(XyToolOutcome {
                 parts: vec![AgentPart::text(format!("{name}:{args}"))],
                 details: None,
                 is_error: false,
+                error_kind: None,
             })
         }
         fn catalog(&self) -> Arc<dyn XyToolCatalog> {
             Arc::new(StubCatalog)
+        }
+
+        fn nested_summary(&self) -> Option<Value> {
+            Some(json!([{
+                "name": "echo",
+                "args_preview": "{\"value\":1}",
+                "ok": true,
+                "elapsed_ms": 1
+            }]))
         }
     }
 
@@ -500,6 +555,35 @@ mod tests {
             .expect("run");
         assert!(result.contains("echo:"), "result: {result}");
         assert!(result.contains("parts"), "result: {result}");
+    }
+
+    #[tokio::test]
+    async fn details_include_nested_calls() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-details").with_dispatch(Arc::new(StubDispatch));
+        let (_text, details) = runner
+            .run_with_details(&ctx, "return tools.echo({ value: 1 });", None)
+            .await
+            .expect("run");
+        assert_eq!(details["nested_calls"][0]["name"], "echo");
+        assert_eq!(details["truncated"], false);
+        assert!(details["script_summary"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn details_mark_truncation() {
+        let runner = CodemodeRunner::new(CodemodeConfig {
+            max_result_bytes: 16,
+            ..config()
+        })
+        .expect("runner");
+        let ctx = XyToolCtx::new("call-details-trunc").with_dispatch(Arc::new(StubDispatch));
+        let (_text, details) = runner
+            .run_with_details(&ctx, "return 'x'.repeat(100);", None)
+            .await
+            .expect("run");
+        assert_eq!(details["truncated"], true);
+        assert!(details["output_bytes"].as_u64().is_some());
     }
 
     #[tokio::test]

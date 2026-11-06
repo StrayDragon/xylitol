@@ -459,7 +459,11 @@ impl XyTool for ExternalTool {
         }
     }
 
-    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_outcome(
+        &self,
+        _ctx: &XyToolCtx,
+        args: Value,
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
         let call = self.client.request(
             "tools/call",
             json!({
@@ -468,11 +472,13 @@ impl XyTool for ExternalTool {
             }),
         );
         match tokio::time::timeout(self.timeout, call).await {
-            Ok(Ok(result)) => Ok(result
-                .get("content")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .unwrap_or_else(|| result.to_string())),
+            Ok(Ok(result)) => Ok(xylitol_plugin_sdk::XyToolOutcome::text(
+                result
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| result.to_string()),
+            )),
             Ok(Err(error)) => Err(XyToolError::ExecutionFailed(anyhow::anyhow!(error))),
             Err(_) => {
                 self.client.shutdown().await;

@@ -105,12 +105,13 @@ mod tests {
             serde_json::json!({ "type": "object" })
         }
 
-        async fn execute(
+        async fn execute_outcome(
             &self,
             _: &xylitol_plugin_sdk::XyToolCtx,
             _: serde_json::Value,
-        ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
-            Ok(String::new())
+        ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError>
+        {
+            Ok(xylitol_plugin_sdk::XyToolOutcome::text(String::new()))
         }
     }
 

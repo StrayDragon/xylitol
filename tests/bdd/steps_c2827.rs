@@ -781,6 +781,7 @@ pub(crate) fn w_c2827_huge_diff(host_pump_bdd: &HostPumpBdd, n: u32) {
             id: "t1".into(),
             name: "edit".into(),
             result: result.to_string(),
+            details: None,
             is_error: false,
         })))
         .expect("tool end");
@@ -1837,6 +1838,7 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
             id: "t1".into(),
             name: "read".into(),
             result: "file body".into(),
+            details: None,
             is_error: false,
         },
         XyEvent::AgentEnd { messages: vec![] },
@@ -1902,6 +1904,7 @@ pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
             id: "t1".into(),
             name: "bash".into(),
             result: "err".into(),
+            details: None,
             is_error: true,
         },
         XyEvent::AgentEnd { messages: vec![] },

@@ -199,6 +199,7 @@ fn w_tool_end_flag(protocol_bdd: &ProtocolBdd) {
         id: "t1".into(),
         name: "bash".into(),
         result: "boom".into(),
+        details: None,
         is_error: true,
     };
     let full_text = serde_json::to_string(&full).expect("serialize");

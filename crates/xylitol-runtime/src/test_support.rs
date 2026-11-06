@@ -203,8 +203,12 @@ impl XyTool for NamedTool {
         serde_json::json!({})
     }
 
-    async fn execute(&self, _: &XyToolCtx, _: serde_json::Value) -> Result<String, XyToolError> {
-        Ok("ok".into())
+    async fn execute_outcome(
+        &self,
+        _: &XyToolCtx,
+        _: serde_json::Value,
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text("ok"))
     }
 }
 

@@ -130,7 +130,7 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
         return;
     }
 
-    if !apply_tool_result_to_entries(entries, tool_call_id, name, &result, is_error) {
+    if !apply_tool_result_to_entries(entries, tool_call_id, name, &result, None, is_error) {
         entries.push(UiEntry::Tool {
             timeout_secs: None,
             id: tool_call_id.to_string(),
@@ -144,7 +144,7 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
             is_error: false,
             done: false,
         });
-        let _ = apply_tool_result_to_entries(entries, tool_call_id, name, &result, is_error);
+        let _ = apply_tool_result_to_entries(entries, tool_call_id, name, &result, None, is_error);
     }
 
     if let Some(diff) = details_diff
@@ -367,6 +367,7 @@ fn message_json_to_ui_entries(
                 tool_call_id,
                 &name,
                 &message_text(message),
+                None,
                 is_error,
             );
             if let Some(diff) = display_diff
@@ -1119,6 +1120,7 @@ mod tests {
                     { "id": "b", "content": "写清单", "status": "pending" }
                 ]})
                 .to_string(),
+                details: None,
                 is_error: false,
             },
         );

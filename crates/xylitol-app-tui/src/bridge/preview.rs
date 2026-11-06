@@ -761,6 +761,7 @@ mod tests {
                 id: "w1".into(),
                 name: "write".into(),
                 result: r#"{"path":"a.md","success":true}"#.into(),
+                details: None,
                 is_error: false,
             },
         );
@@ -877,6 +878,7 @@ mod tests {
                 id: "b1".into(),
                 name: "bash".into(),
                 result: "ok\n".into(),
+                details: None,
                 is_error: false,
             },
         );
@@ -924,6 +926,7 @@ mod tests {
                 id: "w1".into(),
                 name: "write".into(),
                 result: r#"{"path":"a.py","success":true}"#.into(),
+                details: None,
                 is_error: false,
             },
         );
@@ -961,6 +964,7 @@ mod tests {
                 id: "e1".into(),
                 name: "edit".into(),
                 result: r#"{"path":"src/a.rs","display_diff":"     1 | -a\n     1 | +b\n","success":true}"#.into(),
+                details: None,
                 is_error: false,
             },
         );
@@ -992,6 +996,7 @@ mod tests {
                 id: "e1".into(),
                 name: "edit".into(),
                 result: r#"{"path":"a.rs","display_diff":"--- a\n+++ b\n","success":true}"#.into(),
+                details: None,
                 is_error: false,
             },
         );
@@ -1073,6 +1078,7 @@ mod tests {
                 id: "e2".into(),
                 name: "edit".into(),
                 result: "exact match failed".into(),
+                details: None,
                 is_error: true,
             },
         );
@@ -1107,6 +1113,7 @@ mod tests {
                 id: "e1".into(),
                 name: "edit".into(),
                 result: result.into(),
+                details: None,
                 is_error: false,
             },
         );
@@ -1173,6 +1180,7 @@ mod tests {
                     "exit_code": 0,
                 })
                 .to_string(),
+                details: None,
                 is_error: false,
             },
         );
@@ -1368,6 +1376,7 @@ mod tests {
                 id: "r1".into(),
                 name: "read".into(),
                 result: r#"{"content":"hello\nworld\n","total_lines":2}"#.into(),
+                details: None,
                 is_error: false,
             },
         );

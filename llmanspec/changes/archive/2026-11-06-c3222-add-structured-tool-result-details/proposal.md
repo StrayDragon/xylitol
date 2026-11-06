@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 为工具结果增加结构化 details
+branch: sdd/c3222-add-structured-tool-result-details
+base_branch: main
+base_sha: 1af14efd90d8f8092508854f8561dd8e8db06193
 ---
 
 ## Why
@@ -9,7 +12,8 @@ c3220 需要显示 `run_code` 的外层结果、错误、截断标记与嵌套�
 
 ## What Changes
 
-- 一步到位：用 `XyToolOutcome` 替换现有 `execute` / `execute_as_parts` / `XyToolCallResult` 路径，所有工具迁移；不保留旧入口或兼容 shim。
+- 一步到位：用 `XyToolOutcome` 统一结果与事件；删除 `execute_as_parts` / `XyToolCallResult` 旧路径。`execute` 保留为文本便捷适配（默认从 outcome 提取），不作为事件路径。
+- 所有工具实现 `execute_outcome`；`TypedTool` 自动适配。
 - `XyToolOutcome` 字段：`parts` + `details` + `is_error` + `error_kind`。
 - `ToolExecutionEnd` 增加可选 `details`；wire 映射与 TUI bridge 透传。
 - `XyToolErrorKind` 用 snake_case 枚举：`invalid_args` / `execution_failed` / `permission_denied` / `timeout` / `aborted`。

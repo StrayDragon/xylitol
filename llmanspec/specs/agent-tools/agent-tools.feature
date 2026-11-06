@@ -18,7 +18,7 @@
 
   @req:r32
   规则: 工具 trait 与命名前缀
-    System 须将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，须与 protocol 边界其余命名一致。execute 接受 CancellationToken。ToolExecutionMode 须重命名为 XyToolExecutionMode；protocol 工具边界及其签名类型 须一致使用 Xy 前缀命名。
+    System 须将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，须与 protocol 边界其余命名一致。工具执行入口 execute_outcome 须接受 CancellationToken。ToolExecutionMode 须重命名为 XyToolExecutionMode；protocol 工具边界及其签名类型 须一致使用 Xy 前缀命名。
 
     场景: 内置名称列出经XyTool
       假如 工具集含全部内置工具
@@ -539,7 +539,7 @@
 
   @req:r1145
   规则: read-image-parts
-    Read 工具在路径为支持的图片文件时 须经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；不得仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 须允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。
+    Read 工具在路径为支持的图片文件时 须经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；不得仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 须允许 execute_outcome 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。
 
     场景: PNG产出图片部件
       假如 临时目录有小 PNG
@@ -644,3 +644,22 @@
   @req:r3256
   规则: codemode-tool-registration
     XyTool 须可声明 exposure / namespace / output_schema；默认 direct。run_code 须经插件注册表注册，不进核心 7 工具闭集；并发类 Sequential；catalog 与 dispatch 须按 exposure 过滤。由插件/运行时单测覆盖，不扩 BDD step。
+  @req:r3262
+  规则: tool-outcome-structured-details
+    工具调用结束 须携带结构化 details 与 error_kind；宿主与 TUI 只消费结构化字段，不得解析工具特定文本。details 缺失时 须回退文本；details 不得改变权限、执行顺序或取消语义。run_code details 须含脚本摘要、耗时、截断、嵌套调用摘要。
+
+
+    场景: run-code-success-details
+      假如 run_code 返回脚本结果与嵌套调用摘要
+      当 工具执行结束事件到达
+      那么 事件 details 含 script_summary 与 nested_calls
+
+    场景: run-code-timeout-error-kind
+      假如 run_code 执行超时
+      当 工具执行结束事件到达
+      那么 事件 details.error_kind 为 timeout 且保留可读错误
+
+    场景: missing-details-fallback
+      假如 工具未提供 details
+      当 TUI 渲染工具结果
+      那么 回退到文本且不伪造嵌套摘要

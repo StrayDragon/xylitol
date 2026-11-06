@@ -451,6 +451,7 @@ fn when_mount_long_output_tool(tui_interaction: &TuiInteraction) {
         id: "t-log".into(),
         name: "bash".into(),
         result: long_output(24),
+        details: None,
         is_error: false,
     });
     let plain = mount(&mut fx);
@@ -516,12 +517,14 @@ fn when_mount_two_long_output_tools(tui_interaction: &TuiInteraction) {
         id: "t-a".into(),
         name: "bash".into(),
         result: long_output(24),
+        details: None,
         is_error: false,
     });
     fx.push_xy(XyEvent::ToolExecutionEnd {
         id: "t-b".into(),
         name: "bash".into(),
         result: long_output(24),
+        details: None,
         is_error: false,
     });
     let plain = mount(&mut fx);
@@ -606,6 +609,7 @@ fn when_mount_compaction_and_long_output(tui_interaction: &TuiInteraction) {
         id: "t-read2".into(),
         name: "read".into(),
         result: long_output(18),
+        details: None,
         is_error: false,
     });
     fx.push_xy(XyEvent::CompactionStart {

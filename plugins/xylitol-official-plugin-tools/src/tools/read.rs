@@ -277,9 +277,10 @@ mod tests {
 
         let tool = ReadTool;
         let parts = tool
-            .execute_as_parts(&test_ctx(), json!({"path": path.to_str().unwrap()}))
+            .execute_outcome(&test_ctx(), json!({"path": path.to_str().unwrap()}))
             .await
-            .unwrap();
+            .unwrap()
+            .parts;
         assert!(
             parts.iter().any(|p| matches!(p, AgentPart::Text { .. })),
             "expected text note"

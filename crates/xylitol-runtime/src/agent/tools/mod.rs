@@ -41,12 +41,13 @@ mod tests {
             fn parameters_schema(&self) -> serde_json::Value {
                 serde_json::json!({})
             }
-            async fn execute(
+            async fn execute_outcome(
                 &self,
                 _: &xylitol_plugin_sdk::XyToolCtx,
                 _: serde_json::Value,
-            ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
-                Ok("ok".into())
+            ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError>
+            {
+                Ok(xylitol_plugin_sdk::XyToolOutcome::text("ok"))
             }
         }
         let tool: Arc<dyn XyTool> = Arc::new(DummyTool);
@@ -83,12 +84,13 @@ mod tests {
             fn parameters_schema(&self) -> serde_json::Value {
                 serde_json::json!({})
             }
-            async fn execute(
+            async fn execute_outcome(
                 &self,
                 _: &xylitol_plugin_sdk::XyToolCtx,
                 _: serde_json::Value,
-            ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
-                Ok("ok".into())
+            ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError>
+            {
+                Ok(xylitol_plugin_sdk::XyToolOutcome::text("ok"))
             }
         }
         let builtins =

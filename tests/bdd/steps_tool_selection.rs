@@ -59,8 +59,12 @@ impl xylitol_plugin_sdk::XyTool for StubTool {
         serde_json::json!({ "type": "object" })
     }
 
-    async fn execute(&self, _: &XyToolCtx, _: Value) -> Result<String, XyToolError> {
-        Ok(String::new())
+    async fn execute_outcome(
+        &self,
+        _: &XyToolCtx,
+        _: Value,
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(String::new()))
     }
 }
 

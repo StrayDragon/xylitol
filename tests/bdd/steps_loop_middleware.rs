@@ -55,12 +55,15 @@ impl xylitol_plugin_sdk::XyTool for PlainTool {
         serde_json::json!({"type": "object", "properties": {}})
     }
 
-    async fn execute(
+    async fn execute_outcome(
         &self,
         _ctx: &xylitol_plugin_sdk::XyToolCtx,
         _args: serde_json::Value,
-    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
-        Ok(format!("{}-ok", self.name))
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError> {
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(format!(
+            "{}-ok",
+            self.name
+        )))
     }
 }
 
@@ -1229,26 +1232,23 @@ impl xylitol_plugin_sdk::XyTool for ImagePartsTool {
         serde_json::json!({ "type": "object", "properties": {} })
     }
 
-    async fn execute(
+    async fn execute_outcome(
         &self,
         _ctx: &xylitol_plugin_sdk::XyToolCtx,
         _args: serde_json::Value,
-    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
-        Ok("image".into())
-    }
-
-    async fn execute_as_parts(
-        &self,
-        _ctx: &xylitol_plugin_sdk::XyToolCtx,
-        _args: serde_json::Value,
-    ) -> Result<Vec<xylitol_plugin_sdk::AgentPart>, xylitol_plugin_sdk::error::XyToolError> {
-        Ok(vec![xylitol_plugin_sdk::AgentPart::Image(
-            xylitol_plugin_sdk::ImageContent {
-                url: None,
-                data: Some("QUJD".into()),
-                media_type: "image/png".into(),
-            },
-        )])
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError> {
+        Ok(xylitol_plugin_sdk::XyToolOutcome {
+            parts: vec![xylitol_plugin_sdk::AgentPart::Image(
+                xylitol_plugin_sdk::ImageContent {
+                    url: None,
+                    data: Some("QUJD".into()),
+                    media_type: "image/png".into(),
+                },
+            )],
+            details: None,
+            is_error: false,
+            error_kind: None,
+        })
     }
 }
 
@@ -1302,17 +1302,20 @@ impl xylitol_plugin_sdk::XyTool for RoutedSlowTool {
         self.mode
     }
 
-    async fn execute(
+    async fn execute_outcome(
         &self,
         _ctx: &xylitol_plugin_sdk::XyToolCtx,
         _args: serde_json::Value,
-    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError> {
         let epoch = ROUTE_EPOCH.with(|e| e.get().expect("route epoch"));
         let start = epoch.elapsed().as_millis();
         tokio::time::sleep(std::time::Duration::from_millis(self.sleep_ms)).await;
         let end = epoch.elapsed().as_millis();
         ROUTE_TIMING.with(|t| t.borrow_mut().push((self.name.to_string(), start, end)));
-        Ok(format!("{}-ok", self.name))
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(format!(
+            "{}-ok",
+            self.name
+        )))
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::bdd::fixtures::*;
+use crate::bdd::steps_agent_tools_outcome::{OutcomeBdd, outcome_bdd};
 use crate::bdd::steps_tool_selection::{ToolSelectionBdd, tool_selection_bdd};
 use rstest_bdd_macros::scenario;
 
@@ -482,3 +483,21 @@ fn test_c2997_plugin_tools(tool_selection_bdd: ToolSelectionBdd, ws: Workspace) 
     name = "插件缺失回落闭集"
 )]
 fn test_c2997_plugin_missing(tool_selection_bdd: ToolSelectionBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "run-code-success-details"
+)]
+fn test_structured_outcome_details(outcome_bdd: OutcomeBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "run-code-timeout-error-kind"
+)]
+fn test_structured_outcome_timeout(outcome_bdd: OutcomeBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "missing-details-fallback"
+)]
+fn test_structured_outcome_fallback(outcome_bdd: OutcomeBdd, ws: Workspace) {}

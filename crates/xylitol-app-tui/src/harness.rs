@@ -1803,6 +1803,7 @@ mod slice_tests {
                 id: "t1".into(),
                 name: "bash".into(),
                 result: "ok".into(),
+                details: None,
                 is_error: false,
             })))
             .unwrap();

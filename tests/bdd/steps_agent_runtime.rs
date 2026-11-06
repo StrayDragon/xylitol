@@ -579,17 +579,20 @@ impl XyTool for BddSlowTool {
     fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
         self.mode
     }
-    async fn execute(
+    async fn execute_outcome(
         &self,
         _ctx: &XyToolCtx,
         _args: serde_json::Value,
-    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError> {
         let epoch = BATCH_EPOCH.with(|e| e.get().expect("batch epoch"));
         let start = epoch.elapsed().as_millis();
         tokio::time::sleep(std::time::Duration::from_millis(self.sleep_ms)).await;
         let end = epoch.elapsed().as_millis();
         BATCH_TIMING.with(|t| t.borrow_mut().push((self.name.to_string(), start, end)));
-        Ok(format!("{}-ok", self.name))
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(format!(
+            "{}-ok",
+            self.name
+        )))
     }
 }
 

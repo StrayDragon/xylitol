@@ -69,11 +69,11 @@ impl xylitol_plugin_sdk::XyTool for McpToolAdapter {
             .unwrap_or(serde_json::json!({}))
     }
 
-    async fn execute(
+    async fn execute_outcome(
         &self,
         _ctx: &xylitol_plugin_sdk::XyToolCtx,
         args: Value,
-    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError> {
         let result = self
             .manager
             .call_tool(&self.server_id, &self.tool_name, args)
@@ -86,12 +86,13 @@ impl xylitol_plugin_sdk::XyTool for McpToolAdapter {
                 ))
             })?;
 
-        serde_json::to_string(&result).map_err(|e| {
+        let text = serde_json::to_string(&result).map_err(|e| {
             xylitol_plugin_sdk::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
                 "failed to serialize MCP result: {}",
                 e
             ))
-        })
+        })?;
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(text))
     }
 
     fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
@@ -144,11 +145,11 @@ impl xylitol_plugin_sdk::XyTool for McpPromptAdapter {
             .unwrap_or(serde_json::json!({"type": "object", "properties": {}}))
     }
 
-    async fn execute(
+    async fn execute_outcome(
         &self,
         _ctx: &xylitol_plugin_sdk::XyToolCtx,
         args: Value,
-    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError> {
         let result = self
             .manager
             .get_prompt(&self.server_id, &self.prompt_name, Some(args))
@@ -160,12 +161,13 @@ impl xylitol_plugin_sdk::XyTool for McpPromptAdapter {
                     e
                 ))
             })?;
-        serde_json::to_string(&result).map_err(|e| {
+        let text = serde_json::to_string(&result).map_err(|e| {
             xylitol_plugin_sdk::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
                 "failed to serialize MCP prompt result: {}",
                 e
             ))
-        })
+        })?;
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(text))
     }
 
     fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
@@ -211,11 +213,11 @@ impl xylitol_plugin_sdk::XyTool for McpResourceAdapter {
         })
     }
 
-    async fn execute(
+    async fn execute_outcome(
         &self,
         _ctx: &xylitol_plugin_sdk::XyToolCtx,
         args: Value,
-    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError> {
         let uri = args.get("uri").and_then(Value::as_str).ok_or_else(|| {
             xylitol_plugin_sdk::error::XyToolError::InvalidArgs(
                 "missing required argument: uri".into(),
@@ -232,12 +234,13 @@ impl xylitol_plugin_sdk::XyTool for McpResourceAdapter {
                     e
                 ))
             })?;
-        serde_json::to_string(&result).map_err(|e| {
+        let text = serde_json::to_string(&result).map_err(|e| {
             xylitol_plugin_sdk::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
                 "failed to serialize MCP resource result: {}",
                 e
             ))
-        })
+        })?;
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(text))
     }
 
     fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {

@@ -177,6 +177,7 @@ impl SceneBuilder {
             id: id.into(),
             name: name.into(),
             result: "ok".into(),
+            details: None,
             is_error: false,
         })
     }
@@ -189,6 +190,7 @@ impl SceneBuilder {
             id: id.into(),
             name: name.into(),
             result: result.into(),
+            details: None,
             is_error: false,
         })
     }

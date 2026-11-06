@@ -79,8 +79,12 @@ mod tests {
             json!({})
         }
 
-        async fn execute(&self, _ctx: &XyToolCtx, _args: Value) -> Result<String, XyToolError> {
-            Ok(String::new())
+        async fn execute_outcome(
+            &self,
+            _ctx: &XyToolCtx,
+            _args: Value,
+        ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
+            Ok(xylitol_plugin_sdk::XyToolOutcome::text(String::new()))
         }
 
         fn execution_mode(&self) -> XyToolExecutionMode {

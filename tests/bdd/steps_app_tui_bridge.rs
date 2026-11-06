@@ -207,6 +207,7 @@ fn w_atb3_edit_end(bridge_bdd: &BridgeBdd) {
                 "display_diff": "@@ -1 +1 @@\n-old\n+new"
             })
             .to_string(),
+            details: None,
             is_error: false,
         },
     );
@@ -602,6 +603,7 @@ fn w_atb11_write(bridge_bdd: &BridgeBdd) {
             id: "w1".into(),
             name: "write".into(),
             result: serde_json::json!({ "path": "docs/x.md", "success": true }).to_string(),
+            details: None,
             is_error: false,
         },
     );
@@ -646,6 +648,7 @@ fn w_atb11_edit_diff(bridge_bdd: &BridgeBdd) {
                 "display_diff": "+added line"
             })
             .to_string(),
+            details: None,
             is_error: false,
         },
     );
@@ -688,6 +691,7 @@ fn w_atb11_edit_error(bridge_bdd: &BridgeBdd) {
             id: "e8".into(),
             name: "edit".into(),
             result: "path not found".into(),
+            details: None,
             is_error: true,
         },
     );
@@ -792,6 +796,7 @@ fn w_atb13_sticky(bridge_bdd: &BridgeBdd) {
             id: "w3".into(),
             name: "write".into(),
             result: serde_json::json!({ "success": true }).to_string(),
+            details: None,
             is_error: false,
         },
     );

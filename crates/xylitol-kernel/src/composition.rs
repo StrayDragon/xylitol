@@ -307,12 +307,12 @@ mod tests {
             fn parameters_schema(&self) -> serde_json::Value {
                 serde_json::json!({"type": "object", "properties": {}})
             }
-            async fn execute(
+            async fn execute_outcome(
                 &self,
                 _ctx: &XyToolCtx,
                 _args: serde_json::Value,
-            ) -> Result<String, XyToolError> {
-                Ok("ok".into())
+            ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
+                Ok(xylitol_plugin_sdk::XyToolOutcome::text("ok"))
             }
         }
 
@@ -425,12 +425,12 @@ mod tests {
             fn parameters_schema(&self) -> serde_json::Value {
                 serde_json::json!({"type": "object", "properties": {}})
             }
-            async fn execute(
+            async fn execute_outcome(
                 &self,
                 _ctx: &XyToolCtx,
                 _args: serde_json::Value,
-            ) -> Result<String, XyToolError> {
-                Ok("ok".into())
+            ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
+                Ok(xylitol_plugin_sdk::XyToolOutcome::text("ok"))
             }
         }
 

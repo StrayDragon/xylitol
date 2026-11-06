@@ -2177,6 +2177,7 @@ pub(crate) async fn w_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
                 id: "t1".into(),
                 name: "read".into(),
                 result: "hello".into(),
+                details: None,
                 is_error: false,
             },
             XyEvent::MessageEnd {

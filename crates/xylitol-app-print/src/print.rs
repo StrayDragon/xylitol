@@ -257,6 +257,7 @@ mod tests {
                 id: "m1".into(),
                 name: "mcp__lspz__get_diagnostics".into(),
                 result: r#"{"content":[{"type":"text","text":"a"}],"isError":false}"#.into(),
+                details: None,
                 is_error: false,
             },
             XyEvent::AgentEnd { messages: vec![] },

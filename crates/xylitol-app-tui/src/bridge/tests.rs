@@ -56,6 +56,7 @@ fn turn_end_does_not_idle() {
             id: "1".into(),
             name: "read".into(),
             result: "ok".into(),
+            details: None,
             is_error: false,
         },
     );
@@ -140,6 +141,7 @@ fn todo_block_humanized_and_checklist_rides_typed_event() {
             id: "td1".into(),
             name: "todo_rewrite".into(),
             result: r#"{"items":[{"id":"a","content":"one","status":"in_progress"},{"id":"b","content":"two","status":"pending"}]}"#.into(),
+            details: None,
             is_error: false,
         },
     );
@@ -1094,6 +1096,7 @@ fn mcp_tool_shows_pretty_args_and_result() {
             id: "m1".into(),
             name: "mcp__lspz__get_diagnostics".into(),
             result: raw.into(),
+            details: None,
             is_error: false,
         },
     );
@@ -1146,6 +1149,7 @@ fn mcp_end_rebuilds_even_if_buffer_was_polluted() {
             id: "m2".into(),
             name: "mcp__lspz__get_diagnostics".into(),
             result: r#"{"content":[{"type":"text","text":"ok"}],"isError":false}"#.into(),
+            details: None,
             is_error: false,
         },
     );
@@ -1206,4 +1210,45 @@ fn tool_entry_captures_model_requested_timeout() {
         panic!("tool entry");
     };
     assert_eq!(*timeout_secs, None);
+}
+
+#[test]
+fn run_code_details_render_summary_and_nested_calls() {
+    let mut entries = vec![UiEntry::Tool {
+        id: "rc".into(),
+        name: "run_code".into(),
+        args_preview: "return 42".into(),
+        args_full: String::new(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: String::new(),
+        is_error: false,
+        done: false,
+        timeout_secs: None,
+    }];
+    let details = serde_json::json!({
+        "script_summary": "return 42",
+        "elapsed_ms": 12,
+        "truncated": false,
+        "nested_calls": [
+            {"name": "read", "args_preview": "Cargo.toml", "ok": true, "elapsed_ms": 3}
+        ]
+    });
+    assert!(apply_tool_result_to_entries(
+        &mut entries,
+        "rc",
+        "run_code",
+        "42",
+        Some(&details),
+        false
+    ));
+    let output = match &entries[0] {
+        UiEntry::Tool { output, .. } => output,
+        other => panic!("expected tool entry, got {other:?}"),
+    };
+    assert!(output.contains("script: return 42"));
+    assert!(output.contains("nested calls: 1"));
+    assert!(output.contains("read(Cargo.toml) ok 3ms"));
+    assert!(output.contains("42"));
 }

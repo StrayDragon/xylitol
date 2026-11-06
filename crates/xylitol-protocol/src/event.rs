@@ -54,6 +54,8 @@ pub enum Event {
         id: String,
         name: String,
         result: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        details: Option<serde_json::Value>,
         is_error: bool,
     },
     CompactionStart {
@@ -207,6 +209,7 @@ mod tests {
                 id: "t1".into(),
                 name: "read".into(),
                 result: "r".into(),
+                details: None,
                 is_error: false,
             },
             Event::CompactionStart {

@@ -26,9 +26,10 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             id,
             name,
             result,
+            details,
             is_error,
         } => {
-            apply_tool_end(model, id, name, result, *is_error);
+            apply_tool_end(model, id, name, result, details.as_ref(), *is_error);
             true
         }
         _ => false,
@@ -58,12 +59,20 @@ fn apply_tool_update(model: &mut UiModel, id: &str, output: &str) {
     }
 }
 
-fn apply_tool_end(model: &mut UiModel, id: &str, name: &str, result: &str, is_error: bool) {
+fn apply_tool_end(
+    model: &mut UiModel,
+    id: &str,
+    name: &str,
+    result: &str,
+    details: Option<&serde_json::Value>,
+    is_error: bool,
+) {
     if is_ask_tool(name) {
         let (phase, summary, detail) = humanize_ask_result(result, is_error);
         upsert_ask_entry(model, id, phase, &summary, detail);
     } else {
-        let _ = apply_tool_result_to_entries(&mut model.entries, id, name, result, is_error);
+        let _ =
+            apply_tool_result_to_entries(&mut model.entries, id, name, result, details, is_error);
     }
     if model.phase == UiPhase::Busy {
         model.status = Some("Working".into());

@@ -14,7 +14,7 @@ use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::{
     AfterToolCtx, BeforeToolCtx, LoopChain, LoopControl, XyBatchMode, XyHookBus, XyHookOutcome,
-    XyTool, XyToolCtx,
+    XyTool, XyToolCtx, XyToolErrorKind, XyToolOutcome,
 };
 
 type PermissionCheckFn = dyn Fn(&str, &str) -> Option<String> + Send + Sync;
@@ -264,6 +264,7 @@ pub(crate) async fn run_one(
                 id: id.to_string(),
                 name: name.to_string(),
                 result: err.clone(),
+                details: None,
                 is_error: true,
             },
         );
@@ -281,7 +282,7 @@ pub(crate) async fn run_one(
 
     let exec_fut = async {
         match tool {
-            Some(t) => t.execute_as_parts(&ctx, tool_args.clone()).await,
+            Some(t) => t.execute_outcome(&ctx, tool_args.clone()).await,
             None => Err(xylitol_plugin_sdk::error::XyToolError::ExecutionFailed(
                 anyhow::anyhow!("Unknown tool: {name}"),
             )),
@@ -327,11 +328,16 @@ pub(crate) async fn run_one(
         emit(&events, state_event);
     }
 
-    let mut result = match exec_outcome {
-        Ok(parts) => (parts, false),
+    let outcome = match exec_outcome {
+        Ok(outcome) => outcome,
         Err(xylitol_plugin_sdk::error::XyToolError::Aborted) => {
             let err = format!("Tool '{name}' aborted");
-            (vec![AgentPart::text(err)], true)
+            XyToolOutcome {
+                parts: vec![AgentPart::text(err)],
+                details: None,
+                is_error: true,
+                error_kind: Some(XyToolErrorKind::Aborted),
+            }
         }
         Err(e) => {
             super::obs::record_tool_error(name, &e, env.turn_id, parent_ctx, env.obs_session);
@@ -340,9 +346,16 @@ pub(crate) async fn run_one(
             } else {
                 format!("Tool '{name}' error: {e}")
             };
-            (vec![AgentPart::text(err)], true)
+            XyToolOutcome {
+                parts: vec![AgentPart::text(err)],
+                details: None,
+                is_error: true,
+                error_kind: Some(XyToolErrorKind::from(&e)),
+            }
         }
     };
+    let mut result = (outcome.parts, outcome.is_error);
+    let mut error_kind = outcome.error_kind;
 
     if !env.hooks.after_tool_call.is_empty() {
         let mut hook_value = serde_json::Value::String(parts_preview_text(&result.0));
@@ -362,6 +375,11 @@ pub(crate) async fn run_one(
         }
         result.1 = hook_err;
     }
+    if result.1 {
+        error_kind.get_or_insert(XyToolErrorKind::ExecutionFailed);
+    } else {
+        error_kind = None;
+    }
     if let Some(bus) = env.hook_bus {
         let (ty, phase, hook_ctx) =
             super::script_hook_ctx::tool_result_post(name, parts_preview_text(&result.0), result.1);
@@ -379,8 +397,16 @@ pub(crate) async fn run_one(
             }
         }
     }
+    if result.1 {
+        error_kind.get_or_insert(XyToolErrorKind::ExecutionFailed);
+    } else {
+        error_kind = None;
+    }
 
-    let mut details = details_from_parts(&result.0);
+    let mut details = outcome
+        .details
+        .clone()
+        .or_else(|| details_from_parts(&result.0));
     if !env.loop_chain.after_tool.is_empty() {
         let ctx = AfterToolCtx {
             turn_index: env.turn_index,
@@ -394,12 +420,30 @@ pub(crate) async fn run_one(
             Ok(out) => {
                 result = (out.ctx.parts, out.ctx.is_error);
                 details = out.ctx.details;
+                if result.1 {
+                    error_kind.get_or_insert(XyToolErrorKind::ExecutionFailed);
+                } else {
+                    error_kind = None;
+                }
             }
             Err(fault) => {
                 result = (vec![AgentPart::text(middleware_fault_reason(&fault))], true);
                 details = None;
+                error_kind = Some(XyToolErrorKind::ExecutionFailed);
                 middleware_stop = true;
                 middleware_fault = Some(fault);
+            }
+        }
+    }
+
+    if let Some(kind) = error_kind {
+        let value = serde_json::to_value(kind).unwrap_or(Value::Null);
+        match details.as_mut().and_then(Value::as_object_mut) {
+            Some(map) => {
+                map.insert("error_kind".into(), value);
+            }
+            None => {
+                details = Some(serde_json::json!({ "error_kind": value }));
             }
         }
     }
@@ -424,6 +468,7 @@ pub(crate) async fn run_one(
             id: id.to_string(),
             name: name.to_string(),
             result: result_text.clone(),
+            details: details.clone(),
             is_error: result.1,
         },
     );
@@ -519,5 +564,76 @@ mod tests {
         assert_eq!(call.denied_reason.as_deref(), Some("blocked by test"));
         assert!(!call.stop_run, "a deny reason must not end the run");
         assert!(call.tool.is_none(), "the denied tool must not execute");
+    }
+    struct DetailsTool;
+
+    #[async_trait]
+    impl XyTool for DetailsTool {
+        fn name(&self) -> &str {
+            "details"
+        }
+        fn description(&self) -> &str {
+            "details"
+        }
+        fn parameters_schema(&self) -> Value {
+            serde_json::json!({"type": "object"})
+        }
+        async fn execute_outcome(
+            &self,
+            _: &XyToolCtx,
+            _: Value,
+        ) -> Result<XyToolOutcome, xylitol_plugin_sdk::error::XyToolError> {
+            Ok(XyToolOutcome {
+                parts: vec![AgentPart::text("ok")],
+                details: Some(serde_json::json!({"marker": "details"})),
+                is_error: false,
+                error_kind: None,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_outcome_details_reach_event_and_message() {
+        let tools = ToolSet::from_iter(vec![Arc::new(DetailsTool) as Arc<dyn XyTool>]);
+        let hooks = AgentHooks::empty();
+        let hook_bus: Option<Arc<dyn XyHookBus>> = None;
+        let permission_check: Option<Arc<PermissionCheckFn>> = None;
+        let cancel = CancellationToken::new();
+        let obs = xylitol_plugin_sdk::ObsSessionContext::default();
+        let chain = LoopChain::default();
+        let env = ToolExecEnv {
+            tools: &tools,
+            hooks: &hooks,
+            hook_bus: &hook_bus,
+            permission_check: &permission_check,
+            cancel: &cancel,
+            turn_id: None,
+            batch_mode: XyBatchMode::Sequential,
+            workspace: ".",
+            workspaces: &[],
+            obs_session: &obs,
+            loop_chain: &chain,
+            turn_index: 0,
+        };
+        let call = prepare_call(&env, "c-details", "details", &serde_json::json!({}), None).await;
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let outcome = run_one(&env, &call, tx, None, 0).await;
+        let mut event_details = None;
+        while let Ok(event) = rx.try_recv() {
+            if let XyEvent::ToolExecutionEnd { details, .. } = event {
+                event_details = details;
+            }
+        }
+        assert_eq!(
+            event_details,
+            Some(serde_json::json!({"marker": "details"}))
+        );
+        match outcome.message {
+            AgentMessage::Llm(xylitol_plugin_sdk::message::XyLlmMessage::ToolResultMessage {
+                details,
+                ..
+            }) => assert_eq!(details, Some(serde_json::json!({"marker": "details"}))),
+            other => panic!("expected tool result, got {other:?}"),
+        }
     }
 }

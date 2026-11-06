@@ -74,7 +74,11 @@ impl XyTool for SubagentTool {
         })
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_outcome(
+        &self,
+        ctx: &XyToolCtx,
+        args: Value,
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
         let prompt = args
             .get("prompt")
             .and_then(Value::as_str)
@@ -127,7 +131,7 @@ impl XyTool for SubagentTool {
                 "sub-agent returned no text"
             )));
         }
-        Ok(text)
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(text))
     }
 }
 
@@ -180,8 +184,12 @@ mod tests {
         fn parameters_schema(&self) -> Value {
             json!({})
         }
-        async fn execute(&self, _: &XyToolCtx, _: Value) -> Result<String, XyToolError> {
-            Ok("ok".into())
+        async fn execute_outcome(
+            &self,
+            _: &XyToolCtx,
+            _: Value,
+        ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
+            Ok(xylitol_plugin_sdk::XyToolOutcome::text("ok"))
         }
     }
 

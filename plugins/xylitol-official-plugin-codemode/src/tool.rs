@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use xylitol_plugin_sdk::{XyTool, XyToolCtx, XyToolError, XyToolExecutionMode, XyToolExposure};
+use xylitol_plugin_sdk::{
+    AgentPart, XyTool, XyToolCtx, XyToolError, XyToolExecutionMode, XyToolExposure, XyToolOutcome,
+};
 
 use crate::runner::{CodemodeError, CodemodeErrorKind, CodemodeRunner};
 
@@ -57,16 +59,27 @@ impl XyTool for RunCodeTool {
         XyToolExecutionMode::Sequential
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_outcome(
+        &self,
+        ctx: &XyToolCtx,
+        args: Value,
+    ) -> Result<XyToolOutcome, XyToolError> {
         let code = args
             .get("code")
             .and_then(Value::as_str)
             .ok_or_else(|| XyToolError::InvalidArgs("missing code".into()))?;
         let timeout_ms = args.get("timeoutMs").and_then(Value::as_u64);
-        self.runner
-            .run_with_timeout(ctx, code, timeout_ms)
+        let (text, details) = self
+            .runner
+            .run_with_details(ctx, code, timeout_ms)
             .await
-            .map_err(map_error)
+            .map_err(map_error)?;
+        Ok(XyToolOutcome {
+            parts: vec![AgentPart::text(text)],
+            details: Some(details),
+            is_error: false,
+            error_kind: None,
+        })
     }
 }
 

@@ -101,7 +101,11 @@ impl xylitol_plugin_sdk::XyTool for FffFindTool {
         xylitol_plugin_sdk::XyToolExecutionMode::Parallel
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_outcome(
+        &self,
+        ctx: &XyToolCtx,
+        args: Value,
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
         let args: FffFindArgs =
             serde_json::from_value(args).map_err(|e| XyToolError::InvalidArgs(e.to_string()))?;
         let timeout = parse_tool_timeout(args.timeout)?;
@@ -131,7 +135,7 @@ impl xylitol_plugin_sdk::XyTool for FffFindTool {
             )
         });
 
-        tokio::select! {
+        let result = tokio::select! {
             result = search => match result {
                 Ok(result) => result,
                 Err(join) => Err(XyToolError::ExecutionFailed(anyhow::anyhow!(
@@ -146,7 +150,8 @@ impl xylitol_plugin_sdk::XyTool for FffFindTool {
                 abort.store(true, Ordering::SeqCst);
                 Err(XyToolError::Timeout(timeout))
             }
-        }
+        }?;
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text(result))
     }
 }
 

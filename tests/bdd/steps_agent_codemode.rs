@@ -12,8 +12,8 @@ use xylitol_official_plugin_codemode::{
 };
 use xylitol_plugin_sdk::rt::CtxHost;
 use xylitol_plugin_sdk::{
-    AgentPart, CodemodeConfig, HostRegistries, XyTool, XyToolCallResult, XyToolCatalog, XyToolCtx,
-    XyToolDescriptor, XyToolDispatch, XyToolError, XyToolExposure,
+    AgentPart, CodemodeConfig, HostRegistries, XyTool, XyToolCatalog, XyToolCtx, XyToolDescriptor,
+    XyToolDispatch, XyToolError, XyToolExposure, XyToolOutcome,
 };
 use xylitol_runtime::agent::tools::{ToolCatalog, ToolSet};
 
@@ -90,8 +90,12 @@ impl XyTool for StubTool {
     fn exposure(&self) -> XyToolExposure {
         self.exposure
     }
-    async fn execute(&self, _: &XyToolCtx, _: Value) -> Result<String, XyToolError> {
-        Ok("ok".into())
+    async fn execute_outcome(
+        &self,
+        _: &XyToolCtx,
+        _: Value,
+    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
+        Ok(xylitol_plugin_sdk::XyToolOutcome::text("ok"))
     }
 }
 
@@ -128,22 +132,18 @@ struct StubDispatch {
 
 #[async_trait]
 impl XyToolDispatch for StubDispatch {
-    async fn call(
-        &self,
-        _: &str,
-        name: &str,
-        args: Value,
-    ) -> Result<XyToolCallResult, XyToolError> {
+    async fn call(&self, _: &str, name: &str, args: Value) -> Result<XyToolOutcome, XyToolError> {
         self.calls.lock().expect("calls").push(name.to_string());
         if name == "run_code" {
             return Err(XyToolError::InvalidArgs(
                 "run_code cannot be called recursively".into(),
             ));
         }
-        Ok(XyToolCallResult {
+        Ok(XyToolOutcome {
             parts: vec![AgentPart::text(format!("{name}:{args}"))],
             details: None,
             is_error: false,
+            error_kind: None,
         })
     }
     fn catalog(&self) -> Arc<dyn XyToolCatalog> {

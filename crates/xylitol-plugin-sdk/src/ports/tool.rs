@@ -140,11 +140,65 @@ pub struct XyToolDescriptor {
     pub guidelines: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum XyToolErrorKind {
+    InvalidArgs,
+    ExecutionFailed,
+    PermissionDenied,
+    Timeout,
+    Aborted,
+}
+
+impl From<&XyToolError> for XyToolErrorKind {
+    fn from(error: &XyToolError) -> Self {
+        match error {
+            XyToolError::InvalidArgs(_) => Self::InvalidArgs,
+            XyToolError::ExecutionFailed(_) => Self::ExecutionFailed,
+            XyToolError::PermissionDenied(_) => Self::PermissionDenied,
+            XyToolError::Timeout(_) => Self::Timeout,
+            XyToolError::Aborted => Self::Aborted,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct XyToolCallResult {
+pub struct XyToolOutcome {
     pub parts: Vec<AgentPart>,
     pub details: Option<Value>,
     pub is_error: bool,
+    pub error_kind: Option<XyToolErrorKind>,
+}
+
+impl XyToolOutcome {
+    pub fn text(text: impl Into<String>) -> Self {
+        Self {
+            parts: vec![AgentPart::text(text)],
+            details: None,
+            is_error: false,
+            error_kind: None,
+        }
+    }
+
+    pub fn from_parts(parts: Vec<AgentPart>) -> Self {
+        Self {
+            parts,
+            details: None,
+            is_error: false,
+            error_kind: None,
+        }
+    }
+
+    pub fn text_value(&self) -> String {
+        self.parts
+            .iter()
+            .filter_map(|part| match part {
+                AgentPart::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 pub trait XyToolCatalog: Send + Sync {
@@ -160,8 +214,12 @@ pub trait XyToolDispatch: Send + Sync {
         parent_call_id: &str,
         name: &str,
         args: Value,
-    ) -> Result<XyToolCallResult, XyToolError>;
+    ) -> Result<XyToolOutcome, XyToolError>;
     fn catalog(&self) -> Arc<dyn XyToolCatalog>;
+
+    fn nested_summary(&self) -> Option<Value> {
+        None
+    }
 }
 
 #[async_trait]
@@ -174,14 +232,14 @@ pub trait XyTool: Send + Sync {
 
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError>;
-
-    async fn execute_as_parts(
+    async fn execute_outcome(
         &self,
         ctx: &XyToolCtx,
         args: Value,
-    ) -> Result<Vec<AgentPart>, XyToolError> {
-        Ok(vec![AgentPart::text(self.execute(ctx, args).await?)])
+    ) -> Result<XyToolOutcome, XyToolError>;
+
+    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+        Ok(self.execute_outcome(ctx, args).await?.text_value())
     }
 
     fn prompt_snippet(&self) -> Option<&str> {
@@ -327,8 +385,12 @@ mod tests {
             })
         }
 
-        async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-            Ok(format!("executed with: {args}"))
+        async fn execute_outcome(
+            &self,
+            _ctx: &XyToolCtx,
+            args: Value,
+        ) -> Result<XyToolOutcome, XyToolError> {
+            Ok(XyToolOutcome::text(format!("executed with: {args}")))
         }
     }
 
@@ -348,6 +410,18 @@ mod tests {
         let result = tool.execute(&ctx, json!({"input": "hello"})).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "executed with: {\"input\":\"hello\"}");
+    }
+
+    #[test]
+    fn tool_error_kind_maps_and_serializes() {
+        let timeout =
+            XyToolErrorKind::from(&XyToolError::Timeout(std::time::Duration::from_secs(1)));
+        assert_eq!(timeout, XyToolErrorKind::Timeout);
+        assert_eq!(serde_json::to_string(&timeout).unwrap(), "\"timeout\"");
+        assert_eq!(
+            XyToolErrorKind::from(&XyToolError::Aborted),
+            XyToolErrorKind::Aborted
+        );
     }
 
     #[tokio::test]
