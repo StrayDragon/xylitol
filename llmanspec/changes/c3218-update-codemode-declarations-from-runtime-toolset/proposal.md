@@ -10,7 +10,7 @@ c3106 的声明中间件在插件 `apply` 时读取 `HostRegistries.tools` 快�
 
 ## What Changes
 
-- 把声明生成移到 `compose_tools` 之后，或在 `BeforeLlmRequest` 用运行期 `ToolSet` 快照重建声明；不得继续依赖插件 `apply` 时的静态注册表快照。
+- 在 `BeforeLlmRequestCtx` 增加 `Arc<[XyToolDescriptor]>` 快照；声明由运行期 catalog 生成，不得继续依赖插件 `apply` 时的静态注册表快照。
 - 声明、guest `ALL_TOOLS`、dispatch catalog 使用同一份 catalog 快照；session 工具、MCP 工具、`tools` 选择、exposure / tool-exposure / exposure overrides 只计算一次。声明只需要 descriptor 快照，不需要把 `ToolSet` 放进中间件。
 - 保留 inline budget 与 deferred 回退；声明顺序稳定，不得重复列出同一工具。
 - 声明随 freeze / reload / resume / 切会话更新；不得把旧快照粘到新会话。

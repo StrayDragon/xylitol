@@ -1,11 +1,10 @@
-# Design — 源码构建与发布资产分发 guest wasm
+# Design — 从源码构建并内置 guest wasm
 
 ## 目标
 
-- 本地开发从仓库源码自然构建 guest；不把 880 KB 生成物长期放源码。
-- 分发资产不可篡改：SHA256 / provenance；CI 重建比对。
-- 离线可缓存或本地路径；不在运行时下载。
-- guest 可复现：固定 WASI SDK、`Cargo.lock`、构建 recipe。
+- 从仓库源码构建 guest；构建时嵌入 host；不提交 wasm，不下载外部二进制。
+- 分发二进制已包含 wasm；源码构建者用固定 WASI SDK 自行构建。
+- 防篡改：源码 + `Cargo.lock` + 固定工具链；无外部 artifact 供应链。
 
 ## 现状
 
@@ -16,72 +15,59 @@
 
 ## 决策
 
-### 1. 源码构建优先
+### 1. 源码构建
 
-- 本地开发：`just codemode-guest` 用固定 WASI SDK 从 guest crate 构建；`just setup` 可自动确保 wasm 存在。
-- 不把 wasm 提交进源码；`.gitignore` 忽略本地构建产物。
-- 源码构建是首选路径；只有无法安装 WASI SDK 时才使用分发资产。
+- `build.rs` 在构建时检查 `OUT_DIR/guest.wasm`：
+  - 已存在则直接使用；
+  - 不存在则从 guest crate 构建：`cargo build --release --target wasm32-wasip1`，设置 `CC_wasm32_wasip1` / `AR_wasm32_wasip1` / `CFLAGS_wasm32_wasip1`，使用独立 target dir，避免与主 workspace 竞争；
+  - 复制到 `OUT_DIR/guest.wasm`。
+- `WASI_SDK_PATH` 必须指向 WASI SDK 24；缺失时构建失败并打印安装提示。
+- `cargo:rerun-if-changed` 覆盖 guest crate、`Cargo.lock`、`build.rs`。
+- 不下载 release artifact，不读取网络。
 
-### 2. 分发资产
+### 2. 本地与 CI
 
-- CI 构建 guest，生成 `guest.wasm` + SHA256；发布为 release asset（文件名含版本 / hash）。
-- 发布附 provenance / SBOM（工具待调研）；至少 SHA256SUMS。
-- 分发资产按固定 hash 获取；校验失败不得静默回退。
+- `just codemode-guest` 提供同样的源码构建路径；`just setup` 检查 WASI SDK。
+- CI 用固定 WASI SDK 构建；release 二进制包含 wasm。
+- 源码构建者需要 WASI SDK；不提供网络回退。
 
-### 3. 构建期解析
+### 3. 嵌入与防篡改
 
-- `build.rs` 只解析已有 wasm，不递归调用 cargo：
-  1. `XYLITOL_CODEMODE_GUEST_WASM` 本地路径（校验 hash）；
-  2. 本地缓存（按 hash 命名）；
-  3. 分发资产缓存 / 预取结果。
-- 校验 SHA256 后复制到 `OUT_DIR/guest.wasm`；host 用 `include_bytes!(concat!(env!("OUT_DIR"), "/guest.wasm"))`。
-- 找不到时给出 `just codemode-guest` / `just setup` 提示；不得静默使用旧 wasm。
-- `cargo:rerun-if-changed` 覆盖 hash 清单与 build.rs。
+- host 用 `include_bytes!(concat!(env!("OUT_DIR"), "/guest.wasm"))`。
+- 源码不提交 wasm；`.gitignore` 忽略本地构建产物。
+- 防篡改依赖源码 + `Cargo.lock` + 固定 WASI SDK；没有外部 artifact 可替换。
+- 可选：构建后输出 wasm SHA256 到日志，便于审计；不作为运行时校验。
 
-### 4. 离线与分发
+### 4. 失败与诊断
 
-- 离线：使用缓存或 `XYLITOL_CODEMODE_GUEST_WASM`；不要求网络。
-- 分发：release artifact 可预取到缓存；`just setup` 负责下载与校验。
-- 不在 `run_code` 运行时下载或替换 wasm。
-
-### 5. 可复现与防篡改
-
-- pin WASI SDK 版本；记录 rquickjs / QuickJS 版本、target、profile。
-- CI 从源码重建并与发布 hash 比对；不一致失败。
-- 源码构建与分发资产都校验 hash；不提交未校验二进制。
+- 缺 WASI SDK：失败信息包含 `WASI_SDK_PATH`、WASI SDK 24、重建命令。
+- guest 构建失败：保留 stderr 摘要；不得静默使用旧 wasm。
+- `module_cache` 行为不变。
 
 ## 数据流
 
-本地开发:
-  guest crate + WASI SDK -> just codemode-guest -> guest.wasm -> hash
-
-分发:
-  CI -> guest.wasm + SHA256 + provenance -> release asset -> just setup cache
-
-host 构建:
-  build.rs -> env / cache / artifact -> verify SHA256 -> OUT_DIR/guest.wasm
+guest crate + WASI SDK
+  -> build.rs / just codemode-guest
+  -> OUT_DIR/guest.wasm
   -> include_bytes! -> Wasmtime Module
 
 ## Seams 与测试
 
-- 脚本测试：源码构建 hash 一致；分发资产 hash 校验；无网络提示。
-- CI：重建产物 hash 一致；发布资产校验。
-- host：`include_bytes!` 使用 `OUT_DIR` 资产；`module_cache` 行为不变。
-- 回归：本地 `just codemode-guest` 仍可构建。
+- 构建测试：源码构建可复现；缺 WASI SDK 明确失败。
+- host 测试：`include_bytes!` 使用 `OUT_DIR` 资产；`module_cache` 行为不变。
+- 回归：`just codemode-guest` 仍可构建；guest ABI 不变。
 
 ## 风险
 
-- 本地开发需要 WASI SDK；无 SDK 时走分发资产。
-- 下载引入网络依赖；必须缓存 / 离线路径。
+- 源码构建需要 WASI SDK；无 SDK 的开发者无法构建 host。分发二进制已包含 wasm，缓解终端用户。
+- `build.rs` 递归调用 cargo 可能增加构建时间；用独立 target dir 与缓存缓解。
 - WASI SDK 版本漂移改变 wasm；必须 pin 并记录。
-- release artifact 被替换；SHA256 + provenance 是护栏。
 
 ## 未决问题
 
-- artifact 托管：GitHub Release / 对象存储 / 本地缓存；需调研后定。
-- `build.rs` 只校验本地文件、由 `just setup` 预取，还是允许 build.rs 下载；需权衡离线与构建可重复性。
-- provenance / SBOM 工具与 CI runner；WASI SDK pin 方式。
-- 版本命名：artifact 文件名与 hash 清单格式。
+- `build.rs` 自动构建，还是要求先跑 `just codemode-guest`；需权衡构建自然性与递归 cargo 风险。
+- WASI SDK pin 方式与 CI runner。
+- 构建日志是否输出 wasm SHA256；不影响运行时。
 
 ## 迁移
 
