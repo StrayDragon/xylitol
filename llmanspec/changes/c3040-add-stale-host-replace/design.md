@@ -143,13 +143,11 @@ Replace
 - 同 version 不同 build 不替换；诊断说明手停。
 - 非 Unix fail-closed。
 
-## Implementation outline（tasks 待 designed 后拆）
+## 已钉决策（propose）
 
-- T1 `semver` 依赖 + 版本比较 helper + 单测。
-- T2 `classify_running` / `inspect_running` 区分 Older / Same / Newer / NonXylitol。
-- T3 `ensure_host_with` 替换路径：锁、重探活、SIGTERM、等待、spawn、ready。
-- T4 竞态 / AddrInUse / stale registration / 生命周期。
-- T5 边界：显式 attach / no-ensure / 非 xylitol / 非 Unix。
-- T6 wiremock / fake spawn / request_exit / 锁测试。
-- T7 `cli-entry` r1391 / `user-experience` r3065 spec 场景。
-- T8 手测与 `just qa`。
+- 版本比较用 `semver` 直接依赖（`Cargo.lock` 已有 1.0.28，无新增传递依赖）；不手写字符串比较。
+- 替换锁落在注册文件同目录：`<registration_path>.replace.lock`；Unix `flock` 独占，非 Unix 不替换。避免测试写真实 `$HOME`。
+- 替换逻辑只进 `ensure_host_with`；`attach_preflight` 的 fail-closed 语义不变（显式 `--attach` / `--no-ensure-host` 不替换）。
+- `src/cli.rs` 不在本 change 改动；`starting local Host at <url> ...` 的措辞与进度呈现归 c3045。
+- 测试 seam：`ensure_host_with` 注入 spawn / request_exit / registration_path / ready_timeout；BDD 复用 `AttachBdd` 纯决策 harness。
+- 任务拆分见 [tasks.md](./tasks.md)。
