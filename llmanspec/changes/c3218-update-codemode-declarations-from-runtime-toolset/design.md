@@ -14,6 +14,13 @@
 - `DispatchHandle` 在 `run_code` 执行时用真实 `ToolSet` 建 catalog，guest `ALL_TOOLS` 来自该 catalog。
 - 声明文本与可执行 catalog 可能不一致；模型需要额外用 `ALL_TOOLS` / `searchTools` / `describeTool` 发现。
 
+## 为什么需要 catalog / ToolSet
+
+- `tool_schemas` 只是模型可见 schema，已经过 exposure / tool-exposure 过滤；它缺少 deferred 工具、namespace、guidelines、output_schema，无法还原完整声明。
+- 声明需要 inline / deferred 分类；guest `ALL_TOOLS` 需要 catalog；dispatch 需要真实 `ToolSet` 才能调用工具。
+- 三者若各自从不同来源生成，会再次漂移；必须共享同一份选择后的 catalog 快照。
+- 推荐在 `BeforeLlmRequestCtx` 增加 `Arc<[XyToolDescriptor]>` 快照（Clone 便宜、Debug 可行）；`ToolSet` 只留在 dispatch 侧，不必进中间件。
+
 ## 决策
 
 ### 1. 生成时机
@@ -77,7 +84,7 @@ driver assembly
 
 ## 未决问题
 
-- `BeforeLlmRequestCtx` 目前只有 `tool_schemas`，没有 catalog / `ToolSet`（`loop_middleware.rs:109`）。需决定新增 catalog 快照字段（`Vec<XyToolDescriptor>`）还是 `Arc<dyn XyToolCatalog>` 服务；后者要处理 `Debug` / `Clone`。
+- `BeforeLlmRequestCtx` 目前只有 `tool_schemas`，没有 catalog / `ToolSet`（`loop_middleware.rs:109`）。建议新增 `Arc<[XyToolDescriptor]>` 快照；不把 `ToolSet` 放进中间件。
 - 声明缓存键是否包含 `tools` 选择 fingerprint；仅 freeze generation 是否足够。
 - tool-exposure middleware 与 codemode 声明 middleware 的 order 关系；声明是否必须在 policy 之后生成。
 

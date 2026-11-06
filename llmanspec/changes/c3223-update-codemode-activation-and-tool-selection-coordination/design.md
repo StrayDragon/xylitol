@@ -2,9 +2,9 @@
 
 ## 目标
 
-- 让 `codemode.enabled` 与 `tools` 选择有一致的、可诊断的语义。
-- 避免“插件已启用但工具被禁用”仍启动 Wasmtime。
-- 避免“工具被选中但插件未启用”静默失败。
+- 明确 `codemode.enabled` 与 `tools` 选择是正交关系：启用后仍可用 `-run_code` 隐藏工具。
+- 避免“插件已启用但 `run_code` 未选择”仍创建 Wasmtime engine。
+- 避免“`+run_code` 但插件未启用”静默失败。
 
 ## 现状
 
@@ -16,11 +16,11 @@
 
 ## 决策
 
-### 1. 激活与选择分层
+### 1. 激活与选择正交
 
 - `codemode.enabled` 是唯一激活开关；`tools` 不得隐式激活插件。
-- `tools: [+run_code]` 但插件未启用：启动日志 / 配置检查 warning，明确“codemode disabled; run_code selection ignored”。
-- `codemode.enabled=true` 且 `-run_code`：warning“codemode enabled but run_code disabled”；插件可注册，但不得创建 engine。
+- `codemode.enabled=true` + `-run_code`：合法；不报冲突、不要求启用工具。插件可注册，但不得创建 engine。
+- `tools: [+run_code]` 但插件未启用：启动日志 / `config check` warning，明确“codemode disabled; run_code selection ignored”。
 - 不把 `tools` 改成 allowlist；保持现有 `+` / `-` 语义。
 
 ### 2. 惰性 runner
@@ -28,13 +28,14 @@
 - `RunCodeTool` 持有 `LazyRunner`（`OnceLock<Arc<CodemodeRunner>>` 或等价）。
 - 首次 `execute` 才创建 `CodemodeRunner`；创建失败返回 `ExecutionFailed`，不缓存失败。
 - `CodemodePlugin::apply` 只注册工具、设置 policy / max nested、注册声明中间件；不创建 engine。
-- 未选择 `run_code` 或从未调用时，零 Wasmtime engine / 零 guest 编译。
+- `-run_code` 或从未调用时，零 Wasmtime engine / 零 guest 编译。
 
 ### 3. 配置校验
 
-- 在 boot 读取 `codemode` 与 `tools` 后做跨 section 检查；warning 走现有日志 / 诊断面。
-- 不因 warning 阻断启动；除非未来决定把矛盾配置升级为 error。
-- `config check` 可复用同一检查；不得只在 TUI 显示。
+- 只检查“选择但未激活”的矛盾：`+run_code` / `run_code` 在 `tools` 中但 `codemode.enabled=false`。
+- `enabled + -run_code` 不是矛盾，不产生 warning。
+- warning 走现有启动日志 / `config check`；不阻断启动。
+- 不把 warning 升级为 error，除非未来明确要求。
 
 ### 4. 声明与 catalog
 
@@ -53,7 +54,7 @@ config: codemode.enabled / tools +/-
 ## Seams 与测试
 
 - 单测：disabled -> 无 run_code、无 engine。
-- 单测：enabled + `-run_code` -> 有 warning，无 engine；首次调用不可达。
+- 单测：enabled + `-run_code` -> 合法、无 warning、无 engine。
 - 单测：enabled + selected -> 首次 execute 才建 engine；第二次复用。
 - 单测：`+run_code` 未启用 -> warning。
 - 回归：`tools` 空列表 / `+` / `-` 语义不变。

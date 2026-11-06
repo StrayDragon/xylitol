@@ -62,9 +62,33 @@
 - wire 测试：旧 payload 缺 details 仍可解析。
 - TUI harness：有 details / 无 details 两种渲染。
 
+## 示例
+
+当前 `run_code` 外层只有字符串：
+
+    {"parts":[{"type":"text","text":"42"}],"details":null,"is_error":false}
+
+TUI 只能显示整段 JSON。目标结构：
+
+    XyToolOutcome {
+      parts: [text("42")],
+      details: Some({
+        "script_summary": "read Cargo.toml and count packages",
+        "elapsed_ms": 12,
+        "truncated": false,
+        "nested_calls": [
+          {"name":"read","args_preview":"Cargo.toml","ok":true,"elapsed_ms":3}
+        ]
+      }),
+      is_error: false,
+      error_kind: null
+    }
+
+TUI 从 `details` 读取摘要、耗时、截断与嵌套调用；不再解析 `parts` 里的 JSON 文本。
+
 ## 风险
 
-- 事件体积增加；details 只放摘要，不放完整脚本 / 大输出。
+- 事件体积增加；details 只放摘要，不放完整脚本 / 大输出；嵌套参数按现有展示策略截断，不额外脱敏。
 - after_tool / hook 可能丢弃 details；需要显式合并策略。
 - 旧工具不实现 outcome；默认适配必须保持行为。
 
@@ -72,7 +96,7 @@
 
 - 新 `XyToolOutcome` 还是复用 `XyToolCallResult`；是否需要可序列化的 `error_kind`。
 - `ToolExecutionEnd.details` 是否需要 `PROTOCOL_VERSION` bump；旧客户端兼容策略。
-- details 的脱敏 / 截断：嵌套 args 可能含 secret，不能原样透传。
+- details 的大小 / 截断：嵌套 args 沿用现有 tool 参数展示策略；本地 TUI 不做额外脱敏。
 
 ## 迁移
 

@@ -14,6 +14,7 @@ c3220 需要显示 `run_code` 的外层结果、错误、截断标记与嵌套�
 - `run_code` 覆盖结构化结果：嵌套调用摘要（工具名 / 参数摘要 / 成功或错误 / 耗时）、截断标记、错误类别、脚本摘要。
 - hooks / loop after_tool 修改结果时同步保留或替换 details；不得让 details 与 parts 漂移。
 - 保持现有工具行为不变；没有 details 的工具按旧路径显示。
+- details 不做额外脱敏：本地 TUI 沿用现有 tool 参数展示策略，仅按长度截断。
 - 测试：默认适配、details 透传、run_code 嵌套摘要、截断、错误类别、hook 修改。
 
 ## Capabilities

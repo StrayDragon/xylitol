@@ -6,21 +6,15 @@ title: 协调 codemode 插件激活与工具选择
 
 ## Why
 
-当前链路把两件事分开：
-
-- `codemode.enabled` 决定是否装配 codemode 插件、启动 Wasmtime、注册 `run_code`。
-- `tools` 的 `+` / `-` 在 driver 装配后选择模型可见工具。
-
-结果是：`codemode.enabled=true` 但 `tools: [-run_code]` 仍会启动 Wasmtime；`tools: [+run_code]` 但未启用插件时只得到 unknown tool 警告。插件范围与工具选择没有形成一致的配置语义。
+`codemode.enabled` 决定是否装配插件、启动 Wasmtime、注册 `run_code`；`tools` 的 `+` / `-` 决定模型可见工具。两者不是冲突关系：启用 codemode 后，用户可以用 `-run_code` 隐藏该工具，这是合法选择。当前问题是插件仍会立即创建 runner，即使 `run_code` 未选择；以及 `+run_code` 但插件未启用时只得到 unknown tool 警告。
 
 ## What Changes
 
-- 明确激活与选择分层：`codemode.enabled` 是唯一激活开关；`tools` 只做选择，不得隐式启动插件。
-- `+run_code` 但插件未启用：配置校验/启动日志给出明确 warning，不静默忽略。
-- `codemode.enabled=true` 但 `run_code` 被 `-run_code` 禁用：给出 warning；插件仍可注册，但 runner 延迟到首次实际调用才创建，避免无谓启动 Wasmtime。
-- `RunCodeTool` 改为惰性 runner：首次 `execute` 才创建 `CodemodeRunner`；未选择/未调用时零 engine。
+- 明确分层：`codemode.enabled` 是激活开关；`tools` 只做选择；`enabled + -run_code` 是合法组合，不报冲突。
+- `RunCodeTool` 改为惰性 runner：首次实际调用才创建 `CodemodeRunner`；`-run_code` 或从未调用时零 Wasmtime engine。
+- `+run_code` 但插件未启用：配置检查/启动日志 warning，明确“codemode disabled; run_code selection ignored”。
 - 保持 `tools` 现有 `+` / `-` 语义；不改成 allowlist。
-- 测试：disabled 零装配；enabled+disabled 无 engine；enabled+selected 首次调用才建 engine；`+run_code` 未启用 warning；选择语义不变。
+- 测试：disabled 零装配；enabled + `-run_code` 合法且无 engine；enabled + selected 首次调用才建 engine；`+run_code` 未启用 warning。
 
 ## Capabilities
 
@@ -30,11 +24,11 @@ title: 协调 codemode 插件激活与工具选择
 
 ## Impact
 
-- kernel boot / config validation：跨 section 一致性 warning。
+- kernel boot / config check：仅检查“选择但未激活”的 warning。
 - codemode 插件：惰性 runner。
-- runtime tool selection：不改变语义，只消费结果。
+- runtime tool selection：不改变语义。
 - 不改变 guest ABI、run_code schema、权限或隔离。
 
 ## Further Notes
 
-c3218 只保证声明基于选择后的 catalog；本 change 解决激活与选择的配置联动。两者可并行，但都依赖 c3106 已归档。
+c3218 保证声明基于选择后的 catalog；本 change 解决激活与选择的运行时成本。两者可并行，但都依赖 c3106 已归档。

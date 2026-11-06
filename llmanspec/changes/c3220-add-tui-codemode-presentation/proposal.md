@@ -2,20 +2,20 @@
 depends_on:
   - c3106-add-codemode-tool
   - c3222-add-structured-tool-result-details
-title: 在 TUI 呈现 codemode 运行与目录
+title: 在 TUI 呈现 run_code 运行结果
 ---
 
 ## Why
 
-c3106 的 `run_code` 是 `ModelOnly` 工具，TUI 目前只按通用 tool 事件显示，没有 codemode 专属状态、catalog 视图或嵌套调用反馈。用户启用 `codemode` 后看不到“已启用 / catalog 有多少工具 / 哪些 deferred / 本次脚本调用了什么”；`/capabilities` 只覆盖 session 工具与 MCP。缺少可观察面会让 PTC 能力像“没有注册”。
+`run_code` 是 `ModelOnly` 工具，TUI 目前只按通用 tool 事件显示扁平文本。用户看不到脚本摘要、成功值、错误类别、截断标记与嵌套调用摘要；`run_code` 返回的 JSON 文本也不应让 TUI 解析。用户不需要额外的 `/codemode` 命令或状态短标识：启用 codemode 并选择 `run_code` 后，展示应自动生效。
 
 ## What Changes
 
-- 目录面：新增 `/codemode` 面板（或扩展现有 capabilities 面板）展示 enabled、runtime、timeout、fuel、memory、catalog 数量、inline / deferred 工具、tool-exposure 过滤结果。
-- 不新增 codemode 启用状态短标识；header / status 不因 codemode 单独换文案。
-- 运行面：`run_code` 外层 tool 事件显示脚本摘要、结果/错误、截断标记；嵌套工具调用以结构化摘要呈现，不伪造第二套执行路径。
-- 交互面：面板只读；关闭不 abort agent；不得从 TUI 直调 runtime / 读 session store；所有数据经现有 `XyDriver` / 协议快照。
-- 测试：TUI harness 快照、BDD 场景、无 codemode 零显示、deferred / tool-exposure 展示、嵌套调用摘要。
+- `run_code` 外层 tool 事件显示脚本摘要、结果、错误类别、截断标记、耗时与嵌套调用摘要。
+- 数据来自 c3222 的结构化 `details`；不解析 `run_code` 的 JSON 文本，不依赖被抑制的嵌套事件。
+- 不新增 `/codemode` 命令、面板或 header / status 短标识；不新增执行路径。
+- 没有 `details` 时回退到现有通用文本显示；不影响其他工具。
+- 测试：成功、错误、截断、嵌套摘要、无 details 回退。
 
 ## Capabilities
 
@@ -25,10 +25,9 @@ c3106 的 `run_code` 是 `ModelOnly` 工具，TUI 目前只按通用 tool 事件
 
 ## Impact
 
-- TUI commands / effects / bridge / layout / widgets。
-- 可能需要 codemode catalog / status 快照经 `XyDriver` 暴露；不在本 change 改 guest ABI。
-- specs：app-tui-host、app-tui-commands、app-tui-fixed-zone 可能新增条款。
+- TUI bridge / layout / widgets 的 tool 结果渲染。
+- 不新增协议命令或状态快照；不改变 `run_code` schema / 权限 / 隔离。
 
 ## Further Notes
 
-该 change 只补展示与交互，不改变 `run_code` 的权限、隔离或 catalog 语义。声明边界见 `c3218-update-codemode-declarations-from-runtime-toolset`。
+该 change 只补展示，不改变 codemode 激活、catalog 或声明语义。声明边界见 `c3218-update-codemode-declarations-from-runtime-toolset`。
