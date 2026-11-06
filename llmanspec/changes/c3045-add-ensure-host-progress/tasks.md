@@ -16,13 +16,6 @@
 ## 3. 测试与规格
 
 - [ ] 3.1 CLI 预检单测：Ready / 超时 / spawn 失败；断言进度清行、诊断仍可操作。
-- [ ] 3.2 `cli-entry` r1391 增加三个场景：可观察、Ready 不闪、失败清行。
-- [ ] 3.3 `user-experience` r3065 增加失败清行场景。
-- [ ] 3.4 手测：无 Host / 已有 Host / kill Host / 端口占用 / `--no-ensure-host`。
-- [ ] 3.5 `just fmt`、`just test`、相关 clippy、`just qa`。
-
-## 4. 收口
-
-- [ ] 4.1 确认无新增产品画布 / 假 Busy / 假 Reloading。
-- [ ] 4.2 确认 print / 嵌入 / 非 TTY 行为不变。
-- [ ] 4.3 用户确认后再开 PR；确认前不 push。
+- [ ] 3.2 `cli-entry` 新增 `ensure-host-progress` 需求块（新 `@req`）与三个场景：可观察、Ready 不闪、失败清行；`tests/bdd` 补绑定。
+- [ ] 3.3 手测：无 Host / 已有 Host / kill Host / 端口占用 / `--no-ensure-host`。
+- [ ] 3.4 `just fmt`、`just test`、相关 clippy、`just qa`。

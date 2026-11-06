@@ -75,14 +75,15 @@ match result { Ok(()) => {}, Err(msg) => { eprintln!("{msg}"); return Err(...); 
 - `progress.finish()` 在 trust gate 之前。
 - 不改 `ensure_host_with` 的签名；MVP 不需要 progress callback。
 
-## Spec 变更（propose 时落地）
+## 已钉决策（propose）
 
-- `cli-entry` r1391 增加场景：
-  - 确保等待在 TTY 上可观察（spinner + `Starting host`）。
-  - 已有健康 Host 不闪等待面。
-  - 确保失败清进度后给可操作诊断。
-- `user-experience` r3065 增加场景：等待失败清进度并保留既有诊断。
-- 不新增 `app-tui-fixed-zone` 条款：等待面在产品画布前，不是固定区。
+- Spec 落点：在 `cli-entry` 新增需求块 `ensure-host-progress`（新 `@req`），不改 r1391 / r3065。理由：c3040 正在改这两个块，同块叠加会让两次 finalize 相互冲突；进度可见是独立产品合约。
+- r3249 的 `starting local Host at <url> ...` 行保留；TTY 上 spinner 出现在其下一行（150ms 后），非 TTY 只留该行。不合并成一行，避免改 r3249 既有文案。
+- 文案固定 `Starting host`；80ms 帧；stderr；`\r\x1b[2K` 清行；成功与失败都清行。
+- `progress.finish()` 必须在 trust gate 之前；`TerminalGuard::enter` 不得提前。
+- 测试 seam：`BootProgress` 注入 `impl Write` 与 tick 间隔（不 sleep 真实 150ms）；CLI 层用 `ensure_host_with` 假 spawn 断言清行后诊断仍在。
+- 与 c3040 无 `depends_on`：进度只包 ensure future；c3040 落地后替换等待自动被覆盖。
+- 任务拆分见 [tasks.md](./tasks.md)。
 
 ## 测试
 
