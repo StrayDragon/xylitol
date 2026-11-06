@@ -3,6 +3,9 @@ depends_on:
   - c3035-add-ensure-host
 title: 确保 Host 等待过程可见
 needs_specs_change: true
+branch: sdd/c3045-add-ensure-host-progress
+base_branch: main
+base_sha: fd2c29a51fa6d8dde04cfbb102724a989f6a242d
 ---
 
 # 确保 Host 等待过程可见

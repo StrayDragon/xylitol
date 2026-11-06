@@ -22,7 +22,7 @@
 - 输出：stderr；`\r` 回写 + `\x1b[2K` 清行；成功/失败都清行，不留半行。
 - 失败：清行后 `eprintln!` 既有诊断；不得只剩空白 / mux 垃圾。
 - 取消：MVP 不提供自定义取消；等待期间 Ctrl+C 由终端 SIGINT 终止进程。不因进度面进入 raw mode。
-- 覆盖范围：只覆盖 spawn→`/healthz` ready。已有 Host 但 WS 握手慢不在本 change；`--no-ensure-host`、显式非确保 `--attach`、print / 嵌入、非 TTY、`server` feature 关闭：无动画。
+- 覆盖范围：覆盖整个 ensure future——替换锁等待、旧 Host SIGTERM 等待（c3040）、spawn、`/healthz` ready；进度随 ensure 结束而清行。已有 Host 但 WS 握手慢不在本 change；`--no-ensure-host`、显式非确保 `--attach`、print / 嵌入、非 TTY、`server` feature 关闭：无动画。
 - 顺序：ensure 进度必须在 trust gate 之前结束；trust gate 仍走既有交互。
 - `TerminalGuard::enter` 只能在 ensure 成功且 trust gate 通过后调用；不得提前。
 
@@ -37,7 +37,7 @@ Idle
             └─ finish(error) → Clear + eprintln(diagnostic)
 ```
 
-- `Spinning` 由 tokio task 每 80ms 写一帧；`finish` 取消 task 并清行。
+- `Spinning` 由后台线程每 80ms 写一帧（不依赖 tokio runtime，便于同步测试）；`finish` 置停止位、join 线程后清行。
 - 写失败（stderr 关闭 / 非 TTY）静默降级，不影响 ensure 结果。
 
 ## API 形状（拟）

@@ -1,4 +1,6 @@
 pub(crate) mod activity_fold;
+mod boot_progress;
+pub use boot_progress::{BootProgress, with_boot_progress};
 pub(crate) mod clipboard;
 pub(crate) mod debug_fixtures;
 pub mod dispatch;

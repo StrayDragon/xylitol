@@ -1,7 +1,7 @@
 use crate::bdd::fixtures::{AgentState, Workspace, agent, ws};
 use crate::bdd::steps_cli_surface::{
-    AttachBdd, CliEntryBdd, CliHelpBdd, SurfaceBdd, SurfaceFlagsBdd, attach_bdd, cli_entry_bdd,
-    cli_help_bdd, surface_bdd, surface_flags_bdd,
+    AttachBdd, CliEntryBdd, CliHelpBdd, ProgressBdd, SurfaceBdd, SurfaceFlagsBdd, attach_bdd,
+    cli_entry_bdd, cli_help_bdd, progress_bdd, surface_bdd, surface_flags_bdd,
 };
 use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
@@ -131,6 +131,24 @@ fn test_ce21_foreign_no_spawn(attach_bdd: AttachBdd) {}
     name = "显式attach不替换"
 )]
 fn test_ce21_explicit_no_replace(attach_bdd: AttachBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "确保等待可观察"
+)]
+fn test_ce_progress_visible(progress_bdd: ProgressBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "已就绪不闪等待面"
+)]
+fn test_ce_progress_absent(progress_bdd: ProgressBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "确保失败清行后诊断"
+)]
+fn test_ce_progress_failed(progress_bdd: ProgressBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/cli-entry/cli-entry.feature",

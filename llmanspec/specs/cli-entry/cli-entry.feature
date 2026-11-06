@@ -229,3 +229,22 @@
     场景: 配置子命令表面
       当 xylitol config --help
       那么 可见 schema check show init 且无 set import migrate
+
+  @req:r3261
+  规则: ensure-host-progress
+    产品 TUI 在本机确保 Host 的等待窗口内，TTY 上必须给出一行短进度（spinner + 固定短词 Starting host）；等待在 150ms 内结束不得输出进度；Host 已就绪不得闪等待面；等待失败必须清行后落既有可操作诊断，不得只剩空白。进度只出现在进入产品画布与 trust gate 之前；非 TTY、--no-ensure-host、显式非确保 --attach、print、库嵌入与 server feature 关闭时不得输出。
+
+    场景: 确保等待可观察
+      假如 本机 Host 未在听且产品 TUI 在 TTY 上执行确保
+      当 等待超过 150 毫秒
+      那么 输出含 Starting host 的一行进度
+
+    场景: 已就绪不闪等待面
+      假如 本机 Host 已就绪
+      当 确保在 150 毫秒内完成
+      那么 不输出进度行
+
+    场景: 确保失败清行后诊断
+      假如 本机 Host 拉起后未就绪
+      当 确保等待失败
+      那么 进度行被清除且输出可操作诊断

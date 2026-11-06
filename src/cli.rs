@@ -111,9 +111,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             {
                 eprintln!("starting local Host at {url} ...");
             }
-            xylitol_kernel::attach::ensure_host_from_config(
-                &url,
-                surface.config.as_ref().map(std::path::Path::new),
+            xylitol_app_tui::with_boot_progress(
+                "Starting host",
+                xylitol_kernel::attach::ensure_host_from_config(
+                    &url,
+                    surface.config.as_ref().map(std::path::Path::new),
+                ),
             )
             .await
         } else {

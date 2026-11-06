@@ -1017,3 +1017,118 @@ fn model_display_name(model: Option<&xylitol_kernel::driver::ModelInfo>) -> Stri
         None => xylitol_kernel::bootstrap::UNSET_MODEL_DISPLAY.to_string(),
     }
 }
+
+pub struct ProgressBdd {
+    pub(crate) buffer: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    pub(crate) progress: RefCell<Option<xylitol_app_tui::BootProgress>>,
+    pub(crate) diagnostic: RefCell<Option<String>>,
+}
+
+struct BufferWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for BufferWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("buffer").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl ProgressBdd {
+    fn new() -> Self {
+        Self {
+            buffer: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            progress: RefCell::new(None),
+            diagnostic: RefCell::new(None),
+        }
+    }
+
+    fn start(&self) {
+        let progress = xylitol_app_tui::BootProgress::start_with(
+            "Starting host",
+            Box::new(BufferWriter(self.buffer.clone())),
+            std::time::Duration::from_millis(150),
+            std::time::Duration::from_millis(20),
+        );
+        self.progress.replace(Some(progress));
+    }
+
+    fn output(&self) -> String {
+        String::from_utf8(self.buffer.lock().expect("buffer").clone()).unwrap_or_default()
+    }
+}
+
+#[fixture]
+pub fn progress_bdd() -> ProgressBdd {
+    ProgressBdd::new()
+}
+
+#[given("本机 Host 未在听且产品 TUI 在 TTY 上执行确保")]
+fn g_progress_absent(progress_bdd: &ProgressBdd) {
+    progress_bdd.start();
+}
+
+#[given("本机 Host 已就绪")]
+fn g_progress_ready(_progress_bdd: &ProgressBdd) {}
+
+#[given("本机 Host 拉起后未就绪")]
+fn g_progress_failing(progress_bdd: &ProgressBdd) {
+    progress_bdd.start();
+}
+
+#[when("等待超过 150 毫秒")]
+fn w_progress_wait(_progress_bdd: &ProgressBdd) {
+    std::thread::sleep(std::time::Duration::from_millis(220));
+}
+
+#[when("确保在 150 毫秒内完成")]
+fn w_progress_fast(progress_bdd: &ProgressBdd) {
+    let progress = xylitol_app_tui::BootProgress::start_with(
+        "Starting host",
+        Box::new(BufferWriter(progress_bdd.buffer.clone())),
+        std::time::Duration::from_millis(150),
+        std::time::Duration::from_millis(20),
+    );
+    progress.finish();
+}
+
+#[when("确保等待失败")]
+fn w_progress_fail(progress_bdd: &ProgressBdd) {
+    std::thread::sleep(std::time::Duration::from_millis(220));
+    if let Some(progress) = progress_bdd.progress.borrow_mut().take() {
+        progress.finish();
+    }
+    progress_bdd
+        .diagnostic
+        .replace(Some(xylitol_kernel::attach::ready_timeout_message(
+            "http://127.0.0.1:18790",
+        )));
+}
+
+#[then("输出含 Starting host 的一行进度")]
+fn t_progress_visible(progress_bdd: &ProgressBdd) {
+    let text = progress_bdd.output();
+    assert!(text.contains("Starting host"), "{text}");
+    assert!(text.contains("\r\x1b[2K"), "{text:?}");
+}
+
+#[then("不输出进度行")]
+fn t_progress_absent(progress_bdd: &ProgressBdd) {
+    assert!(progress_bdd.output().is_empty());
+}
+
+#[then("进度行被清除且输出可操作诊断")]
+fn t_progress_cleared(progress_bdd: &ProgressBdd) {
+    let text = progress_bdd.output();
+    assert!(text.ends_with("\r\x1b[2K"), "{text:?}");
+    let diagnostic = progress_bdd
+        .diagnostic
+        .borrow()
+        .clone()
+        .expect("diagnostic");
+    assert!(diagnostic.contains("Timed out"), "{diagnostic}");
+    assert!(diagnostic.contains("xylitol serve"), "{diagnostic}");
+}
