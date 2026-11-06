@@ -6,7 +6,6 @@ use xylitol_plugin_sdk::LoopMiddlewareRegistry;
 use xylitol_plugin_sdk::rt::{Ctx, ErrorKind, Plugin, Result};
 
 use crate::middleware::CodemodeMiddleware;
-use crate::runner::CodemodeRunner;
 use crate::tool::RunCodeTool;
 
 #[cfg(test)]
@@ -74,15 +73,12 @@ impl Plugin for CodemodePlugin {
         xylitol_plugin_sdk::set_codemode_max_nested_calls(self.config.max_nested_calls);
         xylitol_plugin_sdk::set_codemode_exposure_policy(self.config.tool_exposure.clone());
         xylitol_plugin_sdk::set_codemode_exposure_overrides(self.config.exposure.clone());
-        let runner = Arc::new(CodemodeRunner::new(self.config.clone()).map_err(|err| {
-            ErrorKind::PluginFailed(Box::new(std::io::Error::other(err.to_string())))
-        })?);
         let Some(registries) = ctx.get::<HostRegistries>() else {
             return Ok(());
         };
         registries
             .tools
-            .insert("run_code", Arc::new(RunCodeTool::new(runner)));
+            .insert("run_code", Arc::new(RunCodeTool::new(self.config.clone())));
         if let Some(registry) = ctx.get::<LoopMiddlewareRegistry>() {
             let handle = registry
                 .register(Arc::new(CodemodeMiddleware::new(self.config.inline_budget)))

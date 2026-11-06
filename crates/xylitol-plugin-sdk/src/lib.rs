@@ -43,7 +43,8 @@ pub use accounting::{
 pub use codemode::{
     CodemodeConfig, CodemodeExposurePolicy, CodemodeMode, CodemodeRuntime,
     codemode_exposure_overrides, codemode_exposure_policy, codemode_max_nested_calls,
-    set_codemode_exposure_overrides, set_codemode_exposure_policy, set_codemode_max_nested_calls,
+    run_code_selected, set_codemode_exposure_overrides, set_codemode_exposure_policy,
+    set_codemode_max_nested_calls,
 };
 pub use compaction_binding::{CompactionModelAttribution, CompactionSummaryBinding};
 pub use compaction_error::CompactionError;

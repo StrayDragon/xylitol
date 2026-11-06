@@ -42,6 +42,7 @@ pub struct ToolFeatures {
     pub workflow_max_depth: u32,
     pub workflow_max_total_steps: usize,
     pub tool_selection: Vec<String>,
+    pub codemode_enabled: bool,
 }
 
 impl Default for ToolFeatures {
@@ -52,6 +53,7 @@ impl Default for ToolFeatures {
             workflow_max_depth: xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
             workflow_max_total_steps: xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
             tool_selection: Vec::new(),
+            codemode_enabled: false,
         }
     }
 }
@@ -63,12 +65,15 @@ impl ToolFeatures {
         let workflow: xylitol_official_plugin_config::types::WorkflowConfig =
             config.section_or_default("workflow").unwrap_or_default();
         let tool_selection: Vec<String> = config.section_or_default("tools").unwrap_or_default();
+        let codemode: xylitol_plugin_sdk::CodemodeConfig =
+            config.section_or_default("codemode").unwrap_or_default();
         Self {
             todo: todo.is_active(),
             workflow: workflow.is_active(),
             workflow_max_depth: workflow.max_depth,
             workflow_max_total_steps: workflow.max_total_steps,
             tool_selection,
+            codemode_enabled: codemode.is_active(),
         }
     }
 }
@@ -204,6 +209,13 @@ fn compose_tools(
     }
     if let Some(ask) = ask {
         tools.push(xylitol_official_plugin_tools::ask_tool(ask));
+    }
+    if !features.codemode_enabled && xylitol_plugin_sdk::run_code_selected(&features.tool_selection)
+    {
+        log::warn!(
+            target: "xylitol::tools",
+            "codemode disabled; run_code selection ignored"
+        );
     }
     resolve_tool_set(tools, &features.tool_selection)
 }

@@ -82,3 +82,22 @@
       假如 catalog 为空
       当 生成声明
       那么 声明为空
+
+  @req:r3265
+  规则: activation-selection-orthogonal
+    `codemode.enabled` 是唯一激活开关；`tools` 的 `+` / `-` 只做选择，不得隐式激活插件。`enabled` + `-run_code` 合法且不得创建 engine；`+run_code` 但未启用 须输出启动 warning；`RunCodeTool` 首次调用才创建 runner。
+
+    场景: enabled 禁用 run_code 合法
+      假如 codemode 启用且 tools 禁用 run_code
+      当 解析工具选择
+      那么 run_code 不可见且无冲突 warning
+
+    场景: 未启用但选择 run_code 告警
+      假如 codemode 未启用且 tools 选择 run_code
+      当 检查配置
+      那么 输出 codemode disabled warning
+
+    场景: 首次调用才创建 runner
+      假如 run_code 工具已注册但未调用
+      当 首次调用 run_code
+      那么 才创建 runner 且第二次复用

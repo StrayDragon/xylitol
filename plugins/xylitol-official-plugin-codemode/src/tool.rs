@@ -1,20 +1,41 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use xylitol_plugin_sdk::{
-    AgentPart, XyTool, XyToolCtx, XyToolError, XyToolExecutionMode, XyToolExposure, XyToolOutcome,
+    AgentPart, CodemodeConfig, XyTool, XyToolCtx, XyToolError, XyToolExecutionMode, XyToolExposure,
+    XyToolOutcome,
 };
 
 use crate::runner::{CodemodeError, CodemodeErrorKind, CodemodeRunner};
 
 pub struct RunCodeTool {
-    runner: Arc<CodemodeRunner>,
+    config: CodemodeConfig,
+    runner: OnceLock<Arc<CodemodeRunner>>,
 }
 
 impl RunCodeTool {
-    pub fn new(runner: Arc<CodemodeRunner>) -> Self {
-        Self { runner }
+    pub fn new(config: CodemodeConfig) -> Self {
+        Self {
+            config,
+            runner: OnceLock::new(),
+        }
+    }
+
+    fn runner(&self) -> Result<&Arc<CodemodeRunner>, XyToolError> {
+        if let Some(runner) = self.runner.get() {
+            return Ok(runner);
+        }
+        let runner =
+            Arc::new(CodemodeRunner::new(self.config.clone()).map_err(|error| {
+                XyToolError::ExecutionFailed(anyhow::anyhow!(error.to_string()))
+            })?);
+        let _ = self.runner.set(runner);
+        Ok(self.runner.get().expect("runner initialized"))
+    }
+
+    pub fn runner_initialized(&self) -> bool {
+        self.runner.get().is_some()
     }
 }
 
@@ -70,7 +91,7 @@ impl XyTool for RunCodeTool {
             .ok_or_else(|| XyToolError::InvalidArgs("missing code".into()))?;
         let timeout_ms = args.get("timeoutMs").and_then(Value::as_u64);
         let (text, details) = self
-            .runner
+            .runner()?
             .run_with_details(ctx, code, timeout_ms)
             .await
             .map_err(map_error)?;

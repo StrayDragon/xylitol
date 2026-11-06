@@ -33,8 +33,27 @@ pub fn run(action: ConfigAction) -> Result<(), String> {
             let loaded = load_app_config_detailed(path.as_deref().map(Path::new))
                 .map_err(|e| e.to_string())?;
             let unknown = loaded.config.unknown_keys.clone();
+            let codemode: xylitol_plugin_sdk::CodemodeConfig = loaded
+                .config
+                .section_or_default("codemode")
+                .unwrap_or_default();
+            let tools: Vec<String> = loaded
+                .config
+                .section_or_default("tools")
+                .unwrap_or_default();
+            let mut warnings = Vec::new();
+            if !codemode.is_active() && xylitol_plugin_sdk::run_code_selected(&tools) {
+                warnings.push("codemode disabled; run_code selection ignored".to_string());
+            }
+            for warning in &warnings {
+                eprintln!("{warning}");
+            }
             if unknown.is_empty() {
-                println!("config ok");
+                if warnings.is_empty() {
+                    println!("config ok");
+                } else {
+                    println!("config ok (warnings)");
+                }
                 return Ok(());
             }
             let message = format!("unknown config keys: {}", unknown.join(", "));

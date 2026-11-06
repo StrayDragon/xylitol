@@ -2,6 +2,9 @@
 depends_on:
   - c3106-add-codemode-tool
 title: 协调 codemode 插件激活与工具选择
+branch: sdd/c3223-update-codemode-activation-and-tool-selection-coordination
+base_branch: main
+base_sha: 09488e2011402f59c55a2265092028766c204eec
 ---
 
 ## Why

@@ -129,6 +129,13 @@ impl CodemodeConfig {
     }
 }
 
+pub fn run_code_selected(tools: &[String]) -> bool {
+    tools.iter().any(|entry| {
+        let entry = entry.trim();
+        !entry.starts_with('-') && entry.trim_start_matches('+') == "run_code"
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

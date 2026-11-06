@@ -8,14 +8,14 @@ use serde_json::{Value, json};
 
 use crate::bdd::fixtures::*;
 use xylitol_official_plugin_codemode::{
-    CodemodeErrorKind, CodemodePlugin, CodemodeRunner, render_declarations,
+    CodemodeErrorKind, CodemodePlugin, CodemodeRunner, RunCodeTool, render_declarations,
 };
 use xylitol_plugin_sdk::rt::CtxHost;
 use xylitol_plugin_sdk::{
     AgentPart, CodemodeConfig, HostRegistries, XyTool, XyToolCatalog, XyToolCtx, XyToolDescriptor,
     XyToolDispatch, XyToolError, XyToolExposure, XyToolOutcome,
 };
-use xylitol_runtime::agent::tools::{ToolCatalog, ToolSet};
+use xylitol_runtime::agent::tools::{ToolCatalog, ToolSet, resolve_tool_selection};
 
 #[derive(Default)]
 struct CodemodeState {
@@ -29,6 +29,11 @@ struct CodemodeState {
     error: Option<CodemodeErrorKind>,
     calls: Arc<Mutex<Vec<String>>>,
     registered: bool,
+    enabled: bool,
+    selection: Vec<String>,
+    warnings: Vec<String>,
+    run_code_tool: Option<Arc<RunCodeTool>>,
+    runner_initialized: bool,
 }
 
 impl std::fmt::Debug for CodemodeState {
@@ -38,6 +43,7 @@ impl std::fmt::Debug for CodemodeState {
             .field("catalog", &self.catalog)
             .field("error", &self.error)
             .field("registered", &self.registered)
+            .field("warnings", &self.warnings)
             .finish()
     }
 }
@@ -406,4 +412,97 @@ fn _g_empty_catalog(_ws: &Workspace) {
 #[then("声明为空")]
 fn _t_empty_declarations(_ws: &Workspace) {
     assert!(read(|state| state.declarations.clone()).is_empty());
+}
+
+#[given("codemode 启用且 tools 禁用 run_code")]
+fn _g_enabled_disabled_run_code(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.enabled = true;
+        state.selection = vec!["-run_code".into()];
+        state.set = Some(ToolSet::from_iter(vec![
+            stub("run_code", XyToolExposure::ModelOnly),
+            stub("read", XyToolExposure::Direct),
+        ]));
+    });
+}
+
+#[when("解析工具选择")]
+fn _w_resolve_selection(_ws: &Workspace) {
+    update(|state| {
+        let set = state.set.as_ref().expect("set");
+        let tools: Vec<_> = set.iter().cloned().collect();
+        let (filtered, warnings) = resolve_tool_selection(tools, &state.selection);
+        state.set = Some(filtered);
+        state.warnings = warnings;
+    });
+}
+
+#[then("run_code 不可见且无冲突 warning")]
+fn _t_enabled_disabled_run_code(_ws: &Workspace) {
+    let (set, warnings) = read(|state| (state.set.clone(), state.warnings.clone()));
+    let set = set.expect("set");
+    assert!(set.get("run_code").is_none());
+    assert!(!warnings.iter().any(|warning| warning.contains("run_code")));
+}
+
+#[given("codemode 未启用且 tools 选择 run_code")]
+fn _g_disabled_selected_run_code(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.enabled = false;
+        state.selection = vec!["+run_code".into()];
+    });
+}
+
+#[when("检查配置")]
+fn _w_check_config(_ws: &Workspace) {
+    update(|state| {
+        if !state.enabled && xylitol_plugin_sdk::run_code_selected(&state.selection) {
+            state
+                .warnings
+                .push("codemode disabled; run_code selection ignored".into());
+        }
+    });
+}
+
+#[then("输出 codemode disabled warning")]
+fn _t_disabled_selected_run_code(_ws: &Workspace) {
+    let warnings = read(|state| state.warnings.clone());
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("codemode disabled")),
+        "{warnings:?}"
+    );
+}
+
+#[given("run_code 工具已注册但未调用")]
+fn _g_lazy_runner(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.run_code_tool = Some(Arc::new(RunCodeTool::new(CodemodeConfig {
+            enabled: true,
+            ..Default::default()
+        })));
+        state.runner_initialized = false;
+    });
+}
+
+#[when("首次调用 run_code")]
+async fn _w_lazy_runner(_ws: &Workspace) {
+    let tool = read(|state| state.run_code_tool.clone()).expect("run_code tool");
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let ctx = XyToolCtx::new("bdd-lazy-runner").with_dispatch(Arc::new(StubDispatch { calls }));
+    for _ in 0..2 {
+        tool.execute_outcome(&ctx, json!({"code": "return 1"}))
+            .await
+            .expect("run_code");
+    }
+    update(|state| state.runner_initialized = tool.runner_initialized());
+}
+
+#[then("才创建 runner 且第二次复用")]
+fn _t_lazy_runner(_ws: &Workspace) {
+    assert!(read(|state| state.runner_initialized));
 }

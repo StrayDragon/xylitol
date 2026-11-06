@@ -57,6 +57,24 @@ fn test_tool_exposure_declarations(ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "enabled 禁用 run_code 合法"
+)]
+fn test_enabled_disabled_run_code(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "未启用但选择 run_code 告警"
+)]
+fn test_disabled_selected_run_code(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "首次调用才创建 runner"
+)]
+fn test_lazy_runner(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
     name = "空 catalog 声明为空"
 )]
 fn test_empty_catalog_declarations(ws: Workspace) {}
