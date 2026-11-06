@@ -11,7 +11,8 @@ c3106 把约 880 KB 的 `guest.wasm` 提交进 git。它是 rquickjs / QuickJS �
 ## What Changes
 
 - 源码树不提交 `guest.wasm`；`.gitignore` 忽略本地产物；源码保留 guest crate、`Cargo.lock`、构建 recipe、WASI SDK 版本。
-- host 构建时从源码构建 guest，并嵌入 host 二进制；不下载 release artifact，不回退网络。
+- `build.rs` 自动从源码构建 guest 并嵌入 host 二进制；不下载 release artifact，不回退网络。
+- `just codemode-guest` 作为手动构建命令 SSOT；与 build.rs 共用同一 target / env 参数。
 - `build.rs` 在 `OUT_DIR` 生成 / 复制 wasm，host 用 `include_bytes!(concat!(env!("OUT_DIR"), "/guest.wasm"))`。
 - `just codemode-guest` / `just setup` 提供同一套源码构建路径；固定 WASI SDK。
 - 分发二进制已包含 wasm；源码构建者需要 WASI SDK，缺失时构建失败并给出安装提示。

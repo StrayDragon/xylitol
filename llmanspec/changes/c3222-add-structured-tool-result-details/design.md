@@ -25,11 +25,12 @@
   - `error_kind: Option<XyToolErrorKind>`（可序列化）
 - `XyTool` 改为 `execute_outcome`；删除 `execute` / `execute_as_parts` / `XyToolCallResult` 旧路径。
 - 嵌套 dispatch 与 outer tool 共用 `XyToolOutcome`；不再维护两套结果类型。
+- `XyToolErrorKind` 用 snake_case 枚举：`invalid_args` / `execution_failed` / `permission_denied` / `timeout` / `aborted`；从现有 `XyToolError::kind()` 映射。
 
 ### 2. 事件与 wire
 
 - `ToolExecutionEnd` 增加 `details: Option<Value>`，始终序列化（可为 null）。
-- 不做旧客户端兼容；若 wire 形状破坏，bump `PROTOCOL_VERSION`。
+- 这是新增可选字段，wire 兼容；不 bump `PROTOCOL_VERSION`。旧 SDK API 删除属于内部破坏，不影响 wire 解析。
 - `ToolExecutionUpdate` 不增加 details；details 只在 End 出现，避免流式重复。
 
 ### 3. run_one
@@ -90,10 +91,10 @@ TUI 从 `details` 读取摘要、耗时、截断与嵌套调用；不再解析 `
 - after_tool / hook 可能丢弃 details；需要显式合并策略。
 - 全量迁移工具 API 会带来一次性改动；不保留兼容 shim，需一次性修完。
 
-## 未决问题
+## 已定决策
 
-- `XyToolErrorKind` 的序列化形状与现有 `XyToolError::kind()` 的映射。
-- `ToolExecutionEnd.details` 是否触发 `PROTOCOL_VERSION` bump；按破坏性变更评估。
+- `XyToolErrorKind` 使用 snake_case 枚举，映射 `XyToolError::kind()`。
+- `ToolExecutionEnd.details` 为可选字段，wire 兼容；不 bump `PROTOCOL_VERSION`。
 - details 的大小 / 截断：嵌套 args 沿用现有 tool 参数展示策略；本地 TUI 不做额外脱敏。
 
 ## 迁移

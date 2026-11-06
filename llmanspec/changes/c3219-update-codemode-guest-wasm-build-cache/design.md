@@ -17,18 +17,17 @@
 
 ### 1. 源码构建
 
-- `build.rs` 在构建时检查 `OUT_DIR/guest.wasm`：
-  - 已存在则直接使用；
-  - 不存在则从 guest crate 构建：`cargo build --release --target wasm32-wasip1`，设置 `CC_wasm32_wasip1` / `AR_wasm32_wasip1` / `CFLAGS_wasm32_wasip1`，使用独立 target dir，避免与主 workspace 竞争；
-  - 复制到 `OUT_DIR/guest.wasm`。
+- `build.rs` 自动构建是默认路径：检查 `OUT_DIR/guest.wasm`；已存在则直接使用，不存在则从 guest crate 构建。
+- 构建命令：`cargo build --release --target wasm32-wasip1`，设置 `CC_wasm32_wasip1` / `AR_wasm32_wasip1` / `CFLAGS_wasm32_wasip1`，使用独立 target dir，避免与主 workspace 竞争；复制到 `OUT_DIR/guest.wasm`。
+- `just codemode-guest` 是同一路径的手动构建命令 SSOT；build.rs 与 recipe 共用同一 target / env 参数，参数变更需同步。
 - `WASI_SDK_PATH` 必须指向 WASI SDK 24；缺失时构建失败并打印安装提示。
 - `cargo:rerun-if-changed` 覆盖 guest crate、`Cargo.lock`、`build.rs`。
 - 不下载 release artifact，不读取网络。
 
 ### 2. 本地与 CI
 
-- `just codemode-guest` 提供同样的源码构建路径；`just setup` 检查 WASI SDK。
-- CI 用固定 WASI SDK 构建；release 二进制包含 wasm。
+- `build.rs` 自动构建；`just codemode-guest` 提供手动重建入口（SSOT 命令）。
+- `just setup` 检查 WASI SDK；CI 用固定 WASI SDK 构建；release 二进制包含 wasm。
 - 源码构建者需要 WASI SDK；不提供网络回退。
 
 ### 3. 嵌入与防篡改
@@ -63,11 +62,11 @@ guest crate + WASI SDK
 - `build.rs` 递归调用 cargo 可能增加构建时间；用独立 target dir 与缓存缓解。
 - WASI SDK 版本漂移改变 wasm；必须 pin 并记录。
 
-## 未决问题
+## 已定决策
 
-- `build.rs` 自动构建，还是要求先跑 `just codemode-guest`；需权衡构建自然性与递归 cargo 风险。
-- WASI SDK pin 方式与 CI runner。
-- 构建日志是否输出 wasm SHA256；不影响运行时。
+- `build.rs` 自动构建；`just codemode-guest` 是手动构建命令 SSOT。
+- WASI SDK 固定为 24，通过 `WASI_SDK_PATH` 提供；CI 使用同一版本。
+- 构建日志输出 wasm SHA256 便于审计，不作为运行时校验。
 
 ## 迁移
 

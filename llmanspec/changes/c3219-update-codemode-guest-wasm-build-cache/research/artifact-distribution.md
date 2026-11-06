@@ -19,7 +19,7 @@
 2. **提交 wasm（拒绝）**：构建简单；但 880 KB 生成物不可审查、易过期、与源码不一致。
 3. **下载 release artifact（拒绝）**：分发方便；但引入网络、缓存、供应链与离线问题。
 
-## 待决策
+## 已定
 
-- `build.rs` 自动构建，还是要求先跑 `just codemode-guest`；递归 cargo 风险需评估。
-- WASI SDK pin 方式与 CI runner。
+- `build.rs` 自动构建；`just codemode-guest` 是手动构建命令 SSOT。
+- WASI SDK 固定为 24，通过 `WASI_SDK_PATH` 提供；CI 使用同一版本。

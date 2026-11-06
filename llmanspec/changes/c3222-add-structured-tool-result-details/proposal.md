@@ -11,7 +11,9 @@ c3220 需要显示 `run_code` 的外层结果、错误、截断标记与嵌套�
 
 - 一步到位：用 `XyToolOutcome` 替换现有 `execute` / `execute_as_parts` / `XyToolCallResult` 路径，所有工具迁移；不保留旧入口或兼容 shim。
 - `XyToolOutcome` 字段：`parts` + `details` + `is_error` + `error_kind`。
-- `ToolExecutionEnd` 增加 `details`；wire 映射与 TUI bridge 透传。不承诺旧客户端兼容；需要时 bump `PROTOCOL_VERSION`。
+- `ToolExecutionEnd` 增加可选 `details`；wire 映射与 TUI bridge 透传。
+- `XyToolErrorKind` 用 snake_case 枚举：`invalid_args` / `execution_failed` / `permission_denied` / `timeout` / `aborted`。
+- `details` 是新增可选字段，wire 兼容；不 bump `PROTOCOL_VERSION`。
 - `run_code` 提供 details：嵌套调用摘要（工具名 / 参数摘要 / 成功或错误 / 耗时）、截断标记、错误类别、脚本摘要。
 - hooks / loop after_tool 修改结果时同步更新 details；不得让 details 与 parts 漂移。
 - details 不做额外脱敏：本地 TUI 沿用现有 tool 参数展示策略，仅按长度截断。
