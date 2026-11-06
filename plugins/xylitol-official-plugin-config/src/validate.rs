@@ -103,6 +103,15 @@ pub(crate) fn validate_merged_config(value: &Value) -> Result<(), LoadError> {
     let Some(map) = value.as_object() else {
         return Err(LoadError::validation("config root must be a mapping"));
     };
+    if let Some(servers) = map.get("mcp_servers").and_then(Value::as_array) {
+        for (index, server) in servers.iter().enumerate() {
+            if server.get("transport").and_then(Value::as_str) == Some("sse") {
+                return Err(LoadError::validation(format!(
+                    "config section `mcp_servers`: server[{index}].transport `sse` is removed; use `http` (Streamable HTTP). Legacy HTTP+SSE is not supported."
+                )));
+            }
+        }
+    }
     if let Some(bootstrap) = map.get("xylitol") {
         let schema = serde_json::to_value(schema_for!(BootstrapConfig)).expect("bootstrap schema");
         validate_with(&schema, bootstrap, "xylitol")?;
@@ -128,6 +137,17 @@ fn validate_with(schema: &Value, value: &Value, label: &str) -> Result<(), LoadE
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn rejects_sse_transport_with_migration_hint() {
+        let err = validate_merged_config(&json!({
+            "mcp_servers": [{"name": "ctx", "transport": "sse", "url": "https://example.com/mcp"}]
+        }))
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("sse"), "{message}");
+        assert!(message.contains("use `http`"), "{message}");
+    }
 
     #[test]
     fn rejects_wrong_field_type() {
