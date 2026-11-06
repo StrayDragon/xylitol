@@ -483,6 +483,7 @@ mod tests {
                 xylitol_plugin_sdk::XyLlmMessage::user("hi"),
             )],
             tool_schemas: Vec::new(),
+            tool_catalog: Default::default(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
             session_id: None,

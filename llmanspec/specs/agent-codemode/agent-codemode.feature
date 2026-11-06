@@ -58,3 +58,27 @@
       假如 配置没有 codemode 节
       当 装配工具与中间件
       那么 不含 run_code 且无 codemode 中间件
+
+  @req:r3264
+  规则: declarations-from-runtime-catalog
+    codemode 声明 须由每次 LLM 请求前的运行期工具 catalog 快照生成；该快照 须与 guest `ALL_TOOLS`、dispatch catalog 同源，并反映 session 工具、`tools` `+` / `-` 选择、tool-exposure 与 exposure overrides。不得使用插件 `apply` 时的 `HostRegistries` 快照；声明 不得列出被禁用或不可见工具；catalog 为空时声明为空。
+
+    场景: session 工具进入声明与 catalog
+      假如 catalog 含 session 工具
+      当 生成声明
+      那么 声明含该工具且 ALL_TOOLS 同源
+
+    场景: 禁用工具不出现在声明
+      假如 tools 选择禁用 bash
+      当 生成声明
+      那么 声明不含 bash 且 catalog 不含 bash
+
+    场景: tool-exposure 过滤同时作用于声明
+      假如 catalog 已按 tool-exposure 过滤掉 write
+      当 生成声明
+      那么 声明不含 write 且 catalog 不含 write
+
+    场景: 空 catalog 声明为空
+      假如 catalog 为空
+      当 生成声明
+      那么 声明为空

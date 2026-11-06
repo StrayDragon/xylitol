@@ -5,7 +5,6 @@ use xylitol_plugin_sdk::HostRegistries;
 use xylitol_plugin_sdk::LoopMiddlewareRegistry;
 use xylitol_plugin_sdk::rt::{Ctx, ErrorKind, Plugin, Result};
 
-use crate::declarations::{descriptors_from_tools, render_declarations};
 use crate::middleware::CodemodeMiddleware;
 use crate::runner::CodemodeRunner;
 use crate::tool::RunCodeTool;
@@ -84,13 +83,9 @@ impl Plugin for CodemodePlugin {
         registries
             .tools
             .insert("run_code", Arc::new(RunCodeTool::new(runner)));
-        let descriptors = descriptors_from_tools(&registries.tools.snapshot());
-        let declarations = render_declarations(&descriptors, self.config.inline_budget);
-        if !declarations.is_empty()
-            && let Some(registry) = ctx.get::<LoopMiddlewareRegistry>()
-        {
+        if let Some(registry) = ctx.get::<LoopMiddlewareRegistry>() {
             let handle = registry
-                .register(Arc::new(CodemodeMiddleware::new(declarations)))
+                .register(Arc::new(CodemodeMiddleware::new(self.config.inline_budget)))
                 .map_err(|err| {
                     ErrorKind::PluginFailed(Box::new(std::io::Error::other(err.to_string())))
                 })?;

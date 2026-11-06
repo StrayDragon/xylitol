@@ -37,7 +37,7 @@ use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::compaction::CompactionError;
 use crate::agent::prompt::{AgentStatusBar, expand_skills_in_agent_messages, project_outbound};
-use crate::agent::tools::ToolSet;
+use crate::agent::tools::{ToolCatalog, ToolSet};
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::model::{XyChunk, XyModality, XyToolSchema};
@@ -730,6 +730,8 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
             parameters: t.parameters_schema(),
         })
         .collect();
+    let tool_catalog: Arc<[xylitol_plugin_sdk::XyToolDescriptor]> =
+        Arc::from(ToolCatalog::from_toolset(&tools, None).descriptors());
     {
         let ms = t_schemas.elapsed().as_millis();
         let n = tool_schemas.len();
@@ -758,6 +760,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         system_prompt,
         tools,
         tool_schemas,
+        tool_catalog,
         user_parts,
         cancel,
         permission_check,
@@ -859,6 +862,7 @@ struct ReActConfig {
     system_prompt: Option<String>,
     tools: ToolSet,
     tool_schemas: Vec<XyToolSchema>,
+    tool_catalog: Arc<[xylitol_plugin_sdk::XyToolDescriptor]>,
     user_parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
     cancel: CancellationToken,
     #[allow(clippy::type_complexity)]
@@ -941,6 +945,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         system_prompt,
         tools,
         tool_schemas,
+        tool_catalog,
         user_parts,
         cancel,
         permission_check,
@@ -1167,6 +1172,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         turn_index: turn as u32,
                         messages: messages.clone(),
                         tool_schemas: turn_tool_schemas.clone(),
+                        tool_catalog: tool_catalog.clone(),
                         options: generate_options.clone(),
                         todo: bar.todo.clone(),
                         session_id: Some(session_id.clone()),

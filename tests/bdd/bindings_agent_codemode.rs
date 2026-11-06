@@ -36,3 +36,27 @@ fn test_fuel_exhaustion(ws: Workspace) {}
     name = "未配置 codemode 零装配"
 )]
 fn test_zero_assembly(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "session 工具进入声明与 catalog"
+)]
+fn test_session_catalog_declarations(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "禁用工具不出现在声明"
+)]
+fn test_disabled_tool_declarations(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "tool-exposure 过滤同时作用于声明"
+)]
+fn test_tool_exposure_declarations(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "空 catalog 声明为空"
+)]
+fn test_empty_catalog_declarations(ws: Workspace) {}

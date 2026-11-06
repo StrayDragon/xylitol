@@ -698,6 +698,7 @@ mod tests {
             turn_index: 1,
             messages: last.into_iter().collect(),
             tool_schemas: Vec::new(),
+            tool_catalog: Default::default(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo,
             session_id: session_id.map(str::to_string),

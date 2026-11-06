@@ -2,6 +2,9 @@
 depends_on:
   - c3106-add-codemode-tool
 title: 用运行期工具快照生成 codemode 声明
+branch: sdd/c3218-update-codemode-declarations-from-runtime-toolset
+base_branch: main
+base_sha: 02754be559faa508d308b285136eb59835fee0b7
 ---
 
 ## Why

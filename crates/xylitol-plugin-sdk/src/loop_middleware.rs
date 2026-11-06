@@ -7,6 +7,7 @@ use crate::error::XyError;
 use crate::generate::XyGenerateOptions;
 use crate::message::{AgentMessage, AgentPart};
 use crate::model::XyToolSchema;
+use crate::ports::XyToolDescriptor;
 use crate::session::TodoList;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,6 +111,7 @@ pub struct BeforeLlmRequestCtx {
     pub turn_index: u32,
     pub messages: Vec<AgentMessage>,
     pub tool_schemas: Vec<XyToolSchema>,
+    pub tool_catalog: Arc<[XyToolDescriptor]>,
     pub options: XyGenerateOptions,
     pub todo: Option<TodoList>,
     pub session_id: Option<String>,

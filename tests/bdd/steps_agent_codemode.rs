@@ -334,3 +334,76 @@ async fn _w_assemble(_ws: &Workspace) {
 fn _t_zero_assembly(_ws: &Workspace) {
     assert!(!read(|state| state.registered));
 }
+
+fn descriptor(name: &str) -> XyToolDescriptor {
+    XyToolDescriptor {
+        name: name.into(),
+        identifier: name.into(),
+        namespace: Some("official".into()),
+        description: format!("{name} tool"),
+        parameters: json!({"type": "object"}),
+        output_schema: None,
+        exposure: XyToolExposure::Direct,
+        guidelines: Vec::new(),
+    }
+}
+
+#[given("catalog 含 session 工具")]
+fn _g_session_catalog(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.catalog = vec![descriptor("read"), descriptor("todo")];
+    });
+}
+
+#[then("声明含该工具且 ALL_TOOLS 同源")]
+fn _t_session_catalog(_ws: &Workspace) {
+    let (text, catalog) = read(|state| (state.declarations.clone(), state.catalog.clone()));
+    assert!(text.contains("- todo"), "{text}");
+    assert!(catalog.iter().any(|tool| tool.name == "todo"));
+}
+
+#[given("tools 选择禁用 bash")]
+fn _g_disabled_bash(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.catalog = vec![descriptor("read")];
+        state.allowed = Some(BTreeSet::from(["read".to_string()]));
+    });
+}
+
+#[then("声明不含 bash 且 catalog 不含 bash")]
+fn _t_disabled_bash(_ws: &Workspace) {
+    let (text, catalog) = read(|state| (state.declarations.clone(), state.catalog.clone()));
+    assert!(!text.contains("bash"), "{text}");
+    assert!(catalog.iter().all(|tool| tool.name != "bash"));
+}
+
+#[given("catalog 已按 tool-exposure 过滤掉 write")]
+fn _g_tool_exposure_catalog(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.catalog = vec![descriptor("read")];
+        state.allowed = Some(BTreeSet::from(["read".to_string()]));
+    });
+}
+
+#[then("声明不含 write 且 catalog 不含 write")]
+fn _t_tool_exposure_catalog(_ws: &Workspace) {
+    let (text, catalog) = read(|state| (state.declarations.clone(), state.catalog.clone()));
+    assert!(!text.contains("write"), "{text}");
+    assert!(catalog.iter().all(|tool| tool.name != "write"));
+}
+
+#[given("catalog 为空")]
+fn _g_empty_catalog(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.catalog = Vec::new();
+    });
+}
+
+#[then("声明为空")]
+fn _t_empty_declarations(_ws: &Workspace) {
+    assert!(read(|state| state.declarations.clone()).is_empty());
+}
