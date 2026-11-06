@@ -7,7 +7,7 @@
 - 能力限制在 catalog 与 dispatch 两侧生效；嵌套调用复用 ReAct 的 hooks/中间件/权限/事件。
 - 运行时用 Wasmtime 50 stable + rquickjs 0.14 WASI guest；WASM 隔离、async host call、fuel/epoch/memory、模块缓存。
 - MVP 只做 tool + mode on；不做强制模式、provider 原生 PTC、mode only、嵌套事件树、多语言。
-- plan mode 由 c3197 删除（前置，尚未归档）；本 change 不实现 plan mode catalog 过滤。
+- plan mode 由 c3197 删除（前置，已归档）；本 change 不实现 plan mode catalog 过滤。
 
 ## 现状
 
