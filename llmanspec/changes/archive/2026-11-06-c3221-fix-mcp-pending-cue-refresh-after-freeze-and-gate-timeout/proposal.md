@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 修复 MCP pending cue 在冻结后残留
+branch: sdd/c3221-fix-mcp-pending-cue-refresh-after-freeze-and-gate-timeout
+base_branch: main
+base_sha: 545361789b221ccba78f3ebed9a2393c8e459784
 ---
 
 ## Why

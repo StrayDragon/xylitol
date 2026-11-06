@@ -255,6 +255,18 @@ fn mcp_tools_pending_pre_freeze_while_incomplete_even_if_armed() {
 }
 
 #[test]
+fn mcp_tools_pending_ignores_stale_label_after_freeze() {
+    let snap = LoadedResourcesSnapshot {
+        mcp_configured: 1,
+        mcp_bootstrap_complete: true,
+        tools_table_frozen: true,
+        mcp_connecting_label: Some("connecting 0/1".into()),
+        ..Default::default()
+    };
+    assert!(!snap.mcp_tools_pending());
+}
+
+#[test]
 fn mcp_tools_pending_clears_after_freeze_when_complete() {
     use crate::driver::{McpServerPhase, McpServerSnapshot};
 

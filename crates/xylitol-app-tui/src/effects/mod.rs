@@ -266,6 +266,7 @@ pub async fn drain_pending<T: Terminal>(
 
     if let Some(notice) = driver.take_mcp_gate_notice() {
         session.push_scroll_notice(notice);
+        session.refresh_loaded_resources(driver).await;
     }
 
     if agent_stream.is_none()
@@ -296,10 +297,10 @@ pub async fn drain_pending<T: Terminal>(
             }
             let _ = session.render_now();
             driver.arm_tool_freeze_gate().await;
+            session.refresh_loaded_resources(driver).await;
             if driver.is_tools_frozen()
                 && let Some(prompt) = session.take_gated_submit()
             {
-                session.refresh_loaded_resources(driver).await;
                 start_run_after_tool_gate(session, driver, agent_stream, prompt).await;
             }
         } else {

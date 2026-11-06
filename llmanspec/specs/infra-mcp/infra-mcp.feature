@@ -148,3 +148,22 @@
   @req:r3245
   规则: mcp-diagnostics
     /mcp 诊断须显示每 server 的 transport / scope / credential 是否存在 / 连接状态 / tools / prompts / resources / timeout 配置 / last error；不得显示 credential 值；不得把未知当 configured=0。由单测覆盖，不扩 BDD step。
+
+  @req:r3267
+  规则: mcp-pending-settled
+    MCP pending cue 须仅在准备未完成时显示；bootstrap complete 且 tools frozen 后 不得因旧 connecting_label 显示。freeze / arm / gate timeout / reload / resume / 切会话后 须刷新同一 loaded-resources 快照；gate timeout 须收口为 complete / frozen 并保留诊断；connect_timeout_ms 须覆盖 stdio initialize / handshake，超时收口 Failed / timed-out。
+
+    场景: settled snapshot 清 cue
+      假如 MCP 已 connected 且 armed 但 connecting_label 残留
+      当 刷新 loaded-resources 快照
+      那么 cue 清除
+
+    场景: gate timeout 收口
+      假如 gate timeout 后 tools frozen
+      当 刷新 loaded-resources 快照
+      那么 cue 清除且诊断保留
+
+    场景: 挂死 server 超时收口
+      假如 挂死 server 超过 connect_timeout_ms
+      当 刷新 loaded-resources 快照
+      那么 header 与面板一致且不再 connecting

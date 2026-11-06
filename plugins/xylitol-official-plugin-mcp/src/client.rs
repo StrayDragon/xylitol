@@ -873,6 +873,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn connect_timeout_records_diagnostic() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    drop(stream);
+                });
+            }
+        });
+        let manager = Arc::new(McpClientManager::new());
+        let servers = vec![McpServerConfig {
+            name: "hanging".into(),
+            transport: McpTransportKind::Http,
+            url: Some(format!("http://{addr}/mcp")),
+            connect_timeout_ms: 100,
+            ..Default::default()
+        }];
+        let started = std::time::Instant::now();
+        manager.connect_servers(&servers).await;
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        let diags = manager.diagnostics().await;
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.server == "hanging" && d.message.contains("timed out")),
+            "expected timeout diagnostic; got {diags:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn connected_servers_empty_without_connect() {
         let manager = McpClientManager::new();
         assert!(manager.connected_servers().await.is_empty());

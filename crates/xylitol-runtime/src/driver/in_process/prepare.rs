@@ -260,6 +260,7 @@ impl XyInProcessDriver {
         tool_names: Vec<String>,
         view: SessionPrepareView,
     ) -> LoadedResourcesSnapshot {
+        let settled = view.complete || (tools_table_frozen && self.mcp_gate_notice.is_some());
         let mcp_servers = view
             .server_ids
             .iter()
@@ -270,7 +271,7 @@ impl XyInProcessDriver {
                 let armed_count = tool_names.iter().filter(|n| n.starts_with(&prefix)).count();
                 let phase = if connected {
                     McpServerPhase::Connected
-                } else if failed {
+                } else if failed || settled {
                     McpServerPhase::Failed
                 } else if view.connecting {
                     McpServerPhase::Connecting
@@ -295,9 +296,9 @@ impl XyInProcessDriver {
             mcp_connected: view.connected,
             mcp_configured: view.configured,
             mcp_diag_short: view.diags,
-            mcp_connecting_label: view.connecting_label,
+            mcp_connecting_label: if settled { None } else { view.connecting_label },
             mcp_servers,
-            mcp_bootstrap_complete: view.complete,
+            mcp_bootstrap_complete: view.complete || settled,
             tools_table_frozen,
             mcp_gate_notice: self.mcp_gate_notice.clone(),
             obs_diag: None,

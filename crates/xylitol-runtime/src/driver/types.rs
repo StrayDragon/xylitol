@@ -109,6 +109,9 @@ impl LoadedResourcesSnapshot {
         if self.mcp_configured == 0 {
             return false;
         }
+        if self.mcp_bootstrap_complete && self.tools_table_frozen {
+            return false;
+        }
         if self.mcp_connecting_label.is_some() {
             return true;
         }
