@@ -11,7 +11,7 @@ use wasmtime_wasi::WasiCtxBuilder;
 use wasmtime_wasi::p1::{self, WasiP1Ctx};
 use xylitol_plugin_sdk::{CodemodeConfig, XyToolCtx, XyToolDispatch, XyToolOutcome};
 
-const GUEST_WASM: &[u8] = include_bytes!("../assets/guest.wasm");
+const GUEST_WASM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/guest.wasm"));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CodemodeErrorKind {

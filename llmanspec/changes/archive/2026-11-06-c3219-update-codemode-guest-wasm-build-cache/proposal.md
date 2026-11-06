@@ -2,6 +2,9 @@
 depends_on:
   - c3106-add-codemode-tool
 title: 从源码构建并内置 codemode guest wasm
+branch: sdd/c3219-update-codemode-guest-wasm-build-cache
+base_branch: main
+base_sha: 34c7067268cfaaa3487a62b352eb47629b0f5a9b
 ---
 
 ## Why

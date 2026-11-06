@@ -75,6 +75,18 @@ fn test_lazy_runner(ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "源码构建生成 guest wasm"
+)]
+fn test_guest_source_build(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "缺 WASI SDK 失败"
+)]
+fn test_missing_wasi_sdk(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
     name = "空 catalog 声明为空"
 )]
 fn test_empty_catalog_declarations(ws: Workspace) {}

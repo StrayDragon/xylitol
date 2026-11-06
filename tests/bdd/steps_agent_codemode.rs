@@ -506,3 +506,40 @@ async fn _w_lazy_runner(_ws: &Workspace) {
 fn _t_lazy_runner(_ws: &Workspace) {
     assert!(read(|state| state.runner_initialized));
 }
+
+#[given("codemode guest 源码与 WASI SDK 24 可用")]
+fn _g_guest_source(_ws: &Workspace) {
+    assert!(
+        std::path::Path::new("plugins/xylitol-official-plugin-codemode/guest/Cargo.toml").exists()
+    );
+}
+
+#[when("构建 codemode 插件")]
+fn _w_build_guest(_ws: &Workspace) {
+    let build = include_str!("../../plugins/xylitol-official-plugin-codemode/build.rs");
+    assert!(build.contains("WASI_SDK_PATH"));
+    assert!(build.contains("wasm32-wasip1"));
+}
+
+#[then("OUT_DIR 生成 guest.wasm 且 host 嵌入")]
+fn _t_guest_build(_ws: &Workspace) {
+    let runner = include_str!("../../plugins/xylitol-official-plugin-codemode/src/runner.rs");
+    assert!(runner.contains("OUT_DIR"));
+    assert!(runner.contains("guest.wasm"));
+    assert!(
+        !std::path::Path::new("plugins/xylitol-official-plugin-codemode/assets/guest.wasm")
+            .exists()
+    );
+    let gitignore = include_str!("../../.gitignore");
+    assert!(gitignore.contains("plugins/xylitol-official-plugin-codemode/assets/guest.wasm"));
+}
+
+#[given("WASI_SDK_PATH 缺失")]
+fn _g_missing_wasi_sdk(_ws: &Workspace) {}
+
+#[then("构建失败并提示 WASI SDK 24")]
+fn _t_missing_wasi_sdk(_ws: &Workspace) {
+    let build = include_str!("../../plugins/xylitol-official-plugin-codemode/build.rs");
+    assert!(build.contains("WASI_SDK_PATH is not set"));
+    assert!(build.contains("WASI SDK 24"));
+}

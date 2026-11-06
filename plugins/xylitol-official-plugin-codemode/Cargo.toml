@@ -18,5 +18,8 @@ tokio-util = { workspace = true }
 wasmtime = { version = "=50.0.1", default-features = false, features = ["async", "cranelift", "runtime", "std"] }
 wasmtime-wasi = { version = "=50.0.1", default-features = false, features = ["p1"] }
 
+[build-dependencies]
+sha2 = { workspace = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }

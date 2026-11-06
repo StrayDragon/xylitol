@@ -26,6 +26,7 @@ _default:
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
+    : "${WASI_SDK_PATH:?set WASI_SDK_PATH to a wasi-sdk 24 install for codemode guest build}"
     # pre-commit + commit-msg only: prek owns text hygiene and the commit
     # convention; cargo gates live in `just qa` (manual / CI), never hooks.
     prek install -t pre-commit -t commit-msg
@@ -145,8 +146,8 @@ codemode-guest:
     CC_wasm32_wasip1="$WASI_SDK_PATH/bin/clang" \
       AR_wasm32_wasip1="$WASI_SDK_PATH/bin/llvm-ar" \
       CFLAGS_wasm32_wasip1="--sysroot=$WASI_SDK_PATH/share/wasi-sysroot" \
-      cargo build --release --target wasm32-wasip1
-    cp target/wasm32-wasip1/release/xylitol_codemode_guest.wasm ../assets/guest.wasm
+      cargo build --release --target wasm32-wasip1 --target-dir ../../../target/codemode-guest
+    cp ../../../target/codemode-guest/wasm32-wasip1/release/xylitol_codemode_guest.wasm ../../../target/codemode-guest/guest.wasm
 
 # Provider-safe MCP tool naming gate (registry SSOT + wire encode on all three APIs).
 # Not live-network; safe in qa loops. Prefer this after changing MCP_PUBLIC_DELIMITER.

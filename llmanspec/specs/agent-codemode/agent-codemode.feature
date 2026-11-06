@@ -101,3 +101,17 @@
       假如 run_code 工具已注册但未调用
       当 首次调用 run_code
       那么 才创建 runner 且第二次复用
+
+  @req:r3266
+  规则: guest-wasm-source-build
+    codemode guest wasm 须由源码在构建时生成并嵌入 host；不得提交 wasm、不得下载 release artifact。`build.rs` 与 `just codemode-guest` 须共用 WASI SDK 24 与同一 target / env 参数；缺 SDK 须构建失败并提示；`OUT_DIR/guest.wasm` 由 `include_bytes!` 嵌入；`module_cache` 行为不变。
+
+    场景: 源码构建生成 guest wasm
+      假如 codemode guest 源码与 WASI SDK 24 可用
+      当 构建 codemode 插件
+      那么 OUT_DIR 生成 guest.wasm 且 host 嵌入
+
+    场景: 缺 WASI SDK 失败
+      假如 WASI_SDK_PATH 缺失
+      当 构建 codemode 插件
+      那么 构建失败并提示 WASI SDK 24

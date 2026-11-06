@@ -44,6 +44,7 @@ config.local.yaml
 # rust specific files
 
 /target/
+plugins/xylitol-official-plugin-codemode/assets/guest.wasm
 **/*.rs.bk
 debug/
 target/debug/
