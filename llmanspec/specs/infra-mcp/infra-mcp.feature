@@ -171,15 +171,15 @@
 
   @req:r3268
   规则: mcp-oauth-authorization
-    远程 MCP 须支持 OAuth 2.1 + PKCE（S256）；须发现 Protected Resource Metadata 与 AS metadata；须校验 state、RFC 8707 resource 与 RFC 9207 iss；token 刷新 不得 reset 连接；refresh 被拒 须提示重新授权；token 不得进入 config / secret.env / 日志 / 错误 / 导出 / 工具子进程 env；`/mcp` 只显示 credential 是否存在。由单测覆盖，不扩 BDD step。
+    远程 MCP 须支持 OAuth 2.1 + PKCE（S256），且只支持 public client（不得使用 client_secret）；须发现 Protected Resource Metadata 与 AS metadata，优先使用 401 challenge 的 resource_metadata；须校验 state、RFC 8707 resource 与 RFC 9207 iss；token 刷新 不得 reset 连接；refresh 被拒 须提示重新授权；scope 不足 须发起 step-up；revoke 须清 credential store；授权未完成 不得阻塞 bootstrap / 首回合 / UI，须以可恢复 auth-required 状态暴露，完成后按既有准备/重定稿语义恢复，不得静默热加工具；token 不得进入 config / secret.env / 日志 / 错误 / 导出 / 工具子进程 env；`/mcp` 只显示 credential 是否存在。由单测覆盖，不扩 BDD step。
 
   @req:r3269
   规则: mcp-oauth-keychain-fallback
-    token 存储 须 OS keychain 优先、0600 文件 fallback；keychain 不可用 不得阻塞连接；`oauth.keychain: off` 须强制文件；credential ID 须进 connection key，同 server 多账号隔离。由单测覆盖，不扩 BDD step。
+    token 存储 须 OS keychain 优先、0600 文件 fallback；keychain 不可用 不得阻塞连接；`oauth.keychain: off` 须强制文件；credential ID 缺省须生成稳定默认账号 ID；credential ID 须进 connection key，同 server 多账号隔离。由单测覆盖，不扩 BDD step。
 
   @req:r3270
   规则: mcp-oauth-host-callback
-    Host 须监听 localhost 一次性 callback（默认 127.0.0.1 临时端口；pre-registered client 可固定 redirect URI）；redirect URI 须与 client 注册一致；TUI 须展示 URL 与同意/取消；code exchange 成功后 须保存 credential 并发完成事件，失败 须发失败事件；code/token 不得进事件或日志。由单测覆盖，不扩 BDD step。
+    Host 须监听 localhost 一次性 callback（默认 127.0.0.1 临时端口；pre-registered client 可固定 redirect URI）；redirect URI 须与 client 注册一致；多个并发 flow 须按 flow_id / state 隔离；TUI 须展示 URL 与同意/取消；code exchange 成功后 须保存 credential 并发完成事件，失败 须发失败事件；code/token 不得进事件或日志；TUI 与 Host 不同机器时 不得承诺 localhost callback 可达，须明确不支持远程 TUI OAuth。由单测覆盖，不扩 BDD step。
 
   @req:r3271
   规则: mcp-capability-probe
