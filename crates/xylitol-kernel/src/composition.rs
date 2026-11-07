@@ -483,6 +483,7 @@ mod tests {
             connect_timeout_ms: 8_000,
             call_timeout_ms: 120_000,
             custom_transport: None,
+            oauth: None,
         }
     }
 

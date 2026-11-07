@@ -3160,6 +3160,7 @@ fn arm_freeze_fixture_mcp(name: &str) -> xylitol_kernel::composition::McpServerS
         connect_timeout_ms: 8_000,
         call_timeout_ms: 120_000,
         custom_transport: None,
+        oauth: None,
     }
 }
 
@@ -3179,6 +3180,7 @@ async fn g_arm_freeze_hang_mcp(server_test: &ServerTest) {
         connect_timeout_ms: 8_000,
         call_timeout_ms: 120_000,
         custom_transport: None,
+        oauth: None,
     };
     let host = xylitol_kernel::occupancy::host_state_for_test_with_mcp(vec![hang]).expect("host");
     let slot = host.slot("freeze-gate-hang").await;

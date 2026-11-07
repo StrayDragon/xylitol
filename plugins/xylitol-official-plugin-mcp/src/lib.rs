@@ -15,7 +15,7 @@ pub use assemble::{connect_and_discover, connect_and_discover_at, mcp_enabled};
 pub use client::{
     ConnectedMcpServer, McpClientManager, McpConnectDiagnostic, McpConnectProgress, McpError,
 };
-pub use config::{McpScope, McpServerConfig, McpTransportKind};
+pub use config::{McpOAuthConfig, McpOAuthKeychain, McpScope, McpServerConfig, McpTransportKind};
 pub use defaults::MCP_SERVER_CONNECT_TIMEOUT;
 pub use hub::McpPrepareHub;
 pub use truncate::{MCP_RESULT_MAX_BYTES, McpResultTruncate};

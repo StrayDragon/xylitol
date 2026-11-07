@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use crate::occupancy::engine::{OccupancyEngine, OccupancyFactory};
 use crate::occupancy::envelope;
 use crate::occupancy::idempotency::{Admission, IdempotencyLedger, conflict_result};
+use crate::occupancy::oauth::HostOAuthGateway;
 use crate::occupancy::rpc_module::describe_value;
 use crate::occupancy::ws::{
     EventJournal, ReverseRpcGateway, ReverseRpcResult, downlink_notification,
@@ -1202,6 +1203,7 @@ pub async fn materialize_writer_at(
     let ask_gateway = Arc::new(SlotAskGateway { slot: slot.clone() });
     driver.install_ask_tool(ask_gateway.clone());
     xylitol_plugin_sdk::mcp::set_mcp_elicitation_gateway(ask_gateway);
+    xylitol_plugin_sdk::mcp::set_mcp_oauth_gateway(Arc::new(HostOAuthGateway::new()));
     driver.begin_session_prepare().await;
     restore_default_model(host, driver.as_mut()).await;
     *guard = Some(driver);

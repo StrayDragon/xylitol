@@ -382,6 +382,51 @@
       },
       "type": "object"
     },
+    "mcp_servers_McpOAuthConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "client_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "client_metadata_url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keychain": {
+          "$ref": "#/$defs/mcp_servers_McpOAuthKeychain",
+          "default": "auto"
+        },
+        "redirect_uri": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scopes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "mcp_servers_McpOAuthKeychain": {
+      "enum": [
+        "auto",
+        "off"
+      ],
+      "type": "string"
+    },
     "mcp_servers_McpScope": {
       "enum": [
         "workspace",
@@ -457,6 +502,17 @@
         },
         "name": {
           "type": "string"
+        },
+        "oauth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/mcp_servers_McpOAuthConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "scope": {
           "$ref": "#/$defs/mcp_servers_McpScope",

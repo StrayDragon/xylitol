@@ -69,6 +69,40 @@ pub struct McpElicitationResponse {
     pub content: Option<Value>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpOAuthFlow {
+    pub flow_id: String,
+    pub server: String,
+    pub auth_url: String,
+    pub redirect_uri: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    pub expires_at_ms: u64,
+}
+
+#[async_trait]
+pub trait McpOAuthGateway: Send + Sync {
+    async fn bind(&self, flow_id: &str, redirect_uri: Option<&str>) -> Result<String, String>;
+    async fn wait(&self, flow_id: &str) -> Result<String, String>;
+    async fn cancel(&self, flow_id: &str);
+}
+
+static OAUTH_GATEWAY: OnceLock<Mutex<Option<Arc<dyn McpOAuthGateway>>>> = OnceLock::new();
+
+pub fn set_mcp_oauth_gateway(gateway: Arc<dyn McpOAuthGateway>) {
+    let slot = OAUTH_GATEWAY.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = slot.lock() {
+        *guard = Some(gateway);
+    }
+}
+
+pub fn mcp_oauth_gateway() -> Option<Arc<dyn McpOAuthGateway>> {
+    OAUTH_GATEWAY
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|guard| guard.clone())
+}
+
 #[async_trait]
 pub trait McpElicitationGateway: Send + Sync {
     async fn elicit(&self, request: McpElicitationRequest) -> McpElicitationResponse;

@@ -94,12 +94,17 @@ fn desired_keys(
     let mut out: HashMap<ConnectionKey, Vec<McpServerConfig>> = HashMap::new();
     for server in servers {
         let fingerprint = server.fingerprint();
+        let credential = if server.oauth.is_some() {
+            Some(server.effective_credential_id())
+        } else {
+            server.credential.clone()
+        };
         match server.scope {
             McpScope::Shared => {
                 let key = ConnectionKey {
                     fingerprint,
                     scope: McpScope::Shared,
-                    credential: server.credential.clone(),
+                    credential: credential.clone(),
                     workspace: None,
                     session: None,
                 };
@@ -110,7 +115,7 @@ fn desired_keys(
                     let key = ConnectionKey {
                         fingerprint: fingerprint.clone(),
                         scope: McpScope::Workspace,
-                        credential: server.credential.clone(),
+                        credential: credential.clone(),
                         workspace: Some(workspace.clone()),
                         session: None,
                     };
@@ -121,7 +126,7 @@ fn desired_keys(
                 let key = ConnectionKey {
                     fingerprint,
                     scope: McpScope::Session,
-                    credential: server.credential.clone(),
+                    credential: credential.clone(),
                     workspace: None,
                     session: Some(session_id.to_string()),
                 };
@@ -857,6 +862,19 @@ mod tests {
         assert!(
             keys.keys()
                 .any(|key| key.credential.as_deref() == Some("acct-b"))
+        );
+    }
+
+    #[test]
+    fn desired_keys_default_oauth_credential_to_server_name() {
+        let mut oauth = server("remote", McpScope::Shared);
+        oauth.transport = crate::McpTransportKind::Http;
+        oauth.url = Some("https://mcp.example.com/mcp".into());
+        oauth.oauth = Some(crate::McpOAuthConfig::default());
+        let keys = desired_keys(&[oauth], "s1", &["/a".into()]);
+        assert_eq!(
+            keys.keys().next().and_then(|key| key.credential.as_deref()),
+            Some("remote")
         );
     }
 

@@ -1,29 +1,29 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use futures::stream::{FuturesUnordered, StreamExt};
+use oauth2::TokenResponse;
+use rmcp::transport::auth::CredentialStore;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
 use super::resource_cache::{ResourceCache, parse_resource_content};
 use super::types::{McpServerConfig, McpTransportKind};
+use crate::config::McpOAuthConfig;
+use crate::credential_store::OAuthCredentialStore;
 use xylitol_plugin_sdk::mcp::McpResourceContent;
 use xylitol_plugin_sdk::tool_name::{is_provider_safe_tool_name, mcp_tool_public_name};
 
-#[cfg(feature = "mcp")]
 type McpService = rmcp::service::RunningService<rmcp::RoleClient, McpClientHandler>;
-#[cfg(not(feature = "mcp"))]
-type McpService = ();
 
-#[cfg(feature = "mcp")]
 #[derive(Clone)]
 pub struct McpClientHandler {
     dirty: Arc<AtomicBool>,
     server: String,
 }
 
-#[cfg(feature = "mcp")]
 impl rmcp::ClientHandler for McpClientHandler {
     fn on_tool_list_changed(
         &self,
@@ -112,7 +112,6 @@ impl rmcp::ClientHandler for McpClientHandler {
     }
 }
 
-#[cfg(feature = "mcp")]
 fn elicitation_field_names(schema: &Value) -> Vec<String> {
     schema
         .get("properties")
@@ -344,6 +343,13 @@ pub enum McpError {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    #[error("OAuth authorization required for {server}")]
+    AuthRequired {
+        server: String,
+        flow: Box<xylitol_plugin_sdk::mcp::McpOAuthFlow>,
+    },
+    #[error("OAuth flow failed for {server}: {message}")]
+    OAuth { server: String, message: String },
     #[error("serialize result: {0}")]
     Serialize(#[from] serde_json::Error),
     #[error("MCP server not found: {server_id}")]
@@ -396,6 +402,13 @@ pub struct CapabilityProbe {
     pub ttl_ms: u64,
 }
 
+struct OAuthFlowState {
+    server: String,
+    config: McpServerConfig,
+    state: rmcp::transport::auth::OAuthState,
+    http_client: reqwest::Client,
+}
+
 pub struct McpClientManager {
     services: Mutex<HashMap<String, McpService>>,
     tools_dirty: Arc<AtomicBool>,
@@ -408,6 +421,7 @@ pub struct McpClientManager {
     resource_cache: Mutex<ResourceCache>,
     subscription_tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
     connect_attempts: AtomicUsize,
+    oauth_flows: Mutex<HashMap<String, OAuthFlowState>>,
 }
 
 impl Default for McpClientManager {
@@ -418,6 +432,23 @@ impl Default for McpClientManager {
 
 fn public_name_is_safe(server: &str, name: &str) -> bool {
     is_provider_safe_tool_name(&mcp_tool_public_name(server, name))
+}
+
+static OAUTH_FLOW_SEQ: AtomicU64 = AtomicU64::new(1);
+
+fn default_agent_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join(".xylitol")
+}
+
+fn oauth_flow_id(server: &str) -> String {
+    format!(
+        "{server}-{}-{}",
+        xylitol_plugin_sdk::dto::now_ms(),
+        OAUTH_FLOW_SEQ.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 pub(crate) fn classify_probe_error(message: &str) -> &'static str {
@@ -452,6 +483,7 @@ impl McpClientManager {
             resource_cache: Mutex::new(ResourceCache::new()),
             subscription_tasks: Mutex::new(Vec::new()),
             connect_attempts: AtomicUsize::new(0),
+            oauth_flows: Mutex::new(HashMap::new()),
         }
     }
 
@@ -784,7 +816,31 @@ impl McpClientManager {
         }
     }
 
-    async fn connect_http(&self, name: &str, config: &McpServerConfig) -> Result<(), McpError> {
+    async fn connect_http(
+        self: &Arc<Self>,
+        name: &str,
+        config: &McpServerConfig,
+    ) -> Result<(), McpError> {
+        if let Some(url) = config.url.as_deref()
+            && url.trim_end_matches('/').ends_with("/sse")
+        {
+            return Err(McpError::Config(format!(
+                "legacy HTTP+SSE is not supported: {url}; use Streamable HTTP"
+            )));
+        }
+        if let Some(oauth) = config.oauth.clone() {
+            return self
+                .connect_http_oauth(name, config, oauth, None, false)
+                .await;
+        }
+        self.connect_http_plain(name, config).await
+    }
+
+    async fn connect_http_plain(
+        &self,
+        name: &str,
+        config: &McpServerConfig,
+    ) -> Result<(), McpError> {
         if let Some(url) = config.url.as_deref()
             && url.trim_end_matches('/').ends_with("/sse")
         {
@@ -852,6 +908,427 @@ impl McpClientManager {
             );
             Ok(())
         }
+    }
+
+    async fn connect_http_oauth(
+        self: &Arc<Self>,
+        name: &str,
+        config: &McpServerConfig,
+        oauth: McpOAuthConfig,
+        challenge: Option<String>,
+        force_reauth: bool,
+    ) -> Result<(), McpError> {
+        #[cfg(not(feature = "mcp"))]
+        {
+            let _ = (name, config, oauth, challenge, force_reauth);
+            return Err(McpError::Config("binary built without feature mcp".into()));
+        }
+        #[cfg(feature = "mcp")]
+        {
+            use rmcp::transport::auth::OAuthState;
+
+            let url = config
+                .url
+                .as_ref()
+                .ok_or_else(|| McpError::Config("url is required for http transport".into()))?;
+            let http_client = reqwest::Client::new();
+            let mut state = OAuthState::new(url, Some(http_client.clone()))
+                .await
+                .map_err(|error| McpError::OAuth {
+                    server: name.to_string(),
+                    message: error.to_string(),
+                })?;
+            let has_credentials = if force_reauth {
+                false
+            } else {
+                match &mut state {
+                    OAuthState::Unauthorized(manager) => {
+                        manager.set_credential_store(OAuthCredentialStore::new(
+                            &default_agent_dir(),
+                            config.effective_credential_id(),
+                            oauth.keychain,
+                        ));
+                        manager
+                            .initialize_from_store()
+                            .await
+                            .map_err(|error| McpError::OAuth {
+                                server: name.to_string(),
+                                message: error.to_string(),
+                            })?
+                    }
+                    _ => false,
+                }
+            };
+            if has_credentials {
+                let OAuthState::Unauthorized(manager) = state else {
+                    return Err(McpError::OAuth {
+                        server: name.to_string(),
+                        message: "OAuth state was not unauthorized after credential load".into(),
+                    });
+                };
+                let auth_client = rmcp::transport::auth::AuthClient::new(http_client, manager);
+                return self
+                    .connect_http_with_auth_client(name, config, auth_client)
+                    .await;
+            }
+            let flow = self
+                .start_oauth_flow(name, config, oauth, state, http_client, challenge)
+                .await?;
+            Err(McpError::AuthRequired {
+                server: name.to_string(),
+                flow: Box::new(flow),
+            })
+        }
+    }
+
+    async fn start_oauth_with_new_state(
+        self: &Arc<Self>,
+        name: &str,
+        config: &McpServerConfig,
+        oauth: McpOAuthConfig,
+        challenge: Option<String>,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, McpError> {
+        use rmcp::transport::auth::OAuthState;
+
+        let url = config
+            .url
+            .as_ref()
+            .ok_or_else(|| McpError::Config("url is required for http transport".into()))?;
+        let http_client = reqwest::Client::new();
+        let state = OAuthState::new(url, Some(http_client.clone()))
+            .await
+            .map_err(|error| McpError::OAuth {
+                server: name.to_string(),
+                message: error.to_string(),
+            })?;
+        self.start_oauth_flow(name, config, oauth, state, http_client, challenge)
+            .await
+    }
+
+    async fn start_oauth_flow(
+        self: &Arc<Self>,
+        name: &str,
+        config: &McpServerConfig,
+        oauth: McpOAuthConfig,
+        mut state: rmcp::transport::auth::OAuthState,
+        http_client: reqwest::Client,
+        challenge: Option<String>,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, McpError> {
+        use rmcp::transport::auth::AuthorizationRequest;
+
+        let gateway =
+            xylitol_plugin_sdk::mcp::mcp_oauth_gateway().ok_or_else(|| McpError::OAuth {
+                server: name.to_string(),
+                message: "OAuth callback gateway is not available".into(),
+            })?;
+        let flow_id = oauth_flow_id(name);
+        let redirect_uri = gateway
+            .bind(&flow_id, oauth.redirect_uri.as_deref())
+            .await
+            .map_err(|message| McpError::OAuth {
+                server: name.to_string(),
+                message,
+            })?;
+        let mut request = AuthorizationRequest::new(redirect_uri.clone())
+            .with_client_name("xylitol")
+            .with_scopes(oauth.scopes.clone());
+        if let Some(client_id) = oauth.client_id.as_deref() {
+            request = request.with_preregistered_client(client_id);
+        } else if let Some(client_metadata_url) = oauth.client_metadata_url.as_deref() {
+            request = request.with_client_metadata_url(client_metadata_url);
+        }
+        if let Some(challenge) = challenge {
+            request = request.with_challenge(challenge);
+        }
+        state
+            .start_authorization(request)
+            .await
+            .map_err(|error| McpError::OAuth {
+                server: name.to_string(),
+                message: error.to_string(),
+            })?;
+        let auth_url = state
+            .get_authorization_url()
+            .await
+            .map_err(|error| McpError::OAuth {
+                server: name.to_string(),
+                message: error.to_string(),
+            })?;
+        let flow = xylitol_plugin_sdk::mcp::McpOAuthFlow {
+            flow_id: flow_id.clone(),
+            server: name.to_string(),
+            auth_url,
+            redirect_uri,
+            scopes: oauth.scopes.clone(),
+            expires_at_ms: xylitol_plugin_sdk::dto::now_ms().saturating_add(300_000),
+        };
+        self.oauth_flows.lock().await.insert(
+            flow_id.clone(),
+            OAuthFlowState {
+                server: name.to_string(),
+                config: config.clone(),
+                state,
+                http_client,
+            },
+        );
+        let manager = Arc::clone(self);
+        let gateway_wait = gateway.clone();
+        let wait_flow_id = flow_id.clone();
+        tokio::spawn(async move {
+            match gateway_wait.wait(&wait_flow_id).await {
+                Ok(callback_url) => {
+                    if let Err(error) = manager.complete_oauth(&wait_flow_id, &callback_url).await {
+                        log::warn!("MCP OAuth callback failed for {wait_flow_id}: {error}");
+                    }
+                }
+                Err(error) => {
+                    log::warn!("MCP OAuth callback wait failed for {wait_flow_id}: {error}");
+                    manager.oauth_flows.lock().await.remove(&wait_flow_id);
+                }
+            }
+        });
+        Ok(flow)
+    }
+
+    async fn complete_oauth(
+        self: &Arc<Self>,
+        flow_id: &str,
+        callback_url: &str,
+    ) -> Result<(), McpError> {
+        let flow = self
+            .oauth_flows
+            .lock()
+            .await
+            .remove(flow_id)
+            .ok_or_else(|| McpError::OAuth {
+                server: flow_id.to_string(),
+                message: "OAuth flow not found".into(),
+            })?;
+        let mut state = flow.state;
+        state
+            .handle_callback_url(callback_url)
+            .await
+            .map_err(|error| McpError::OAuth {
+                server: flow.server.clone(),
+                message: error.to_string(),
+            })?;
+        let manager = state
+            .into_authorization_manager()
+            .ok_or_else(|| McpError::OAuth {
+                server: flow.server.clone(),
+                message: "OAuth callback did not produce authorized state".into(),
+            })?;
+        let auth_client = rmcp::transport::auth::AuthClient::new(flow.http_client, manager);
+        self.connect_http_with_auth_client(&flow.server, &flow.config, auth_client)
+            .await
+    }
+
+    async fn connect_http_with_auth_client(
+        self: &Arc<Self>,
+        name: &str,
+        config: &McpServerConfig,
+        auth_client: rmcp::transport::auth::AuthClient<reqwest::Client>,
+    ) -> Result<(), McpError> {
+        use rmcp::transport::StreamableHttpClientTransport;
+        use rmcp::transport::streamable_http_client::StreamableHttpError;
+
+        let transport_cfg = self.http_transport_config(config)?;
+        let transport = StreamableHttpClientTransport::with_client(auth_client, transport_cfg);
+        match self.serve_http_transport(name, transport).await {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                if let McpError::Init(source) = &error
+                    && let Some(auth_required) =
+                        source.downcast_ref::<StreamableHttpError<reqwest::Error>>()
+                {
+                    if let StreamableHttpError::AuthRequired(challenge) = auth_required {
+                        let oauth = config.oauth.clone().ok_or_else(|| McpError::OAuth {
+                            server: name.to_string(),
+                            message: "auth challenge without oauth config".into(),
+                        })?;
+                        let flow = self
+                            .start_oauth_with_new_state(
+                                name,
+                                config,
+                                oauth,
+                                Some(challenge.www_authenticate_header.clone()),
+                            )
+                            .await?;
+                        return Err(McpError::AuthRequired {
+                            server: name.to_string(),
+                            flow: Box::new(flow),
+                        });
+                    }
+                    if let StreamableHttpError::InsufficientScope(challenge) = auth_required {
+                        let mut oauth = config.oauth.clone().ok_or_else(|| McpError::OAuth {
+                            server: name.to_string(),
+                            message: "insufficient scope without oauth config".into(),
+                        })?;
+                        if let Some(scope) = challenge.required_scope.as_deref() {
+                            oauth.scopes = vec![scope.to_string()];
+                        }
+                        let flow = self
+                            .start_oauth_with_new_state(
+                                name,
+                                config,
+                                oauth,
+                                Some(challenge.www_authenticate_header.clone()),
+                            )
+                            .await?;
+                        return Err(McpError::AuthRequired {
+                            server: name.to_string(),
+                            flow: Box::new(flow),
+                        });
+                    }
+                }
+                Err(error)
+            }
+        }
+    }
+
+    pub async fn revoke_oauth(
+        &self,
+        server: &str,
+        config: &McpServerConfig,
+    ) -> Result<(), McpError> {
+        use rmcp::transport::auth::AuthorizationManager;
+
+        let oauth = config.oauth.as_ref().ok_or_else(|| McpError::OAuth {
+            server: server.to_string(),
+            message: "revoke requires oauth config".into(),
+        })?;
+        let store = OAuthCredentialStore::new(
+            &default_agent_dir(),
+            config.effective_credential_id(),
+            oauth.keychain,
+        );
+        let Some(credentials) = store.load().await.map_err(|error| McpError::OAuth {
+            server: server.to_string(),
+            message: error.to_string(),
+        })?
+        else {
+            return Ok(());
+        };
+        let Some(token_response) = credentials.token_response.as_ref() else {
+            return Ok(());
+        };
+        let access_token = token_response.access_token().secret().to_string();
+        let url = config
+            .url
+            .as_ref()
+            .ok_or_else(|| McpError::Config("url is required for http transport".into()))?;
+        let manager = AuthorizationManager::new(url)
+            .await
+            .map_err(|error| McpError::OAuth {
+                server: server.to_string(),
+                message: error.to_string(),
+            })?;
+        let metadata = manager
+            .resolve_metadata()
+            .await
+            .map_err(|error| McpError::OAuth {
+                server: server.to_string(),
+                message: error.to_string(),
+            })?
+            .metadata;
+        let endpoint = metadata
+            .additional_fields
+            .get("revocation_endpoint")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| McpError::OAuth {
+                server: server.to_string(),
+                message: "authorization server has no revocation_endpoint".into(),
+            })?;
+        let response = reqwest::Client::new()
+            .post(endpoint)
+            .form(&[
+                ("token", access_token.as_str()),
+                ("token_type_hint", "access_token"),
+                ("client_id", credentials.client_id.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|error| McpError::OAuth {
+                server: server.to_string(),
+                message: error.to_string(),
+            })?;
+        if !response.status().is_success() {
+            return Err(McpError::OAuth {
+                server: server.to_string(),
+                message: format!("revocation failed with HTTP {}", response.status()),
+            });
+        }
+        store.clear().await.map_err(|error| McpError::OAuth {
+            server: server.to_string(),
+            message: error.to_string(),
+        })
+    }
+
+    fn http_transport_config(
+        &self,
+        config: &McpServerConfig,
+    ) -> Result<
+        rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig,
+        McpError,
+    > {
+        use http::{HeaderName, HeaderValue};
+        use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+
+        let url = config
+            .url
+            .as_ref()
+            .ok_or_else(|| McpError::Config("url is required for http transport".into()))?;
+        let mut transport_cfg = StreamableHttpClientTransportConfig::with_uri(url.clone());
+        if let Some(ref headers) = config.headers {
+            let mut custom = HashMap::new();
+            for (k, v) in headers {
+                let name = HeaderName::from_bytes(k.as_bytes()).map_err(|source| {
+                    McpError::InvalidHeaderName {
+                        key: k.clone(),
+                        source,
+                    }
+                })?;
+                let value =
+                    HeaderValue::from_str(v).map_err(|source| McpError::InvalidHeaderValue {
+                        key: k.clone(),
+                        source,
+                    })?;
+                custom.insert(name, value);
+            }
+            transport_cfg = transport_cfg.custom_headers(custom);
+        }
+        Ok(transport_cfg)
+    }
+
+    async fn serve_http_transport<C>(
+        &self,
+        name: &str,
+        transport: rmcp::transport::StreamableHttpClientTransport<C>,
+    ) -> Result<(), McpError>
+    where
+        C: rmcp::transport::streamable_http_client::StreamableHttpClient + Send + Sync + 'static,
+    {
+        use rmcp::serve_client;
+
+        let handler = McpClientHandler {
+            dirty: self.tools_dirty.clone(),
+            server: name.to_string(),
+        };
+        let service = serve_client(handler, transport)
+            .await
+            .map_err(|error| McpError::Init(Box::new(error)))?;
+        let mut services = self.services.lock().await;
+        services.insert(name.to_string(), service);
+        self.transports
+            .lock()
+            .await
+            .insert(name.to_string(), McpTransportKind::Http);
+        log::info!(
+            "MCP server connected name={} transport={}",
+            { name },
+            "http"
+        );
+        Ok(())
     }
 
     pub async fn list_all_tools(&self) -> Vec<(String, String, String, Value)> {

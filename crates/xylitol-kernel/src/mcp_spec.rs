@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use xylitol_official_plugin_config::types::{McpScope, McpServerConfig, McpTransportKind};
+use xylitol_official_plugin_config::types::{
+    McpOAuthConfig, McpScope, McpServerConfig, McpTransportKind,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum McpTransportSpec {
@@ -23,6 +25,7 @@ pub struct McpServerSpec {
     pub connect_timeout_ms: u64,
     pub call_timeout_ms: u64,
     pub custom_transport: Option<String>,
+    pub oauth: Option<McpOAuthConfig>,
 }
 
 impl From<&McpServerConfig> for McpServerSpec {
@@ -44,6 +47,7 @@ impl From<&McpServerConfig> for McpServerSpec {
             connect_timeout_ms: c.connect_timeout_ms,
             call_timeout_ms: c.call_timeout_ms,
             custom_transport: c.custom_transport.clone(),
+            oauth: c.oauth.clone(),
         }
     }
 }
@@ -67,6 +71,7 @@ impl From<&McpServerSpec> for McpServerConfig {
             connect_timeout_ms: s.connect_timeout_ms,
             call_timeout_ms: s.call_timeout_ms,
             custom_transport: s.custom_transport.clone(),
+            oauth: s.oauth.clone(),
         }
     }
 }
