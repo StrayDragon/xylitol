@@ -153,6 +153,10 @@
   规则: mcp-resource-cache-subscription
     资源缓存 key 须为 `(server, uri)`，LRU 64、单条 256 KiB、TTL 5 分钟；`resources/updated` 须失效对应 URI，`resources/list_changed` 须清 catalog/缓存。连接后 须 `Peer::listen` 订阅 `resources_list_changed` 与已知 URI；不支持 须 warn 降级手动刷新，不得阻塞连接。由单测覆盖，不扩 BDD step。
 
+  @req:r3279
+  规则: mcp-elicitation-ui
+    TUI elicitation 须用表单槽位渲染 primitive 字段（string / number / integer / boolean / enum），支持 title / description / default / required / min / max / format；秘密字段或未知形状 须整表 decline，不得渲染；accept 须校验类型与必填；等待响应 5 分钟超时 须 decline；审计只记 server / 字段名 / action / reason / timestamp，不得记值或 message。由单测 / harness 覆盖，不扩 BDD step。
+
   @req:r3241
   规则: mcp-elicitation-secrets
     MCP elicitation 表单不得收集秘密；requestedSchema 字段命中 password / secret / token / api_key / credential / private_key 须拒绝；默认不弹 UI，返回 decline；不得记录 message 或字段值。由单测覆盖，不扩 BDD step。

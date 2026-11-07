@@ -5,7 +5,7 @@
 - MCP `requestedSchema` 只支持 primitive：`String` / `Number` / `Integer` / `Boolean` / `Enum`。
 - 支持 title / description / default / required；string 支持 minLength / maxLength / format（email / uri / date / date-time）；number/integer 支持 minimum / maximum。
 - 嵌套 object / array 不在 MCP 子集内；遇到未知形状整表 decline 并诊断。
-- 表单只渲染当前 schema 支持的字段；必填缺失时 accept 禁用。
+- 表单只渲染当前 schema 支持的字段；accept 后由 MCP handler 校验必填/类型，缺失或非法则 decline。
 
 ## 2. 秘密策略
 

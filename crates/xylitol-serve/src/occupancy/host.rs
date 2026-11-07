@@ -19,10 +19,13 @@ use crate::occupancy::ws::{
 };
 use crate::wire::Reply;
 use crate::{MUX_CHAN_CAP, MuxSink, OccupiedHost};
-use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
+use xylitol_plugin_sdk::ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 use xylitol_plugin_sdk::error::{XySessionStoreError, XyToolError};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::mcp::McpResourceContext;
+use xylitol_plugin_sdk::mcp::{
+    McpElicitationAction, McpElicitationGateway, McpElicitationRequest, McpElicitationResponse,
+};
 use xylitol_plugin_sdk::session::SessionEntry;
 use xylitol_protocol::method::{
     APPROVAL_REQUESTED, BASH_OUTPUT, QUESTION_REQUESTED, SESSION_EVENT, SESSION_MODEL,
@@ -836,6 +839,201 @@ impl AskUserGateway for SlotAskGateway {
 }
 
 #[async_trait::async_trait]
+impl McpElicitationGateway for SlotAskGateway {
+    async fn elicit(&self, request: McpElicitationRequest) -> McpElicitationResponse {
+        let questions = elicitation_questions(&request.schema, &request.message);
+        let rpc_id = uuid::Uuid::new_v4().to_string();
+        let questions_value = serde_json::to_value(&questions).unwrap_or(Value::Null);
+        let rx = self
+            .slot
+            .request_question(rpc_id.clone(), questions_value)
+            .await;
+        let json = match timeout(std::time::Duration::from_secs(300), rx).await {
+            Ok(Ok(ReverseRpcResult::Answered(s))) => s,
+            Ok(Ok(ReverseRpcResult::Approved)) => "{}".into(),
+            Ok(Ok(ReverseRpcResult::Denied)) => String::new(),
+            Ok(Ok(ReverseRpcResult::Timeout)) | Ok(Err(_)) | Err(_) => {
+                self.slot.gateway.remove(&rpc_id);
+                String::new()
+            }
+        };
+        if json.is_empty() {
+            return McpElicitationResponse {
+                action: McpElicitationAction::Decline,
+                content: None,
+            };
+        }
+        parse_elicitation_response(&json, &request.schema)
+    }
+}
+
+fn elicitation_questions(schema: &Value, message: &str) -> Vec<AskQuestionArg> {
+    let mut questions = vec![AskQuestionArg {
+        id: "action".into(),
+        prompt: message.to_string(),
+        label: Some("Elicitation".into()),
+        mode: AskModeArg::Single,
+        options: vec![
+            AskOptionArg {
+                value: "accept".into(),
+                label: "Accept".into(),
+                description: None,
+                recommended: true,
+            },
+            AskOptionArg {
+                value: "decline".into(),
+                label: "Decline".into(),
+                description: None,
+                recommended: false,
+            },
+            AskOptionArg {
+                value: "cancel".into(),
+                label: "Cancel".into(),
+                description: None,
+                recommended: false,
+            },
+        ],
+        allow_other: false,
+    }];
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return questions;
+    };
+    let required: Vec<&str> = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    for (name, spec) in properties {
+        let Some(spec) = spec.as_object() else {
+            continue;
+        };
+        let kind = spec.get("type").and_then(Value::as_str).unwrap_or("string");
+        let mut options = Vec::new();
+        if let Some(values) = spec.get("enum").and_then(Value::as_array) {
+            for value in values.iter().filter_map(Value::as_str) {
+                options.push(AskOptionArg {
+                    value: value.to_string(),
+                    label: value.to_string(),
+                    description: None,
+                    recommended: false,
+                });
+            }
+        } else if kind == "boolean" {
+            options.push(AskOptionArg {
+                value: "true".into(),
+                label: "true".into(),
+                description: None,
+                recommended: false,
+            });
+            options.push(AskOptionArg {
+                value: "false".into(),
+                label: "false".into(),
+                description: None,
+                recommended: false,
+            });
+        }
+        let description = spec
+            .get("description")
+            .and_then(Value::as_str)
+            .or_else(|| spec.get("title").and_then(Value::as_str))
+            .unwrap_or("");
+        let marker = if required.contains(&name.as_str()) {
+            "required"
+        } else {
+            "optional"
+        };
+        let label = format!("{name} ({kind}, {marker})");
+        questions.push(AskQuestionArg {
+            id: name.clone(),
+            prompt: if description.is_empty() {
+                label.clone()
+            } else {
+                format!("{description} [{label}]")
+            },
+            label: Some(label),
+            mode: AskModeArg::Single,
+            options,
+            allow_other: true,
+        });
+    }
+    questions
+}
+
+fn parse_elicitation_response(json: &str, schema: &Value) -> McpElicitationResponse {
+    let value: Value = serde_json::from_str(json).unwrap_or(Value::Null);
+    let status = value
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("skipped");
+    if status != "answered" {
+        return McpElicitationResponse {
+            action: McpElicitationAction::Decline,
+            content: None,
+        };
+    }
+    let answers = value
+        .get("answers")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let answer_for = |id: &str| -> Option<String> {
+        answers
+            .iter()
+            .find(|answer| answer.get("id").and_then(Value::as_str) == Some(id))
+            .and_then(|answer| answer.get("values").and_then(Value::as_array))
+            .and_then(|values| values.first())
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    let action = answer_for("action")
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default();
+    match action.as_str() {
+        "accept" => {
+            let mut content = serde_json::Map::new();
+            if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
+                for (name, spec) in properties {
+                    let Some(raw) = answer_for(name) else {
+                        continue;
+                    };
+                    if raw.is_empty() {
+                        continue;
+                    }
+                    let kind = spec.get("type").and_then(Value::as_str).unwrap_or("string");
+                    let value = match kind {
+                        "boolean" => Value::Bool(raw.eq_ignore_ascii_case("true")),
+                        "integer" => raw
+                            .parse::<i64>()
+                            .map(|number| Value::Number(number.into()))
+                            .unwrap_or(Value::String(raw)),
+                        "number" => raw
+                            .parse::<f64>()
+                            .ok()
+                            .and_then(serde_json::Number::from_f64)
+                            .map(Value::Number)
+                            .unwrap_or(Value::String(raw)),
+                        _ => Value::String(raw),
+                    };
+                    content.insert(name.clone(), value);
+                }
+            }
+            McpElicitationResponse {
+                action: McpElicitationAction::Accept,
+                content: Some(Value::Object(content)),
+            }
+        }
+        "cancel" => McpElicitationResponse {
+            action: McpElicitationAction::Cancel,
+            content: None,
+        },
+        _ => McpElicitationResponse {
+            action: McpElicitationAction::Decline,
+            content: None,
+        },
+    }
+}
+
+#[async_trait::async_trait]
 impl OccupiedHost for HostState {
     fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::Relaxed)
@@ -1001,7 +1199,9 @@ pub async fn materialize_writer_at(
     }
     let _ = project_trusted_for(host, workspace);
     driver.bind_session(&slot.session_id)?;
-    driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
+    let ask_gateway = Arc::new(SlotAskGateway { slot: slot.clone() });
+    driver.install_ask_tool(ask_gateway.clone());
+    xylitol_plugin_sdk::mcp::set_mcp_elicitation_gateway(ask_gateway);
     driver.begin_session_prepare().await;
     restore_default_model(host, driver.as_mut()).await;
     *guard = Some(driver);
@@ -1726,6 +1926,54 @@ mod tests {
     use super::*;
     use serde_json::json;
     use xylitol_plugin_sdk::BashChunk;
+
+    #[test]
+    fn elicitation_questions_and_response_round_trip() {
+        let schema = json!({
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": {"type": "string", "description": "Name"},
+                "count": {"type": "integer"},
+                "enabled": {"type": "boolean"}
+            }
+        });
+        let questions = elicitation_questions(&schema, "Fill this");
+        assert_eq!(questions[0].id, "action");
+        assert!(questions.iter().any(|q| q.id == "name"));
+        assert!(
+            questions
+                .iter()
+                .find(|q| q.id == "enabled")
+                .is_some_and(|q| q.options.len() == 2)
+        );
+
+        let response = parse_elicitation_response(
+            &json!({
+                "status": "answered",
+                "answers": [
+                    {"id": "action", "values": ["accept"]},
+                    {"id": "name", "values": ["Ada"]},
+                    {"id": "count", "values": ["3"]},
+                    {"id": "enabled", "values": ["true"]}
+                ]
+            })
+            .to_string(),
+            &schema,
+        );
+        assert_eq!(response.action, McpElicitationAction::Accept);
+        let content = response.content.expect("content");
+        assert_eq!(content["name"], json!("Ada"));
+        assert_eq!(content["count"], json!(3));
+        assert_eq!(content["enabled"], json!(true));
+
+        let declined = parse_elicitation_response(
+            &json!({"status": "skipped", "answers": []}).to_string(),
+            &schema,
+        );
+        assert_eq!(declined.action, McpElicitationAction::Decline);
+        assert!(declined.content.is_none());
+    }
 
     #[test]
     fn parse_workspaces_prefers_list_and_falls_back_to_cwd() {

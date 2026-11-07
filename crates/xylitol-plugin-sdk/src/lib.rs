@@ -74,7 +74,9 @@ pub use loop_middleware::{
     LoopMiddlewareHandle, LoopMiddlewareRegistry, LoopScope, LoopStage, LoopStep,
 };
 pub use mcp::{
-    McpCatalog, McpCatalogEntry, McpResourceContent, McpResourceContext, McpResourceRef,
+    McpCatalog, McpCatalogEntry, McpElicitationAction, McpElicitationGateway,
+    McpElicitationRequest, McpElicitationResponse, McpResourceContent, McpResourceContext,
+    McpResourceRef, mcp_elicitation_gateway, set_mcp_elicitation_gateway,
 };
 pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{

@@ -20,6 +20,7 @@ type McpService = ();
 #[derive(Clone)]
 pub struct McpClientHandler {
     dirty: Arc<AtomicBool>,
+    server: String,
 }
 
 #[cfg(feature = "mcp")]
@@ -39,22 +40,269 @@ impl rmcp::ClientHandler for McpClientHandler {
     ) -> impl std::future::Future<Output = Result<rmcp::model::ElicitResult, rmcp::model::ErrorData>>
     + Send
     + '_ {
-        use rmcp::model::{ElicitRequestParams, ElicitResult, ElicitationAction};
-        if let ElicitRequestParams::FormElicitationParams {
-            requested_schema, ..
-        } = &request
-            && schema_requests_secrets(requested_schema)
-        {
-            log::warn!(
-                "MCP elicitation declined: schema requests secret-like fields {:?}",
-                requested_schema.properties.keys().collect::<Vec<_>>()
-            );
+        let server = self.server.clone();
+        async move {
+            use rmcp::model::{ElicitRequestParams, ElicitResult, ElicitationAction};
+            let (message, schema) = match &request {
+                ElicitRequestParams::FormElicitationParams {
+                    message,
+                    requested_schema,
+                    ..
+                } => (
+                    message.clone(),
+                    serde_json::to_value(requested_schema).unwrap_or(Value::Null),
+                ),
+                _ => {
+                    audit_elicitation(&server, &[], "decline", "url_mode");
+                    return Ok(ElicitResult::new(ElicitationAction::Decline));
+                }
+            };
+            let fields = elicitation_field_names(&schema);
+            if schema_requests_secrets_value(&schema) {
+                audit_elicitation(&server, &fields, "decline", "secret_field");
+                return Ok(ElicitResult::new(ElicitationAction::Decline));
+            }
+            if !elicitation_schema_supported(&schema) {
+                audit_elicitation(&server, &fields, "decline", "unsupported_schema");
+                return Ok(ElicitResult::new(ElicitationAction::Decline));
+            }
+            let Some(gateway) = xylitol_plugin_sdk::mcp::mcp_elicitation_gateway() else {
+                audit_elicitation(&server, &fields, "decline", "no_ui");
+                return Ok(ElicitResult::new(ElicitationAction::Decline));
+            };
+            let response = match tokio::time::timeout(
+                std::time::Duration::from_secs(300),
+                gateway.elicit(xylitol_plugin_sdk::mcp::McpElicitationRequest {
+                    server: server.clone(),
+                    message,
+                    schema: schema.clone(),
+                }),
+            )
+            .await
+            {
+                Ok(response) => response,
+                Err(_) => {
+                    audit_elicitation(&server, &fields, "decline", "timeout");
+                    return Ok(ElicitResult::new(ElicitationAction::Decline));
+                }
+            };
+            match response.action {
+                xylitol_plugin_sdk::mcp::McpElicitationAction::Accept => {
+                    let Some(content) = response.content else {
+                        audit_elicitation(&server, &fields, "decline", "missing_content");
+                        return Ok(ElicitResult::new(ElicitationAction::Decline));
+                    };
+                    if !elicitation_content_valid(&schema, &content) {
+                        audit_elicitation(&server, &fields, "decline", "invalid_content");
+                        return Ok(ElicitResult::new(ElicitationAction::Decline));
+                    }
+                    audit_elicitation(&server, &fields, "accept", "user_accept");
+                    Ok(ElicitResult::new(ElicitationAction::Accept).with_content(content))
+                }
+                xylitol_plugin_sdk::mcp::McpElicitationAction::Cancel => {
+                    audit_elicitation(&server, &fields, "cancel", "user_cancel");
+                    Ok(ElicitResult::new(ElicitationAction::Cancel))
+                }
+                xylitol_plugin_sdk::mcp::McpElicitationAction::Decline => {
+                    audit_elicitation(&server, &fields, "decline", "user_decline");
+                    Ok(ElicitResult::new(ElicitationAction::Decline))
+                }
+            }
         }
-        std::future::ready(Ok(ElicitResult::new(ElicitationAction::Decline)))
     }
 }
 
 #[cfg(feature = "mcp")]
+fn elicitation_field_names(schema: &Value) -> Vec<String> {
+    schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| properties.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+fn schema_requests_secrets_value(schema: &Value) -> bool {
+    elicitation_field_names(schema).iter().any(|name| {
+        let lower = name.to_ascii_lowercase();
+        [
+            "password",
+            "secret",
+            "token",
+            "api_key",
+            "apikey",
+            "credential",
+            "private_key",
+        ]
+        .iter()
+        .any(|marker| lower.contains(marker))
+    })
+}
+
+fn elicitation_schema_supported(schema: &Value) -> bool {
+    let Some(object) = schema.as_object() else {
+        return false;
+    };
+    if object.get("type").and_then(Value::as_str) != Some("object") {
+        return false;
+    }
+    let Some(properties) = object.get("properties").and_then(Value::as_object) else {
+        return false;
+    };
+    for (name, spec) in properties {
+        if name.is_empty() {
+            return false;
+        }
+        let Some(spec) = spec.as_object() else {
+            return false;
+        };
+        if spec.contains_key("properties") || spec.contains_key("items") {
+            return false;
+        }
+        let Some(kind) = spec.get("type").and_then(Value::as_str) else {
+            if spec.get("enum").is_some() {
+                continue;
+            }
+            return false;
+        };
+        match kind {
+            "string" => {
+                if let Some(format) = spec.get("format").and_then(Value::as_str)
+                    && !matches!(format, "email" | "uri" | "date" | "date-time")
+                {
+                    return false;
+                }
+            }
+            "number" | "integer" => {
+                if let Some(value) = spec.get("minimum")
+                    && value.as_f64().is_none()
+                {
+                    return false;
+                }
+                if let Some(value) = spec.get("maximum")
+                    && value.as_f64().is_none()
+                {
+                    return false;
+                }
+            }
+            "boolean" => {}
+            _ => return false,
+        }
+        if let Some(values) = spec.get("enum") {
+            let Some(values) = values.as_array() else {
+                return false;
+            };
+            if values.iter().any(|value| !value.is_string()) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn elicitation_content_valid(schema: &Value, content: &Value) -> bool {
+    let Some(object) = schema.as_object() else {
+        return false;
+    };
+    let Some(properties) = object.get("properties").and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(content) = content.as_object() else {
+        return false;
+    };
+    let required: Vec<&str> = object
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    for name in &required {
+        if !content.contains_key(*name) {
+            return false;
+        }
+    }
+    for (name, spec) in properties {
+        let Some(value) = content.get(name) else {
+            continue;
+        };
+        let Some(spec) = spec.as_object() else {
+            return false;
+        };
+        if let Some(values) = spec.get("enum").and_then(Value::as_array)
+            && !values.iter().any(|candidate| candidate == value)
+        {
+            return false;
+        }
+        match spec.get("type").and_then(Value::as_str) {
+            Some("string") | None => {
+                let Some(text) = value.as_str() else {
+                    return false;
+                };
+                if let Some(min) = spec.get("minLength").and_then(Value::as_u64)
+                    && (text.chars().count() as u64) < min
+                {
+                    return false;
+                }
+                if let Some(max) = spec.get("maxLength").and_then(Value::as_u64)
+                    && (text.chars().count() as u64) > max
+                {
+                    return false;
+                }
+                if let Some(format) = spec.get("format").and_then(Value::as_str) {
+                    match format {
+                        "email" if !text.contains('@') => return false,
+                        "uri"
+                            if !(text.starts_with("http://")
+                                || text.starts_with("https://")
+                                || text.starts_with("file://")) =>
+                        {
+                            return false;
+                        }
+                        "date" if text.len() != 10 || text.as_bytes().get(4) != Some(&b'-') => {
+                            return false;
+                        }
+                        "date-time" if !text.contains('T') => return false,
+                        _ => {}
+                    }
+                }
+            }
+            Some("number") | Some("integer") => {
+                let Some(number) = value.as_f64() else {
+                    return false;
+                };
+                if spec.get("type").and_then(Value::as_str) == Some("integer")
+                    && number.fract() != 0.0
+                {
+                    return false;
+                }
+                if let Some(min) = spec.get("minimum").and_then(Value::as_f64)
+                    && number < min
+                {
+                    return false;
+                }
+                if let Some(max) = spec.get("maximum").and_then(Value::as_f64)
+                    && number > max
+                {
+                    return false;
+                }
+            }
+            Some("boolean") => {
+                if !value.is_boolean() {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn audit_elicitation(server: &str, fields: &[String], action: &str, reason: &str) {
+    log::info!(
+        "MCP elicitation audit server={server} fields={fields:?} action={action} reason={reason} timestamp={}",
+        xylitol_plugin_sdk::dto::now_ms()
+    );
+}
+
+#[cfg(test)]
 fn schema_requests_secrets(schema: &rmcp::model::ElicitationSchema) -> bool {
     const MARKERS: &[&str] = &[
         "password",
@@ -515,6 +763,7 @@ impl McpClientManager {
 
             let handler = McpClientHandler {
                 dirty: self.tools_dirty.clone(),
+                server: name.to_string(),
             };
             let service = serve_client(handler, transport)
                 .await
@@ -584,6 +833,7 @@ impl McpClientManager {
             let transport = StreamableHttpClientTransport::from_config(transport_cfg);
             let handler = McpClientHandler {
                 dirty: self.tools_dirty.clone(),
+                server: name.to_string(),
             };
             let service = serve_client(handler, transport)
                 .await
@@ -991,6 +1241,49 @@ mod tests {
         }))
         .expect("schema");
         assert!(!schema_requests_secrets(&schema));
+    }
+
+    #[test]
+    fn elicitation_schema_subset_and_content_validation() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "required": ["name", "count"],
+            "properties": {
+                "name": {"type": "string", "minLength": 2},
+                "count": {"type": "integer", "minimum": 1},
+                "enabled": {"type": "boolean"},
+                "mode": {"type": "string", "enum": ["fast", "slow"]}
+            }
+        });
+        assert!(elicitation_schema_supported(&schema));
+        assert!(elicitation_content_valid(
+            &schema,
+            &serde_json::json!({"name": "ok", "count": 2, "enabled": true, "mode": "fast"})
+        ));
+        assert!(!elicitation_content_valid(
+            &schema,
+            &serde_json::json!({"name": "ok", "count": 0, "enabled": true})
+        ));
+        assert!(!elicitation_content_valid(
+            &schema,
+            &serde_json::json!({"name": "x", "count": 2})
+        ));
+        assert!(!elicitation_content_valid(
+            &schema,
+            &serde_json::json!({"name": "ok", "count": 2, "mode": "other"})
+        ));
+
+        let nested = serde_json::json!({
+            "type": "object",
+            "properties": {"nested": {"type": "object"}}
+        });
+        assert!(!elicitation_schema_supported(&nested));
+
+        let secret = serde_json::json!({
+            "type": "object",
+            "properties": {"api_key": {"type": "string"}}
+        });
+        assert!(schema_requests_secrets_value(&secret));
     }
 
     #[tokio::test]
