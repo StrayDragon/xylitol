@@ -64,5 +64,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/wasi-sdk.tar.gz" -C "$RUNNER_TEMP/wasi-sdk" --strip-components=1
           echo "WASI_SDK_PATH=$RUNNER_TEMP/wasi-sdk" >> "$GITHUB_ENV"
 
+      - name: Add wasm32-wasip1 target
+        run: rustup target add wasm32-wasip1
+
       - name: just qa
         run: just qa quiet
