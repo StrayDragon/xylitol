@@ -74,9 +74,30 @@ pub(super) async fn resolve_contexts<T: Terminal>(
 }
 
 pub(super) async fn drain<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
+    oauth_start(session, driver).await;
     resource_add(session).await;
     prompt_select(session, driver).await;
     prompt_args(session, driver).await;
+}
+
+async fn oauth_start<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
+    let Some(server) = session.take_pending_mcp_oauth_start() else {
+        return;
+    };
+    match driver.mcp_oauth_start(&server).await {
+        Ok(flow) => {
+            session.close_mcp_slot();
+            session.push_scroll_notice(format!(
+                "MCP {server} authorization URL: {} (open it in a browser; expires at {})",
+                flow.auth_url, flow.expires_at_ms
+            ));
+        }
+        Err(e) => {
+            e.log_failure("tui.mcp_oauth_start");
+            session.push_scroll_notice(format!("mcp oauth start failed: {server}: {e}"));
+        }
+    }
+    let _ = session.render_now();
 }
 
 async fn resource_add<T: Terminal>(session: &mut HostSession<T>) {

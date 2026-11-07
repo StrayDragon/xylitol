@@ -1167,6 +1167,10 @@ impl UiRoot {
         self.pending.mcp_prompt_select.take()
     }
 
+    pub fn pending_take_mcp_oauth_start(&mut self) -> Option<String> {
+        self.pending.mcp_oauth_start.take()
+    }
+
     pub fn pending_take_mcp_resource_add(
         &mut self,
     ) -> Option<xylitol_plugin_sdk::mcp::McpResourceRef> {

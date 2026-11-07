@@ -9,6 +9,7 @@ use crate::layout::DEFAULT_MAX_VISIBLE;
 pub enum McpAction {
     None,
     Close,
+    Authorize(String),
 }
 
 pub struct McpSlot {
@@ -82,6 +83,11 @@ impl McpSlot {
         };
         if matches_binding(key, "tui.select.confirm") {
             return McpAction::Close;
+        }
+        if key.code == crossterm::event::KeyCode::Char('a')
+            && let Some(item) = self.list.get_selected_item()
+        {
+            return McpAction::Authorize(item.value.clone());
         }
         if super::is_select_nav_key(key) {
             self.list.handle_input(event);

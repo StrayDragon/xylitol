@@ -178,6 +178,14 @@ pub trait SessionPrepareHub: Send + Sync {
             "mcp prompt get is not available for {server}/{name}"
         ))
     }
+
+    async fn mcp_oauth_start(&self, server: &str) -> Result<crate::mcp::McpOAuthFlow, String> {
+        Err(format!("mcp oauth start is not available for {server}"))
+    }
+
+    async fn mcp_oauth_cancel(&self, flow_id: &str) -> Result<(), String> {
+        Err(format!("mcp oauth cancel is not available for {flow_id}"))
+    }
 }
 
 #[cfg(test)]

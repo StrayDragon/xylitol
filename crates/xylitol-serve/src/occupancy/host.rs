@@ -36,8 +36,9 @@ use xylitol_protocol::registry::parse_command;
 use xylitol_protocol::registry::{
     METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GET_AVAILABLE_MODELS,
     METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_MCP_CATALOG,
-    METHOD_MCP_PROMPT_GET, METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST, METHOD_PROMPT,
-    METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
+    METHOD_MCP_OAUTH_CANCEL, METHOD_MCP_OAUTH_START, METHOD_MCP_PROMPT_GET,
+    METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST, METHOD_PROMPT, METHOD_RELOAD,
+    METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
 use xylitol_protocol::{
     ApprovalRequestedPayload, BashOutputPayload, Notification, QuestionRequestedPayload, RpcResult,
@@ -1675,6 +1676,30 @@ async fn dispatch_session_unary(
         };
         return match driver.mcp_prompt_get(server, name, arguments).await {
             Ok(value) => RpcResult::ok_value(value),
+            Err(e) => rpc_err(e),
+        };
+    }
+
+    if method == METHOD_MCP_OAUTH_START {
+        let server = payload.get("server").and_then(Value::as_str).unwrap_or("");
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match driver.mcp_oauth_start(server).await {
+            Ok(flow) => RpcResult::ok_value(serde_json::to_value(flow).unwrap_or(Value::Null)),
+            Err(e) => rpc_err(e),
+        };
+    }
+
+    if method == METHOD_MCP_OAUTH_CANCEL {
+        let flow_id = payload.get("flow_id").and_then(Value::as_str).unwrap_or("");
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match driver.mcp_oauth_cancel(flow_id).await {
+            Ok(()) => RpcResult::ok_value(Value::Null),
             Err(e) => rpc_err(e),
         };
     }

@@ -117,6 +117,14 @@ pub enum Command {
         #[serde(default)]
         arguments: Value,
     },
+    #[serde(rename = "mcp_oauth_start")]
+    McpOAuthStart {
+        server: String,
+    },
+    #[serde(rename = "mcp_oauth_cancel")]
+    McpOAuthCancel {
+        flow_id: String,
+    },
     #[serde(rename = "queue_stats")]
     GetQueueStats {},
     Steer {

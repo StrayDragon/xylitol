@@ -69,6 +69,19 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
         Err(XyDriverError::unsupported("mcp_prompt_get"))
     }
 
+    async fn mcp_oauth_start(
+        &mut self,
+        server: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, XyDriverError> {
+        let _ = server;
+        Err(XyDriverError::unsupported("mcp_oauth_start"))
+    }
+
+    async fn mcp_oauth_cancel(&mut self, flow_id: &str) -> Result<(), XyDriverError> {
+        let _ = flow_id;
+        Err(XyDriverError::unsupported("mcp_oauth_cancel"))
+    }
+
     async fn bash_run(
         &mut self,
         command: &str,

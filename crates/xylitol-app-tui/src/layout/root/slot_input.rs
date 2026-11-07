@@ -100,7 +100,14 @@ impl UiRoot {
                 }
                 false
             }
-            EditorSlot::Mcp(mcp) => matches!(mcp.handle_input(event), McpAction::Close),
+            EditorSlot::Mcp(mcp) => match mcp.handle_input(event) {
+                McpAction::Close => true,
+                McpAction::Authorize(server) => {
+                    self.pending.mcp_oauth_start = Some(server);
+                    true
+                }
+                McpAction::None => false,
+            },
             EditorSlot::McpPrompts(prompts) => {
                 let action = prompts.handle_input(event);
                 if let McpPromptAction::Select(index) = action

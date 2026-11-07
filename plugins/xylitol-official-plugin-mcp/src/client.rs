@@ -1186,6 +1186,25 @@ impl McpClientManager {
         }
     }
 
+    pub async fn start_oauth(
+        self: &Arc<Self>,
+        config: &McpServerConfig,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, McpError> {
+        let oauth = config.oauth.clone().ok_or_else(|| McpError::OAuth {
+            server: config.name.clone(),
+            message: "oauth config is missing".into(),
+        })?;
+        self.start_oauth_with_new_state(&config.name, config, oauth, None)
+            .await
+    }
+
+    pub async fn cancel_oauth(&self, flow_id: &str) {
+        if let Some(gateway) = xylitol_plugin_sdk::mcp::mcp_oauth_gateway() {
+            gateway.cancel(flow_id).await;
+        }
+        self.oauth_flows.lock().await.remove(flow_id);
+    }
+
     pub async fn revoke_oauth(
         &self,
         server: &str,

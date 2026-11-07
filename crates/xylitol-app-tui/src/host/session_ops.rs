@@ -114,6 +114,11 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    pub fn take_pending_mcp_oauth_start(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().pending_take_mcp_oauth_start()
+    }
+
     pub fn take_pending_mcp_prompt_select(&mut self) -> Option<(String, String)> {
         let root = self.ui_root.as_ref()?;
         root.borrow_mut().pending_take_mcp_prompt_select()

@@ -114,6 +114,8 @@ pub const METHOD_LOADED_RESOURCES: &str = "loaded_resources";
 pub const METHOD_MCP_CATALOG: &str = "mcp_catalog";
 pub const METHOD_MCP_RESOURCE_READ: &str = "mcp_resource_read";
 pub const METHOD_MCP_PROMPT_GET: &str = "mcp_prompt_get";
+pub const METHOD_MCP_OAUTH_START: &str = "mcp_oauth_start";
+pub const METHOD_MCP_OAUTH_CANCEL: &str = "mcp_oauth_cancel";
 pub const METHOD_QUEUE_STATS: &str = "queue_stats";
 pub const METHOD_ARM_TOOL_FREEZE: &str = "arm_tool_freeze";
 pub const METHOD_PERSIST_TRUST: &str = "persist_trust";
@@ -392,6 +394,22 @@ pub const REGISTRY: &[MethodEntry] = &[
         Exec::Inline,
     ),
     mx(
+        METHOD_MCP_OAUTH_START,
+        Auth::Writer,
+        Idem::Bypass,
+        Resp::Result,
+        CMD,
+        Exec::Inline,
+    ),
+    mx(
+        METHOD_MCP_OAUTH_CANCEL,
+        Auth::Writer,
+        Idem::Bypass,
+        Resp::Result,
+        CMD,
+        Exec::Inline,
+    ),
+    mx(
         METHOD_LOADED_RESOURCES,
         Auth::Readonly,
         Idem::Bypass,
@@ -478,6 +496,8 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::McpCatalog { .. }
         | Command::McpResourceRead { .. }
         | Command::McpPromptGet { .. }
+        | Command::McpOAuthStart { .. }
+        | Command::McpOAuthCancel { .. }
         | Command::AppendEntryLabel { .. }
         | Command::SetSessionName { .. }
         | Command::SetSessionNameFor { .. } => Exec::Inline,
@@ -610,6 +630,8 @@ mod tests {
                 "set_session_name_for",
                 "generate_session_name",
                 "delete_session",
+                "mcp_oauth_start",
+                "mcp_oauth_cancel",
                 "arm_tool_freeze",
                 "persist_trust",
                 "steer",
@@ -622,7 +644,16 @@ mod tests {
             .filter(|e| e.idem == Idem::Bypass)
             .map(|e| e.name)
             .collect();
-        assert_eq!(bypass, vec!["reload", "loaded_resources", "host.describe"]);
+        assert_eq!(
+            bypass,
+            vec![
+                "reload",
+                "mcp_oauth_start",
+                "mcp_oauth_cancel",
+                "loaded_resources",
+                "host.describe",
+            ]
+        );
     }
 
     #[test]
@@ -636,6 +667,8 @@ mod tests {
             let snake = camel_to_snake(variant);
             let method = match snake.as_str() {
                 "get_queue_stats" => "queue_stats",
+                "mcp_o_auth_start" => "mcp_oauth_start",
+                "mcp_o_auth_cancel" => "mcp_oauth_cancel",
                 other => other,
             };
             assert!(
@@ -736,6 +769,8 @@ mod tests {
                 "get_state",
                 "loaded_resources",
                 "mcp_catalog",
+                "mcp_oauth_cancel",
+                "mcp_oauth_start",
                 "mcp_prompt_get",
                 "mcp_resource_read",
                 "plugin_command",
@@ -904,6 +939,18 @@ mod tests {
                     arguments: Value::Null,
                 },
             ),
+            (
+                "mcp_oauth_start",
+                Command::McpOAuthStart {
+                    server: String::new(),
+                },
+            ),
+            (
+                "mcp_oauth_cancel",
+                Command::McpOAuthCancel {
+                    flow_id: String::new(),
+                },
+            ),
             ("queue_stats", Command::GetQueueStats {}),
             (
                 "steer",
@@ -933,7 +980,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(cases.len(), 43, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 45, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

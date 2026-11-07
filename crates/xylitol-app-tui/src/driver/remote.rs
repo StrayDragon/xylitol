@@ -1080,6 +1080,27 @@ where
         .await
     }
 
+    async fn mcp_oauth_start(
+        &mut self,
+        server: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, XyDriverError> {
+        let data = self
+            .unary_cmd(Command::McpOAuthStart {
+                server: server.to_string(),
+            })
+            .await?;
+        serde_json::from_value(data)
+            .map_err(|e| XyDriverError::remote(format!("mcp_oauth_start decode: {e}")))
+    }
+
+    async fn mcp_oauth_cancel(&mut self, flow_id: &str) -> Result<(), XyDriverError> {
+        self.unary_cmd(Command::McpOAuthCancel {
+            flow_id: flow_id.to_string(),
+        })
+        .await
+        .map(|_| ())
+    }
+
     async fn run_with_context_impl(
         &mut self,
         prompt: &str,
@@ -1560,7 +1581,9 @@ where
             | Command::AnswerQuestion { .. }
             | Command::McpCatalog { .. }
             | Command::McpResourceRead { .. }
-            | Command::McpPromptGet { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
+            | Command::McpPromptGet { .. }
+            | Command::McpOAuthStart { .. }
+            | Command::McpOAuthCancel { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
         }
     }
 }

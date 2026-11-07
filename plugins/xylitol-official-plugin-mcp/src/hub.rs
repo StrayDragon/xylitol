@@ -681,6 +681,43 @@ impl McpPrepareHub {
     }
 }
 
+impl McpPrepareHub {
+    pub async fn start_oauth(
+        &self,
+        server: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, String> {
+        let config = {
+            let servers = self.state.servers.lock().await;
+            servers
+                .iter()
+                .find(|config| config.name == server)
+                .cloned()
+                .ok_or_else(|| format!("MCP server not found: {server}"))?
+        };
+        let manager = {
+            let pool = self.state.pool.lock().await;
+            pool.values()
+                .find(|entry| entry.name == server)
+                .map(|entry| entry.manager.clone())
+                .ok_or_else(|| format!("MCP server is not connected: {server}"))?
+        };
+        manager
+            .start_oauth(&config)
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    pub async fn cancel_oauth(&self, flow_id: &str) {
+        let managers: Vec<_> = {
+            let pool = self.state.pool.lock().await;
+            pool.values().map(|entry| entry.manager.clone()).collect()
+        };
+        for manager in managers {
+            manager.cancel_oauth(flow_id).await;
+        }
+    }
+}
+
 #[async_trait]
 impl SessionPrepareHub for McpPrepareHub {
     fn cue_connecting(&self) {
@@ -798,6 +835,18 @@ impl SessionPrepareHub for McpPrepareHub {
     ) -> Result<serde_json::Value, String> {
         self.prompt_get_for_session(session_id, server, name, arguments)
             .await
+    }
+
+    async fn mcp_oauth_start(
+        &self,
+        server: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, String> {
+        self.start_oauth(server).await
+    }
+
+    async fn mcp_oauth_cancel(&self, flow_id: &str) -> Result<(), String> {
+        self.cancel_oauth(flow_id).await;
+        Ok(())
     }
 }
 
