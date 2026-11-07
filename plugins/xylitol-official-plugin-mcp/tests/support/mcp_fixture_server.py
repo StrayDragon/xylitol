@@ -44,6 +44,14 @@ def _tool_defs() -> list[dict]:
                     },
                 }
             )
+        elif name == "elicit_name":
+            out.append(
+                {
+                    "name": "elicit_name",
+                    "description": "fixture MRTR elicitation",
+                    "inputSchema": {"type": "object", "properties": {}},
+                }
+            )
     return out
 
 
@@ -66,12 +74,39 @@ def _error(req_id, code: int, message: str) -> None:
     )
 
 
-def _call_tool(name: str, arguments: dict | None) -> dict:
-    args = arguments or {}
+def _call_tool(name: str, params: dict) -> dict:
+    args = params.get("arguments") or {}
     if name == "ping":
         text = "pong"
     elif name == "echo":
         text = str(args.get("message", ""))
+    elif name == "elicit_name":
+        if params.get("requestState") != "awaiting-name":
+            return {
+                "resultType": "input_required",
+                "inputRequests": {
+                    "name": {
+                        "method": "elicitation/create",
+                        "params": {
+                            "mode": "form",
+                            "message": "What is your name?",
+                            "requestedSchema": {
+                                "type": "object",
+                                "properties": {"name": {"type": "string"}},
+                                "required": ["name"],
+                            },
+                        },
+                    }
+                },
+                "requestState": "awaiting-name",
+            }
+        responses = params.get("inputResponses") or {}
+        response = responses.get("name") or {}
+        if response.get("action") == "accept":
+            content = response.get("content") or {}
+            text = str(content.get("name", ""))
+        else:
+            text = "declined"
     else:
         raise KeyError(name)
     return {"content": [{"type": "text", "text": text}], "isError": False}
@@ -114,7 +149,7 @@ def main() -> None:
             params = msg.get("params") or {}
             name = params.get("name") or ""
             try:
-                _result(req_id, _call_tool(name, params.get("arguments")))
+                _result(req_id, _call_tool(name, params))
             except KeyError:
                 _error(req_id, -32602, f"unknown tool: {name}")
             continue

@@ -187,6 +187,73 @@ mod tests {
         }
     }
 
+    struct AcceptNameGateway;
+
+    struct DeclineGateway;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::mcp::McpElicitationGateway for DeclineGateway {
+        async fn elicit(
+            &self,
+            _request: xylitol_plugin_sdk::mcp::McpElicitationRequest,
+        ) -> xylitol_plugin_sdk::mcp::McpElicitationResponse {
+            xylitol_plugin_sdk::mcp::McpElicitationResponse {
+                action: xylitol_plugin_sdk::mcp::McpElicitationAction::Decline,
+                content: None,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::mcp::McpElicitationGateway for AcceptNameGateway {
+        async fn elicit(
+            &self,
+            request: xylitol_plugin_sdk::mcp::McpElicitationRequest,
+        ) -> xylitol_plugin_sdk::mcp::McpElicitationResponse {
+            assert!(request.schema["properties"]["name"].is_object());
+            xylitol_plugin_sdk::mcp::McpElicitationResponse {
+                action: xylitol_plugin_sdk::mcp::McpElicitationAction::Accept,
+                content: Some(serde_json::json!({"name": "Ada"})),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn fixture_elicitation_accept_round_trip() {
+        let script = fixture_server_script();
+        assert!(
+            script.is_file(),
+            "missing fixture server at {}",
+            script.display()
+        );
+        xylitol_plugin_sdk::mcp::set_mcp_elicitation_gateway(std::sync::Arc::new(
+            AcceptNameGateway,
+        ));
+        let (manager, _tools) =
+            connect_and_discover(&[fixture_mcp_config("fixture", "elicit_name")])
+                .await
+                .expect("discover fixture");
+        let result = manager
+            .call_tool("fixture", "elicit_name", serde_json::json!({}))
+            .await
+            .expect("elicit_name");
+        let text = result.to_string();
+        assert!(
+            text.contains("Ada"),
+            "MRTR accept must return user content; got {text}"
+        );
+
+        xylitol_plugin_sdk::mcp::set_mcp_elicitation_gateway(std::sync::Arc::new(DeclineGateway));
+        let declined = manager
+            .call_tool("fixture", "elicit_name", serde_json::json!({}))
+            .await
+            .expect("elicit_name decline");
+        assert!(
+            declined.to_string().contains("declined"),
+            "MRTR decline must return decline result; got {declined}"
+        );
+    }
+
     #[tokio::test]
     async fn connect_and_discover_fixture_exposes_ping_tool() {
         let script = fixture_server_script();
