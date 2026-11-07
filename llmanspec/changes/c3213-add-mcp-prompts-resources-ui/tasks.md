@@ -1,5 +1,6 @@
 # Tasks — MCP prompts and resources UI
 
+- [x] 0. 前置：MCP server name provider-safe 校验；拒绝 `/` 等非法字符；单测。
 - [ ] 1. TUI：扩展 `/mcp prompt`；prompt 选择器；有参数用 `ChoicePrompt` 自定义输入；结果插入 editor，不自动发送。
 - [ ] 2. TUI：`/mcp resource` 与 `@mcp:` 补全；选中加入 editor 上方附件 tray；点击 `×` / Backspace（空 editor）/ 快捷键移除；同一 `(server, uri)` 去重；未加引号手写 `@mcp:` 按普通文本。
 - [ ] 3. Host：`mcp.catalog`（prompts/resources/counts）与 `mcp.resource.read` unary；读取失败可操作错误。

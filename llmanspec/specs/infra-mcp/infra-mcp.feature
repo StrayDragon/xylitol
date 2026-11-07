@@ -169,6 +169,10 @@
   规则: mcp-reconnect-count
     pool 须按 connection key 统计重建/重连次数；`/mcp` 须展示 count 与 last error；`/reload` 须重置；不得展示 token/credential 值。由单测覆盖，不扩 BDD step。
 
+  @req:r3273
+  规则: mcp-server-name-safe
+    `mcp_servers[].name` 须只含 `[A-Za-z0-9_-]`；含 `/`、空白、引号、冒号、点号 须配置校验失败并给可操作错误；不得只在 adapter debug_assert。由单测覆盖，不扩 BDD step。
+
   @req:r3267
   规则: mcp-pending-settled
     MCP pending cue 须仅在准备未完成时显示；bootstrap complete 且 tools frozen 后 不得因旧 connecting_label 显示。freeze / arm / gate timeout / reload / resume / 切会话后 须刷新同一 loaded-resources 快照；gate timeout 须收口为 complete / frozen 并保留诊断；connect_timeout_ms 须覆盖 stdio initialize / handshake，超时收口 Failed / timed-out。

@@ -64,6 +64,16 @@ impl McpServerConfig {
         if self.name.trim().is_empty() {
             return Err("mcp server name must not be empty".into());
         }
+        if let Some(invalid) = self
+            .name
+            .chars()
+            .find(|c| !c.is_ascii_alphanumeric() && *c != '_' && *c != '-')
+        {
+            return Err(format!(
+                "mcp server name '{}' is invalid: character '{invalid}' is not allowed; use [A-Za-z0-9_-] (no '/')",
+                self.name
+            ));
+        }
         if self.connect_timeout_ms == 0 {
             return Err("connect_timeout_ms must be positive".into());
         }
@@ -279,6 +289,25 @@ mod tests {
                 .unwrap_err()
                 .contains("only valid for custom transport")
         );
+    }
+
+    #[test]
+    fn server_name_must_be_provider_safe() {
+        let bad = McpServerConfig {
+            name: "team/docs".into(),
+            command: Some("bin".into()),
+            ..Default::default()
+        };
+        let err = bad.validate().unwrap_err();
+        assert!(err.contains("team/docs"), "{err}");
+        assert!(err.contains("'/'"), "{err}");
+
+        let good = McpServerConfig {
+            name: "team-docs_1".into(),
+            command: Some("bin".into()),
+            ..Default::default()
+        };
+        good.validate().expect("provider-safe name");
     }
 
     #[test]
