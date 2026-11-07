@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use rmcp::transport::auth::CredentialStore;
 use tokio::sync::Mutex;
 use xylitol_plugin_sdk::XyTool;
 use xylitol_plugin_sdk::mcp::{McpCatalog, McpCatalogEntry, McpResourceContent};
@@ -34,6 +35,7 @@ struct PoolEntry {
     transport: String,
     scope: String,
     credential_configured: bool,
+    config: McpServerConfig,
     connect_timeout_ms: u64,
     call_timeout_ms: u64,
     claims: usize,
@@ -235,6 +237,7 @@ impl McpPrepareHub {
                                 credential_configured: key_servers
                                     .first()
                                     .is_some_and(|server| server.credential.is_some()),
+                                config: key_servers.first().cloned().unwrap_or_default(),
                                 connect_timeout_ms: key_servers
                                     .first()
                                     .map(|server| server.connect_timeout_ms)
@@ -567,12 +570,26 @@ impl McpPrepareHub {
             diags.extend(entry.diags.iter().cloned());
             tools.extend(entry.tools.iter().cloned());
             probe_lines.extend(entry.manager.probe_lines().await);
+            let credential_set = if let Some(oauth) = entry.config.oauth.as_ref() {
+                crate::credential_store::OAuthCredentialStore::new(
+                    &crate::client::default_agent_dir(),
+                    entry.config.effective_credential_id(),
+                    oauth.keychain,
+                )
+                .load()
+                .await
+                .ok()
+                .flatten()
+                .is_some()
+            } else {
+                entry.credential_configured
+            };
             server_details.push(format!(
                 "server={} transport={} scope={} credential={} connected={} tools={} prompts={} resources={} connect_timeout_ms={} call_timeout_ms={} reconnect_count={} probe={} last_error={}",
                 entry.name,
                 entry.transport,
                 entry.scope,
-                if entry.credential_configured {
+                if credential_set {
                     "set"
                 } else {
                     "none"
@@ -705,6 +722,20 @@ impl McpPrepareHub {
             .start_oauth(&config)
             .await
             .map_err(|error| error.to_string())
+    }
+
+    pub async fn oauth_status(&self, flow_id: &str) -> xylitol_plugin_sdk::mcp::McpOAuthStatus {
+        let managers: Vec<_> = {
+            let pool = self.state.pool.lock().await;
+            pool.values().map(|entry| entry.manager.clone()).collect()
+        };
+        for manager in managers {
+            let status = manager.oauth_status(flow_id).await;
+            if status != xylitol_plugin_sdk::mcp::McpOAuthStatus::Unknown {
+                return status;
+            }
+        }
+        xylitol_plugin_sdk::mcp::McpOAuthStatus::Unknown
     }
 
     pub async fn cancel_oauth(&self, flow_id: &str) {
@@ -847,6 +878,10 @@ impl SessionPrepareHub for McpPrepareHub {
     async fn mcp_oauth_cancel(&self, flow_id: &str) -> Result<(), String> {
         self.cancel_oauth(flow_id).await;
         Ok(())
+    }
+
+    async fn mcp_oauth_status(&self, flow_id: &str) -> xylitol_plugin_sdk::mcp::McpOAuthStatus {
+        self.oauth_status(flow_id).await
     }
 }
 

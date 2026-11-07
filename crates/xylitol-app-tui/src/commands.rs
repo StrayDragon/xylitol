@@ -43,6 +43,9 @@ pub enum PendingSlash {
     OpenMcp {
         panel: McpPanel,
     },
+    McpOAuthCancel {
+        flow_id: String,
+    },
     OpenCapabilities,
     OpenDesigningScenes,
     PluginCommand {
@@ -133,6 +136,10 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
         PendingSlash::OpenMcp { .. } | PendingSlash::OpenSessionResume => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
+        },
+        PendingSlash::McpOAuthCancel { .. } => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
         },
         PendingSlash::OpenCapabilities => SlashAllowances {
             when_agent_busy: Allow,
@@ -226,6 +233,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::Perf => "/perf",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
         PendingSlash::OpenMcp { .. } => "/mcp",
+        PendingSlash::McpOAuthCancel { .. } => "/mcp cancel",
         PendingSlash::OpenCapabilities => "/capabilities",
         PendingSlash::OpenDesigningScenes => "/designing",
         PendingSlash::PluginCommand { .. } => "plugin",
@@ -392,6 +400,16 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
 }
 
 fn parse_mcp_arg(arg: Option<String>) -> PendingSlash {
+    if let Some(rest) = arg
+        .as_deref()
+        .and_then(|raw| raw.strip_prefix("cancel "))
+        .map(str::trim)
+        .filter(|flow_id| !flow_id.is_empty())
+    {
+        return PendingSlash::McpOAuthCancel {
+            flow_id: rest.to_string(),
+        };
+    }
     match arg.as_deref().map(str::to_ascii_lowercase).as_deref() {
         None => PendingSlash::OpenMcp {
             panel: McpPanel::Servers,
@@ -402,7 +420,7 @@ fn parse_mcp_arg(arg: Option<String>) -> PendingSlash {
         Some("resource" | "resources") => PendingSlash::OpenMcp {
             panel: McpPanel::Resources,
         },
-        Some(_) => PendingSlash::Usage("usage: /mcp [prompt|resource]"),
+        Some(_) => PendingSlash::Usage("usage: /mcp [prompt|resource|cancel <flow_id>]"),
     }
 }
 
@@ -743,7 +761,9 @@ mod parse_tests {
         );
         assert_eq!(
             parse_slash_command("/mcp extra"),
-            Some(PendingSlash::Usage("usage: /mcp [prompt|resource]"))
+            Some(PendingSlash::Usage(
+                "usage: /mcp [prompt|resource|cancel <flow_id>]"
+            ))
         );
     }
 

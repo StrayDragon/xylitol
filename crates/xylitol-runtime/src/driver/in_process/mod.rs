@@ -584,6 +584,16 @@ impl XyDriver for XyInProcessDriver {
             .map_err(XyDriverError::remote)
     }
 
+    async fn mcp_oauth_status(
+        &mut self,
+        flow_id: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthStatus, XyDriverError> {
+        let Some(hub) = self.prepare_hub.as_ref() else {
+            return Err(XyDriverError::unsupported("mcp_oauth_status"));
+        };
+        Ok(hub.mcp_oauth_status(flow_id).await)
+    }
+
     fn abort(&self) {
         self.bang.abort();
         self.agent.abort();

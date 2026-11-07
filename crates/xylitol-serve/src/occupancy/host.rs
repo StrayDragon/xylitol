@@ -36,9 +36,9 @@ use xylitol_protocol::registry::parse_command;
 use xylitol_protocol::registry::{
     METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GET_AVAILABLE_MODELS,
     METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_MCP_CATALOG,
-    METHOD_MCP_OAUTH_CANCEL, METHOD_MCP_OAUTH_START, METHOD_MCP_PROMPT_GET,
-    METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST, METHOD_PROMPT, METHOD_RELOAD,
-    METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
+    METHOD_MCP_OAUTH_CANCEL, METHOD_MCP_OAUTH_START, METHOD_MCP_OAUTH_STATUS,
+    METHOD_MCP_PROMPT_GET, METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST, METHOD_PROMPT,
+    METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
 use xylitol_protocol::{
     ApprovalRequestedPayload, BashOutputPayload, Notification, QuestionRequestedPayload, RpcResult,
@@ -1204,7 +1204,9 @@ pub async fn materialize_writer_at(
     let ask_gateway = Arc::new(SlotAskGateway { slot: slot.clone() });
     driver.install_ask_tool(ask_gateway.clone());
     xylitol_plugin_sdk::mcp::set_mcp_elicitation_gateway(ask_gateway);
-    xylitol_plugin_sdk::mcp::set_mcp_oauth_gateway(Arc::new(HostOAuthGateway::new()));
+    xylitol_plugin_sdk::mcp::set_mcp_oauth_gateway(Arc::new(HostOAuthGateway::with_slot(
+        slot.clone(),
+    )));
     driver.begin_session_prepare().await;
     restore_default_model(host, driver.as_mut()).await;
     *guard = Some(driver);
@@ -1700,6 +1702,18 @@ async fn dispatch_session_unary(
         };
         return match driver.mcp_oauth_cancel(flow_id).await {
             Ok(()) => RpcResult::ok_value(Value::Null),
+            Err(e) => rpc_err(e),
+        };
+    }
+
+    if method == METHOD_MCP_OAUTH_STATUS {
+        let flow_id = payload.get("flow_id").and_then(Value::as_str).unwrap_or("");
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match driver.mcp_oauth_status(flow_id).await {
+            Ok(status) => RpcResult::ok_value(serde_json::to_value(status).unwrap_or(Value::Null)),
             Err(e) => rpc_err(e),
         };
     }

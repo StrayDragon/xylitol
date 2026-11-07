@@ -80,11 +80,39 @@ pub struct McpOAuthFlow {
     pub expires_at_ms: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpOAuthStatus {
+    Pending,
+    Completed,
+    Failed,
+    Cancelled,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum McpOAuthEvent {
+    Started {
+        flow: McpOAuthFlow,
+    },
+    Completed {
+        flow_id: String,
+        server: String,
+    },
+    Failed {
+        flow_id: String,
+        server: String,
+        error: String,
+    },
+}
+
 #[async_trait]
 pub trait McpOAuthGateway: Send + Sync {
     async fn bind(&self, flow_id: &str, redirect_uri: Option<&str>) -> Result<String, String>;
     async fn wait(&self, flow_id: &str) -> Result<String, String>;
     async fn cancel(&self, flow_id: &str);
+    fn publish(&self, _event: McpOAuthEvent) {}
 }
 
 static OAUTH_GATEWAY: OnceLock<Mutex<Option<Arc<dyn McpOAuthGateway>>>> = OnceLock::new();

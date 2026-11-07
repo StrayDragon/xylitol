@@ -186,6 +186,11 @@ pub trait SessionPrepareHub: Send + Sync {
     async fn mcp_oauth_cancel(&self, flow_id: &str) -> Result<(), String> {
         Err(format!("mcp oauth cancel is not available for {flow_id}"))
     }
+
+    async fn mcp_oauth_status(&self, flow_id: &str) -> crate::mcp::McpOAuthStatus {
+        let _ = flow_id;
+        crate::mcp::McpOAuthStatus::Unknown
+    }
 }
 
 #[cfg(test)]

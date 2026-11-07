@@ -125,6 +125,10 @@ pub enum Command {
     McpOAuthCancel {
         flow_id: String,
     },
+    #[serde(rename = "mcp_oauth_status")]
+    McpOAuthStatus {
+        flow_id: String,
+    },
     #[serde(rename = "queue_stats")]
     GetQueueStats {},
     Steer {

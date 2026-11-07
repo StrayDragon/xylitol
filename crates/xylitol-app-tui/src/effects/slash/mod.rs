@@ -41,6 +41,7 @@ pub(super) async fn handle_slash<T: Terminal>(
         | PendingSlash::HistoryCopyLast
         | PendingSlash::Theme { .. }
         | PendingSlash::OpenMcp { .. }
+        | PendingSlash::McpOAuthCancel { .. }
         | PendingSlash::OpenCapabilities
         | PendingSlash::OpenDesigningScenes
         | PendingSlash::Usage(_)) => handle_misc_slash(session, driver, slash).await,
@@ -58,6 +59,9 @@ async fn handle_misc_slash<T: Terminal>(
         PendingSlash::HistoryCopyLast => misc::history_copy_last(session, driver).await,
         PendingSlash::Theme { arg } => misc::theme(session, arg).await,
         PendingSlash::OpenMcp { panel } => misc::open_mcp(session, driver, panel).await,
+        PendingSlash::McpOAuthCancel { flow_id } => {
+            misc::cancel_mcp_oauth(session, driver, flow_id).await
+        }
         PendingSlash::OpenCapabilities => misc::open_capabilities(session, driver).await,
         PendingSlash::OpenDesigningScenes => misc::open_designing_scenes(session).await,
         PendingSlash::Usage(msg) => misc::usage(session, msg).await,

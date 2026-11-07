@@ -75,8 +75,8 @@ pub use loop_middleware::{
 };
 pub use mcp::{
     McpCatalog, McpCatalogEntry, McpElicitationAction, McpElicitationGateway,
-    McpElicitationRequest, McpElicitationResponse, McpOAuthFlow, McpOAuthGateway,
-    McpResourceContent, McpResourceContext, McpResourceRef, elicitation_questions,
+    McpElicitationRequest, McpElicitationResponse, McpOAuthEvent, McpOAuthFlow, McpOAuthGateway,
+    McpOAuthStatus, McpResourceContent, McpResourceContext, McpResourceRef, elicitation_questions,
     mcp_elicitation_gateway, mcp_oauth_gateway, set_mcp_elicitation_gateway, set_mcp_oauth_gateway,
 };
 pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};

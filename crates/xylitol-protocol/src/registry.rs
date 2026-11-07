@@ -116,6 +116,7 @@ pub const METHOD_MCP_RESOURCE_READ: &str = "mcp_resource_read";
 pub const METHOD_MCP_PROMPT_GET: &str = "mcp_prompt_get";
 pub const METHOD_MCP_OAUTH_START: &str = "mcp_oauth_start";
 pub const METHOD_MCP_OAUTH_CANCEL: &str = "mcp_oauth_cancel";
+pub const METHOD_MCP_OAUTH_STATUS: &str = "mcp_oauth_status";
 pub const METHOD_QUEUE_STATS: &str = "queue_stats";
 pub const METHOD_ARM_TOOL_FREEZE: &str = "arm_tool_freeze";
 pub const METHOD_PERSIST_TRUST: &str = "persist_trust";
@@ -410,6 +411,14 @@ pub const REGISTRY: &[MethodEntry] = &[
         Exec::Inline,
     ),
     mx(
+        METHOD_MCP_OAUTH_STATUS,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+        Exec::Inline,
+    ),
+    mx(
         METHOD_LOADED_RESOURCES,
         Auth::Readonly,
         Idem::Bypass,
@@ -498,6 +507,7 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::McpPromptGet { .. }
         | Command::McpOAuthStart { .. }
         | Command::McpOAuthCancel { .. }
+        | Command::McpOAuthStatus { .. }
         | Command::AppendEntryLabel { .. }
         | Command::SetSessionName { .. }
         | Command::SetSessionNameFor { .. } => Exec::Inline,
@@ -669,6 +679,7 @@ mod tests {
                 "get_queue_stats" => "queue_stats",
                 "mcp_o_auth_start" => "mcp_oauth_start",
                 "mcp_o_auth_cancel" => "mcp_oauth_cancel",
+                "mcp_o_auth_status" => "mcp_oauth_status",
                 other => other,
             };
             assert!(
@@ -771,6 +782,7 @@ mod tests {
                 "mcp_catalog",
                 "mcp_oauth_cancel",
                 "mcp_oauth_start",
+                "mcp_oauth_status",
                 "mcp_prompt_get",
                 "mcp_resource_read",
                 "plugin_command",
@@ -951,6 +963,12 @@ mod tests {
                     flow_id: String::new(),
                 },
             ),
+            (
+                "mcp_oauth_status",
+                Command::McpOAuthStatus {
+                    flow_id: String::new(),
+                },
+            ),
             ("queue_stats", Command::GetQueueStats {}),
             (
                 "steer",
@@ -980,7 +998,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(cases.len(), 45, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 46, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

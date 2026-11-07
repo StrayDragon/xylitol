@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -6,7 +7,9 @@ use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
 use url::Url;
-use xylitol_plugin_sdk::mcp::McpOAuthGateway;
+use xylitol_plugin_sdk::mcp::{McpOAuthEvent, McpOAuthGateway};
+
+use crate::occupancy::host::SessionSlot;
 
 struct PendingFlow {
     rx: Option<tokio::sync::oneshot::Receiver<String>>,
@@ -15,12 +18,21 @@ struct PendingFlow {
 
 pub struct HostOAuthGateway {
     flows: Mutex<HashMap<String, PendingFlow>>,
+    slot: Option<Arc<SessionSlot>>,
 }
 
 impl HostOAuthGateway {
     pub fn new() -> Self {
         Self {
             flows: Mutex::new(HashMap::new()),
+            slot: None,
+        }
+    }
+
+    pub fn with_slot(slot: Arc<SessionSlot>) -> Self {
+        Self {
+            flows: Mutex::new(HashMap::new()),
+            slot: Some(slot),
         }
     }
 }
@@ -129,6 +141,24 @@ impl McpOAuthGateway for HostOAuthGateway {
         }
     }
 
+    fn publish(&self, event: McpOAuthEvent) {
+        let Some(slot) = self.slot.as_ref() else {
+            return;
+        };
+        let method = match &event {
+            McpOAuthEvent::Started { .. } => "mcp/oauth_started",
+            McpOAuthEvent::Completed { .. } => "mcp/oauth_completed",
+            McpOAuthEvent::Failed { .. } => "mcp/oauth_failed",
+        };
+        let params = serde_json::to_value(event).unwrap_or(serde_json::Value::Null);
+        let _ = slot
+            .in_process_downlink
+            .send(xylitol_protocol::Notification {
+                method: method.to_string(),
+                params,
+            });
+    }
+
     async fn cancel(&self, flow_id: &str) {
         if let Some(flow) = self.flows.lock().await.remove(flow_id) {
             flow.task.abort();
@@ -141,6 +171,14 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn cancel_removes_flow() {
+        let gateway = Arc::new(HostOAuthGateway::new());
+        let _ = gateway.bind("flow-cancel", None).await.expect("bind");
+        gateway.cancel("flow-cancel").await;
+        assert!(gateway.wait("flow-cancel").await.is_err());
+    }
 
     #[tokio::test]
     async fn callback_round_trip() {

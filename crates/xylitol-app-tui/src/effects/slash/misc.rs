@@ -139,6 +139,21 @@ pub(super) async fn theme<T: Terminal>(session: &mut HostSession<T>, arg: Option
     let _ = session.render_now();
 }
 
+pub(super) async fn cancel_mcp_oauth<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    flow_id: String,
+) {
+    match driver.mcp_oauth_cancel(&flow_id).await {
+        Ok(()) => session.push_scroll_notice(format!("MCP OAuth flow {flow_id} cancelled")),
+        Err(e) => {
+            e.log_failure("tui.mcp_oauth_cancel");
+            session.push_scroll_notice(format!("mcp oauth cancel failed: {flow_id}: {e}"));
+        }
+    }
+    let _ = session.render_now();
+}
+
 pub(super) async fn open_mcp<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,

@@ -114,9 +114,29 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             }
             true
         }
+        XyEvent::SessionInfoChanged { key, value } => {
+            if key == "mcp_oauth"
+                && let Ok(oauth) =
+                    serde_json::from_value::<xylitol_plugin_sdk::mcp::McpOAuthEvent>(value.clone())
+            {
+                let text = match oauth {
+                    xylitol_plugin_sdk::mcp::McpOAuthEvent::Started { flow } => format!(
+                        "MCP {} authorization URL: {} (open in browser; /mcp cancel {})",
+                        flow.server, flow.auth_url, flow.flow_id
+                    ),
+                    xylitol_plugin_sdk::mcp::McpOAuthEvent::Completed { server, .. } => {
+                        format!("MCP {server} authorization completed")
+                    }
+                    xylitol_plugin_sdk::mcp::McpOAuthEvent::Failed { server, error, .. } => {
+                        format!("MCP {server} authorization failed: {error}")
+                    }
+                };
+                model.entries.push(UiEntry::ScrollNotice { text });
+            }
+            true
+        }
         XyEvent::ModelSelect { .. }
         | XyEvent::ThinkingLevelChanged { .. }
-        | XyEvent::SessionInfoChanged { .. }
         | XyEvent::ContextTokenSettlement { .. } => {
             log::debug!(target: "xylitol::tui", "XyEvent ignored by bridge (metadata) event={}", event.description());
             true

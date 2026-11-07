@@ -111,7 +111,7 @@ expression: "lines.join(\"\\n\")"
   slash=Some(OpenMcp { panel: Servers })
   bang=NotBang
 "/mcps arg" =>
-  slash=Some(Usage("usage: /mcp [prompt|resource]"))
+  slash=Some(Usage("usage: /mcp [prompt|resource|cancel <flow_id>]"))
   bang=NotBang
 "!" =>
   slash=None

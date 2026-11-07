@@ -83,6 +83,14 @@ pub trait XyDriver: Send {
         Err(XyDriverError::unsupported("mcp_oauth_cancel"))
     }
 
+    async fn mcp_oauth_status(
+        &mut self,
+        flow_id: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthStatus, XyDriverError> {
+        let _ = flow_id;
+        Err(XyDriverError::unsupported("mcp_oauth_status"))
+    }
+
     async fn bash_run(
         &mut self,
         command: &str,

@@ -403,6 +403,12 @@ where
                 )
                 .await;
         }
+        Downlink::McpOAuth(event) => {
+            push_current(XyEvent::SessionInfoChanged {
+                key: "mcp_oauth".into(),
+                value: serde_json::to_value(event).unwrap_or(serde_json::Value::Null),
+            });
+        }
         Downlink::Interaction {
             method,
             call_id,
@@ -1084,21 +1090,27 @@ where
         &mut self,
         server: &str,
     ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::McpOAuthStart {
-                server: server.to_string(),
-            })
-            .await?;
-        serde_json::from_value(data)
-            .map_err(|e| XyDriverError::remote(format!("mcp_oauth_start decode: {e}")))
+        let _ = server;
+        Err(XyDriverError::unsupported(
+            "remote TUI MCP OAuth is not supported",
+        ))
     }
 
     async fn mcp_oauth_cancel(&mut self, flow_id: &str) -> Result<(), XyDriverError> {
-        self.unary_cmd(Command::McpOAuthCancel {
-            flow_id: flow_id.to_string(),
-        })
-        .await
-        .map(|_| ())
+        let _ = flow_id;
+        Err(XyDriverError::unsupported(
+            "remote TUI MCP OAuth is not supported",
+        ))
+    }
+
+    async fn mcp_oauth_status(
+        &mut self,
+        flow_id: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthStatus, XyDriverError> {
+        let _ = flow_id;
+        Err(XyDriverError::unsupported(
+            "remote TUI MCP OAuth is not supported",
+        ))
     }
 
     async fn run_with_context_impl(
@@ -1583,7 +1595,8 @@ where
             | Command::McpResourceRead { .. }
             | Command::McpPromptGet { .. }
             | Command::McpOAuthStart { .. }
-            | Command::McpOAuthCancel { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
+            | Command::McpOAuthCancel { .. }
+            | Command::McpOAuthStatus { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
         }
     }
 }

@@ -9,6 +9,8 @@ use xylitol_protocol::{
     SessionResyncRequiredPayload, SessionSubscribedPayload, WIRE_FORMAT_JSONRPC,
 };
 
+use xylitol_plugin_sdk::mcp::McpOAuthEvent;
+
 use super::HostClientError;
 
 #[derive(Debug)]
@@ -29,6 +31,7 @@ pub(crate) enum Downlink {
     SessionResources(SessionResourcesPayload),
     SessionModel(SessionModelPayload),
     BashOutput(BashOutputPayload),
+    McpOAuth(McpOAuthEvent),
     Interaction {
         method: &'static str,
         call_id: String,
@@ -114,6 +117,9 @@ pub(crate) fn decode_downlink(note: Notification) -> Result<Option<Downlink>, Do
         method::SESSION_RESOURCES => Downlink::SessionResources(parse(&name, params)?),
         method::SESSION_MODEL => Downlink::SessionModel(parse(&name, params)?),
         method::BASH_OUTPUT => Downlink::BashOutput(parse(&name, params)?),
+        "mcp/oauth_started" | "mcp/oauth_completed" | "mcp/oauth_failed" => {
+            Downlink::McpOAuth(parse(&name, params)?)
+        }
         method::APPROVAL_REQUESTED => {
             let call_id = parse::<ApprovalRequestedPayload>(&name, params.clone())?.call_id;
             Downlink::Interaction {

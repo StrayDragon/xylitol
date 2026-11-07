@@ -86,7 +86,8 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
             | Command::McpResourceRead { .. }
             | Command::McpPromptGet { .. }
             | Command::McpOAuthStart { .. }
-            | Command::McpOAuthCancel { .. } => Err(transport_variant_error(&cmd)),
+            | Command::McpOAuthCancel { .. }
+            | Command::McpOAuthStatus { .. } => Err(transport_variant_error(&cmd)),
         }
     }
 }

@@ -251,6 +251,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::HistoryCopyLast
                 | PendingSlash::Theme { .. }
                 | PendingSlash::OpenMcp { .. }
+                | PendingSlash::McpOAuthCancel { .. }
                 | PendingSlash::OpenCapabilities
                 | PendingSlash::OpenDesigningScenes
                 | PendingSlash::PluginCommand { .. }

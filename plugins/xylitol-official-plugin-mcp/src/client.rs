@@ -422,6 +422,7 @@ pub struct McpClientManager {
     subscription_tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
     connect_attempts: AtomicUsize,
     oauth_flows: Mutex<HashMap<String, OAuthFlowState>>,
+    oauth_status: Mutex<HashMap<String, xylitol_plugin_sdk::mcp::McpOAuthStatus>>,
 }
 
 impl Default for McpClientManager {
@@ -436,7 +437,7 @@ fn public_name_is_safe(server: &str, name: &str) -> bool {
 
 static OAUTH_FLOW_SEQ: AtomicU64 = AtomicU64::new(1);
 
-fn default_agent_dir() -> PathBuf {
+pub(crate) fn default_agent_dir() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
@@ -484,6 +485,7 @@ impl McpClientManager {
             subscription_tasks: Mutex::new(Vec::new()),
             connect_attempts: AtomicUsize::new(0),
             oauth_flows: Mutex::new(HashMap::new()),
+            oauth_status: Mutex::new(HashMap::new()),
         }
     }
 
@@ -1062,6 +1064,10 @@ impl McpClientManager {
             scopes: oauth.scopes.clone(),
             expires_at_ms: xylitol_plugin_sdk::dto::now_ms().saturating_add(300_000),
         };
+        self.oauth_status.lock().await.insert(
+            flow_id.clone(),
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Pending,
+        );
         self.oauth_flows.lock().await.insert(
             flow_id.clone(),
             OAuthFlowState {
@@ -1071,6 +1077,7 @@ impl McpClientManager {
                 http_client,
             },
         );
+        gateway.publish(xylitol_plugin_sdk::mcp::McpOAuthEvent::Started { flow: flow.clone() });
         let manager = Arc::clone(self);
         let gateway_wait = gateway.clone();
         let wait_flow_id = flow_id.clone();
@@ -1119,8 +1126,32 @@ impl McpClientManager {
                 message: "OAuth callback did not produce authorized state".into(),
             })?;
         let auth_client = rmcp::transport::auth::AuthClient::new(flow.http_client, manager);
-        self.connect_http_with_auth_client(&flow.server, &flow.config, auth_client)
-            .await
+        let result = self
+            .connect_http_with_auth_client(&flow.server, &flow.config, auth_client)
+            .await;
+        if let Some(gateway) = xylitol_plugin_sdk::mcp::mcp_oauth_gateway() {
+            let status = if result.is_ok() {
+                xylitol_plugin_sdk::mcp::McpOAuthStatus::Completed
+            } else {
+                xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed
+            };
+            self.oauth_status
+                .lock()
+                .await
+                .insert(flow_id.to_string(), status);
+            match &result {
+                Ok(()) => gateway.publish(xylitol_plugin_sdk::mcp::McpOAuthEvent::Completed {
+                    flow_id: flow_id.to_string(),
+                    server: flow.server.clone(),
+                }),
+                Err(error) => gateway.publish(xylitol_plugin_sdk::mcp::McpOAuthEvent::Failed {
+                    flow_id: flow_id.to_string(),
+                    server: flow.server.clone(),
+                    error: error.to_string(),
+                }),
+            }
+        }
+        result
     }
 
     async fn connect_http_with_auth_client(
@@ -1203,6 +1234,19 @@ impl McpClientManager {
             gateway.cancel(flow_id).await;
         }
         self.oauth_flows.lock().await.remove(flow_id);
+        self.oauth_status.lock().await.insert(
+            flow_id.to_string(),
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Cancelled,
+        );
+    }
+
+    pub async fn oauth_status(&self, flow_id: &str) -> xylitol_plugin_sdk::mcp::McpOAuthStatus {
+        self.oauth_status
+            .lock()
+            .await
+            .get(flow_id)
+            .copied()
+            .unwrap_or(xylitol_plugin_sdk::mcp::McpOAuthStatus::Unknown)
     }
 
     pub async fn revoke_oauth(

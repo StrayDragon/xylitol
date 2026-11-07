@@ -1337,7 +1337,8 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             | Command::McpResourceRead { .. }
             | Command::McpPromptGet { .. }
             | Command::McpOAuthStart { .. }
-            | Command::McpOAuthCancel { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
+            | Command::McpOAuthCancel { .. }
+            | Command::McpOAuthStatus { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
         }
     }
 }
