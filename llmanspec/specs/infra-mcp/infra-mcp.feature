@@ -149,6 +149,18 @@
   规则: mcp-diagnostics
     /mcp 诊断须显示每 server 的 transport / scope / credential 是否存在 / 连接状态 / tools / prompts / resources / timeout 配置 / last error；不得显示 credential 值；不得把未知当 configured=0。由单测覆盖，不扩 BDD step。
 
+  @req:r3268
+  规则: mcp-oauth-authorization
+    远程 MCP 须支持 OAuth 2.1 + PKCE（S256）；须发现 Protected Resource Metadata 与 AS metadata；须校验 state、RFC 8707 resource 与 RFC 9207 iss；token 刷新 不得 reset 连接；refresh 被拒 须提示重新授权；token 不得进入 config / secret.env / 日志 / 错误 / 导出 / 工具子进程 env；`/mcp` 只显示 credential 是否存在。由单测覆盖，不扩 BDD step。
+
+  @req:r3269
+  规则: mcp-oauth-keychain-fallback
+    token 存储 须 OS keychain 优先、0600 文件 fallback；keychain 不可用 不得阻塞连接；`oauth.keychain: off` 须强制文件；credential ID 须进 connection key，同 server 多账号隔离。由单测覆盖，不扩 BDD step。
+
+  @req:r3270
+  规则: mcp-oauth-host-callback
+    Host 须监听 localhost 一次性 callback（默认 127.0.0.1 临时端口；pre-registered client 可固定 redirect URI）；redirect URI 须与 client 注册一致；TUI 须展示 URL 与同意/取消；code exchange 成功后 须保存 credential 并发完成事件，失败 须发失败事件；code/token 不得进事件或日志。由单测覆盖，不扩 BDD step。
+
   @req:r3267
   规则: mcp-pending-settled
     MCP pending cue 须仅在准备未完成时显示；bootstrap complete 且 tools frozen 后 不得因旧 connecting_label 显示。freeze / arm / gate timeout / reload / resume / 切会话后 须刷新同一 loaded-resources 快照；gate timeout 须收口为 complete / frozen 并保留诊断；connect_timeout_ms 须覆盖 stdio initialize / handshake，超时收口 Failed / timed-out。
