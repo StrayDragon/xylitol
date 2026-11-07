@@ -60,6 +60,8 @@ fn main() {
             "CFLAGS_wasm32_wasip1",
             format!("--sysroot={}", sysroot.display()),
         )
+        .env_remove("RUSTFLAGS")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .status()
         .unwrap_or_else(|error| panic!("failed to spawn cargo for codemode guest: {error}"));
     if !status.success() {
