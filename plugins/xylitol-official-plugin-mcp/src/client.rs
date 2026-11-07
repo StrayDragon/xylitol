@@ -6,7 +6,9 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use serde_json::Value;
 use tokio::sync::Mutex;
 
+use super::resource_cache::{ResourceCache, parse_resource_content};
 use super::types::{McpServerConfig, McpTransportKind};
+use xylitol_plugin_sdk::mcp::McpResourceContent;
 use xylitol_plugin_sdk::tool_name::{is_provider_safe_tool_name, mcp_tool_public_name};
 
 #[cfg(feature = "mcp")]
@@ -155,6 +157,8 @@ pub struct McpClientManager {
     diagnostics: Mutex<Vec<McpConnectDiagnostic>>,
     progress: Mutex<McpConnectProgress>,
     probes: Mutex<HashMap<String, CapabilityProbe>>,
+    resource_cache: Mutex<ResourceCache>,
+    subscription_tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
     connect_attempts: AtomicUsize,
 }
 
@@ -168,7 +172,7 @@ fn public_name_is_safe(server: &str, name: &str) -> bool {
     is_provider_safe_tool_name(&mcp_tool_public_name(server, name))
 }
 
-fn classify_probe_error(message: &str) -> &'static str {
+pub(crate) fn classify_probe_error(message: &str) -> &'static str {
     let lower = message.to_ascii_lowercase();
     if lower.contains("method not found")
         || lower.contains("unsupported")
@@ -197,6 +201,8 @@ impl McpClientManager {
             diagnostics: Mutex::new(Vec::new()),
             progress: Mutex::new(McpConnectProgress::default()),
             probes: Mutex::new(HashMap::new()),
+            resource_cache: Mutex::new(ResourceCache::new()),
+            subscription_tasks: Mutex::new(Vec::new()),
             connect_attempts: AtomicUsize::new(0),
         }
     }
@@ -291,6 +297,7 @@ impl McpClientManager {
         self.write_progress(&progress_out, false, total, finished, None)
             .await;
         self.spawn_probes().await;
+        self.spawn_resource_subscriptions().await;
     }
 
     async fn write_progress(
@@ -417,6 +424,34 @@ impl McpClientManager {
             });
         }
     }
+
+    #[cfg(feature = "mcp")]
+    async fn spawn_resource_subscriptions(self: &Arc<Self>) {
+        {
+            let mut tasks = self.subscription_tasks.lock().await;
+            for task in tasks.drain(..) {
+                task.abort();
+            }
+        }
+        let peers: Vec<_> = {
+            let services = self.services.lock().await;
+            services
+                .iter()
+                .map(|(server, service)| (server.clone(), service.peer().clone()))
+                .collect()
+        };
+        let mut tasks = self.subscription_tasks.lock().await;
+        for (server, peer) in peers {
+            let manager = Arc::clone(self);
+            let handle = tokio::spawn(async move {
+                super::subscription::run_resource_subscription(manager, server, peer).await;
+            });
+            tasks.push(handle);
+        }
+    }
+
+    #[cfg(not(feature = "mcp"))]
+    async fn spawn_resource_subscriptions(&self) {}
 
     pub async fn connected_servers(&self) -> Vec<ConnectedMcpServer> {
         let services = self.services.lock().await;
@@ -833,6 +868,34 @@ impl McpClientManager {
         }
     }
 
+    pub async fn read_resource_cached(
+        &self,
+        server_id: &str,
+        uri: &str,
+    ) -> Result<McpResourceContent, McpError> {
+        {
+            let mut cache = self.resource_cache.lock().await;
+            if let Some(content) = cache.get(server_id, uri, std::time::Instant::now()) {
+                return Ok(content);
+            }
+        }
+        let value = self.read_resource(server_id, uri).await?;
+        let content = parse_resource_content(server_id, uri, value);
+        self.resource_cache
+            .lock()
+            .await
+            .put(content.clone(), std::time::Instant::now());
+        Ok(content)
+    }
+
+    pub async fn invalidate_resource(&self, server: &str, uri: &str) {
+        self.resource_cache.lock().await.invalidate(server, uri);
+    }
+
+    pub async fn invalidate_server_resources(&self, server: &str) {
+        self.resource_cache.lock().await.invalidate_server(server);
+    }
+
     pub async fn call_tool(
         &self,
         server_id: &str,
@@ -890,6 +953,10 @@ impl McpClientManager {
     }
 
     pub async fn shutdown(&self) {
+        for task in self.subscription_tasks.lock().await.drain(..) {
+            task.abort();
+        }
+        self.resource_cache.lock().await.clear();
         let mut services = self.services.lock().await;
         #[cfg(feature = "mcp")]
         for (name, mut service) in services.drain() {
@@ -1172,5 +1239,23 @@ mod tests {
             lines[1].starts_with("probe server=b status=ok"),
             "{lines:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn read_resource_cached_unknown_server_errors() {
+        let manager = McpClientManager::new();
+        let error = manager
+            .read_resource_cached("missing", "memo://x")
+            .await
+            .expect_err("unknown server");
+        assert!(error.to_string().contains("missing"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn invalidate_resource_calls_are_safe_on_empty_cache() {
+        let manager = McpClientManager::new();
+        manager.invalidate_resource("fs", "memo://x").await;
+        manager.invalidate_server_resources("fs").await;
+        manager.shutdown().await;
     }
 }

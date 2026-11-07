@@ -22,6 +22,7 @@ use crate::{MUX_CHAN_CAP, MuxSink, OccupiedHost};
 use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 use xylitol_plugin_sdk::error::{XySessionStoreError, XyToolError};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
+use xylitol_plugin_sdk::mcp::McpResourceContext;
 use xylitol_plugin_sdk::session::SessionEntry;
 use xylitol_protocol::method::{
     APPROVAL_REQUESTED, BASH_OUTPUT, QUESTION_REQUESTED, SESSION_EVENT, SESSION_MODEL,
@@ -30,8 +31,9 @@ use xylitol_protocol::method::{
 use xylitol_protocol::registry::parse_command;
 use xylitol_protocol::registry::{
     METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GET_AVAILABLE_MODELS,
-    METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_PERSIST_TRUST,
-    METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
+    METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_MCP_CATALOG,
+    METHOD_MCP_PROMPT_GET, METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST, METHOD_PROMPT,
+    METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
 use xylitol_protocol::{
     ApprovalRequestedPayload, BashOutputPayload, Notification, QuestionRequestedPayload, RpcResult,
@@ -1314,6 +1316,11 @@ async fn dispatch_session_unary(
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        let contexts = payload
+            .get("contexts")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<Vec<McpResourceContext>>(value).ok())
+            .unwrap_or_default();
         if message.is_empty() {
             return RpcResult::error("invalid_input", "missing message");
         }
@@ -1369,7 +1376,7 @@ async fn dispatch_session_unary(
                         "prompt thinking_level select failed: {e}"
                     );
                 }
-                d.run(&message).await
+                d.run_with_context(&message, contexts).await
             };
             let mut stream = stream;
             while let Some(event) = stream.next().await {
@@ -1426,6 +1433,48 @@ async fn dispatch_session_unary(
             "saved_path": report.saved_path,
             "message": report.message,
         }));
+    }
+
+    if method == METHOD_MCP_CATALOG {
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match driver.mcp_catalog().await {
+            Ok(catalog) => {
+                RpcResult::ok_value(serde_json::to_value(catalog).unwrap_or(Value::Null))
+            }
+            Err(e) => rpc_err(e),
+        };
+    }
+
+    if method == METHOD_MCP_RESOURCE_READ {
+        let server = payload.get("server").and_then(Value::as_str).unwrap_or("");
+        let uri = payload.get("uri").and_then(Value::as_str).unwrap_or("");
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match driver.mcp_resource_read(server, uri).await {
+            Ok(content) => {
+                RpcResult::ok_value(serde_json::to_value(content).unwrap_or(Value::Null))
+            }
+            Err(e) => rpc_err(e),
+        };
+    }
+
+    if method == METHOD_MCP_PROMPT_GET {
+        let server = payload.get("server").and_then(Value::as_str).unwrap_or("");
+        let name = payload.get("name").and_then(Value::as_str).unwrap_or("");
+        let arguments = payload.get("arguments").cloned().unwrap_or(Value::Null);
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match driver.mcp_prompt_get(server, name, arguments).await {
+            Ok(value) => RpcResult::ok_value(value),
+            Err(e) => rpc_err(e),
+        };
     }
 
     if is_writer_method(method) {

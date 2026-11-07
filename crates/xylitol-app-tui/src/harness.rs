@@ -26,6 +26,14 @@ use super::host::{HostEvent, HostSession};
 
 pub struct ScriptedDriver {
     pub runs: Vec<String>,
+    pub run_with_context_calls:
+        Mutex<Vec<(String, Vec<xylitol_plugin_sdk::mcp::McpResourceContext>)>>,
+    pub mcp_catalog: Mutex<Option<xylitol_plugin_sdk::mcp::McpCatalog>>,
+    pub mcp_resource_reads: Mutex<Vec<(String, String)>>,
+    pub mcp_resource_contents: Mutex<Vec<xylitol_plugin_sdk::mcp::McpResourceContent>>,
+    pub mcp_resource_failures: Mutex<Vec<(String, String)>>,
+    pub mcp_prompt_gets: Mutex<Vec<(String, String, serde_json::Value)>>,
+    pub mcp_prompt_result: Option<serde_json::Value>,
     pub steer_calls: Vec<String>,
     pub follow_up_calls: Vec<String>,
     pub clear_calls: Vec<(bool, bool)>,
@@ -98,6 +106,13 @@ impl ScriptedDriver {
     pub fn new() -> Self {
         Self {
             runs: Vec::new(),
+            run_with_context_calls: Mutex::new(Vec::new()),
+            mcp_catalog: Mutex::new(None),
+            mcp_resource_reads: Mutex::new(Vec::new()),
+            mcp_resource_contents: Mutex::new(Vec::new()),
+            mcp_resource_failures: Mutex::new(Vec::new()),
+            mcp_prompt_gets: Mutex::new(Vec::new()),
+            mcp_prompt_result: None,
             steer_calls: Vec::new(),
             follow_up_calls: Vec::new(),
             clear_calls: Vec::new(),
@@ -521,6 +536,87 @@ impl XyDriver for ScriptedDriver {
         Box::pin(futures::stream::iter(events))
     }
 
+    async fn run_with_context(
+        &mut self,
+        prompt: &str,
+        contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
+    ) -> EventStream {
+        self.run_with_context_calls
+            .lock()
+            .expect("run_with_context_calls")
+            .push((prompt.to_string(), contexts));
+        self.run(prompt).await
+    }
+
+    async fn mcp_catalog(&mut self) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
+        Ok(self
+            .mcp_catalog
+            .lock()
+            .expect("mcp_catalog")
+            .clone()
+            .unwrap_or_default())
+    }
+
+    async fn mcp_resource_read(
+        &mut self,
+        server: &str,
+        uri: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpResourceContent, XyDriverError> {
+        self.mcp_resource_reads
+            .lock()
+            .expect("mcp_resource_reads")
+            .push((server.to_string(), uri.to_string()));
+        if self
+            .mcp_resource_failures
+            .lock()
+            .expect("mcp_resource_failures")
+            .iter()
+            .any(|(s, u)| s == server && u == uri)
+        {
+            return Err(XyDriverError::message(format!(
+                "scripted read failure for {server}/{uri}"
+            )));
+        }
+        if let Some(content) = self
+            .mcp_resource_contents
+            .lock()
+            .expect("mcp_resource_contents")
+            .iter()
+            .find(|c| c.server == server && c.uri == uri)
+        {
+            return Ok(content.clone());
+        }
+        Ok(xylitol_plugin_sdk::mcp::McpResourceContent {
+            server: server.to_string(),
+            uri: uri.to_string(),
+            mime: Some("text/plain".into()),
+            text: format!("content of {server}/{uri}"),
+            truncated: false,
+            binary: false,
+        })
+    }
+
+    async fn mcp_prompt_get(
+        &mut self,
+        server: &str,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, XyDriverError> {
+        self.mcp_prompt_gets.lock().expect("mcp_prompt_gets").push((
+            server.to_string(),
+            name.to_string(),
+            arguments,
+        ));
+        Ok(self.mcp_prompt_result.clone().unwrap_or(serde_json::json!({
+            "messages": [
+                {
+                    "role": "user",
+                    "content": {"type": "text", "text": format!("prompt text {server}/{name}")}
+                }
+            ]
+        })))
+    }
+
     async fn bash_run(
         &mut self,
         command: &str,
@@ -833,6 +929,40 @@ impl XyDriver for ScriptedDriver {
 }
 
 impl ScriptedDriver {
+    pub fn set_mcp_catalog_for_driver(&self, catalog: xylitol_plugin_sdk::mcp::McpCatalog) {
+        *self.mcp_catalog.lock().expect("mcp_catalog") = Some(catalog);
+    }
+
+    pub fn set_mcp_resource_content_for_driver(
+        &self,
+        content: xylitol_plugin_sdk::mcp::McpResourceContent,
+    ) {
+        self.mcp_resource_contents
+            .lock()
+            .expect("mcp_resource_contents")
+            .push(content);
+    }
+
+    pub fn set_mcp_resource_failure_for_driver(&self, server: &str, uri: &str) {
+        self.mcp_resource_failures
+            .lock()
+            .expect("mcp_resource_failures")
+            .push((server.to_string(), uri.to_string()));
+    }
+
+    pub fn set_mcp_prompt_result_for_driver(&mut self, result: serde_json::Value) {
+        self.mcp_prompt_result = Some(result);
+    }
+
+    pub fn run_with_context_calls_snapshot(
+        &self,
+    ) -> Vec<(String, Vec<xylitol_plugin_sdk::mcp::McpResourceContext>)> {
+        self.run_with_context_calls
+            .lock()
+            .expect("run_with_context_calls")
+            .clone()
+    }
+
     pub async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
         if let Some(err) = &self.get_messages_error {
             return Err(XyDriverError::message(err.clone()));
@@ -1202,7 +1332,10 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             | Command::Quit { .. }
             | Command::Subscribe { .. }
             | Command::ApproveTool { .. }
-            | Command::AnswerQuestion { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
+            | Command::AnswerQuestion { .. }
+            | Command::McpCatalog { .. }
+            | Command::McpResourceRead { .. }
+            | Command::McpPromptGet { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
         }
     }
 }
@@ -7554,5 +7687,434 @@ mod slice_tests {
             )),
             "mid-word tail entry must be fenced off"
         );
+    }
+
+    fn tab_key() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn backspace_key(modifiers: crossterm::event::KeyModifiers) -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Backspace,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn harness_catalog() -> xylitol_plugin_sdk::mcp::McpCatalog {
+        use xylitol_plugin_sdk::mcp::{McpCatalog, McpCatalogEntry};
+        McpCatalog {
+            prompts: vec![
+                McpCatalogEntry {
+                    server: "fs".into(),
+                    kind: "prompt".into(),
+                    name: "greet".into(),
+                    description: "greet someone".into(),
+                    uri: None,
+                    schema: None,
+                },
+                McpCatalogEntry {
+                    server: "fs".into(),
+                    kind: "prompt".into(),
+                    name: "review".into(),
+                    description: String::new(),
+                    uri: None,
+                    schema: Some(serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "topic": {"type": "string"}
+                        },
+                        "required": ["topic"]
+                    })),
+                },
+            ],
+            resources: vec![McpCatalogEntry {
+                server: "fs".into(),
+                kind: "resource".into(),
+                name: "notes".into(),
+                description: String::new(),
+                uri: Some("file:///notes".into()),
+                schema: None,
+            }],
+        }
+    }
+
+    async fn open_mcp_panel(
+        session: &mut HostSession<TestTerminal>,
+        driver: &mut ScriptedDriver,
+        stream: &mut Option<EventStream>,
+        slash: &str,
+    ) {
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_editor_text(slash);
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(session, driver, stream).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn c3213_mcp_prompt_picker_inserts_without_sending() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+        driver.set_mcp_prompt_result_for_driver(serde_json::json!({
+            "messages": [
+                {"role": "user", "content": {"type": "text", "text": "greet prompt body"}}
+            ]
+        }));
+
+        open_mcp_panel(&mut session, &mut driver, &mut stream, "/mcp prompt").await;
+        assert!(
+            root.borrow().mcp_prompts_open_for_test(),
+            "/mcp prompt must open the prompt picker"
+        );
+        let panel = root.borrow().mcp_prompt_panel_text_for_test();
+        assert!(panel.contains("fs  greet"), "{panel}");
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(
+            !root.borrow().mcp_prompts_open_for_test(),
+            "selection must close the picker"
+        );
+        assert!(
+            root.borrow().editor_text().contains("greet prompt body"),
+            "prompt result must land in the editor: {}",
+            root.borrow().editor_text()
+        );
+        assert!(
+            driver.runs.is_empty() && driver.run_with_context_calls_snapshot().is_empty(),
+            "picker insert must not send"
+        );
+        assert_eq!(
+            driver.mcp_prompt_gets.lock().unwrap().len(),
+            1,
+            "selection must fetch via mcp_prompt_get"
+        );
+    }
+
+    #[tokio::test]
+    async fn c3213_mcp_prompt_args_form_collects_and_inserts() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+        driver.set_mcp_prompt_result_for_driver(serde_json::json!({
+            "messages": [
+                {"role": "user", "content": {"type": "text", "text": "review prompt body"}}
+            ]
+        }));
+
+        open_mcp_panel(&mut session, &mut driver, &mut stream, "/mcp prompt").await;
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            root.borrow().ask_choice_open(),
+            "prompt with args must open the Choice form"
+        );
+
+        session.step(HostEvent::Input(tab_key())).unwrap();
+        for ch in "rust".chars() {
+            session.step(HostEvent::Input(char_key(ch))).unwrap();
+        }
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        let gets = driver.mcp_prompt_gets.lock().unwrap().clone();
+        assert_eq!(gets.len(), 1, "args form must trigger one prompt get");
+        assert_eq!(gets[0].0, "fs");
+        assert_eq!(gets[0].1, "review");
+        assert_eq!(gets[0].2, serde_json::json!({"topic": "rust"}));
+        assert!(
+            root.borrow().editor_text().contains("review prompt body"),
+            "args form result must land in the editor"
+        );
+        assert!(driver.runs.is_empty(), "args form insert must not send");
+    }
+
+    #[tokio::test]
+    async fn c3213_resource_picker_tray_add_dedupe_and_remove() {
+        use crossterm::event::KeyModifiers;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+
+        open_mcp_panel(&mut session, &mut driver, &mut stream, "/mcp resource").await;
+        assert!(root.borrow().mcp_resources_open_for_test());
+        let panel = root.borrow().mcp_resource_panel_text_for_test();
+        assert!(panel.contains("file:///notes"), "{panel}");
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(session.mcp_tray_len(), 1, "selection must attach to tray");
+        let frame = root.borrow_mut().render(80).join("\n");
+        let plain = xylitol_tui::utils::strip_ansi_codes(&frame);
+        assert!(
+            plain.contains("[fs/file:///notes ×]"),
+            "tray chip must render above the editor: {plain}"
+        );
+
+        root.borrow_mut().mcp_tray_add("fs", "file:///notes");
+        assert_eq!(
+            session.mcp_tray_len(),
+            1,
+            "tray must dedupe by (server, uri)"
+        );
+
+        root.borrow_mut().set_editor_text("keep me");
+        session
+            .step(HostEvent::Input(backspace_key(KeyModifiers::NONE)))
+            .unwrap();
+        assert_eq!(
+            session.mcp_tray_len(),
+            1,
+            "Backspace with text must not touch the tray"
+        );
+
+        root.borrow_mut().mcp_tray_add("fs", "file:///other");
+        assert_eq!(session.mcp_tray_len(), 2);
+        session
+            .step(HostEvent::Input(backspace_key(KeyModifiers::CONTROL)))
+            .unwrap();
+        assert_eq!(
+            session.mcp_tray_len(),
+            1,
+            "Ctrl+Backspace removes the last chip"
+        );
+
+        root.borrow_mut().set_editor_text(String::new());
+        session
+            .step(HostEvent::Input(backspace_key(KeyModifiers::NONE)))
+            .unwrap();
+        assert_eq!(
+            session.mcp_tray_len(),
+            0,
+            "Backspace on empty editor removes the last chip"
+        );
+    }
+
+    #[tokio::test]
+    async fn c3213_resource_read_failure_blocks_send_and_restores_prompt() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+        driver.set_mcp_resource_failure_for_driver("fs", "file:///notes");
+
+        assert!(session.mcp_tray_add("fs", "file:///notes"));
+        root.borrow_mut().set_editor_text("hello with attachment");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(
+            driver.runs.is_empty() && driver.run_with_context_calls_snapshot().is_empty(),
+            "read failure must block the send"
+        );
+        assert_eq!(session.mcp_tray_len(), 1, "tray keeps the chip for retry");
+        assert!(
+            root.borrow()
+                .editor_text()
+                .contains("hello with attachment"),
+            "blocked prompt returns to the editor"
+        );
+        assert!(
+            session.ui_model().entries.iter().any(
+                |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("read failed"))
+            ),
+            "read failure must surface an actionable notice"
+        );
+    }
+
+    #[tokio::test]
+    async fn c3213_run_with_context_receives_tray_refs_and_clears_tray() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+
+        assert!(session.mcp_tray_add("fs", "file:///notes"));
+        root.borrow_mut().set_editor_text("hello");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        let calls = driver.run_with_context_calls_snapshot();
+        assert_eq!(calls.len(), 1, "attached resource must flow into the run");
+        assert_eq!(calls[0].0, "hello");
+        assert_eq!(calls[0].1.len(), 1);
+        assert_eq!(calls[0].1[0].server, "fs");
+        assert_eq!(calls[0].1[0].uri, "file:///notes");
+        assert_eq!(
+            calls[0].1[0].text, "content of fs/file:///notes",
+            "context text comes from mcp_resource_read"
+        );
+        assert_eq!(
+            session.mcp_tray_len(),
+            0,
+            "successful send consumes the tray"
+        );
+    }
+
+    #[tokio::test]
+    async fn c3213_unknown_quoted_token_blocks_send() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+
+        root.borrow_mut()
+            .set_editor_text("check @mcp:\"fs/file:///missing\" plz");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(
+            driver.runs.is_empty() && driver.run_with_context_calls_snapshot().is_empty(),
+            "unknown quoted token must block the send"
+        );
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("unknown mcp resource"))),
+            "unknown resource must surface a notice"
+        );
+        assert!(
+            root.borrow().editor_text().contains("check"),
+            "blocked prompt returns to the editor without the token"
+        );
+        assert!(
+            !root.borrow().editor_text().contains("@mcp:"),
+            "token must be stripped from the restored prompt"
+        );
+    }
+
+    #[tokio::test]
+    async fn c3213_known_quoted_token_sends_with_context() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+
+        root.borrow_mut()
+            .set_editor_text("check @mcp:\"fs/file:///notes\" plz");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        let calls = driver.run_with_context_calls_snapshot();
+        assert_eq!(calls.len(), 1, "known token must ride the context run");
+        assert_eq!(
+            calls[0].0, "check  plz",
+            "token is removed from the prompt text"
+        );
+        assert_eq!(calls[0].1.len(), 1);
+        assert_eq!(calls[0].1[0].uri, "file:///notes");
+    }
+
+    #[tokio::test]
+    async fn c3213_at_mcp_completion_attaches_without_token() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+        session.set_mcp_catalog_entries(harness_catalog().resources);
+
+        for ch in "@mcp:file".chars() {
+            session.step(HostEvent::Input(char_key(ch))).unwrap();
+        }
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "typing @mcp: must open the resource completion"
+        );
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        let text = root.borrow().editor_text();
+        assert!(
+            !text.contains("@mcp"),
+            "completion must not leave a text token: {text:?}"
+        );
+        assert_eq!(
+            session.mcp_tray_len(),
+            1,
+            "confirmed item attaches to the tray"
+        );
+        assert!(
+            driver.runs.is_empty(),
+            "completion must not send: {:?}",
+            driver.runs
+        );
+    }
+
+    #[tokio::test]
+    async fn c3213_gated_submit_keeps_contexts_across_tool_freeze() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_mcp_catalog_for_driver(harness_catalog());
+        driver.set_tools_frozen(false);
+
+        assert!(session.mcp_tray_add("fs", "file:///notes"));
+        root.borrow_mut().set_editor_text("hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            session.has_gated_submit(),
+            "pre-freeze submit holds the gate"
+        );
+        assert!(
+            driver.run_with_context_calls_snapshot().is_empty(),
+            "pre-freeze must not run"
+        );
+
+        driver.set_tools_frozen(true);
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let calls = driver.run_with_context_calls_snapshot();
+        assert_eq!(calls.len(), 1, "gate release must send with contexts");
+        assert_eq!(calls[0].0, "hi");
+        assert_eq!(calls[0].1[0].uri, "file:///notes");
+        assert_eq!(session.mcp_tray_len(), 0);
     }
 }

@@ -16,6 +16,8 @@ pub(super) struct PendingSlotOps {
     pub session_resume_rename: Option<(String, String)>,
     pub session_resume_delete: Option<String>,
     pub session_sidebar: bool,
+    pub mcp_prompt_select: Option<(String, String)>,
+    pub mcp_resource_add: Option<xylitol_plugin_sdk::mcp::McpResourceRef>,
 }
 
 impl PendingSlotOps {
@@ -26,5 +28,7 @@ impl PendingSlotOps {
         self.capability_toggle = None;
         self.session_resume_rename = None;
         self.session_resume_delete = None;
+        self.mcp_prompt_select = None;
+        self.mcp_resource_add = None;
     }
 }

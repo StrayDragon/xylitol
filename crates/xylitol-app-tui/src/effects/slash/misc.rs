@@ -139,13 +139,36 @@ pub(super) async fn theme<T: Terminal>(session: &mut HostSession<T>, arg: Option
     let _ = session.render_now();
 }
 
-pub(super) async fn open_mcp<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    if session.mcp_cache_usable_for_open() {
-        session.mount_mcp_from_cache();
-    } else {
-        let snap = driver.loaded_resources_snapshot().await;
-        session.refresh_loaded_resources_from_snap(snap.clone());
-        session.mount_mcp_panel(&snap);
+pub(super) async fn open_mcp<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    panel: crate::commands::McpPanel,
+) {
+    use crate::commands::McpPanel;
+    match panel {
+        McpPanel::Servers => {
+            if session.mcp_cache_usable_for_open() {
+                session.mount_mcp_from_cache();
+            } else {
+                let snap = driver.loaded_resources_snapshot().await;
+                session.refresh_loaded_resources_from_snap(snap.clone());
+                session.mount_mcp_panel(&snap);
+            }
+        }
+        McpPanel::Prompts | McpPanel::Resources => match driver.mcp_catalog().await {
+            Ok(catalog) => {
+                session.set_mcp_catalog_entries(catalog.resources.clone());
+                match panel {
+                    McpPanel::Prompts => session.mount_mcp_prompt_picker(catalog.prompts),
+                    McpPanel::Resources => session.mount_mcp_resource_picker(catalog.resources),
+                    McpPanel::Servers => {}
+                }
+            }
+            Err(e) => {
+                e.log_failure("tui.mcp_catalog");
+                session.push_scroll_notice(format!("/mcp failed: {e}"));
+            }
+        },
     }
     let _ = session.render_now();
 }

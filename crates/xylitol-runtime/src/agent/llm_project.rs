@@ -110,6 +110,26 @@ mod tests {
     }
 
     #[test]
+    fn mcp_resource_custom_projects_as_user_text() {
+        let history = vec![
+            AgentMessage::Env(EnvMessage::CustomMessage {
+                custom_type: "mcpResource".into(),
+                content: serde_json::Value::String("resource body".into()),
+                display: serde_json::Value::Bool(true),
+                details: serde_json::json!({"server": "docs", "uri": "file:///a.md"}),
+            }),
+            AgentMessage::user("summarize"),
+        ];
+        let projected = project_for_llm(&history);
+        assert_eq!(projected.len(), 2);
+        let value = serde_json::to_value(&projected[0]).expect("json");
+        assert!(
+            value.to_string().contains("resource body"),
+            "custom resource content must reach the model: {value}"
+        );
+    }
+
+    #[test]
     fn agent_todo_custom_skipped_in_llm_prefix() {
         use xylitol_plugin_sdk::session::{
             CUSTOM_TYPE_AGENT_TODO, CustomEntry, EntryBase, SessionEntry, TodoItem, TodoList,

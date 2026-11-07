@@ -81,7 +81,10 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
             | Command::Quit { .. }
             | Command::Subscribe { .. }
             | Command::ApproveTool { .. }
-            | Command::AnswerQuestion { .. } => Err(transport_variant_error(&cmd)),
+            | Command::AnswerQuestion { .. }
+            | Command::McpCatalog { .. }
+            | Command::McpResourceRead { .. }
+            | Command::McpPromptGet { .. } => Err(transport_variant_error(&cmd)),
         }
     }
 }

@@ -29,6 +29,7 @@ use xylitol_tui::{
 };
 
 use super::dollar_skill_source::DollarSkillSource;
+use super::mcp_source::{McpPickSink, McpResourceSource};
 use super::models_picker::PendingModelChoice;
 use super::slash_catalog::slash_commands_for_editor;
 
@@ -42,6 +43,7 @@ use crate::activity_fold::{
 };
 use crate::bridge::{STREAMING_THINK_ID, UiEntry, UiModel};
 use crate::driver::LoadedResourcesSnapshot;
+use crate::mcp_attach::AttachmentTray;
 use crate::session_resume::SessionResumePanel;
 use crate::widgets::{
     FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold, ScrollbackPaintCache, TodoBarHit,
@@ -72,6 +74,13 @@ struct ClientNotice {
 }
 
 const CLIENT_NOTICE_MAX: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TrayChipHit {
+    col_start: usize,
+    col_end: usize,
+    index: usize,
+}
 
 pub struct UiRoot {
     loaded_resources: LoadedResourcesSnapshot,
@@ -132,6 +141,12 @@ pub struct UiRoot {
     todo_scroll: usize,
     last_todo_hits: Vec<TodoBarHit>,
     last_todo_plain: Vec<String>,
+    mcp_tray: AttachmentTray,
+    mcp_catalog: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    mcp_pick_sink: McpPickSink,
+    last_tray_rows: usize,
+    tray_strip_row: usize,
+    last_tray_hits: Vec<TrayChipHit>,
     todo_selection: xylitol_tui::SelectionController,
     todo_clipboard: Vec<String>,
     todo_pointer_dirty: bool,
@@ -252,6 +267,12 @@ impl UiRoot {
             todo_scroll: 0,
             last_todo_hits: Vec::new(),
             last_todo_plain: Vec::new(),
+            mcp_tray: AttachmentTray::default(),
+            mcp_catalog: Vec::new(),
+            mcp_pick_sink: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            last_tray_rows: 0,
+            tray_strip_row: 0,
+            last_tray_hits: Vec::new(),
             todo_selection: xylitol_tui::SelectionController::new(),
             todo_clipboard: Vec::new(),
             todo_pointer_dirty: false,
@@ -296,6 +317,23 @@ impl UiRoot {
                 )
                 .with_id("trust-mode"),
             ),
+            Box::new(
+                SlashArgCompletionSource::new(
+                    "mcp",
+                    vec![
+                        ("prompt".into(), "Pick an MCP prompt into the editor".into()),
+                        (
+                            "resource".into(),
+                            "Attach an MCP resource to the next message".into(),
+                        ),
+                    ],
+                )
+                .with_id("mcp-panel"),
+            ),
+            Box::new(McpResourceSource::new(
+                self.mcp_catalog.clone(),
+                self.mcp_pick_sink.clone(),
+            )),
             Box::new({
                 let src = SlashCommandSource::new(slash_commands_for_editor(
                     self.designing,
@@ -339,6 +377,71 @@ impl UiRoot {
         }
         self.dollar_skill_catalog = catalog;
         self.install_completion_sources();
+    }
+
+    pub fn set_mcp_catalog_entries(
+        &mut self,
+        entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    ) {
+        let changed = self.mcp_catalog.len() != entries.len()
+            || self
+                .mcp_catalog
+                .iter()
+                .zip(entries.iter())
+                .any(|(a, b)| a.server != b.server || a.uri != b.uri || a.name != b.name);
+        if !changed {
+            return;
+        }
+        self.mcp_catalog = entries;
+        self.install_completion_sources();
+    }
+
+    pub fn mcp_tray_add(&mut self, server: &str, uri: &str) -> bool {
+        let added = self.mcp_tray.add(server, uri);
+        if added {
+            self.invalidate();
+        }
+        added
+    }
+
+    pub fn mcp_tray_remove_last(&mut self) -> bool {
+        let removed = self.mcp_tray.remove_last();
+        if removed {
+            self.invalidate();
+        }
+        removed
+    }
+
+    pub fn mcp_tray_remove_at(&mut self, index: usize) -> bool {
+        let removed = self.mcp_tray.remove_at(index);
+        if removed {
+            self.invalidate();
+        }
+        removed
+    }
+
+    pub fn mcp_tray_clear(&mut self) -> bool {
+        let cleared = self.mcp_tray.clear();
+        if cleared {
+            self.invalidate();
+        }
+        cleared
+    }
+
+    pub fn mcp_tray_is_empty(&self) -> bool {
+        self.mcp_tray.is_empty()
+    }
+
+    pub fn mcp_tray_len(&self) -> usize {
+        self.mcp_tray.len()
+    }
+
+    pub fn mcp_tray_refs(&self) -> Vec<xylitol_plugin_sdk::mcp::McpResourceRef> {
+        self.mcp_tray.refs().to_vec()
+    }
+
+    pub fn drain_mcp_completion_picks(&mut self) -> usize {
+        super::mcp_source::drain_picks_into_tray(&self.mcp_pick_sink, &mut self.mcp_tray)
     }
 
     pub fn set_plugin_commands(&mut self, commands: Vec<(String, String)>) {
@@ -742,6 +845,7 @@ impl UiRoot {
             todo_rows,
             self.toast_notice.is_some(),
         )
+        .saturating_add(self.last_tray_rows)
         .saturating_add(4)
         .max(4)
     }
@@ -1057,6 +1161,16 @@ impl UiRoot {
 
     pub fn take_pending_model_select(&mut self) -> Option<PendingModelChoice> {
         self.pending.model_select.take()
+    }
+
+    pub fn pending_take_mcp_prompt_select(&mut self) -> Option<(String, String)> {
+        self.pending.mcp_prompt_select.take()
+    }
+
+    pub fn pending_take_mcp_resource_add(
+        &mut self,
+    ) -> Option<xylitol_plugin_sdk::mcp::McpResourceRef> {
+        self.pending.mcp_resource_add.take()
     }
 
     pub fn models_open(&self) -> bool {
@@ -1411,7 +1525,8 @@ impl UiRoot {
             self.last_queue_rows
                 .saturating_add(self.last_todo_rows)
                 .saturating_add(self.last_toast_rows)
-                .saturating_add(self.last_status_rows),
+                .saturating_add(self.last_status_rows)
+                .saturating_add(self.last_tray_rows),
         );
         self.editor.set_screen_origin(row, col);
     }
@@ -2277,6 +2392,31 @@ mod tests {
                 "level {level:?} thinking expansion"
             );
         }
+    }
+
+    #[test]
+    fn tray_chip_pointer_click_removes_attachment() {
+        use crossterm::event::KeyModifiers;
+        use xylitol_tui::InputEvent;
+
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.mcp_tray_add("fs", "file:///notes");
+        let _ = root.render(120);
+        let row = u16::try_from(root.tray_strip_row).expect("tray row");
+        let hit = root.last_tray_hits[0];
+        let down = |col: u16| {
+            InputEvent::Mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                column: col,
+                row,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+        root.handle_slot_input(down(1));
+        assert_eq!(root.mcp_tray_len(), 1, "lead label must not remove");
+        root.handle_slot_input(down(u16::try_from(hit.col_start).unwrap() + 1));
+        assert_eq!(root.mcp_tray_len(), 0, "× hit region must remove the chip");
     }
 
     #[test]

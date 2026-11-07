@@ -106,8 +106,8 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
         },
         ProductSlashCommand {
             name: "mcp",
-            description: "Show MCP servers and tools armed status",
-            argument_hint: None,
+            description: "MCP panel: servers, /mcp prompt, /mcp resource",
+            argument_hint: Some("[prompt|resource]"),
         },
         ProductSlashCommand {
             name: "capabilities",

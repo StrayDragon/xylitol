@@ -1034,6 +1034,57 @@ where
     }
 
     async fn run(&mut self, prompt: &str) -> EventStream {
+        self.run_with_context_impl(prompt, Vec::new()).await
+    }
+
+    async fn run_with_context(
+        &mut self,
+        prompt: &str,
+        contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
+    ) -> EventStream {
+        self.run_with_context_impl(prompt, contexts).await
+    }
+
+    async fn mcp_catalog(&mut self) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
+        let data = self.unary_cmd(Command::McpCatalog {}).await?;
+        serde_json::from_value(data)
+            .map_err(|e| XyDriverError::remote(format!("mcp_catalog decode: {e}")))
+    }
+
+    async fn mcp_resource_read(
+        &mut self,
+        server: &str,
+        uri: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpResourceContent, XyDriverError> {
+        let data = self
+            .unary_cmd(Command::McpResourceRead {
+                server: server.to_string(),
+                uri: uri.to_string(),
+            })
+            .await?;
+        serde_json::from_value(data)
+            .map_err(|e| XyDriverError::remote(format!("mcp_resource_read decode: {e}")))
+    }
+
+    async fn mcp_prompt_get(
+        &mut self,
+        server: &str,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, XyDriverError> {
+        self.unary_cmd(Command::McpPromptGet {
+            server: server.to_string(),
+            name: name.to_string(),
+            arguments,
+        })
+        .await
+    }
+
+    async fn run_with_context_impl(
+        &mut self,
+        prompt: &str,
+        contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
+    ) -> EventStream {
         self.ensure_downlink();
         if let Err(e) = self.wait_subscribed().await {
             let err = e.to_string();
@@ -1070,6 +1121,9 @@ where
                 "session_id": session_id,
                 "cwd": client_cwd,
             });
+            if !contexts.is_empty() {
+                body["contexts"] = serde_json::to_value(&contexts).unwrap_or(serde_json::Value::Null);
+            }
             if let Some(id) = model_id {
                 body["model_id"] = serde_json::Value::String(id);
             }
@@ -1503,7 +1557,10 @@ where
             | Command::Quit { .. }
             | Command::Subscribe { .. }
             | Command::ApproveTool { .. }
-            | Command::AnswerQuestion { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
+            | Command::AnswerQuestion { .. }
+            | Command::McpCatalog { .. }
+            | Command::McpResourceRead { .. }
+            | Command::McpPromptGet { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
         }
     }
 }

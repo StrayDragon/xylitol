@@ -1,10 +1,13 @@
-use super::super::slots::{EditorSlot, McpSlot};
+use super::super::slots::{EditorSlot, McpPromptSlot, McpResourceSlot, McpSlot};
 use super::UiRoot;
 use crate::driver::LoadedResourcesSnapshot;
 
 impl UiRoot {
     pub fn mcp_open(&self) -> bool {
-        matches!(&self.slot, EditorSlot::Mcp(_))
+        matches!(
+            &self.slot,
+            EditorSlot::Mcp(_) | EditorSlot::McpPrompts(_) | EditorSlot::McpResources(_)
+        )
     }
 
     pub fn mcp_cache_usable_for_open(&self) -> bool {
@@ -47,6 +50,52 @@ impl UiRoot {
             EditorSlot::Mcp(mcp) => mcp.selected_index(),
             _ => 0,
         }
+    }
+
+    pub fn mount_mcp_prompt_picker(
+        &mut self,
+        entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    ) {
+        self.slot = EditorSlot::McpPrompts(McpPromptSlot::mount(self.theme, entries));
+    }
+
+    pub fn mount_mcp_resource_picker(
+        &mut self,
+        entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    ) {
+        self.slot = EditorSlot::McpResources(McpResourceSlot::mount(self.theme, entries));
+    }
+
+    pub fn close_mcp_slot(&mut self) {
+        if self.mcp_open() {
+            self.close_slot();
+        }
+    }
+
+    #[cfg(test)]
+    pub fn mcp_prompt_panel_text_for_test(&self) -> String {
+        match &self.slot {
+            EditorSlot::McpPrompts(prompts) => prompts.panel_text(),
+            _ => String::new(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn mcp_resource_panel_text_for_test(&self) -> String {
+        match &self.slot {
+            EditorSlot::McpResources(resources) => resources.panel_text(),
+            _ => String::new(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn mcp_prompts_open_for_test(&self) -> bool {
+        matches!(&self.slot, EditorSlot::McpPrompts(_))
+    }
+
+    #[cfg(test)]
+    pub fn mcp_resources_open_for_test(&self) -> bool {
+        matches!(&self.slot, EditorSlot::McpResources(_))
     }
 }
 

@@ -19,7 +19,7 @@
 
 - `XyDriver::run_with_context(prompt, contexts)`；`ResourceContext { server, uri, mime, text, truncated }`。
 - Runtime 在用户消息前追加 `SessionEntry::CustomMessage`：`custom_type = "mcpResource"`，`content` 为资源文本，`display` / `details` 为来源元数据。
-- `project_for_llm` 把 `CustomMessage.content` 投影为 user text；transcript 渲染可折叠的 context 块（server / uri / mime / size）。
+- `project_for_llm` 把 `CustomMessage.content` 投影为 user text；transcript 可见 context 来源（滚动提示或块）。
 - TUI 发送前逐个调 host `mcp.resource.read`；任一失败阻止发送；成功才调用 `run_with_context`。
 - 跨进程经协议 command 载荷携带 contexts；`xylitol-wire` 显式映射。
 

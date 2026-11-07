@@ -2,8 +2,8 @@ use crossterm::event::KeyEvent;
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::slots::{
-    CapabilitiesAction, EditorSlot, ImportAction, McpAction, ModelsAction, ScenesAction,
-    ThemesAction, TreeAction,
+    CapabilitiesAction, EditorSlot, ImportAction, McpAction, McpPromptAction, McpResourceAction,
+    ModelsAction, ScenesAction, ThemesAction, TreeAction,
 };
 use super::UiRoot;
 use crate::keybindings::matches_binding;
@@ -101,6 +101,29 @@ impl UiRoot {
                 false
             }
             EditorSlot::Mcp(mcp) => matches!(mcp.handle_input(event), McpAction::Close),
+            EditorSlot::McpPrompts(prompts) => {
+                let action = prompts.handle_input(event);
+                if let McpPromptAction::Select(index) = action
+                    && let Some(entry) = prompts.entry(index)
+                {
+                    self.pending.mcp_prompt_select =
+                        Some((entry.server.clone(), entry.name.clone()));
+                }
+                matches!(action, McpPromptAction::Close)
+            }
+            EditorSlot::McpResources(resources) => {
+                let action = resources.handle_input(event);
+                if let McpResourceAction::Add(index) = action
+                    && let Some(entry) = resources.entry(index)
+                    && let Some(uri) = entry.uri.clone()
+                {
+                    self.pending.mcp_resource_add = Some(xylitol_plugin_sdk::mcp::McpResourceRef {
+                        server: entry.server.clone(),
+                        uri,
+                    });
+                }
+                matches!(action, McpResourceAction::Close)
+            }
             EditorSlot::Capabilities(_) => false,
         };
         if close_slot {
@@ -115,7 +138,11 @@ impl UiRoot {
         let top = self.last_slot_top_row?;
         let local = (row as usize).checked_sub(top)?;
         let header_rows = match &self.slot {
-            EditorSlot::Models(_) | EditorSlot::Themes(_) | EditorSlot::Mcp(_) => 1,
+            EditorSlot::Models(_)
+            | EditorSlot::Themes(_)
+            | EditorSlot::Mcp(_)
+            | EditorSlot::McpPrompts(_)
+            | EditorSlot::McpResources(_) => 1,
             EditorSlot::Capabilities(_) => 1,
             EditorSlot::Tree(tree) => tree.header_rows(self.term_cols),
             EditorSlot::SessionResume(panel) => panel.header_rows(self.term_cols),
@@ -192,6 +219,35 @@ impl UiRoot {
                 true
             }
             EditorSlot::Mcp(mcp) => mcp.select_row_at(list_row).is_some(),
+            EditorSlot::McpPrompts(prompts) => {
+                let previous = prompts.selected_index();
+                let Some(index) = prompts.select_row_at(list_row) else {
+                    return false;
+                };
+                if previous == index
+                    && let Some(entry) = prompts.entry(index)
+                {
+                    self.pending.mcp_prompt_select =
+                        Some((entry.server.clone(), entry.name.clone()));
+                }
+                true
+            }
+            EditorSlot::McpResources(resources) => {
+                let previous = resources.selected_index();
+                let Some(index) = resources.select_row_at(list_row) else {
+                    return false;
+                };
+                if previous == index
+                    && let Some(entry) = resources.entry(index)
+                    && let Some(uri) = entry.uri.clone()
+                {
+                    self.pending.mcp_resource_add = Some(xylitol_plugin_sdk::mcp::McpResourceRef {
+                        server: entry.server.clone(),
+                        uri,
+                    });
+                }
+                true
+            }
             _ => false,
         }
     }
@@ -214,6 +270,31 @@ impl UiRoot {
         }
         self.close_slot();
         true
+    }
+
+    fn handle_tray_pointer(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {
+        if self.last_tray_rows == 0 {
+            return false;
+        }
+        if !matches!(
+            mouse.kind,
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
+        ) {
+            return false;
+        }
+        if mouse.row as usize != self.tray_strip_row {
+            return false;
+        }
+        let col = mouse.column as usize;
+        let Some(hit) = self
+            .last_tray_hits
+            .iter()
+            .find(|h| col >= h.col_start && col < h.col_end)
+            .copied()
+        else {
+            return false;
+        };
+        self.mcp_tray_remove_at(hit.index)
     }
 
     fn handle_overlay_pointer(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {
@@ -240,6 +321,9 @@ impl UiRoot {
     }
 
     fn handle_pointer_input(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {
+        if self.handle_tray_pointer(mouse) {
+            return true;
+        }
         if self.handle_overlay_pointer(mouse) {
             return true;
         }
@@ -317,8 +401,31 @@ impl UiRoot {
         {
             return;
         }
+        if let InputEvent::Key(ref key) = event
+            && self.handle_tray_key(key)
+        {
+            return;
+        }
         self.editor.handle_input(event);
         self.sync_editor_border();
+        self.drain_mcp_completion_picks();
+    }
+
+    fn handle_tray_key(&mut self, key: &KeyEvent) -> bool {
+        if self.mcp_tray_is_empty() || self.editor_autocomplete_open() {
+            return false;
+        }
+        let ctrl = key
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::CONTROL);
+        let backspace = key.code == crossterm::event::KeyCode::Backspace;
+        if !backspace {
+            return false;
+        }
+        if ctrl || self.editor.get_text().is_empty() {
+            return self.mcp_tray_remove_last();
+        }
+        false
     }
 
     fn handle_fold_key(&mut self, key: &KeyEvent) -> bool {

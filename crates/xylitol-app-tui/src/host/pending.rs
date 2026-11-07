@@ -1,9 +1,13 @@
 use super::super::commands::{PendingBash, PendingSlash};
+use super::super::mcp_attach::{McpPromptTarget, PendingMcpAttachments};
 
 #[derive(Debug, Default)]
 pub struct PendingOps {
     pub submit: Option<String>,
     pub gated_submit: Option<String>,
+    pub submit_attachments: PendingMcpAttachments,
+    pub gated_attachments: PendingMcpAttachments,
+    pub mcp_prompt_args_result: Option<(McpPromptTarget, String)>,
     pub steer: Option<String>,
     pub follow_up: Option<String>,
     pub abort: bool,
@@ -20,8 +24,20 @@ impl PendingOps {
     pub fn take_submit(&mut self) -> Option<String> {
         self.submit.take()
     }
+    pub fn take_submit_attachments(&mut self) -> PendingMcpAttachments {
+        std::mem::take(&mut self.submit_attachments)
+    }
     pub fn take_gated_submit(&mut self) -> Option<String> {
-        self.gated_submit.take()
+        let prompt = self.gated_submit.take();
+        self.gated_attachments = PendingMcpAttachments::default();
+        prompt
+    }
+    pub fn take_gated_submit_with_attachments(
+        &mut self,
+    ) -> Option<(String, PendingMcpAttachments)> {
+        let prompt = self.gated_submit.take()?;
+        let attachments = std::mem::take(&mut self.gated_attachments);
+        Some((prompt, attachments))
     }
     pub fn peek_gated_submit(&self) -> bool {
         self.gated_submit.is_some()

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::SessionTreeKind;
 
@@ -7,6 +8,8 @@ use crate::SessionTreeKind;
 pub enum Command {
     Prompt {
         message: String,
+        #[serde(default)]
+        contexts: Vec<Value>,
     },
     Abort {},
     GetState {},
@@ -103,6 +106,17 @@ pub enum Command {
     },
     Reload {},
     LoadedResources {},
+    McpCatalog {},
+    McpResourceRead {
+        server: String,
+        uri: String,
+    },
+    McpPromptGet {
+        server: String,
+        name: String,
+        #[serde(default)]
+        arguments: Value,
+    },
     #[serde(rename = "queue_stats")]
     GetQueueStats {},
     Steer {

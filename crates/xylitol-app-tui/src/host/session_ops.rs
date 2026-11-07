@@ -114,6 +114,101 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    pub fn take_pending_mcp_prompt_select(&mut self) -> Option<(String, String)> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().pending_take_mcp_prompt_select()
+    }
+
+    pub fn take_pending_mcp_resource_add(
+        &mut self,
+    ) -> Option<xylitol_plugin_sdk::mcp::McpResourceRef> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().pending_take_mcp_resource_add()
+    }
+
+    pub fn mount_mcp_prompt_picker(
+        &mut self,
+        entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    ) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().mount_mcp_prompt_picker(entries);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn mount_mcp_resource_picker(
+        &mut self,
+        entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    ) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().mount_mcp_resource_picker(entries);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn close_mcp_slot(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().close_mcp_slot();
+        }
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn set_mcp_catalog_entries(
+        &mut self,
+        entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    ) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().set_mcp_catalog_entries(entries);
+    }
+
+    pub async fn refresh_mcp_catalog(&mut self, driver: &mut dyn crate::driver::XyDriver) {
+        match driver.mcp_catalog().await {
+            Ok(catalog) => {
+                self.set_mcp_catalog_entries(catalog.resources);
+            }
+            Err(e) => e.log_failure("tui.mcp_catalog.refresh"),
+        }
+    }
+
+    pub fn mount_mcp_prompt_args(&mut self, target: crate::mcp_attach::McpPromptTarget) {
+        use xylitol_tui::{ChoiceMode, ChoiceQuestion};
+
+        let questions: Vec<ChoiceQuestion> = target
+            .fields
+            .iter()
+            .map(|f| ChoiceQuestion {
+                id: f.name.clone(),
+                label: f.name.clone(),
+                prompt: format!(
+                    "{}/{} · {} ({})",
+                    target.server,
+                    target.name,
+                    f.name,
+                    if f.required { "required" } else { "optional" }
+                ),
+                mode: ChoiceMode::Single,
+                options: Vec::new(),
+                allow_other: true,
+            })
+            .collect();
+        if questions.is_empty() {
+            return;
+        }
+        let (reply, _drop_rx) = tokio::sync::oneshot::channel();
+        self.mount_ask_choice(questions, reply);
+        self.mcp_prompt_target = Some(target);
+    }
+
+    pub fn take_mcp_prompt_args_result(
+        &mut self,
+    ) -> Option<(crate::mcp_attach::McpPromptTarget, String)> {
+        self.pending.mcp_prompt_args_result.take()
+    }
+
     pub fn mount_ask_choice(
         &mut self,
         questions: Vec<xylitol_tui::ChoiceQuestion>,
@@ -144,6 +239,11 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn poll_ask_host(&mut self) {
         if let Some(json) = self.complete_ask_if_ready() {
+            if let Some(target) = self.mcp_prompt_target.take() {
+                self.pending.mcp_prompt_args_result = Some((target, json));
+                let _ = self.render_now();
+                return;
+            }
             if self.debug_live_ask_close {
                 self.debug_live_ask_close = false;
                 self.apply_debug_live_ask_close(&json);

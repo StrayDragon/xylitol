@@ -12,6 +12,7 @@ pub mod host_env;
 pub mod lifecycle;
 pub mod llm_project;
 pub mod loop_middleware;
+pub mod mcp;
 pub mod message;
 pub mod model;
 pub mod model_entry;
@@ -71,6 +72,9 @@ pub use loop_middleware::{
     AfterLlmResponseCtx, AfterToolCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeToolCtx,
     BeforeTurnCtx, CompactRequest, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware,
     LoopMiddlewareHandle, LoopMiddlewareRegistry, LoopScope, LoopStage, LoopStep,
+};
+pub use mcp::{
+    McpCatalog, McpCatalogEntry, McpResourceContent, McpResourceContext, McpResourceRef,
 };
 pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{

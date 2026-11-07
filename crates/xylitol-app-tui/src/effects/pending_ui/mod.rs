@@ -17,9 +17,11 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
 ) {
+    session.drain_mcp_completion_picks();
     session.poll_ask_host();
 
     clipboard::take_paste_image(session, driver).await;
+    super::mcp::drain(session, driver).await;
     if session.take_pending_session_sidebar() {
         let id = driver.session_id().unwrap_or_default();
         if session.session_sidebar_available() {

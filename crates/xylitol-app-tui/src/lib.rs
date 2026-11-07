@@ -8,6 +8,7 @@ pub mod driver;
 pub(crate) mod driver_error;
 pub mod host_client;
 pub(crate) mod lag;
+pub(crate) mod mcp_attach;
 pub mod product_commands;
 pub(crate) mod tool_display;
 pub(crate) mod utils;
@@ -277,6 +278,7 @@ async fn run_host_loop(
     };
     session.refresh_loaded_resources(driver).await;
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+    session.refresh_mcp_catalog(driver).await;
     session.set_plugin_commands(
         driver
             .get_commands()
@@ -397,6 +399,7 @@ async fn run_host_loop(
                             session.refresh_loaded_resources(driver).await;
                         }
                         session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+                        session.refresh_mcp_catalog(driver).await;
                         session.set_plugin_commands(
                             driver
                                 .get_commands()

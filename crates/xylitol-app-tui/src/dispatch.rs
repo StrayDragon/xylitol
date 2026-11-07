@@ -230,6 +230,7 @@ mod tests {
         for cmd in [
             Command::Prompt {
                 message: "hi".into(),
+                contexts: Vec::new(),
             },
             Command::Quit {},
             Command::Subscribe {

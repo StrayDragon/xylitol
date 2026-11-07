@@ -13,7 +13,7 @@ use crate::keybindings::matches_binding;
 pub use ask::AskSlot;
 pub use capabilities::CapabilitiesSlot;
 pub use import::{ImportConfirmDecision, ImportSlot};
-pub use mcp::McpSlot;
+pub use mcp::{McpPromptSlot, McpResourceSlot, McpSlot};
 pub use models::ModelsSlot;
 pub use scenes::ScenesSlot;
 pub use themes::ThemesSlot;
@@ -28,7 +28,7 @@ pub(crate) fn is_select_nav_key(key: &crossterm::event::KeyEvent) -> bool {
         || matches_binding(key, "tui.select.pageUp")
         || matches_binding(key, "tui.select.pageDown")
 }
-pub(crate) use mcp::McpAction;
+pub(crate) use mcp::{McpAction, McpPromptAction, McpResourceAction};
 pub(crate) use models::ModelsAction;
 pub(crate) use scenes::ScenesAction;
 pub(crate) use themes::ThemesAction;
@@ -62,6 +62,10 @@ pub enum EditorSlot {
     SessionResume(SessionResumePanel),
     #[strum_discriminants(strum(message = "MCP"))]
     Mcp(McpSlot),
+    #[strum_discriminants(strum(message = "MCP prompts"))]
+    McpPrompts(McpPromptSlot),
+    #[strum_discriminants(strum(message = "MCP resources"))]
+    McpResources(McpResourceSlot),
     #[strum_discriminants(strum(message = "Capabilities"))]
     Capabilities(CapabilitiesSlot),
 }
@@ -121,6 +125,8 @@ impl EditorSlot {
             Self::Scenes(scenes) => scenes.retheme(theme),
             Self::Themes(themes) => themes.retheme(theme),
             Self::Mcp(mcp) => mcp.retheme(theme),
+            Self::McpPrompts(prompts) => prompts.retheme(theme),
+            Self::McpResources(resources) => resources.retheme(theme),
             Self::Capabilities(caps) => caps.retheme(theme),
             Self::ImportConfirm(imp) => imp.retheme(theme),
             Self::Editor
@@ -140,6 +146,8 @@ impl EditorSlot {
             Self::ImportConfirm(s) => s.invalidate(),
             Self::SessionResume(s) => s.invalidate(),
             Self::Mcp(s) => s.invalidate(),
+            Self::McpPrompts(s) => s.invalidate(),
+            Self::McpResources(s) => s.invalidate(),
             Self::Capabilities(s) => s.invalidate(),
             Self::Choice(s) => s.invalidate(),
             Self::Editor | Self::Plate | Self::Settings => {}

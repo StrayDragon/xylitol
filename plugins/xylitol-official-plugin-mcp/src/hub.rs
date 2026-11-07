@@ -6,6 +6,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 use xylitol_plugin_sdk::XyTool;
+use xylitol_plugin_sdk::mcp::{McpCatalog, McpCatalogEntry, McpResourceContent};
 use xylitol_plugin_sdk::plugin_events::SessionPrepareResult;
 use xylitol_plugin_sdk::session_prepare::{SessionPrepareHub, SessionPrepareView};
 use xylitol_plugin_sdk::tool_name::mcp_tool_armed_prefix;
@@ -402,6 +403,102 @@ impl McpPrepareHub {
         out
     }
 
+    pub async fn catalog_entries_for_session(&self, session_id: &str) -> McpCatalog {
+        let keys: Vec<ConnectionKey> = self
+            .state
+            .claims
+            .lock()
+            .await
+            .get(session_id)
+            .cloned()
+            .unwrap_or_default();
+        let pool = self.state.pool.lock().await;
+        let mut catalog = McpCatalog::default();
+        for (key, entry) in pool.iter() {
+            if !keys.contains(key) {
+                continue;
+            }
+            for (server, name, description, schema) in &entry.rows_prompts {
+                catalog.prompts.push(McpCatalogEntry {
+                    server: server.clone(),
+                    kind: "prompt".into(),
+                    name: name.clone(),
+                    description: description.clone(),
+                    uri: None,
+                    schema: Some(schema.clone()),
+                });
+            }
+            for (server, uri, name, description) in &entry.rows_resources {
+                catalog.resources.push(McpCatalogEntry {
+                    server: server.clone(),
+                    kind: "resource".into(),
+                    name: name.clone(),
+                    description: description.clone(),
+                    uri: Some(uri.clone()),
+                    schema: None,
+                });
+            }
+        }
+        catalog
+    }
+
+    async fn manager_for_session(
+        &self,
+        session_id: &str,
+        server: &str,
+    ) -> Option<Arc<McpClientManager>> {
+        let keys: Vec<ConnectionKey> = self
+            .state
+            .claims
+            .lock()
+            .await
+            .get(session_id)
+            .cloned()
+            .unwrap_or_default();
+        let pool = self.state.pool.lock().await;
+        pool.iter()
+            .find(|(key, entry)| keys.contains(key) && entry.name == server)
+            .map(|(_, entry)| entry.manager.clone())
+    }
+
+    pub async fn read_resource_for_session(
+        &self,
+        session_id: &str,
+        server: &str,
+        uri: &str,
+    ) -> Result<McpResourceContent, String> {
+        let manager = self
+            .manager_for_session(session_id, server)
+            .await
+            .ok_or_else(|| format!("MCP server not found: {server}"))?;
+        manager
+            .read_resource_cached(server, uri)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn prompt_get_for_session(
+        &self,
+        session_id: &str,
+        server: &str,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let manager = self
+            .manager_for_session(session_id, server)
+            .await
+            .ok_or_else(|| format!("MCP server not found: {server}"))?;
+        let arguments = if arguments.is_null() {
+            None
+        } else {
+            Some(arguments)
+        };
+        manager
+            .get_prompt(server, name, arguments)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     pub async fn catalog_for_session(&self, session_id: &str) -> Vec<McpToolDescriptor> {
         let keys: Vec<ConnectionKey> = self
             .state
@@ -672,11 +769,37 @@ impl SessionPrepareHub for McpPrepareHub {
     fn release_session(&self, session_id: &str) {
         McpPrepareHub::release_session(self, session_id);
     }
+
+    async fn mcp_catalog_for_session(&self, session_id: &str) -> McpCatalog {
+        self.catalog_entries_for_session(session_id).await
+    }
+
+    async fn mcp_resource_read(
+        &self,
+        session_id: &str,
+        server: &str,
+        uri: &str,
+    ) -> Result<McpResourceContent, String> {
+        self.read_resource_for_session(session_id, server, uri)
+            .await
+    }
+
+    async fn mcp_prompt_get(
+        &self,
+        session_id: &str,
+        server: &str,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        self.prompt_get_for_session(session_id, server, name, arguments)
+            .await
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resource_cache::parse_resource_content;
 
     fn server(name: &str, scope: McpScope) -> McpServerConfig {
         McpServerConfig {
@@ -685,6 +808,38 @@ mod tests {
             command: Some(format!("{name}-bin")),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn resource_content_parses_text_and_blob() {
+        let text = parse_resource_content(
+            "docs",
+            "file:///a.md",
+            serde_json::json!({
+                "contents": [{
+                    "uri": "file:///a.md",
+                    "mimeType": "text/markdown",
+                    "text": "hello"
+                }]
+            }),
+        );
+        assert_eq!(text.text, "hello");
+        assert_eq!(text.mime.as_deref(), Some("text/markdown"));
+        assert!(!text.binary);
+
+        let blob = parse_resource_content(
+            "docs",
+            "file:///a.bin",
+            serde_json::json!({
+                "contents": [{
+                    "uri": "file:///a.bin",
+                    "mimeType": "application/octet-stream",
+                    "blob": "AA=="
+                }]
+            }),
+        );
+        assert!(blob.binary);
+        assert!(blob.text.is_empty());
     }
 
     #[test]

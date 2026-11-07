@@ -250,7 +250,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::Trust { .. }
                 | PendingSlash::HistoryCopyLast
                 | PendingSlash::Theme { .. }
-                | PendingSlash::OpenMcp
+                | PendingSlash::OpenMcp { .. }
                 | PendingSlash::OpenCapabilities
                 | PendingSlash::OpenDesigningScenes
                 | PendingSlash::PluginCommand { .. }
@@ -296,11 +296,21 @@ impl<T: Terminal> HostSession<T> {
             }
         }
 
-        root.remember_editor_send(text.clone());
+        let tray_refs = root.mcp_tray_refs();
+        let parsed = crate::mcp_attach::parse_quoted_mcp_tokens(&text);
+        let cleaned = parsed.cleaned.trim().to_string();
+        if cleaned.is_empty() {
+            return false;
+        }
+        root.remember_editor_send(cleaned.clone());
         root.set_editor_text(String::new());
         drop(root);
-        self.persist_client_history(&text);
-        self.pending.submit = Some(text);
+        self.persist_client_history(&cleaned);
+        self.pending.submit = Some(cleaned);
+        self.pending.submit_attachments = crate::mcp_attach::PendingMcpAttachments {
+            tray: tray_refs,
+            tokens: parsed.refs,
+        };
         true
     }
 

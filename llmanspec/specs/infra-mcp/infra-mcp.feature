@@ -137,6 +137,22 @@
   规则: mcp-prompts-resources
     MCP prompts 须以 `mcp__server__prompt__name` 暴露为模型工具，resources 须以 `mcp__server__resource__read` 暴露（uri 参数）；prompts/get 与 resources/read 须受 per-server call timeout；list 失败保留上一份 catalog 并诊断；profile tools 选择同样适用。由单测覆盖，不扩 BDD step。
 
+  @req:r3275
+  规则: mcp-prompt-ui
+    TUI `/mcp prompt` 须列出当前 scope 的 prompt；有参数时 须用 ChoicePrompt 自定义输入逐项收集，必填为空 须提示并重开；`prompts/get` 结果 须插入 editor，不得自动发送；get 失败 须可见诊断并保留选择器。由单测 / harness 覆盖，不扩 BDD step。
+
+  @req:r3276
+  规则: mcp-resource-tray
+    TUI `/mcp resource` 与 `@mcp:` 补全选中 须加入 editor 上方附件 tray，不得插入可解析文本 token；tray 须支持点击 `×`、空 editor Backspace、快捷键移除，并按 `(server, uri)` 去重。未加引号手写 `@mcp:` 须按普通文本；完整 `@mcp:"<server>/<uri>"` 须解析，跳过 fenced/inline code，未知资源 须阻止发送。由单测 / harness 覆盖，不扩 BDD step。
+
+  @req:r3277
+  规则: mcp-context-seam
+    发送附件 须经 host `resources/read` 读取；任一失败 须阻止发送并给可操作错误。成功 须经 `XyDriver::run_with_context` 在用户消息前写 `CustomMessage`（custom_type `mcpResource`），transcript 须可见 context 来源（滚动提示或块）；`project_for_llm` 按 user text 投影。由单测 / harness 覆盖，不扩 BDD step。
+
+  @req:r3278
+  规则: mcp-resource-cache-subscription
+    资源缓存 key 须为 `(server, uri)`，LRU 64、单条 256 KiB、TTL 5 分钟；`resources/updated` 须失效对应 URI，`resources/list_changed` 须清 catalog/缓存。连接后 须 `Peer::listen` 订阅 `resources_list_changed` 与已知 URI；不支持 须 warn 降级手动刷新，不得阻塞连接。由单测覆盖，不扩 BDD step。
+
   @req:r3241
   规则: mcp-elicitation-secrets
     MCP elicitation 表单不得收集秘密；requestedSchema 字段命中 password / secret / token / api_key / credential / private_key 须拒绝；默认不弹 UI，返回 decline；不得记录 message 或字段值。由单测覆盖，不扩 BDD step。

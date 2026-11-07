@@ -224,6 +224,47 @@ impl UiRoot {
         }
     }
 
+    pub(super) fn render_tray_slot(&mut self, width: usize) -> Vec<String> {
+        if self.mcp_tray.is_empty() {
+            self.last_tray_hits.clear();
+            self.last_tray_rows = 0;
+            return Vec::new();
+        }
+        let lead = " attach";
+        let mut line = self.theme.paint_muted(lead).to_string();
+        let mut col = xylitol_tui::visible_width(lead);
+        let mut hits = Vec::with_capacity(self.mcp_tray.len());
+        let mut truncated = false;
+        for (index, r) in self.mcp_tray.refs().iter().enumerate() {
+            let chip = format!("[{}/{} ×]", r.server, r.uri);
+            let chip_w = xylitol_tui::visible_width(&chip);
+            if col + 1 + chip_w > width {
+                truncated = true;
+                break;
+            }
+            if index > 0 {
+                line.push(' ');
+                col += 1;
+            }
+            line.push_str(&self.theme.paint_chip(&chip, false));
+            hits.push(super::TrayChipHit {
+                col_start: col + chip_w.saturating_sub(3),
+                col_end: col + chip_w,
+                index,
+            });
+            col += chip_w;
+        }
+        let mut lines = Vec::new();
+        if truncated {
+            line.push_str(&self.theme.paint_muted(" …"));
+            line = truncate_to_width(&line, width.max(1), "…", false);
+        }
+        lines.push(line);
+        self.last_tray_hits = hits;
+        self.last_tray_rows = lines.len();
+        lines
+    }
+
     pub(super) fn render_status_slot(&mut self, width: usize) -> Vec<String> {
         let paint_cue_line = |theme: &crate::layout::LayoutTheme, cue: &str, width: usize| {
             let cue_paint = theme.paint_muted(cue);
@@ -306,6 +347,8 @@ impl UiRoot {
             EditorSlot::ImportConfirm(imp) => imp.render(width, self.theme),
             EditorSlot::SessionResume(panel) => panel.render(width.max(1)),
             EditorSlot::Mcp(mcp) => mcp.render(width, self.theme),
+            EditorSlot::McpPrompts(prompts) => prompts.render(width, self.theme),
+            EditorSlot::McpResources(resources) => resources.render(width, self.theme),
             EditorSlot::Capabilities(caps) => caps.render(width, self.theme),
         }
     }
@@ -360,6 +403,7 @@ impl Component for UiRoot {
         let todo = self.render_todo_bar_slot(width);
         let toast = self.render_toast_notice_slot(width);
         let status = self.render_status_slot(width);
+        let tray = self.render_tray_slot(width);
         self.apply_fixed_zone_footprint(todo.len());
         let mut editor = self.render_editor_slot(width);
         let has_chips = self.paint_editor_chips(&mut editor, width);
@@ -367,7 +411,8 @@ impl Component for UiRoot {
             .len()
             .saturating_add(todo.len())
             .saturating_add(toast.len())
-            .saturating_add(status.len());
+            .saturating_add(status.len())
+            .saturating_add(tray.len());
         let editor_top = self.editor_top_row(dock_prefix, editor.len());
         self.last_slot_top_row = Some(editor_top);
         self.last_chip_row = has_chips.then_some(editor_top);
@@ -380,12 +425,14 @@ impl Component for UiRoot {
         self.last_todo_rows = todo.len();
         self.last_toast_rows = toast.len();
         self.last_status_rows = status.len();
+        self.last_tray_rows = tray.len();
         self.last_editor_rows = editor.len();
         self.last_dock_rows = queue
             .len()
             .saturating_add(todo.len())
             .saturating_add(toast.len())
             .saturating_add(status.len())
+            .saturating_add(tray.len())
             .saturating_add(editor.len())
             .saturating_add(1);
         self.sync_editor_screen_origin();
@@ -394,6 +441,8 @@ impl Component for UiRoot {
         lines.extend(todo);
         lines.extend(toast);
         lines.extend(status);
+        self.tray_strip_row = lines.len();
+        lines.extend(tray);
         lines.extend(editor);
         lines.push(footer);
         lines

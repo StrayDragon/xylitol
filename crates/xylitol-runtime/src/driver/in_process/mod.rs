@@ -474,6 +474,14 @@ fn require_active_session(agent: &AgentRuntime) -> Result<&str, XyDriverError> {
 #[async_trait]
 impl XyDriver for XyInProcessDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
+        self.run_with_context(prompt, Vec::new()).await
+    }
+
+    async fn run_with_context(
+        &mut self,
+        prompt: &str,
+        contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
+    ) -> EventStream {
         self.apply_pending_capability_overlay();
         self.ensure_tool_table_frozen().await;
         if self.agent.session_id().is_none() {
@@ -485,8 +493,74 @@ impl XyDriver for XyInProcessDriver {
         } else if let Some(sid) = self.agent.session_id() {
             self.bind_todo_session(Some(sid)).await;
         }
+        if let Some(sid) = self.agent.session_id() {
+            for context in contexts {
+                let entry = xylitol_plugin_sdk::session::SessionEntry::CustomMessage(
+                    xylitol_plugin_sdk::session::CustomMessageEntry {
+                        base: xylitol_plugin_sdk::session::EntryBase {
+                            entry_type: "customMessage".into(),
+                            id: String::new(),
+                            parent_id: None,
+                            timestamp: 0,
+                        },
+                        custom_type: "mcpResource".into(),
+                        content: serde_json::Value::String(context.text),
+                        display: true,
+                        details: Some(serde_json::json!({
+                            "server": context.server,
+                            "uri": context.uri,
+                            "mime": context.mime,
+                            "truncated": context.truncated,
+                        })),
+                    },
+                );
+                if let Err(error) = self.store.append_session_entry(sid, &entry).await {
+                    log::warn!(
+                        target: "xylitol::runtime",
+                        "append mcpResource context failed session={sid} error={error}"
+                    );
+                }
+            }
+        }
         let stream = self.agent.submit_root(prompt, RunPolicy::Reject).await;
         Box::pin(stream)
+    }
+
+    async fn mcp_catalog(&mut self) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
+        let Some(hub) = self.prepare_hub.as_ref() else {
+            return Ok(xylitol_plugin_sdk::mcp::McpCatalog::default());
+        };
+        let sid = self.agent.session_id().unwrap_or_default();
+        Ok(hub.mcp_catalog_for_session(sid).await)
+    }
+
+    async fn mcp_resource_read(
+        &mut self,
+        server: &str,
+        uri: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpResourceContent, XyDriverError> {
+        let Some(hub) = self.prepare_hub.as_ref() else {
+            return Err(XyDriverError::unsupported("mcp_resource_read"));
+        };
+        let sid = self.agent.session_id().unwrap_or_default();
+        hub.mcp_resource_read(sid, server, uri)
+            .await
+            .map_err(XyDriverError::from)
+    }
+
+    async fn mcp_prompt_get(
+        &mut self,
+        server: &str,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, XyDriverError> {
+        let Some(hub) = self.prepare_hub.as_ref() else {
+            return Err(XyDriverError::unsupported("mcp_prompt_get"));
+        };
+        let sid = self.agent.session_id().unwrap_or_default();
+        hub.mcp_prompt_get(sid, server, name, arguments)
+            .await
+            .map_err(XyDriverError::from)
     }
 
     fn abort(&self) {

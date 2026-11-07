@@ -111,6 +111,9 @@ pub const METHOD_GENERATE_SESSION_NAME: &str = "generate_session_name";
 pub const METHOD_DELETE_SESSION: &str = "delete_session";
 pub const METHOD_RELOAD: &str = "reload";
 pub const METHOD_LOADED_RESOURCES: &str = "loaded_resources";
+pub const METHOD_MCP_CATALOG: &str = "mcp_catalog";
+pub const METHOD_MCP_RESOURCE_READ: &str = "mcp_resource_read";
+pub const METHOD_MCP_PROMPT_GET: &str = "mcp_prompt_get";
 pub const METHOD_QUEUE_STATS: &str = "queue_stats";
 pub const METHOD_ARM_TOOL_FREEZE: &str = "arm_tool_freeze";
 pub const METHOD_PERSIST_TRUST: &str = "persist_trust";
@@ -365,6 +368,30 @@ pub const REGISTRY: &[MethodEntry] = &[
         Exec::Exclusive,
     ),
     mx(
+        METHOD_MCP_CATALOG,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+        Exec::Inline,
+    ),
+    mx(
+        METHOD_MCP_RESOURCE_READ,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+        Exec::Inline,
+    ),
+    mx(
+        METHOD_MCP_PROMPT_GET,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+        Exec::Inline,
+    ),
+    mx(
         METHOD_LOADED_RESOURCES,
         Auth::Readonly,
         Idem::Bypass,
@@ -448,6 +475,9 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::SetCapability { .. }
         | Command::ClearCapabilities { .. }
         | Command::LoadedResources { .. }
+        | Command::McpCatalog { .. }
+        | Command::McpResourceRead { .. }
+        | Command::McpPromptGet { .. }
         | Command::AppendEntryLabel { .. }
         | Command::SetSessionName { .. }
         | Command::SetSessionNameFor { .. } => Exec::Inline,
@@ -510,6 +540,27 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn prompt_contexts_round_trip() {
+        let payload = json!({
+            "message": "summarize",
+            "contexts": [{
+                "server": "docs",
+                "uri": "file:///a.md",
+                "mime": "text/markdown",
+                "text": "hello",
+                "truncated": false
+            }]
+        });
+        let cmd = parse_command("prompt", &payload).expect("parse prompt contexts");
+        let Command::Prompt { message, contexts } = cmd else {
+            panic!("expected prompt");
+        };
+        assert_eq!(message, "summarize");
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0]["server"], "docs");
     }
 
     #[test]
@@ -684,6 +735,9 @@ mod tests {
                 "get_commands",
                 "get_state",
                 "loaded_resources",
+                "mcp_catalog",
+                "mcp_prompt_get",
+                "mcp_resource_read",
                 "plugin_command",
                 "queue_stats",
                 "set_capability",
@@ -705,6 +759,7 @@ mod tests {
                 "prompt",
                 Command::Prompt {
                     message: String::new(),
+                    contexts: Vec::new(),
                 },
             ),
             ("abort", Command::Abort {}),
@@ -833,6 +888,22 @@ mod tests {
             ),
             ("reload", Command::Reload {}),
             ("loaded_resources", Command::LoadedResources {}),
+            ("mcp_catalog", Command::McpCatalog {}),
+            (
+                "mcp_resource_read",
+                Command::McpResourceRead {
+                    server: String::new(),
+                    uri: String::new(),
+                },
+            ),
+            (
+                "mcp_prompt_get",
+                Command::McpPromptGet {
+                    server: String::new(),
+                    name: String::new(),
+                    arguments: Value::Null,
+                },
+            ),
             ("queue_stats", Command::GetQueueStats {}),
             (
                 "steer",
@@ -862,7 +933,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(cases.len(), 40, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 43, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

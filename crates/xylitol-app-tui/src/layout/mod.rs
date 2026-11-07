@@ -1,5 +1,6 @@
 mod dollar_skill_source;
 mod fixed_zone_footprint;
+mod mcp_source;
 mod models_picker;
 mod root;
 mod session_tree;

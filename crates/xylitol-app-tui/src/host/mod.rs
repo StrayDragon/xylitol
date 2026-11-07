@@ -116,6 +116,7 @@ pub struct HostSession<T: Terminal> {
     editor_history_seed_sessions: u32,
     editor_history_seed_job: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)>,
     mcp_blocks_agent: bool,
+    mcp_prompt_target: Option<crate::mcp_attach::McpPromptTarget>,
     ask_gateway: Option<Arc<crate::ask_host::AskHostGateway>>,
     debug_live_ask_close: bool,
     designing: bool,
@@ -190,6 +191,7 @@ impl<T: Terminal> HostSession<T> {
             editor_history_seed_sessions: 1,
             editor_history_seed_job: None,
             mcp_blocks_agent: false,
+            mcp_prompt_target: None,
             ask_gateway: None,
             debug_live_ask_close: false,
             designing: false,
@@ -618,8 +620,86 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_gated_submit()
     }
 
-    pub fn set_gated_submit(&mut self, prompt: String) {
+    pub fn take_gated_submit_with_attachments(
+        &mut self,
+    ) -> Option<(String, crate::mcp_attach::PendingMcpAttachments)> {
+        self.pending.take_gated_submit_with_attachments()
+    }
+
+    pub fn set_gated_submit(
+        &mut self,
+        prompt: String,
+        attachments: crate::mcp_attach::PendingMcpAttachments,
+    ) {
         self.pending.gated_submit = Some(prompt);
+        self.pending.gated_attachments = attachments;
+    }
+
+    pub fn take_submit_attachments(&mut self) -> crate::mcp_attach::PendingMcpAttachments {
+        self.pending.take_submit_attachments()
+    }
+
+    pub fn mcp_tray_add(&mut self, server: &str, uri: &str) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        let added = root.borrow_mut().mcp_tray_add(server, uri);
+        if added {
+            self.paint_dirty = true;
+        }
+        added
+    }
+
+    pub fn mcp_tray_clear(&mut self) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        let cleared = root.borrow_mut().mcp_tray_clear();
+        if cleared {
+            self.paint_dirty = true;
+        }
+        cleared
+    }
+
+    pub fn mcp_tray_refs(&self) -> Vec<xylitol_plugin_sdk::mcp::McpResourceRef> {
+        self.ui_root
+            .as_ref()
+            .map(|root| root.borrow().mcp_tray_refs())
+            .unwrap_or_default()
+    }
+
+    pub fn mcp_tray_len(&self) -> usize {
+        self.ui_root
+            .as_ref()
+            .map(|root| root.borrow().mcp_tray_len())
+            .unwrap_or(0)
+    }
+
+    pub fn drain_mcp_completion_picks(&mut self) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        if root.borrow_mut().drain_mcp_completion_picks() > 0 {
+            self.paint_dirty = true;
+        }
+    }
+
+    pub fn insert_editor_prompt_text(&mut self, text: &str) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().insert_editor_text_at_cursor(text);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn restore_blocked_prompt(&mut self, prompt: &str) {
+        let editor_empty = self
+            .ui_root
+            .as_ref()
+            .is_some_and(|root| root.borrow().editor_text().trim().is_empty());
+        if editor_empty {
+            self.insert_editor_prompt_text(prompt);
+        }
     }
 
     pub fn has_gated_submit(&self) -> bool {

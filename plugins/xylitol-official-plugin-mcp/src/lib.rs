@@ -4,6 +4,9 @@ mod client;
 mod defaults;
 mod hub;
 pub mod plugin;
+mod resource_cache;
+#[cfg(feature = "mcp")]
+mod subscription;
 pub mod truncate;
 pub(crate) mod types;
 

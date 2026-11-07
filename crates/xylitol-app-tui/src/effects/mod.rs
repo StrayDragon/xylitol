@@ -3,6 +3,7 @@ mod debug_activity_fold;
 mod debug_verify;
 pub(crate) mod designing;
 mod helpers;
+mod mcp;
 mod pending_ui;
 mod reload;
 mod slash;
@@ -271,14 +272,20 @@ pub async fn drain_pending<T: Terminal>(
 
     if agent_stream.is_none()
         && driver.is_tools_frozen()
-        && let Some(prompt) = session.take_gated_submit()
+        && let Some((prompt, attachments)) = session.take_gated_submit_with_attachments()
     {
         session.refresh_loaded_resources(driver).await;
-        start_run_after_tool_gate(session, driver, agent_stream, prompt).await;
+        start_run_after_tool_gate(session, driver, agent_stream, prompt, attachments).await;
     }
 
+    let next_submit = match converted_submit {
+        Some(prompt) => Some((prompt, crate::mcp_attach::PendingMcpAttachments::default())),
+        None => session
+            .take_submit()
+            .map(|prompt| (prompt, session.take_submit_attachments())),
+    };
     if agent_stream.is_none()
-        && let Some(prompt) = converted_submit.or_else(|| session.take_submit())
+        && let Some((prompt, attachments)) = next_submit
     {
         if !driver.is_tools_frozen() {
             log::info!(
@@ -286,7 +293,7 @@ pub async fn drain_pending<T: Terminal>(
                 "tool freeze gate armed prompt_len={}",
                 prompt.len()
             );
-            session.set_gated_submit(prompt.clone());
+            session.set_gated_submit(prompt.clone(), attachments);
             session
                 .ui_model_mut()
                 .enqueue_follow_up_strip(prompt.clone());
@@ -299,21 +306,12 @@ pub async fn drain_pending<T: Terminal>(
             driver.arm_tool_freeze_gate().await;
             session.refresh_loaded_resources(driver).await;
             if driver.is_tools_frozen()
-                && let Some(prompt) = session.take_gated_submit()
+                && let Some((prompt, attachments)) = session.take_gated_submit_with_attachments()
             {
-                start_run_after_tool_gate(session, driver, agent_stream, prompt).await;
+                start_run_after_tool_gate(session, driver, agent_stream, prompt, attachments).await;
             }
         } else {
-            log::info!(target: "xylitol::tui", "XyDriver::run starting prompt_len={}", prompt.len());
-            session.on_run_started(&prompt);
-            let _ = session.render_now();
-            let t0 = std::time::Instant::now();
-            *agent_stream = Some(driver.run(&prompt).await);
-            crate::lag::note_detail(
-                "host_run_await",
-                t0,
-                &format!("prompt_len={}", prompt.len()),
-            );
+            start_agent_run(session, driver, agent_stream, prompt, attachments).await;
         }
     }
 
@@ -342,23 +340,65 @@ async fn start_run_after_tool_gate<T: Terminal>(
     driver: &mut dyn XyDriver,
     agent_stream: &mut Option<EventStream>,
     prompt: String,
+    attachments: crate::mcp_attach::PendingMcpAttachments,
 ) {
     session.ui_model_mut().pop_follow_up_strip_matching(&prompt);
     session.sync_ui_root_from_model();
     log::info!(
         target: "xylitol::tui",
-        "XyDriver::run after tool freeze prompt_len={}",
-        prompt.len()
+        "XyDriver::run after tool freeze prompt_len={} contexts_pending={}",
+        prompt.len(),
+        !attachments.is_empty()
     );
+    start_agent_run(session, driver, agent_stream, prompt, attachments).await;
+}
+
+async fn start_agent_run<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    agent_stream: &mut Option<EventStream>,
+    prompt: String,
+    attachments: crate::mcp_attach::PendingMcpAttachments,
+) {
+    let contexts = match mcp::resolve_contexts(session, driver, &attachments).await {
+        Some(contexts) => contexts,
+        None => {
+            session.restore_blocked_prompt(&prompt);
+            session.end_gated_assemble_idle();
+            let _ = session.render_now();
+            return;
+        }
+    };
+    log::info!(
+        target: "xylitol::tui",
+        "XyDriver::run starting prompt_len={} contexts={}",
+        prompt.len(),
+        contexts.len()
+    );
+    let context_summary = contexts
+        .iter()
+        .map(|c| format!("{}/{}", c.server, c.uri))
+        .collect::<Vec<_>>()
+        .join(", ");
     session.on_run_started(&prompt);
     let _ = session.render_now();
     let t0 = std::time::Instant::now();
-    *agent_stream = Some(driver.run(&prompt).await);
+    *agent_stream = Some(if contexts.is_empty() {
+        driver.run(&prompt).await
+    } else {
+        driver.run_with_context(&prompt, contexts).await
+    });
     crate::lag::note_detail(
         "host_run_await",
         t0,
         &format!("prompt_len={}", prompt.len()),
     );
+    if !context_summary.is_empty() {
+        session.push_scroll_notice(format!("MCP context attached: {context_summary}"));
+    }
+    if !attachments.is_empty() {
+        session.mcp_tray_clear();
+    }
 }
 
 async fn drain_footer_token_if_pending<T: Terminal>(

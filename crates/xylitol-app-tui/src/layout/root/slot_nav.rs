@@ -95,6 +95,8 @@ impl UiRoot {
             | EditorSlot::ImportConfirm(_)
             | EditorSlot::SessionResume(_)
             | EditorSlot::Mcp(_)
+            | EditorSlot::McpPrompts(_)
+            | EditorSlot::McpResources(_)
             | EditorSlot::Capabilities(_) => {}
         }
     }

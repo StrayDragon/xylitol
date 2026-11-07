@@ -131,6 +131,210 @@ impl McpSlot {
     }
 }
 
+pub enum McpPromptAction {
+    None,
+    Close,
+    Select(usize),
+}
+
+pub struct McpPromptSlot {
+    entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    list: SelectList,
+}
+
+impl McpPromptSlot {
+    pub fn mount(
+        theme: LayoutTheme,
+        entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    ) -> Self {
+        let items: Vec<SelectItem> = if entries.is_empty() {
+            vec![SelectItem::new("", "(no MCP prompts)")]
+        } else {
+            entries
+                .iter()
+                .map(|e| {
+                    let description = e.description.trim();
+                    let label = if description.is_empty() {
+                        format!("{}  {}", e.server, e.name)
+                    } else {
+                        format!("{}  {}  {}", e.server, e.name, description)
+                    };
+                    SelectItem::new(format!("{}\u{0}{}", e.server, e.name), label)
+                })
+                .collect()
+        };
+        Self {
+            entries,
+            list: theme.select_list(items, DEFAULT_MAX_VISIBLE, (24, 72)),
+        }
+    }
+
+    pub fn entry(&self, index: usize) -> Option<&xylitol_plugin_sdk::mcp::McpCatalogEntry> {
+        self.entries.get(index)
+    }
+
+    pub fn set_max_visible(&mut self, max_visible: usize) {
+        self.list.max_visible = max_visible;
+    }
+
+    pub fn invalidate(&mut self) {
+        self.list.invalidate();
+    }
+
+    pub fn retheme(&mut self, theme: LayoutTheme) {
+        let entries = self.entries.clone();
+        *self = Self::mount(theme, entries);
+    }
+
+    pub fn handle_input(&mut self, event: InputEvent) -> McpPromptAction {
+        let InputEvent::Key(ref key) = event else {
+            return McpPromptAction::None;
+        };
+        if matches_binding(key, "tui.select.confirm") {
+            let index = self.list.selected_index;
+            return match self.entries.get(index) {
+                Some(_) => McpPromptAction::Select(index),
+                None => McpPromptAction::Close,
+            };
+        }
+        if super::is_select_nav_key(key) {
+            self.list.handle_input(event);
+        }
+        McpPromptAction::None
+    }
+
+    pub fn select_row_at(&mut self, row: u16) -> Option<usize> {
+        let index = self.list.item_index_at_screen_row(row)?;
+        self.list.set_selected_index(index);
+        self.entries.get(index).map(|_| index)
+    }
+
+    pub fn selected_index(&self) -> usize {
+        self.list.selected_index
+    }
+
+    pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(theme.paint_muted(&format!(" MCP prompts · {}", self.entries.len())));
+        lines.extend(self.list.render(width.max(1)));
+        lines.push(theme.paint_muted(" Enter selects · Esc closes"));
+        lines
+    }
+
+    pub fn panel_text(&self) -> String {
+        let mut lines = vec![format!("MCP prompts · {}", self.entries.len())];
+        for item in &self.list.filtered_items {
+            lines.push(format!(" {}", item.label));
+        }
+        lines.push(" Enter selects · Esc closes".into());
+        lines.join("\n")
+    }
+}
+
+pub enum McpResourceAction {
+    None,
+    Close,
+    Add(usize),
+}
+
+pub struct McpResourceSlot {
+    entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    list: SelectList,
+}
+
+impl McpResourceSlot {
+    pub fn mount(
+        theme: LayoutTheme,
+        entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    ) -> Self {
+        let items: Vec<SelectItem> = if entries.is_empty() {
+            vec![SelectItem::new("", "(no MCP resources)")]
+        } else {
+            entries
+                .iter()
+                .map(|e| {
+                    let uri = e.uri.as_deref().unwrap_or("");
+                    let name = e.name.trim();
+                    let label = if name.is_empty() {
+                        format!("{}  {}", e.server, uri)
+                    } else {
+                        format!("{}  {}  {}", e.server, uri, name)
+                    };
+                    SelectItem::new(format!("{}\u{0}{}", e.server, uri), label)
+                })
+                .collect()
+        };
+        Self {
+            entries,
+            list: theme.select_list(items, DEFAULT_MAX_VISIBLE, (24, 72)),
+        }
+    }
+
+    pub fn entry(&self, index: usize) -> Option<&xylitol_plugin_sdk::mcp::McpCatalogEntry> {
+        self.entries.get(index)
+    }
+
+    pub fn set_max_visible(&mut self, max_visible: usize) {
+        self.list.max_visible = max_visible;
+    }
+
+    pub fn invalidate(&mut self) {
+        self.list.invalidate();
+    }
+
+    pub fn retheme(&mut self, theme: LayoutTheme) {
+        let entries = self.entries.clone();
+        *self = Self::mount(theme, entries);
+    }
+
+    pub fn handle_input(&mut self, event: InputEvent) -> McpResourceAction {
+        let InputEvent::Key(ref key) = event else {
+            return McpResourceAction::None;
+        };
+        if matches_binding(key, "tui.select.confirm") {
+            let index = self.list.selected_index;
+            return match self.entries.get(index) {
+                Some(_) => McpResourceAction::Add(index),
+                None => McpResourceAction::Close,
+            };
+        }
+        if super::is_select_nav_key(key) {
+            self.list.handle_input(event);
+        }
+        McpResourceAction::None
+    }
+
+    pub fn select_row_at(&mut self, row: u16) -> Option<usize> {
+        let index = self.list.item_index_at_screen_row(row)?;
+        self.list.set_selected_index(index);
+        self.entries.get(index).map(|_| index)
+    }
+
+    pub fn selected_index(&self) -> usize {
+        self.list.selected_index
+    }
+
+    pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(theme.paint_muted(&format!(
+            " MCP resources · {} · selection attaches",
+            self.entries.len()
+        )));
+        lines.extend(self.list.render(width.max(1)));
+        lines.push(theme.paint_muted(" Enter attaches · Esc closes"));
+        lines
+    }
+
+    pub fn panel_text(&self) -> String {
+        let mut lines = vec![format!("MCP resources · {}", self.entries.len())];
+        for item in &self.list.filtered_items {
+            lines.push(format!(" {}", item.label));
+        }
+        lines.push(" Enter attaches · Esc closes".into());
+        lines.join("\n")
+    }
+}
+
 fn empty_mcp_list(theme: LayoutTheme) -> SelectList {
     theme.select_list(Vec::new(), DEFAULT_MAX_VISIBLE, (24, 72))
 }

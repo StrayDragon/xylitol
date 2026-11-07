@@ -108,10 +108,10 @@ expression: "lines.join(\"\\n\")"
   slash=Some(Theme { arg: Some("dark") })
   bang=NotBang
 "/mcp" =>
-  slash=Some(OpenMcp)
+  slash=Some(OpenMcp { panel: Servers })
   bang=NotBang
 "/mcps arg" =>
-  slash=Some(Usage("usage: /mcp (no arguments)"))
+  slash=Some(Usage("usage: /mcp [prompt|resource]"))
   bang=NotBang
 "!" =>
   slash=None

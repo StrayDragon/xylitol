@@ -151,6 +151,33 @@ pub trait SessionPrepareHub: Send + Sync {
     fn tools(&self) -> Vec<Arc<dyn XyTool>>;
 
     fn release_session(&self, _session_id: &str) {}
+
+    async fn mcp_catalog_for_session(&self, _session_id: &str) -> crate::mcp::McpCatalog {
+        crate::mcp::McpCatalog::default()
+    }
+
+    async fn mcp_resource_read(
+        &self,
+        _session_id: &str,
+        server: &str,
+        uri: &str,
+    ) -> Result<crate::mcp::McpResourceContent, String> {
+        Err(format!(
+            "mcp resource read is not available for {server}/{uri}"
+        ))
+    }
+
+    async fn mcp_prompt_get(
+        &self,
+        _session_id: &str,
+        server: &str,
+        name: &str,
+        _arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        Err(format!(
+            "mcp prompt get is not available for {server}/{name}"
+        ))
+    }
 }
 
 #[cfg(test)]

@@ -40,7 +40,9 @@ pub enum PendingSlash {
     Theme {
         arg: Option<String>,
     },
-    OpenMcp,
+    OpenMcp {
+        panel: McpPanel,
+    },
     OpenCapabilities,
     OpenDesigningScenes,
     PluginCommand {
@@ -48,6 +50,13 @@ pub enum PendingSlash {
         args: String,
     },
     Usage(&'static str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpPanel {
+    Servers,
+    Prompts,
+    Resources,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,7 +130,7 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
         },
-        PendingSlash::OpenMcp | PendingSlash::OpenSessionResume => SlashAllowances {
+        PendingSlash::OpenMcp { .. } | PendingSlash::OpenSessionResume => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
         },
@@ -216,7 +225,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::Fold { .. } => "/fold",
         PendingSlash::Perf => "/perf",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
-        PendingSlash::OpenMcp => "/mcp",
+        PendingSlash::OpenMcp { .. } => "/mcp",
         PendingSlash::OpenCapabilities => "/capabilities",
         PendingSlash::OpenDesigningScenes => "/designing",
         PendingSlash::PluginCommand { .. } => "plugin",
@@ -383,9 +392,17 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
 }
 
 fn parse_mcp_arg(arg: Option<String>) -> PendingSlash {
-    match arg {
-        None => PendingSlash::OpenMcp,
-        Some(_) => PendingSlash::Usage("usage: /mcp (no arguments)"),
+    match arg.as_deref().map(str::to_ascii_lowercase).as_deref() {
+        None => PendingSlash::OpenMcp {
+            panel: McpPanel::Servers,
+        },
+        Some("prompt" | "prompts") => PendingSlash::OpenMcp {
+            panel: McpPanel::Prompts,
+        },
+        Some("resource" | "resources") => PendingSlash::OpenMcp {
+            panel: McpPanel::Resources,
+        },
+        Some(_) => PendingSlash::Usage("usage: /mcp [prompt|resource]"),
     }
 }
 
@@ -508,8 +525,9 @@ pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry>
 #[cfg(test)]
 mod parse_tests {
     use super::{
-        BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, busy_slash_refuse_label,
-        parse_bang_command, parse_slash_command, parse_slash_command_for_surface, slash_allowances,
+        BusySlashPolicy, McpPanel, PendingSlash, SlashPermit, busy_slash_policy,
+        busy_slash_refuse_label, parse_bang_command, parse_slash_command,
+        parse_slash_command_for_surface, slash_allowances,
     };
 
     #[test]
@@ -649,7 +667,9 @@ mod parse_tests {
             BusySlashPolicy::Reject
         );
         assert_eq!(
-            busy_slash_policy(&PendingSlash::OpenMcp),
+            busy_slash_policy(&PendingSlash::OpenMcp {
+                panel: McpPanel::Servers
+            }),
             BusySlashPolicy::Allow
         );
         assert_eq!(
@@ -666,7 +686,9 @@ mod parse_tests {
         assert_eq!(b.when_agent_busy, SlashPermit::Allow);
         let c = slash_allowances(&PendingSlash::Reload);
         assert_eq!(c.when_agent_busy, SlashPermit::Reject);
-        let d = slash_allowances(&PendingSlash::OpenMcp);
+        let d = slash_allowances(&PendingSlash::OpenMcp {
+            panel: McpPanel::Prompts,
+        });
         assert_eq!(d.when_agent_busy, SlashPermit::Allow);
         let e = slash_allowances(&PendingSlash::Theme { arg: None });
         assert_eq!(e.when_agent_busy, SlashPermit::Allow);
@@ -695,11 +717,33 @@ mod parse_tests {
 
     #[test]
     fn parse_mcp_bare() {
-        assert_eq!(parse_slash_command("/mcp"), Some(PendingSlash::OpenMcp));
-        assert_eq!(parse_slash_command("/mcps"), Some(PendingSlash::OpenMcp));
+        assert_eq!(
+            parse_slash_command("/mcp"),
+            Some(PendingSlash::OpenMcp {
+                panel: McpPanel::Servers
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/mcps"),
+            Some(PendingSlash::OpenMcp {
+                panel: McpPanel::Servers
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/mcp prompt"),
+            Some(PendingSlash::OpenMcp {
+                panel: McpPanel::Prompts
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/MCP Resource"),
+            Some(PendingSlash::OpenMcp {
+                panel: McpPanel::Resources
+            })
+        );
         assert_eq!(
             parse_slash_command("/mcp extra"),
-            Some(PendingSlash::Usage("usage: /mcp (no arguments)"))
+            Some(PendingSlash::Usage("usage: /mcp [prompt|resource]"))
         );
     }
 
@@ -861,7 +905,12 @@ mod parse_tests {
                 "/session-name",
             ),
             (PendingSlash::HistoryCopyLast, "/history-copy-last"),
-            (PendingSlash::OpenMcp, "/mcp"),
+            (
+                PendingSlash::OpenMcp {
+                    panel: McpPanel::Servers,
+                },
+                "/mcp",
+            ),
             (PendingSlash::OpenCapabilities, "/capabilities"),
             (PendingSlash::OpenDesigningScenes, "/designing"),
         ];

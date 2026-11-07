@@ -2,6 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use async_trait::async_trait;
+use serde_json::Value;
 
 use super::XyDriverError;
 use super::types::{
@@ -29,6 +30,45 @@ pub enum AttachObserve {
 #[async_trait]
 pub trait XyDriver: Send {
     async fn run(&mut self, prompt: &str) -> EventStream;
+
+    async fn run_with_context(
+        &mut self,
+        prompt: &str,
+        contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
+    ) -> EventStream {
+        self.run_with_context_impl(prompt, contexts).await
+    }
+
+    async fn run_with_context_impl(
+        &mut self,
+        prompt: &str,
+        _contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
+    ) -> EventStream {
+        self.run(prompt).await
+    }
+
+    async fn mcp_catalog(&mut self) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
+        Ok(xylitol_plugin_sdk::mcp::McpCatalog::default())
+    }
+
+    async fn mcp_resource_read(
+        &mut self,
+        server: &str,
+        uri: &str,
+    ) -> Result<xylitol_plugin_sdk::mcp::McpResourceContent, XyDriverError> {
+        let _ = (server, uri);
+        Err(XyDriverError::unsupported("mcp_resource_read"))
+    }
+
+    async fn mcp_prompt_get(
+        &mut self,
+        server: &str,
+        name: &str,
+        arguments: Value,
+    ) -> Result<Value, XyDriverError> {
+        let _ = (server, name, arguments);
+        Err(XyDriverError::unsupported("mcp_prompt_get"))
+    }
 
     async fn bash_run(
         &mut self,
