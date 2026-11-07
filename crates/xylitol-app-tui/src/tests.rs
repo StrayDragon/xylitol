@@ -6626,6 +6626,68 @@ async fn harness_ask_gateway_submit_resolves_answered_payload() {
 }
 
 #[tokio::test]
+async fn harness_elicitation_form_accepts_typed_content() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let gw = std::sync::Arc::new(crate::AskHostGateway::new());
+    session.set_ask_gateway(gw.clone());
+    let root = session.ui_root().expect("product ui").clone();
+
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {"name": {"type": "string", "description": "Your name"}},
+        "required": ["name"]
+    });
+    let tool = {
+        use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
+        let gw = gw.clone();
+        tokio::spawn(async move {
+            gw.prompt(AskArgs {
+                questions: xylitol_plugin_sdk::mcp::elicitation_questions(
+                    &schema,
+                    "What is your name?",
+                ),
+            })
+            .await
+        })
+    };
+    tokio::task::yield_now().await;
+    session.poll_ask_host();
+    assert!(
+        root.borrow().ask_choice_open(),
+        "elicitation must mount the Choice form"
+    );
+
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    for ch in "Ada".chars() {
+        session
+            .step(HostEvent::Input(InputEvent::Key(
+                crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char(ch),
+                    crossterm::event::KeyModifiers::NONE,
+                ),
+            )))
+            .unwrap();
+    }
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    session.poll_ask_host();
+    assert!(
+        !root.borrow().ask_choice_open(),
+        "accept must close the elicitation form"
+    );
+    let result = tool
+        .await
+        .unwrap()
+        .expect("answered elicitation is a success result");
+    assert!(result.contains("\"status\":\"answered\""), "{result}");
+    assert!(
+        result.contains("Ada"),
+        "typed content must be returned: {result}"
+    );
+}
+
+#[tokio::test]
 async fn harness_ask_gateway_esc_resolves_skipped_success_payload() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let gw = std::sync::Arc::new(crate::AskHostGateway::new());

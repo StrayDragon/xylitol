@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -88,6 +89,98 @@ pub fn mcp_elicitation_gateway() -> Option<Arc<dyn McpElicitationGateway>> {
         .get()
         .and_then(|slot| slot.lock().ok())
         .and_then(|guard| guard.clone())
+}
+
+pub fn elicitation_questions(schema: &Value, message: &str) -> Vec<AskQuestionArg> {
+    let mut questions = vec![AskQuestionArg {
+        id: "action".into(),
+        prompt: message.to_string(),
+        label: Some("Elicitation".into()),
+        mode: AskModeArg::Single,
+        options: vec![
+            AskOptionArg {
+                value: "accept".into(),
+                label: "Accept".into(),
+                description: None,
+                recommended: true,
+            },
+            AskOptionArg {
+                value: "decline".into(),
+                label: "Decline".into(),
+                description: None,
+                recommended: false,
+            },
+            AskOptionArg {
+                value: "cancel".into(),
+                label: "Cancel".into(),
+                description: None,
+                recommended: false,
+            },
+        ],
+        allow_other: false,
+    }];
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return questions;
+    };
+    let required: Vec<&str> = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    for (name, spec) in properties {
+        let Some(spec) = spec.as_object() else {
+            continue;
+        };
+        let kind = spec.get("type").and_then(Value::as_str).unwrap_or("string");
+        let mut options = Vec::new();
+        if let Some(values) = spec.get("enum").and_then(Value::as_array) {
+            for value in values.iter().filter_map(Value::as_str) {
+                options.push(AskOptionArg {
+                    value: value.to_string(),
+                    label: value.to_string(),
+                    description: None,
+                    recommended: false,
+                });
+            }
+        } else if kind == "boolean" {
+            options.push(AskOptionArg {
+                value: "true".into(),
+                label: "true".into(),
+                description: None,
+                recommended: false,
+            });
+            options.push(AskOptionArg {
+                value: "false".into(),
+                label: "false".into(),
+                description: None,
+                recommended: false,
+            });
+        }
+        let description = spec
+            .get("description")
+            .and_then(Value::as_str)
+            .or_else(|| spec.get("title").and_then(Value::as_str))
+            .unwrap_or("");
+        let marker = if required.contains(&name.as_str()) {
+            "required"
+        } else {
+            "optional"
+        };
+        let label = format!("{name} ({kind}, {marker})");
+        questions.push(AskQuestionArg {
+            id: name.clone(),
+            prompt: if description.is_empty() {
+                label.clone()
+            } else {
+                format!("{description} [{label}]")
+            },
+            label: Some(label),
+            mode: AskModeArg::Single,
+            options,
+            allow_other: true,
+        });
+    }
+    questions
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
