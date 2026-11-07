@@ -335,6 +335,13 @@ fn find_named<'a>(
 
 #[when("以未开启观测闸运行一次带工具调用的 agent 回合")]
 async fn w_c2826_no_gate_run(agent: &AgentState, _otel_bdd: &OtelBdd) {
+    {
+        let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        set_provider_trace_active(false);
+        set_observation_io_tier(ObservationIoTier::None);
+        set_tool_observation_io_tier(ObservationIoTier::None);
+        arm_anthropic_obs_gates(false, ObservationIoTier::None);
+    }
     let gate_off_at_rest = {
         let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         !xylitol_official_plugin_provider_openai::provider::trace::provider_trace_active()
