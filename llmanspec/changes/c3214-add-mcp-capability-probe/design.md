@@ -4,7 +4,7 @@
 
 - 连接 initialize 成功后异步触发；不阻塞 bootstrap / 首回合 / UI。
 - 每个 connection key 只探测一次；缓存命中直接返回。
-- 手动 `/mcp probe` 强制刷新单个或全部 server。
+- `/reload` 重建 pool 后重新探测；本 change 不新增单独 probe 命令。
 
 ## 2. `server/discover`
 
@@ -16,8 +16,8 @@
 
 ## 3. 重连计数
 
-- pool 每个 connection key 维护 `reconnect_count` 与 `last_reconnect_at`。
-- 自动重连（连接断开后重试）递增；手动 `/reload` 或显式重连重置。
+- pool 每个 connection key 维护 `reconnect_count`。
+- 同一 connection key 的 pool 重建/重连递增；手动 `/reload` 重置。
 - `/mcp` 展示 count 与 last error；不展示 token/credential 值。
 - 计数只用于诊断，不改变重连策略。
 
@@ -29,6 +29,6 @@
 
 ## 5. 测试
 
-- 单测：discover 成功/失败/缓存 TTL/legacy 回退；重连计数递增与重置。
-- BDD：`/mcp` 显示 probe 字段与 reconnect count。
+- 单测：probe 分类/排序；重连计数递增与重置。
+- BDD：`/mcp` 显示 probe 行与 reconnect count。
 - 门禁：`just qa`。

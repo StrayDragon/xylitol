@@ -161,6 +161,14 @@
   规则: mcp-oauth-host-callback
     Host 须监听 localhost 一次性 callback（默认 127.0.0.1 临时端口；pre-registered client 可固定 redirect URI）；redirect URI 须与 client 注册一致；TUI 须展示 URL 与同意/取消；code exchange 成功后 须保存 credential 并发完成事件，失败 须发失败事件；code/token 不得进事件或日志。由单测覆盖，不扩 BDD step。
 
+  @req:r3271
+  规则: mcp-capability-probe
+    连接 initialize 成功后 须异步探测 `server/discover`；不得阻塞 bootstrap / 首回合 / UI；按 connection key 缓存；TTL 取 `ttl_ms` 夹取 60s–1h；失败 须诊断 unsupported / timeout / transport / auth / invalid_response 且保留连接；legacy 不支持时沿用 initialize + tools/list。由单测覆盖，不扩 BDD step。
+
+  @req:r3272
+  规则: mcp-reconnect-count
+    pool 须按 connection key 统计重建/重连次数；`/mcp` 须展示 count 与 last error；`/reload` 须重置；不得展示 token/credential 值。由单测覆盖，不扩 BDD step。
+
   @req:r3267
   规则: mcp-pending-settled
     MCP pending cue 须仅在准备未完成时显示；bootstrap complete 且 tools frozen 后 不得因旧 connecting_label 显示。freeze / arm / gate timeout / reload / resume / 切会话后 须刷新同一 loaded-resources 快照；gate timeout 须收口为 complete / frozen 并保留诊断；connect_timeout_ms 须覆盖 stdio initialize / handshake，超时收口 Failed / timed-out。

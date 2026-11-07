@@ -295,7 +295,7 @@ impl XyInProcessDriver {
             skill_names,
             mcp_connected: view.connected,
             mcp_configured: view.configured,
-            mcp_diag_short: view.diags,
+            mcp_diag_short: view.diags.into_iter().chain(view.probe_lines).collect(),
             mcp_connecting_label: if settled { None } else { view.connecting_label },
             mcp_servers,
             mcp_bootstrap_complete: view.complete || settled,

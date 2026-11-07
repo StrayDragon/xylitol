@@ -115,6 +115,7 @@ pub struct SessionPrepareView {
     pub server_ids: Vec<String>,
     pub armed: Vec<(String, usize)>,
     pub server_details: Vec<String>,
+    pub probe_lines: Vec<String>,
 }
 
 impl SessionPrepareView {

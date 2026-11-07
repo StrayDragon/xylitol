@@ -36,6 +36,7 @@ struct PoolEntry {
     connect_timeout_ms: u64,
     call_timeout_ms: u64,
     claims: usize,
+    reconnect_count: usize,
     connected: Vec<(String, usize)>,
     diags: Vec<String>,
     rows: Vec<(String, String, String, serde_json::Value)>,
@@ -61,6 +62,7 @@ struct HubState {
     current: Mutex<Option<(String, Vec<String>)>>,
     last_view: Mutex<Option<SessionPrepareView>>,
     last_result: Mutex<Option<SessionPrepareResult>>,
+    reconnects: Mutex<HashMap<ConnectionKey, usize>>,
     last_tools: Mutex<Vec<Arc<dyn XyTool>>>,
     progress: Arc<Mutex<McpConnectProgress>>,
     notice: Mutex<Option<String>>,
@@ -148,6 +150,7 @@ impl McpPrepareHub {
                     current: None,
                 })),
                 notice: Mutex::new(None),
+                reconnects: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -191,6 +194,13 @@ impl McpPrepareHub {
                     false
                 };
                 if remove && let Some(entry) = pool.remove(&key) {
+                    *self
+                        .state
+                        .reconnects
+                        .lock()
+                        .await
+                        .entry(key.clone())
+                        .or_insert(0) += 1;
                     shutdowns.push(entry.manager);
                 }
             }
@@ -228,6 +238,14 @@ impl McpPrepareHub {
                                     .map(|server| server.call_timeout_ms)
                                     .unwrap_or(120_000),
                                 claims: 1,
+                                reconnect_count: self
+                                    .state
+                                    .reconnects
+                                    .lock()
+                                    .await
+                                    .get(&key)
+                                    .copied()
+                                    .unwrap_or(0),
                                 connected: Vec::new(),
                                 diags: Vec::new(),
                                 rows: Vec::new(),
@@ -441,12 +459,14 @@ impl McpPrepareHub {
         let mut diags = Vec::new();
         let mut tools: Vec<Arc<dyn XyTool>> = Vec::new();
         let mut server_details = Vec::new();
+        let mut probe_lines = Vec::new();
         for entry in pool.values() {
             connected.extend(entry.connected.iter().cloned());
             diags.extend(entry.diags.iter().cloned());
             tools.extend(entry.tools.iter().cloned());
+            probe_lines.extend(entry.manager.probe_lines().await);
             server_details.push(format!(
-                "server={} transport={} scope={} credential={} connected={} tools={} prompts={} resources={} connect_timeout_ms={} call_timeout_ms={} last_error={}",
+                "server={} transport={} scope={} credential={} connected={} tools={} prompts={} resources={} connect_timeout_ms={} call_timeout_ms={} reconnect_count={} probe={} last_error={}",
                 entry.name,
                 entry.transport,
                 entry.scope,
@@ -461,6 +481,12 @@ impl McpPrepareHub {
                 entry.rows_resources.len(),
                 entry.connect_timeout_ms,
                 entry.call_timeout_ms,
+                entry.reconnect_count,
+                entry
+                    .manager
+                    .probe_summary(&entry.name)
+                    .await
+                    .unwrap_or_else(|| "none".into()),
                 if entry.diags.is_empty() {
                     "none".to_string()
                 } else {
@@ -493,6 +519,7 @@ impl McpPrepareHub {
             server_ids,
             armed,
             server_details,
+            probe_lines,
         }
     }
 
@@ -502,6 +529,7 @@ impl McpPrepareHub {
             std::mem::take(&mut *pool)
         };
         *self.state.claims.lock().await = HashMap::new();
+        *self.state.reconnects.lock().await = HashMap::new();
         *self.state.last_tools.lock().await = Vec::new();
         *self.state.last_result.lock().await = None;
         for (_, entry) in entries {
@@ -714,6 +742,31 @@ mod tests {
         let view = hub.view();
         assert_eq!(view.configured, 1);
         assert!(view.connecting);
+    }
+
+    #[tokio::test]
+    async fn failed_server_reconnects_on_next_ensure() {
+        let hub = McpPrepareHub::new(vec![server("fs", McpScope::Shared)]);
+        hub.ensure_for("s1", &[]).await;
+        let first = hub.view_async().await;
+        assert!(
+            first
+                .server_details
+                .iter()
+                .any(|detail| detail.contains("reconnect_count=0")),
+            "{:?}",
+            first.server_details
+        );
+        hub.ensure_for("s1", &[]).await;
+        let second = hub.view_async().await;
+        assert!(
+            second
+                .server_details
+                .iter()
+                .any(|detail| detail.contains("reconnect_count=1")),
+            "{:?}",
+            second.server_details
+        );
     }
 
     #[tokio::test]

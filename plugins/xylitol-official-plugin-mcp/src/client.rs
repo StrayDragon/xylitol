@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use serde_json::Value;
@@ -136,6 +136,14 @@ impl McpConnectProgress {
 
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub const MCP_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+pub const MCP_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityProbe {
+    pub status: String,
+    pub summary: String,
+    pub ttl_ms: u64,
+}
 
 pub struct McpClientManager {
     services: Mutex<HashMap<String, McpService>>,
@@ -145,11 +153,31 @@ pub struct McpClientManager {
     tool_counts: Mutex<HashMap<String, usize>>,
     diagnostics: Mutex<Vec<McpConnectDiagnostic>>,
     progress: Mutex<McpConnectProgress>,
+    probes: Mutex<HashMap<String, CapabilityProbe>>,
+    connect_attempts: AtomicUsize,
 }
 
 impl Default for McpClientManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn classify_probe_error(message: &str) -> &'static str {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("method not found")
+        || lower.contains("unsupported")
+        || lower.contains("not supported")
+    {
+        "unsupported"
+    } else if lower.contains("timed out") || lower.contains("timeout") {
+        "timeout"
+    } else if lower.contains("auth") || lower.contains("401") || lower.contains("unauthorized") {
+        "auth"
+    } else if lower.contains("decode") || lower.contains("invalid") {
+        "invalid_response"
+    } else {
+        "transport"
     }
 }
 
@@ -163,6 +191,8 @@ impl McpClientManager {
             tool_counts: Mutex::new(HashMap::new()),
             diagnostics: Mutex::new(Vec::new()),
             progress: Mutex::new(McpConnectProgress::default()),
+            probes: Mutex::new(HashMap::new()),
+            connect_attempts: AtomicUsize::new(0),
         }
     }
 
@@ -184,6 +214,7 @@ impl McpClientManager {
         workspace: Option<&std::path::Path>,
         progress_out: Option<Arc<Mutex<McpConnectProgress>>>,
     ) {
+        self.connect_attempts.fetch_add(1, Ordering::SeqCst);
         {
             let mut diags = self.diagnostics.lock().await;
             diags.clear();
@@ -252,9 +283,9 @@ impl McpClientManager {
                 .await;
         }
 
-        let clear = progress_out.is_none();
-        self.write_progress(&progress_out, !clear, total, finished, None)
+        self.write_progress(&progress_out, false, total, finished, None)
             .await;
+        self.spawn_probes().await;
     }
 
     async fn write_progress(
@@ -294,6 +325,79 @@ impl McpClientManager {
 
     pub async fn diagnostics(&self) -> Vec<McpConnectDiagnostic> {
         self.diagnostics.lock().await.clone()
+    }
+
+    pub fn reconnect_count(&self) -> usize {
+        self.connect_attempts
+            .load(Ordering::SeqCst)
+            .saturating_sub(1)
+    }
+
+    pub async fn probe_summary(&self, server: &str) -> Option<String> {
+        self.probes.lock().await.get(server).map(|probe| {
+            format!(
+                "status={} ttl_ms={} {}",
+                probe.status, probe.ttl_ms, probe.summary
+            )
+        })
+    }
+
+    pub async fn probe_lines(&self) -> Vec<String> {
+        let probes = self.probes.lock().await;
+        let mut lines: Vec<String> = probes
+            .iter()
+            .map(|(server, probe)| {
+                format!(
+                    "probe server={server} status={} ttl_ms={} {}",
+                    probe.status, probe.ttl_ms, probe.summary
+                )
+            })
+            .collect();
+        lines.sort();
+        lines
+    }
+
+    async fn spawn_probes(self: &Arc<Self>) {
+        let peers: Vec<_> = {
+            let services = self.services.lock().await;
+            services
+                .iter()
+                .map(|(server, service)| (server.clone(), service.peer().clone()))
+                .collect()
+        };
+        for (server, peer) in peers {
+            let manager = Arc::clone(self);
+            tokio::spawn(async move {
+                let result =
+                    tokio::time::timeout(MCP_PROBE_TIMEOUT, peer.discover(Default::default()))
+                        .await;
+                let probe = match result {
+                    Ok(Ok(discovered)) => {
+                        let mut summary = format!(
+                            "versions={:?} capabilities={:?}",
+                            discovered.supported_versions, discovered.capabilities
+                        );
+                        summary.truncate(240);
+                        CapabilityProbe {
+                            status: "ok".into(),
+                            summary,
+                            ttl_ms: discovered.ttl_ms,
+                        }
+                    }
+                    Ok(Err(error)) => CapabilityProbe {
+                        status: classify_probe_error(&error.to_string()).into(),
+                        summary: error.to_string(),
+                        ttl_ms: 0,
+                    },
+                    Err(_) => CapabilityProbe {
+                        status: "timeout".into(),
+                        summary: format!("probe timed out after {MCP_PROBE_TIMEOUT:?}"),
+                        ttl_ms: 0,
+                    },
+                };
+                manager.probes.lock().await.insert(server, probe);
+            });
+        }
     }
 
     pub async fn connected_servers(&self) -> Vec<ConnectedMcpServer> {
@@ -962,5 +1066,57 @@ mod tests {
             current: None,
         };
         assert!(settled.connecting_label().is_none());
+    }
+
+    #[test]
+    fn classify_probe_error_categories() {
+        assert_eq!(
+            classify_probe_error("method not found: server/discover"),
+            "unsupported"
+        );
+        assert_eq!(classify_probe_error("request timed out"), "timeout");
+        assert_eq!(classify_probe_error("401 unauthorized"), "auth");
+        assert_eq!(classify_probe_error("invalid response"), "invalid_response");
+        assert_eq!(classify_probe_error("connection reset"), "transport");
+    }
+
+    #[test]
+    fn reconnect_count_starts_at_zero() {
+        let manager = McpClientManager::new();
+        assert_eq!(manager.reconnect_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn probe_lines_are_sorted_and_include_status() {
+        let manager = McpClientManager::new();
+        {
+            let mut probes = manager.probes.lock().await;
+            probes.insert(
+                "b".into(),
+                CapabilityProbe {
+                    status: "ok".into(),
+                    summary: "versions=[]".into(),
+                    ttl_ms: 1000,
+                },
+            );
+            probes.insert(
+                "a".into(),
+                CapabilityProbe {
+                    status: "unsupported".into(),
+                    summary: "method not found".into(),
+                    ttl_ms: 0,
+                },
+            );
+        }
+        let lines = manager.probe_lines().await;
+        assert_eq!(lines.len(), 2);
+        assert!(
+            lines[0].starts_with("probe server=a status=unsupported"),
+            "{lines:?}"
+        );
+        assert!(
+            lines[1].starts_with("probe server=b status=ok"),
+            "{lines:?}"
+        );
     }
 }
