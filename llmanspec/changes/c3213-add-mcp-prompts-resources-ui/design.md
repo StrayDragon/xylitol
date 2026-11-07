@@ -60,6 +60,7 @@
 - 缓存失效：静默刷新；失败保留旧值并诊断。
 - prompt get 失败：通知条/滚动提示；选择器保留。
 - 二进制资源：不可附加，选择器显示 `binary`。
+- server 提供的 tool / prompt 名导致公开名非 provider-safe：跳过并写连接期诊断；不静默 sanitize。
 
 ## 9. 测试
 

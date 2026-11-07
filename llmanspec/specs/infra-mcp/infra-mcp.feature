@@ -169,6 +169,10 @@
   规则: mcp-reconnect-count
     pool 须按 connection key 统计重建/重连次数；`/mcp` 须展示 count 与 last error；`/reload` 须重置；不得展示 token/credential 值。由单测覆盖，不扩 BDD step。
 
+  @req:r3274
+  规则: mcp-provided-name-safe
+    server 提供的 tool / prompt 名导致公开名含 `[A-Za-z0-9_-]` 之外字符 须跳过并诊断；不得 debug_assert 后继续；不得静默 sanitize；诊断可 `/mcp` 查看。由单测覆盖，不扩 BDD step。
+
   @req:r3273
   规则: mcp-server-name-safe
     `mcp_servers[].name` 须只含 `[A-Za-z0-9_-]`；含 `/`、空白、引号、冒号、点号 须配置校验失败并给可操作错误；不得只在 adapter debug_assert。由单测覆盖，不扩 BDD step。

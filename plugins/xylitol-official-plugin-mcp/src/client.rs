@@ -7,6 +7,7 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use super::types::{McpServerConfig, McpTransportKind};
+use xylitol_plugin_sdk::tool_name::{is_provider_safe_tool_name, mcp_tool_public_name};
 
 #[cfg(feature = "mcp")]
 type McpService = rmcp::service::RunningService<rmcp::RoleClient, McpClientHandler>;
@@ -163,6 +164,10 @@ impl Default for McpClientManager {
     }
 }
 
+fn public_name_is_safe(server: &str, name: &str) -> bool {
+    is_provider_safe_tool_name(&mcp_tool_public_name(server, name))
+}
+
 fn classify_probe_error(message: &str) -> &'static str {
     let lower = message.to_ascii_lowercase();
     if lower.contains("method not found")
@@ -313,6 +318,19 @@ impl McpClientManager {
             .lock()
             .await
             .push(McpConnectDiagnostic { server, message });
+    }
+
+    async fn push_diagnostic_once(&self, server: &str, message: String) {
+        let mut diags = self.diagnostics.lock().await;
+        if !diags
+            .iter()
+            .any(|diag| diag.server == server && diag.message == message)
+        {
+            diags.push(McpConnectDiagnostic {
+                server: server.to_string(),
+                message,
+            });
+        }
     }
 
     pub fn tools_dirty(&self) -> bool {
@@ -587,17 +605,29 @@ impl McpClientManager {
                         continue;
                     }
                 };
-                counts.insert(server_id.clone(), tools.len());
+                let mut safe_count = 0;
                 for tool in tools {
+                    let tool_name = tool.name.to_string();
+                    if !public_name_is_safe(server_id, &tool_name) {
+                        let public = mcp_tool_public_name(server_id, &tool_name);
+                        log::warn!(
+                            "MCP tool name not provider-safe; skipped server={server_id} tool={tool_name} public={public}"
+                        );
+                        self.push_diagnostic_once(
+                            server_id,
+                            format!(
+                                "tool '{tool_name}' skipped: public name '{public}' is not provider-safe"
+                            ),
+                        )
+                        .await;
+                        continue;
+                    }
                     let description = tool.description.as_deref().unwrap_or("").to_string();
                     let schema = Value::Object(tool.input_schema.as_ref().clone());
-                    result.push((
-                        server_id.clone(),
-                        tool.name.to_string(),
-                        description,
-                        schema,
-                    ));
+                    result.push((server_id.clone(), tool_name, description, schema));
+                    safe_count += 1;
                 }
+                counts.insert(server_id.clone(), safe_count);
             }
             drop(services);
             *self.tool_counts.lock().await = counts;
@@ -653,7 +683,23 @@ impl McpClientManager {
                         "properties": properties,
                         "required": required,
                     });
-                    result.push((server_id.clone(), prompt.name, description, schema));
+                    let prompt_name = prompt.name;
+                    if !public_name_is_safe(server_id, &format!("prompt__{prompt_name}")) {
+                        let public =
+                            mcp_tool_public_name(server_id, &format!("prompt__{prompt_name}"));
+                        log::warn!(
+                            "MCP prompt name not provider-safe; skipped server={server_id} prompt={prompt_name} public={public}"
+                        );
+                        self.push_diagnostic_once(
+                            server_id,
+                            format!(
+                                "prompt '{prompt_name}' skipped: public name '{public}' is not provider-safe"
+                            ),
+                        )
+                        .await;
+                        continue;
+                    }
+                    result.push((server_id.clone(), prompt_name, description, schema));
                 }
             }
             result
@@ -1078,6 +1124,14 @@ mod tests {
         assert_eq!(classify_probe_error("401 unauthorized"), "auth");
         assert_eq!(classify_probe_error("invalid response"), "invalid_response");
         assert_eq!(classify_probe_error("connection reset"), "transport");
+    }
+
+    #[test]
+    fn public_name_safety_rejects_unsafe_segments() {
+        assert!(public_name_is_safe("aaa", "read"));
+        assert!(public_name_is_safe("team-docs", "read_file"));
+        assert!(!public_name_is_safe("team/docs", "read"));
+        assert!(!public_name_is_safe("aaa", "read/write"));
     }
 
     #[test]
