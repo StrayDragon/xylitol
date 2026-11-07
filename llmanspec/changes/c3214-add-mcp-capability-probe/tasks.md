@@ -5,4 +5,4 @@
 - [x] 3. 诊断：`server_details` 增加 `probe=` 与 `reconnect_count=`；`SessionPrepareView` 增加 probe 行。
 - [x] 4. TUI：`/mcp` 面板经 `mcp_diag_short` 显示 probe 行；`/reload` 重建 pool 后重新探测。
 - [x] 5. Specs：`infra-mcp` capability probe 与 reconnect count 规则；单测 / harness。
-- [ ] 6. 门禁：`just fmt` / `just lint` / `just qa` / `just qa-e2e`。
+- [x] 6. 门禁：`just fmt` / `just lint` / `just qa` / `just qa-e2e`。
