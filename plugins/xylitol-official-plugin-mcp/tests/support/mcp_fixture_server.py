@@ -104,7 +104,7 @@ def _call_tool(name: str, params: dict) -> dict:
         response = responses.get("name") or {}
         if response.get("action") == "accept":
             content = response.get("content") or {}
-            text = str(content.get("name", ""))
+            text = f"hello {content.get('name', '')}"
         else:
             text = "declined"
     else:

@@ -55,7 +55,7 @@ pub fn build_provider_with_hooks(
         XyModelKind::Fake => {
             let steps = {
                 let mut slow = FAKE_SLOW_STREAM.with(|c| c.borrow_mut().take());
-                let tool = FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());
+                let mut tool = FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());
                 let mut text = FAKE_TEXT.with(|c| c.borrow_mut().take());
                 let mut env_chunk_chars: Option<usize> = None;
                 if slow.is_none()
@@ -76,6 +76,17 @@ pub fn build_provider_with_hooks(
                 {
                     text = Some(t);
                 }
+                if tool.is_none()
+                    && let Ok(raw) = std::env::var("XYLITOL_FAKE_TOOL_CALL")
+                    && let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw)
+                    && let Some(name) = value.get("name").and_then(|v| v.as_str())
+                {
+                    let args = value
+                        .get("args")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({}));
+                    tool = Some((name.to_string(), args.to_string()));
+                }
                 if let Some((n, delay_ms)) = slow {
                     let chunk_chars = env_chunk_chars.unwrap_or(12).clamp(1, 200);
                     let pad = "字".repeat(chunk_chars);
@@ -87,7 +98,9 @@ pub fn build_provider_with_hooks(
                 } else if let Some((tool_name, tool_args)) = tool {
                     let args: serde_json::Value =
                         serde_json::from_str(&tool_args).unwrap_or(serde_json::json!({}));
-                    let tool_result = FAKE_TOOL_RESULT.with(|c| c.borrow_mut().take());
+                    let tool_result = FAKE_TOOL_RESULT
+                        .with(|c| c.borrow_mut().take())
+                        .or_else(|| std::env::var("XYLITOL_FAKE_TOOL_RESULT").ok());
                     vec![
                         ScenarioStep::tool_call(tool_name, args),
                         ScenarioStep::tool_result(

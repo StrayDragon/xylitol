@@ -60,7 +60,19 @@ impl PtySession {
         config_dir: &Path,
         home_dir: &Path,
     ) -> std::io::Result<Self> {
-        let (port, serve) = spawn_ephemeral_host(project_root, config_dir, home_dir)?;
+        Self::spawn_product_fake_with_env(cols, rows, project_root, config_dir, home_dir, &[])
+    }
+
+    pub fn spawn_product_fake_with_env(
+        cols: u16,
+        rows: u16,
+        project_root: &Path,
+        config_dir: &Path,
+        home_dir: &Path,
+        extra_env: &[(&str, &str)],
+    ) -> std::io::Result<Self> {
+        let (port, serve) =
+            spawn_ephemeral_host_with_env(project_root, config_dir, home_dir, extra_env)?;
         let mut cmd = CommandBuilder::new("cargo");
         cmd.args([
             "run",
@@ -78,6 +90,9 @@ impl PtySession {
         cmd.env("HOME", home_dir);
         cmd.env("XYLITOL_CONFIG_DIR", config_dir);
         cmd.env("XYLITOL_PROJECT_DIR", project_root);
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
         let mut session = Self::spawn_cmd(cmd, cols, rows)?;
         session.serve = Some(serve);
         Ok(session)
@@ -348,6 +363,15 @@ fn spawn_ephemeral_host(
     config_dir: &Path,
     home_dir: &Path,
 ) -> std::io::Result<(u16, std::process::Child)> {
+    spawn_ephemeral_host_with_env(project_root, config_dir, home_dir, &[])
+}
+
+fn spawn_ephemeral_host_with_env(
+    project_root: &Path,
+    config_dir: &Path,
+    home_dir: &Path,
+    extra_env: &[(&str, &str)],
+) -> std::io::Result<(u16, std::process::Child)> {
     let mut cmd = Command::new("cargo");
     cmd.args([
         "run",
@@ -364,6 +388,9 @@ fn spawn_ephemeral_host(
     cmd.env("HOME", home_dir);
     cmd.env("XYLITOL_CONFIG_DIR", config_dir);
     cmd.env("XYLITOL_PROJECT_DIR", project_root);
+    for (key, value) in extra_env {
+        cmd.env(key, value);
+    }
     cmd.stdout(Stdio::null());
     cmd.stderr(Stdio::piped());
     let mut child = cmd.spawn()?;
@@ -404,6 +431,37 @@ fn parse_host_listening_port(line: &str) -> Option<u16> {
     let marker = "Host listening on ";
     let rest = line.trim().strip_prefix(marker)?;
     rest.rsplit(':').next()?.parse().ok()
+}
+
+fn write_fake_project_config_with_mcp(project_root: &Path) -> std::io::Result<()> {
+    let dir = project_root.join(".xylitol");
+    std::fs::create_dir_all(&dir)?;
+    let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("plugins/xylitol-official-plugin-mcp/tests/support/mcp_fixture_server.py");
+    let config = serde_json::json!({
+        "models": {
+            "default_model": "fake",
+            "entries": {
+                "fake": {
+                    "provider": "fake",
+                    "model": "fake-model",
+                    "api_key": "fake-e2e"
+                }
+            }
+        },
+        "mcp_servers": [{
+            "name": "fixture",
+            "transport": "stdio",
+            "command": "python3",
+            "args": [fixture.display().to_string()],
+            "env": {"XYLITOL_MCP_FIXTURE_TOOLS": "elicit_name"}
+        }]
+    });
+    std::fs::write(
+        dir.join("config.yaml"),
+        serde_json::to_string_pretty(&config).expect("config json"),
+    )?;
+    Ok(())
 }
 
 fn write_fake_project_config(project_root: &Path) -> std::io::Result<()> {
@@ -1200,6 +1258,58 @@ fn spawn_product_fake_ready_in(
         )
         .expect("product TUI should render Fake footer");
     (session, tmp)
+}
+
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_mcp_elicitation_accept() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let config_dir = tmp.path().join("config");
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&project).expect("project dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    std::fs::create_dir_all(&home).expect("home dir");
+    write_fake_project_config_with_mcp(&project).expect("config");
+
+    let env = [(
+        "XYLITOL_FAKE_TOOL_CALL",
+        r#"{"name":"mcp__fixture__elicit_name","args":{}}"#,
+    )];
+    let mut session =
+        PtySession::spawn_product_fake_with_env(100, 30, &project, &config_dir, &home, &env)
+            .expect("spawn product xylitol");
+    session
+        .wait_for(
+            crate::PRODUCT_READY_NEEDLE,
+            Duration::from_secs(120),
+            100,
+            30,
+        )
+        .expect("product TUI ready");
+    session.send_keys("go\r").expect("submit prompt");
+    session
+        .wait_for("What is your name?", Duration::from_secs(30), 100, 30)
+        .expect("elicitation form should render");
+    session.send_keys("\r").expect("accept action");
+    std::thread::sleep(Duration::from_millis(100));
+    session.send_keys("\r").expect("focus name");
+    std::thread::sleep(Duration::from_millis(100));
+    session.send_keys("Ada").expect("type name");
+    std::thread::sleep(Duration::from_millis(100));
+    session.send_keys("\r").expect("save name");
+    std::thread::sleep(Duration::from_millis(100));
+    session.send_keys("\r").expect("review");
+    std::thread::sleep(Duration::from_millis(300));
+    session
+        .wait_for("Review", Duration::from_secs(5), 100, 30)
+        .expect("review tab should render");
+    session.send_keys("\r").expect("submit form");
+    std::thread::sleep(Duration::from_millis(300));
+    session.send_keys("\r").expect("submit form again");
+    session
+        .wait_for_raw("Tool execution complete", Duration::from_secs(60))
+        .expect("tool should complete");
 }
 
 #[test]
