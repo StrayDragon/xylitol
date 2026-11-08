@@ -20,7 +20,7 @@ Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强�
   不能稳定跑则仅用 Pier 跑官方 baseline，不宣称 Pi 对比。
 - **N≥3**：每个 task 跑 3 次；报告 pass@1、flip rate、cost、wall time、turns。
 - **Phase 1 只做 xylitol**：先把 xylitol Harbor adapter 与一个 Terminal-Bench task 跑通；
-  Pi/mini-SWE 对照放到 Phase 3。
+  Pi 对照放到 Phase 3；mini-SWE 已移除。
 - **Model/config lock**：`tools/eval/model-lock.yaml` 固定 model id、API format、
   context/output、thinking levels、`smoke` / `compare` 的 max_turns/wall_seconds；
   `doctor --lock` 校验。
@@ -30,12 +30,12 @@ Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强�
 
 ```mermaid
 flowchart TB
-  CLI["just eval-harbor"] --> H["Harbor job"]
+  CLI["just eval-typical"] --> H["Harbor job"]
   H --> D2["TB4.0 10"]
   H --> D3["DeepSWE 10"]
   H --> A1["xylitol adapter"]
   H --> A2["pi"]
-  H --> A3["mini-SWE baseline"]
+  H --> A3["Pi baseline"]
   A1 --> V["task verifier"]
   A2 --> V
   A3 --> V
@@ -98,7 +98,7 @@ Harbor compose 仍可能尝试 registry metadata，需记录为已知环境问�
 Pi 调用：`-a pi -m openai/group/glm-5.3-flash --effort high`，
 `--base-url "$MAGPIE_GATEWAY_URL/v1"`，`--api-key-name MAGPIE_GATEWAY_KEY`，
 `--api-format openai_responses`，`--ak model_api=openai-responses`。
-mini-SWE baseline 固定版本（如 `--ak version=2.1.0`），同数据同 verifier。
+Pi baseline 用预装镜像，同数据同 verifier；mini-SWE 已移除。
 
 DeepSWE 使用 Pier 时，官方榜用 mini-SWE on Modal；Pier 当前 agents 不含 Pi，
 因此不得把 Pier 的 xylitol/mini-SWE 结果与 Harbor 的 Pi 结果混成同一张 cross-scaffold 表。
@@ -128,7 +128,7 @@ sidecar（`gogost/gost`），Docker Hub metadata 不可达时先本地构建并�
 | Phase 0 | 既有 `tools/eval` 骨架 | 单测/dry-run/本地 binary |
 | Phase 1 | Harbor adapter + xylitol 单 task | agent 跑通；verifier 产出 reward |
 | Phase 2 | TB4.0 单 task + DeepSWE spike + musl | 两个基准各 1 task 跑通 |
-| Phase 3 | Pi + mini-SWE + 10/10 N=3 | pass@1 + flip rate 表 |
+| Phase 3 | Pi + DeepSWE 5-task typical, N=3 | pass@1 + flip rate 表 |
 | Phase 4 | golden + replay + snapshot | PR 门禁可跑 |
 | Phase 5 | CI / Langfuse 旁路 / 云 | 回归与全量可复现 |
 

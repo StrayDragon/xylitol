@@ -20,6 +20,8 @@ import shlex
 import tempfile
 from pathlib import Path
 
+import certifi
+
 from harbor.agents.agent_auth_resolution import (
     ModelConnectionSpec,
     ProviderAccess,
@@ -152,11 +154,13 @@ session:
             )
             await environment.upload_file(config_path, _CONFIG_PATH)
             await environment.upload_file(secret_path, _SECRET_PATH)
+            await environment.upload_file(certifi.where(), f"{_REMOTE_DIR}/ca.pem")
         await self.exec_as_root(
             environment,
             command=(
                 f"chmod 600 {shlex.quote(_CONFIG_PATH)} "
-                f"{shlex.quote(_SECRET_PATH)}"
+                f"{shlex.quote(_SECRET_PATH)} "
+                f"&& chmod 644 {shlex.quote(_REMOTE_DIR)}/ca.pem"
             ),
         )
 
@@ -187,6 +191,11 @@ session:
             "HOME": f"{_REMOTE_DIR}/home",
             "XYLITOL_CONFIG_DIR": f"{_REMOTE_DIR}/cfg",
             "XYLITOL_PROJECT_DIR": "/testbed",
+            "SSL_CERT_FILE": f"{_REMOTE_DIR}/ca.pem",
+            "GIT_AUTHOR_NAME": "eval",
+            "GIT_AUTHOR_EMAIL": "eval@example.com",
+            "GIT_COMMITTER_NAME": "eval",
+            "GIT_COMMITTER_EMAIL": "eval@example.com",
         }
         command = (
             f"mkdir -p {shlex.quote(str(logs_dir))} && "

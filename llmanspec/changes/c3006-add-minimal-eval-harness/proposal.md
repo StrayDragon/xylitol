@@ -18,10 +18,10 @@ needs_specs_change: false
 
 - `tools/eval/` 从“官方 SWE-bench 单 scaffold”改为 **Harbor-first**：
   - 固定模型 `group/glm-5.3-flash`；
-  - `xylitol` 自定义 Harbor agent；`pi` / `mini-swe-agent` 用 Harbor 内置；
+  - `xylitol` 自定义 Harbor agent；`pi` 用 Harbor 内置；mini-SWE 已移除；
   - Terminal-Bench 4.0 10 + DeepSWE 10；
   - N=3；pass@1 + flip rate + cross_scaffold_flip；
-  - Phase 1 只验证 xylitol 在 Harbor 跑通；Pi/mini-SWE 对照放 Phase 3。
+  - Phase 1 只验证 xylitol 在 Harbor 跑通；Pi 对照放 Phase 3。
 - 新增 `tools/eval/harbor/xylitol_agent.py`：`BaseInstalledAgent`，上传 binary、
   写临时 config、headless `xylitol print`；reward 来自 Harbor task verifier。
 - 保留既有 `tools/eval` 的 config / dataset / print runner / report 作为快速回归与
@@ -69,7 +69,7 @@ needs_specs_change: false
 | Phase 0 | `tools/eval` 骨架 + 本地 binary | 单测/dry-run/本地 binary |
 | Phase 1 | Harbor adapter + xylitol 单 task | agent 跑通；verifier 产出 reward |
 | Phase 2 | TB4.0 单 task + DeepSWE spike + musl | 两个基准各 1 task 跑通 |
-| Phase 3 | Pi + mini-SWE + 10/10 N=3 | pass@1 + flip rate 表 |
+| Phase 3 | Pi + DeepSWE 5-task typical, N=3 | pass@1 + flip rate 表 |
 | Phase 4 | golden + replay + snapshot | PR 门禁可跑 |
 | Phase 5 | CI / Langfuse 旁路 / 云 | 回归与全量可复现 |
 

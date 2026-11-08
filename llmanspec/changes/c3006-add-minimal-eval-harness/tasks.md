@@ -8,10 +8,10 @@
 - [x] 0.4 `report.py`：run.json / summary.md schema
 - [x] 0.5 `cli.py`：dry-run / run / grade / report / doctor
 - [x] 0.6 `README.md`：工具契约、密钥占位、使用说明、非目标
-- [x] 0.7 `examples/`：mini / 50 / terminal-bench 配置样例（无真实 key）
+- [x] 0.7 `examples/`：50 / terminal-bench 配置样例（无真实 key）
 - [x] 0.8 单测骨架：config / report / cli dry-run
 - [x] 0.9 `.github/workflows/eval-bin.yaml`：仅 workflow_dispatch，ubuntu-22.04，static musl 构建
-- [x] 0.10 `just`：eval-test / eval-dryrun / eval-smoke
+- [x] 0.10 `just`：eval-test / eval-smoke / eval-typical
 - [x] 0.11 `.gitignore`：eval 运行目录 / 本地 binary / venv / swebench logs
 - [x] 0.12 本地 Docker 构建 Linux binary（static musl）：记录 sha256 / target triple
 - [x] 0.13 magpie catalog 读取：alias 用 catalog id，生成临时 xylitol config（env key）
@@ -37,10 +37,10 @@
 - [x] 2.4 model/config lock：`tools/eval/model-lock.yaml` + `doctor --lock`
 - [x] 2.5 验收：TB4.0 / DeepSWE 各 1 task 可复现；smoke 不要求通过
 
-## Phase 3：Pi + mini-SWE 对比
+## Phase 3：Pi 对比
 
 - [x] 3.1 Pi 单 task：`-a pi` + magpie endpoint + `model_api=openai-responses`
-- [x] 3.2 mini-SWE baseline 固定版本，同数据同 verifier（自定义 mcp 兼容 agent）
+- [x] 3.2 Pi baseline 用预装镜像，同数据同 verifier；mini-SWE 已移除
 - [x] 3.3 ~~SWE Verified 25 × N=3~~（已移除：镜像仅 linux/amd64，arm64 主机 Compose build 失败）
 - [ ] 3.4 TB4.0 10 × N=3（baseline 运行中）
 - [ ] 3.5 DeepSWE 10 × N=3（baseline 运行中）

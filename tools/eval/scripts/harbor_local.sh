@@ -127,6 +127,9 @@ if [[ -n "${proxy}" ]]; then
     --ae "NO_PROXY=${no_proxy}"
   )
 fi
+if [[ -n "${gateway_host}" ]]; then
+  args+=(--allow-agent-host "${gateway_host}")
+fi
 args+=(--allow-agent-host host.docker.internal)
 
 export PYTHONPATH="${repo_root}/tools/eval/harbor${PYTHONPATH:+:${PYTHONPATH}}"

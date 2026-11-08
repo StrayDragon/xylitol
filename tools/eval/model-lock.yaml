@@ -27,3 +27,10 @@ benchmarks:
     dataset: deep-swe/tasks
     revision: v1.1
     tasks: 10
+    typical_tasks: 5
+    typical_ids:
+      - abs-module-cache-flags
+      - actionlint-action-pinning-lint
+      - adaptix-name-mapping-aliases
+      - anko-typed-variable-bindings
+      - arcane-drift-detection-baselines

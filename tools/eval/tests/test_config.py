@@ -8,7 +8,7 @@ from xylitol_eval.errors import ConfigError
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
-def test_load_mini_config():
+def test_load_terminal_bench_config():
     cfg = load_config(EXAMPLES / "eval-terminal-bench.yaml")
     assert cfg.phase == "m3"
     assert cfg.dataset.name == "terminal-bench/terminal-bench@4.0.0"
