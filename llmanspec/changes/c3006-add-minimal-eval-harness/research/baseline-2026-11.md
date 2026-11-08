@@ -218,6 +218,18 @@ sidecar（`gogost/gost`）。
 - 改为 `0.1666666667`，即 1800s，与 xylitol `wall_seconds=1800` 对齐。
 - Pi N=3 已用新口径重启。
 
+## 2026-11-08 Pi 5-task N=3
+
+- Pi 用预装镜像 + `--agent-timeout-multiplier 0.1666666667`（1800s），
+  15 trials，0 verifier errors，6/15 pass，pass@1 = 0.400。
+- per-task：`abs-module` 3/3；`actionlint` 1/3；`adaptix` 0/3；
+  `anko-typed` 1/3；`arcane` 1/3。
+- `arcane` 有一次 `AgentTimeoutError`（1800s），计为失败；这是与 xylitol
+  （2/3）唯一的差异。
+- 与 xylitol 对比：4/5 task 的 pass@1 完全相同；总体差 6.7 pp，约 1 个 trial。
+- Pi token：41.9M input、0.49M output、40.9M cache；xylitol 结果未记录 token。
+- 易读报告：`research/eval-report-2026-11.md`。
+
 ## 下一次对比
 
 改进 xylitol 后，用同一 task 集、同一模型、同一 profile、同一 verifier 重跑；
