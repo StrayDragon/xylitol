@@ -14,7 +14,7 @@ title: "Add goal tracking"
 ## What Changes
 
 - Goal 事实：id、branch、objective、acceptance、status（open / running / done / failed / blocked / paused / cancelled）、max_iterations、iterations_used、evidence。
-- 每轮结束由独立 evaluator 判定：met / not_met / impossible；agent 须附 evidence；未达成则继续，达到 max_iterations 标记 failed / blocked，不得无限续跑。
+- 每轮结束由独立 evaluator 判定：met / not_met / impossible；第一版 evaluator 继承当前 session model；agent 须附 evidence；未达成则继续，达到 max_iterations 标记 failed / blocked，不得无限续跑。
 - 续跑在同一 run 内通过 DecideContinue 完成；不新开 run。
 - 用户可 pause / cancel / 修改 acceptance；状态变更只追加事实，不覆盖。
 - goal 活跃时跳过同 branch 的 loop tick；goal done 时自动暂停关联 schedule。
@@ -43,7 +43,7 @@ title: "Add goal tracking"
 ## Open Questions
 
 - acceptance 的结构化格式与证据类型。
-- evaluator 用哪个模型 / 预算；是否允许用户 override。
+- evaluator 后续是否切换小快模型；是否允许用户 override。
 - 与 todo / workflow 的边界：goal 是终止标准，不是步骤清单。
 
 ## Research

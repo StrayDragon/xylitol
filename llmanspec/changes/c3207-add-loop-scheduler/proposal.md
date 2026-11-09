@@ -15,6 +15,7 @@ title: "Add loop scheduler"
 - Schedule 事实：id、branch、cadence、next_fire、status（active / paused / exhausted / cancelled / failed）、max_ticks、stop_condition。
 - Trigger 事实：由 host scheduler 追加，含 schedule_id、fired_at、reason、outcome；经单写者准入启动 run。
 - Cadence：interval + 5-field cron；本地时区；第一版不做条件 DSL。
+- cron 不做自动过期；只由 max_ticks 与手动停约束。
 - 停止：手动 pause / cancel；max_ticks 缺省 256；连续失败退避；stop_condition 保留字段但不做条件引擎。
 - busy：follow-up 队列，单 pending，重复到期 coalesce；不 steer。
 - 事实 append-only；状态由事实投影重建；host 只维护派生索引；重启不补跑。
@@ -46,7 +47,6 @@ title: "Add loop scheduler"
 
 - 安静时段 / 勿扰自动暂停。
 - 连续失败退避与告警。
-- cron 是否允许 7 天自动过期；还是只由 max_ticks 与手动停约束。
 
 ## Research
 

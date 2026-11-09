@@ -234,9 +234,9 @@ stateDiagram-v2
 ## 9. 已确认决策
 
 - 事实存会话分支 custom facts；host index 派生，不双写。
-- interval + 5-field cron；本地时区；不做条件 DSL。
+- interval + 5-field cron；本地时区；不做条件 DSL；不做自动过期，只由 `max_ticks` 与手动停约束。
 - busy 用 follow-up 队列；单 pending；coalesce；不 steer。
-- goal 用独立 evaluator + agent evidence；`max_iterations` 256。
+- goal 用独立 evaluator + agent evidence；第一版 evaluator 继承当前 session model；`max_iterations` 256。
 - goal 活跃时跳过 loop tick；goal done 自动暂停 loop。
 - 重启不补跑；fork 不继承 schedule/goal。
 - 无人值守权限 fail-closed。
@@ -246,7 +246,7 @@ stateDiagram-v2
 
 - host index 需要增量更新；全量扫描成本要测。
 - fork 过滤依赖 branch_id；COW 父段中的 schedule 不能误投影到子分支。
-- goal evaluator 增加模型调用与延迟；需要配置小模型与预算。
+- goal evaluator 第一版继承当前 model，增加模型调用与延迟；后续再评估小快模型与预算。
 - cron 的时区/DST 交给成熟 parser；不手写。
 - 无人值守的工具权限必须 fail-closed，不能沿用 allow-all 默认。
 - 队列 coalesce 可能丢 tick；必须写 `RunSkipped` 原因，便于审计。
