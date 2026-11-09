@@ -22,7 +22,7 @@ baseline；改完再用同一套命令重跑，比较 pass@1 / flip rate / cross
 - **固定 scaffold**：只保留 xylitol 与 Pi；mini-SWE 已移除。每 task × scaffold × N=3
   （典型值下限；DeepSWE 官方用 N=8，本地预算不足时 N=3，报告均值与离散度）。
 - **固定 verifier**：只认 Harbor task verifier；不自研 judge，不混不同 scaffold/verifier。
-- **固定并发**：本地单 job `-n 2`，全局最多 2 个并发 trial；不要并行多个 job 叠并发。
+- **固定并发**：本地单 job `-n 1`，全局最多 3 个并发 trial（`harbor_local.sh` 上限）；不要并行多个 job 叠并发。
 - **固定记录**：baseline 结果写进 change research，不写进 live spec；skill 只讲方法。
 
 ## 平台

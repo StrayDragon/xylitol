@@ -132,7 +132,7 @@ flowchart TB
 | `xylitol-official-plugin-*` | 只依赖 plugin-sdk（config/obs 可依赖 sdk + 配置类型）。依赖用端口 / 服务声明 | 插件之间 `use` 实现；依赖 protocol；客户端进这个前缀 |
 | `xylitol-app-tui` | 线协议客户端（JSON-RPC 文本）+ `xylitol-wire` + `xylitol-tui`；Host 词表（`XyEvent` / `SessionEntry`）经 attach 投影；客户端剪贴板 | 依赖 runtime、官方插件 |
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol / wire；编线协议 |
-| 根包 `xylitol` | argv + profile。列出官方插件的 `Cargo.toml` 经 kernel 转发 | 把装配逻辑塞回 `src/wiring`；`use rutis` |
+| 根包 `xylitol` | argv + profile。列出官方插件的 `Cargo.toml` 经 kernel 转发 | 把装配逻辑塞回根包 `src/`；`use rutis` |
 
 官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、tools-fff、todo、workflow、codemode、mcp、hooks、config、obs、loop-policies、lsp、dap。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools / todo。配置启用：workflow / codemode / mcp / hooks / loop-policies / lsp / dap / subagent / external_plugins。没配置则不 start。todo 插件 只提供 todo 工具与中间件；workflow 插件 只提供 workflow 中间件；codemode 插件 只提供 run_code、工具 catalog / 声明与 Wasmtime 隔离；loop-policies 插件 是插件作者的 loop 中间件参考实现（见 `crates/xylitol-plugin-sdk/README.md`）。核心 tools 插件 只提供 read / write / edit / bash / grep / find / ls 与 ask；tools-fff 只提供 ffgrep / fffind；lsp / dap 只提供各自语言服务 / 调试工具。外进程插件（`external_plugins`）配置驱动、须 `trusted: true`；只贡献工具（公开名 `{plugin}__{tool}`），不替换核心 / 官方插件名；市场 / 签名 / dylib / 同进程静态链入未交付。
 
@@ -296,5 +296,4 @@ obs / env / 键位 / cwd / 固定路径与端口等跨测会互相踩的状态�
 - 新测试不得无必要引入新的进程级可变全局；能注入 / 局部化则注入。
 - 必须串行时用 `#[serial(<domain>_global)]`，不得默认空组把无关域捆在一起。
 - 主门禁 `just qa` 走 nextest（一测一进程）：不得假设 in-process `#[serial]` 跨测生效。无固定端口 / 共享非 temp 路径等外部共享资源时**不**配置 `[test-groups]`；出现再开。
-- `cargo test` 回退与 `just test-tui` 仍依赖 in-process 命名组。
 - 配置 / trust / session 测走注入与 tempfile；不得改 `HOME`、不得指到开发者真实 `~/.xylitol/sessions`。产品路径不得无必要写包级 `GLOBAL_KEYBINDINGS`。

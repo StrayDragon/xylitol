@@ -4,7 +4,7 @@ brief: "TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真
 
 # TUI 分层自动验证（harness）
 
-**边界 / 产品 vs 包 E2E 分工 SSOT**：`crates/xylitol-tui/AGENTS.md`「验证」。应用端接线：`src/app/tui/AGENTS.md`。门禁命令见 `references/qa-gates.md`（`just qa` / `just qa-e2e`）。合约 capability：`package-tui-testing`。
+**边界 / 产品 vs 包 E2E 分工 SSOT**：`crates/xylitol-tui/AGENTS.md`「验证」。应用端接线：`crates/xylitol-app-tui/src/AGENTS.md`。门禁命令见 `references/qa-gates.md`（`just qa` / `just qa-e2e`）。合约 capability：`package-tui-testing`。
 
 本文件只写**怎么写测 / 怎么跑**，不另立分工表。
 

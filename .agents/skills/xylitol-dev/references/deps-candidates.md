@@ -23,8 +23,8 @@ brief: "依赖选型与已退役件（jsonrpsee / axum / tiktoken / RemoteCount 
 | axum | 未在锁内 | salvo 的 feature 剪枝仍盖不住实际用到的 HTTP/WS 面，或要换运行时（tower 生态、超体中间件）。**不要**为「看起来更主流」引入。 |
 | 标准库独立 healthz 进程 | 未做 | 只有当同端口 salvo 成为不可接受的装配成本，且 attach 预检仍要 pid/version/starting-503。healthz 不能变成第二个产品 HTTP 面。 |
 | tiktoken-rs | 已退役 | 产品再次承诺本地 OpenAI-family encode，且要与 openai/tiktoken 模型→encoding 表对齐。不要为「看起来更准」单独加回。 |
-| HuggingFace `tokenizers` crate | 已退役 | 需要 `tokenizer.json` 精确计数。对照消费点曾是 `tokenize::encode_count_at_path`。调研：`llmanspec/delayed-changes/models/c1530-update-local-tokenizer-gigatoken/research/` |
-| Gigatoken | 未引入（曾评估） | 仅当重新交付 LocalTokenizer **且** HF encode 热路径成本不可接受。可行性见同目录 `gigatoken-rust-feasibility.md`。不要为宣称吞吐单独引入。 |
+| HuggingFace `tokenizers` crate | 已退役 | 需要 `tokenizer.json` 精确计数。对照消费点曾是 `tokenize::encode_count_at_path`。 |
+| Gigatoken | 未引入（曾评估） | 仅当重新交付 LocalTokenizer **且** HF encode 热路径成本不可接受。不要为宣称吞吐单独引入。 |
 | Anthropic `POST /v1/messages/count_tokens` · OpenAI `POST /v1/responses/input_tokens` | 已退役产品路径（RemoteCount） | 产品再次承诺独立 HTTP 计数档，且 Api `usage` 不够用。实现曾在 `provider/remote_count.rs`。 |
 
 ## 硬约束

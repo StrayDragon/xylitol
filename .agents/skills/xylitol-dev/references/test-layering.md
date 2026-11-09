@@ -35,7 +35,6 @@ brief: "测试分层与 lab_ 试验命名（快照 insta / wire 契约 wiremock 
 - 新测试**禁止**无必要引入新的进程级可变全局；能注入 / 局部化则注入。
 - 必须串行时用 `#[serial(<domain>_global)]`，**禁止**默认空组把无关域捆在一起。
 - 主门禁 `just qa` 走 nextest（一测一进程）：勿假设 in-process `#[serial]` 跨测生效。无固定端口 / 共享非 temp 路径等外部共享资源时**不**配置 `[test-groups]`；出现再开。
-- `cargo test` 回退与 `just test-tui` 仍依赖 in-process 命名组。
 - 配置 / trust / session 测走注入与 tempfile；勿改 `HOME`、勿指到开发者真实 `~/.xylitol/sessions`。产品路径勿无必要写包级 `GLOBAL_KEYBINDINGS`。
 
 ## 时序

@@ -25,8 +25,6 @@
 | 同步库；产品端 host 驱动（tokio 仅 autocomplete 异步辅助，runtime 由消费方提供） | 拥有产品事件循环 |
 | `lib.rs` re-export = API 边界 SSOT | 应用层 theme token / 流式业务缓冲 / 产品 layout |
 
-历史对齐源（行为参考，非逐文件镜像、非强制同步）：`../pi/packages/tui`。稳定边界以本文件硬约束与代码为准。
-
 ## 设计与实验场
 
 本仓 **产品视觉色板 MUST 只有一份**：[`crates/xylitol-app-tui/src/DESIGN.md`](../xylitol-app-tui/src/DESIGN.md)。

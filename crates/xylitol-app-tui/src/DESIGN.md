@@ -211,7 +211,7 @@ footer            1 行 dim（cwd · model · 可选 context%）；右端不画�
 
 ### 横向断点档位（信息分级）
 
-宽度分档唯一判定入口是 `width_tier`（`src/app/tui/layout/tier.rs`）；组件 **MUST** 消费档位 / 档界常量，**MUST NOT** 自写阈值比较。新增离散降级（隐藏 / 紧凑切换）先入下表再写码。`spacing.diff-side-by-side-min-cols`（100）= 宽档下缘，待办栏分栏与 diff 左右分屏由它驱动；低于 40 列由 host 判定过小屏（`LayoutMode::TooSmall`），不属渲染档。
+宽度分档唯一判定入口是 `width_tier`（`crates/xylitol-app-tui/src/layout/tier.rs`）；组件 **MUST** 消费档位 / 档界常量，**MUST NOT** 自写阈值比较。新增离散降级（隐藏 / 紧凑切换）先入下表再写码。`spacing.diff-side-by-side-min-cols`（100）= 宽档下缘，待办栏分栏与 diff 左右分屏由它驱动；低于 40 列由 host 判定过小屏（`LayoutMode::TooSmall`），不属渲染档。
 
 | 档 | cols | 信息分级（保留 → 紧凑 → 隐藏） |
 |---|---|---|
@@ -258,4 +258,4 @@ footer            1 行 dim（cwd · model · 可选 context%）；右端不画�
 - Don't blit 弹层到内容绝对顶部。
 - Don't 截断历史冒充滚动。
 - Don't 为「好看」增加无法复制或复制后无意义的装饰字符（含 Markdown 盒线表、代码 fence 墙、标题 `#` 前缀；引用 `│ ` gutter 为例外）。
-- Don't 在未对齐本 DESIGN 前把 `src/app/tui` 空场景当成产品视觉完成态。
+- Don't 在未对齐本 DESIGN 前把 `crates/xylitol-app-tui/src` 的空场景当成产品视觉完成态。

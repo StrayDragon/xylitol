@@ -27,7 +27,7 @@ brief: "日志与 provider-trace 窄读排障（obs-* 子命令 / spinner 卡住
 
 1. 用户 / 会话已给出的 agent 数据目录
 2. 自定义 `HOME`（E2E 常用临时 `HOME`）
-3. 代码默认：`DefaultResourceLoader::default_agent_dir()` → `$HOME/.xylitol`（实现见 `infra/resource`；当前产品代码不读取 `XYLITOL_AGENT_DIR`）
+3. 代码默认：`DefaultResourceLoader::default_agent_dir()` → `$HOME/.xylitol`（实现见 `crates/xylitol-runtime/src/resource/`；当前产品代码不读取 `XYLITOL_AGENT_DIR`）
 
 ```bash
 # 示例：默认布局（仅当未另指定 agent_dir）
@@ -40,7 +40,7 @@ LOG_DIR="$HOME/.xylitol/logs"
 
 > 注：`just obs-tui-lag` 的 shell 封装额外接受 `XYLITOL_AGENT_DIR` 作为脚本默认值覆盖；这不是产品代码的 agent_dir 解析，仅为该 just 命令的便捷参数。
 
-**日志开关**（`logging.rs`）：debug 构建默认开 log+trace；release 需 `RUST_LOG` / `XYLITOL_DEBUG=1`，或仅 `XYLITOL_PROVIDER_TRACE=1`（可只开 trace、不开级别日志）。**永不**写 stdout/stderr（保 TUI）。
+**日志开关**（`plugins/xylitol-official-plugin-obs/src/lib.rs` 的 `init_logging`）：debug 构建默认开 log+trace；release 需 `RUST_LOG` / `XYLITOL_DEBUG=1`，或仅 `XYLITOL_PROVIDER_TRACE=1`（可只开 trace、不开级别日志）。**永不**写 stdout/stderr（保 TUI）。
 
 ## 健康检查（空 log / 双通道）
 
@@ -51,7 +51,7 @@ LOG_DIR="$HOME/.xylitol/logs"
 | log **0 字节**，trace 有数据 | `wc -c` / `stat` 两文件；是否刚被截断 | 人工/脚本 `>` 清空；或只开了 provider-trace |
 | log **不存在**，trace 有 | 日志开关 | release + 仅 `XYLITOL_PROVIDER_TRACE=1`（`want_log=false` 不建 log） |
 | 两文件都不长 | `summary` | 观测未开；或写到**另一** `HOME`/`agent_dir`（测例临时目录） |
-| log 存在但不增长 | 复现一轮 + `tail` | `env_logger::try_init` 失败时文件可已创建却无常规写入——应出现 `env_logger init failed` 面包屑行（见 `logging.rs`） |
+| log 存在但不增长 | 复现一轮 + `tail` | `env_logger::try_init` 失败时文件可已创建却无常规写入——应出现 `env_logger init failed` 面包屑行（见 `init_logging`） |
 
 复验级别日志：开启后跑一轮短对话，再 `tail -n 20 "$LOG_DIR/xylitol.log"`（仍勿整文件 Read）。
 
@@ -128,7 +128,7 @@ just obs-tui-lag
 3. **真链**：`tests/tui_e2e/pty.rs::pty_product_wheel_latency_signature`（`just test-tui-e2e-pty`）——首响 p50 劣化=host 外；正常=回 1/2
 4. **外部**：以上全清白→终端模拟器差异（换终端 cross-check）
 
-窄读：`XYLITOL_DEBUG=1 RUST_LOG=xylitol::lag=info,xylitol::wheel=debug` → `just obs-tui-lag`。AO 性能 lab 在 `src/app/tui/lab_ao_perf.rs`（`#[ignore]`）。
+窄读：`XYLITOL_DEBUG=1 RUST_LOG=xylitol::lag=info,xylitol::wheel=debug` → `just obs-tui-lag`。AO 性能 lab 在 `crates/xylitol-app-tui/src/lab_ao_perf.rs`（`#[ignore]`）。
 
 ### 阶段性基线（可选）
 

@@ -58,9 +58,8 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 | `xylitol-tui` | 通用 TUI 引擎（零引用产品） |
 | 根包 `xylitol` | argv + profile 选择。默认接线经 kernel |
 
-`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。`wire` → protocol + sdk。runtime → sdk。插件 → sdk。kernel → runtime + 插件 + sdk + loader + protocol + serve + app-print。serve → runtime + protocol + wire。app-tui → protocol + wire + tui。根包 → kernel + 端。插件之间不得 `use`（只经服务 / 事件）。
 
-开箱 vs 配置后置：产品 TUI 默认确保并 attach 本机监听（`server` feature 可关，default 仍开；`--no-ensure-host` 恢复未在听即失败）；产品 `serve` 默认回环 Basic 凭据门禁（凭据文件 0600，经 `serve.json` 发现；保留凭据环境变量不进工具子进程；规则见 `server-core/`、`domain-security/`）。自动拉起缺省 last-client（idle 从最后一条已认证 WS 断开计时，从未连接不因 idle 退出；`serve.idle_timeout: false` 可切成本机常驻）；显式 `xylitol serve` 缺省 persistent。MCP 有配置才装配（`mcp` feature 可关，default 仍开）。LSP / DAP / subagent / 外进程插件有配置才装配（未配置零装配、不 spawn 子进程）。`otel` feature default 开，配置默认 none。fff 检索工具源 default 开（`fff` feature 可关）；模型可见工具集由配置 `tools` 列表选择，替换工具默认优先、内置 `grep` / `find` 回落。
+开箱 vs 配置后置：TUI 默认确保并 attach 本机监听（`server` feature 可关）；`serve` 默认回环 Basic 凭据门禁；MCP / LSP / DAP / subagent / 外进程插件有配置才装配，未配置零装配、不 spawn 子进程；`otel` 与 fff 检索 default 开、可关。细则见 `llmanspec/specs/server-core/`、`domain-security/`、`infra-mcp/`、`infra-lsp/`、`infra-dap/`、`agent-subagent/`、`infra-plugin/`、`infra-otel/`、`infra-fff-search/`。
 
 ## 编码规则
 

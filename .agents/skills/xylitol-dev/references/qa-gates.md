@@ -30,6 +30,8 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 
 - **`just test-changed`**：按当前 diff 映射到包 + **直接**反向依赖，跑 nextest；根级文件（`Cargo.toml`、`rust-toolchain.toml`、`tests/`、`llmanspec/`、`scripts/` 等）变更回退 `just test`。只是内环，push/PR 仍跑全量 `just qa`。
 - **`just crap-package <pkg>`**：单包 coverage + CRAP 报告；无 baseline，只做本地雷达。CI 仍跑全 workspace 回归。
+- **`just lint-all`**：全 target clippy 加两条 off-path 编译检查（`xylitol-tui --no-default-features`、`xylitol` 减 otel）；pre-PR 手动跑。
+- **`just test-tui-e2e-pty` / `just test-tui-e2e-tmux`**：真终端 E2E 单驱动；无 tmux 时用 `-pty`。
 
 ## E2E CI（非阻塞）
 
