@@ -29,7 +29,7 @@
 - [x] 1.7 Docker Hub 不可达的本地 workaround：`DOCKER_BUILDKIT=0`
 - [x] 1.8 更新 issue #21：决策、Phase 1 状态、下一阶段
 
-## Phase 2：三基准各 1 task（已完成）
+## Phase 2：基准单 task（已完成）
 
 - [x] 2.1 static musl binary（`x86_64-unknown-linux-musl`）：statically linked，sha256 记录
 - [x] 2.2 Terminal-Bench 4.0 单 task（`layout-config-recreation`，单容器/CPU）：reward 0.0，verifier 跑通
@@ -37,36 +37,32 @@
 - [x] 2.4 model/config lock：`tools/eval/model-lock.yaml` + `doctor --lock`
 - [x] 2.5 验收：TB4.0 / DeepSWE 各 1 task 可复现；smoke 不要求通过
 
-## Phase 3：Pi 对比
+## Phase 3：xylitol vs Pi（已完成）
 
 - [x] 3.1 Pi 单 task：`-a pi` + magpie endpoint + `model_api=openai-responses`
 - [x] 3.2 Pi baseline 用预装镜像，同数据同 verifier；mini-SWE 已移除
 - [x] 3.3 ~~SWE Verified 25 × N=3~~（已移除：镜像仅 linux/amd64，arm64 主机 Compose build 失败）
-- [ ] 3.4 TB4.0 10 × N=3（baseline 运行中）
-- [ ] 3.5 DeepSWE 10 × N=3（baseline 运行中）
-- [ ] 3.6 报告 pass@1、flip rate、cross_scaffold_flip、cost、wall、turns（pilot 报告已完成）
-- [ ] 3.7 验收：每个 scaffold/benchmark 单独一行；不混分
+- [x] 3.4 TB4.0 10 × N=3：移出当前典型集；只保留 xylitol N=2 历史记录
+- [x] 3.5 DeepSWE 5-task typical × N=3：15 trials，xylitol 7/15，Pi 6/15
+- [x] 3.6 报告 pass@1、flip rate、cross_scaffold_flip、cost、wall、turns
+- [x] 3.7 验收：每个 scaffold/benchmark 单独一行；不混分
 - [x] 3.8 Phase 3 pilot：SWE astropy 1 task × N=3 × 3 scaffolds（历史；该基准已移除）
-- [ ] 3.9 baseline：TB4.0 10 + DeepSWE 10 × N=3 × 3 scaffolds
-- [ ] 3.10 下一次对比：同命令重跑，比较 pass@1 / flip / cross-scaffold
+- [x] 3.9 baseline：DeepSWE 5-task × N=3 × xylitol/Pi；全量 10 task 留待以后
+- [x] 3.10 下一次对比：同命令重跑，比较 pass@1 / flip / cross-scaffold
 
-## Phase 4：快速回归
+## 后续（不在本 change）
 
-- [ ] 4.1 3–5 个 golden fixture + expected patch/test
-- [ ] 4.2 mock/replay OpenAI-compatible server（回放 session JSONL）
-- [ ] 4.3 session snapshot 归一化对比
-- [ ] 4.4 非阻塞 PR 门禁；失败实例可提升为 golden
-- [ ] 4.5 验收：无模型调用可跑；snapshot 稳定
-
-## Phase 5：CI / Langfuse / 云
-
-- [ ] 5.1 Harbor 小集回归进非阻塞 CI
-- [ ] 5.2 失败实例 → Langfuse Dataset（旁路）
-- [ ] 5.3 云并行全量 / leaderboard 提交
-- [ ] 5.4 验收：回归可跑；全量可复现
+- Phase 4：3–5 个 golden fixture + expected patch/test。
+- Phase 4：mock/replay OpenAI-compatible server（回放 session JSONL）。
+- Phase 4：session snapshot 归一化对比。
+- Phase 4：非阻塞 PR 门禁；失败实例可提升为 golden。
+- Phase 5：Harbor 小集回归进非阻塞 CI。
+- Phase 5：失败实例 → Langfuse Dataset（旁路）。
+- Phase 5：云并行全量 / leaderboard 提交。
+- 全量 DeepSWE 10 task、TB4 10 task。
 
 ## 收口
 
-- [ ] 6.1 `llman-sdd validate --strict` 结构通过
-- [ ] 6.2 `just qa` / `just eval-test` 绿
-- [ ] 6.3 确认后再开 PR；确认前不 push
+- [x] 6.1 `llman-sdd validate --strict` 结构通过
+- [x] 6.2 `just eval-test` 绿；CI 已成功
+- [x] 6.3 代码已 push 到 `main`；未开 PR

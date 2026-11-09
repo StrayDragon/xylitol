@@ -2,12 +2,15 @@
 depends_on: []
 title: Harbor-first Agent Eval（xylitol vs Pi）
 needs_specs_change: false
+branch: sdd/c3006-add-minimal-eval-harness
+base_branch: main
+base_sha: 1227e0690a30b11f9ae4edec67a89e6758e29225
 ---
 
 # Harbor-first Agent Eval（xylitol vs Pi）
 
-> **planned**：调研、设计与任务已收敛；按用户要求暂不建分支、不 push、不开 PR。
-> 落实时走 apply；确认后再开 PR。
+> **delivered**：Harbor-first eval 已落地；当前典型集为 5-task DeepSWE、
+> xylitol vs Pi、N=3。Phase 4/5 拆为后续工作，不在本 change 收口范围。
 
 ## Why
 
@@ -19,11 +22,13 @@ needs_specs_change: false
 - `tools/eval/` 从“官方 SWE-bench 单 scaffold”改为 **Harbor-first**：
   - 固定模型 `group/glm-5.3-flash`；
   - `xylitol` 自定义 Harbor agent；`pi` 用 Harbor 内置；mini-SWE 已移除；
-  - Terminal-Bench 4.0 10 + DeepSWE 10；
+  - DeepSWE 5-task typical set（TB4 10 只保留历史记录，不跑 Pi）；
   - N=3；pass@1 + flip rate + cross_scaffold_flip；
   - Phase 1 只验证 xylitol 在 Harbor 跑通；Pi 对照放 Phase 3。
 - 新增 `tools/eval/harbor/xylitol_agent.py`：`BaseInstalledAgent`，上传 binary、
   写临时 config、headless `xylitol print`；reward 来自 Harbor task verifier。
+- 新增 `tools/eval/harbor/preinstalled_agents.py`：Pi 在 DeepSWE `no-network` 下
+  用预装镜像，跳过容器内安装。
 - 保留既有 `tools/eval` 的 config / dataset / print runner / report 作为快速回归与
   legacy fallback；不纳入基准集。
 - 新增仅 `workflow_dispatch` 的 Linux binary CI；只构建 static musl。
@@ -37,8 +42,8 @@ needs_specs_change: false
   只跑 Pier baseline，不宣称 Pi 对比。
 - **固定模型**：同一轮对比中 xylitol 与 Pi 使用同一 model id、endpoint、effort、
   temperature、top_p、context、max turns/steps。
-- **主表 B**：TB4.0 10 + DeepSWE 10；两者都在 Linux amd64 原生与
-  macOS arm64 的 Docker amd64 模拟下运行。
+- **主表**：DeepSWE 5-task typical；TB4 10 只保留 xylitol N=2 历史记录。
+  两者镜像均为 linux/amd64；macOS arm64 走 Docker amd64 模拟。
 - **N≥3**：pass@1、flip rate、cross_scaffold_flip、cost、wall、turns 分开报；
   不混不同 scaffold/verifier 的分数。
 - **官方 verifier 为唯一分数源**；Langfuse 只作旁路元数据/失败实例回归，不作分数。
@@ -70,8 +75,8 @@ needs_specs_change: false
 | Phase 1 | Harbor adapter + xylitol 单 task | agent 跑通；verifier 产出 reward |
 | Phase 2 | TB4.0 单 task + DeepSWE spike + musl | 两个基准各 1 task 跑通 |
 | Phase 3 | Pi + DeepSWE 5-task typical, N=3 | pass@1 + flip rate 表 |
-| Phase 4 | golden + replay + snapshot | PR 门禁可跑 |
-| Phase 5 | CI / Langfuse 旁路 / 云 | 回归与全量可复现 |
+| Phase 4 | 后续：golden + replay + snapshot | 不在本 change |
+| Phase 5 | 后续：CI / Langfuse 旁路 / 云 | 不在本 change |
 
 ## 风险
 
@@ -79,8 +84,8 @@ needs_specs_change: false
 - `group/glm-5.3-flash` pricing 未返回；成本以 usage 为准。
 - Docker Hub 不稳定；Harbor compose 可能卡 registry metadata；本地用
   `DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0`。
-- TB4.0 含 GPU/多容器任务；本地先排除。
-- DeepSWE Harbor 兼容性未验证；先 spike，失败则只跑 Pier baseline。
+- TB4.0 已移出当前典型集；只保留 xylitol N=2 历史记录。
+- DeepSWE 5-task 已用 Harbor + separate verifier 验证；全量 10 task 留待以后。
 - SWE-bench Verified 已移除：上游镜像只有 linux/amd64，Harbor Compose build 在
   arm64 主机上按宿主平台拉取会失败；保留的 TB4.0 / DeepSWE 镜像同为 amd64，
   在 macOS arm64 走 Docker amd64 模拟。

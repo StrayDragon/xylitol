@@ -4,7 +4,7 @@
 
 `tools/eval/` 是开发者工具链，不是产品功能。主路径是 **Harbor**：同一模型、同一数据集、
 同一 verifier，分别跑 `xylitol` 与 `pi`，用 pass@1 与 flip rate 做 cross-scaffold 对比。
-能力闸用 Terminal-Bench 4.0 与 DeepSWE。
+当前典型集用 DeepSWE 5-task；TB4 只保留历史记录。
 
 不做什么：不自研 judge；不用 TUI/PTY 驱动；不在 Rust runtime 引入 Docker；不把
 Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强”；不在确认前 push/PR。
@@ -14,8 +14,8 @@ Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强�
 - **固定模型**：`group/glm-5.3-flash`（catalog id，1M context，128000 max output，
   low/high/max reasoning；pricing 未返回）。同一轮对比中 xylitol 与 Pi 使用同一 model id、
   endpoint、effort、temperature、top_p、context、max turns/steps。
-- **基准矩阵 B**：Terminal-Bench 4.0 10 + DeepSWE 10 都进主表；
-  两者在 Linux amd64 原生与 macOS arm64 的 Docker amd64 模拟下运行。
+- **基准矩阵**：DeepSWE 5-task typical 进主表；TB4 10 只保留 xylitol N=2
+  历史记录。两者镜像均为 linux/amd64；macOS arm64 走 Docker amd64 模拟。
 - **Harbor-first**：所有基准统一走 Harbor task/verifier；DeepSWE 先做 Harbor spike，
   不能稳定跑则仅用 Pier 跑官方 baseline，不宣称 Pi 对比。
 - **N≥3**：每个 task 跑 3 次；报告 pass@1、flip rate、cost、wall time、turns。
@@ -31,17 +31,14 @@ Langfuse 当主分数；不把不同 scaffold/verifier 的分数混成“更强�
 ```mermaid
 flowchart TB
   CLI["just eval-typical"] --> H["Harbor job"]
-  H --> D2["TB4.0 10"]
-  H --> D3["DeepSWE 10"]
+  H --> D["DeepSWE 5-task"]
   H --> A1["xylitol adapter"]
   H --> A2["pi"]
-  H --> A3["Pi baseline"]
   A1 --> V["task verifier"]
   A2 --> V
-  A3 --> V
   V --> R["result.json / rewards"]
   R --> M["pass@1 + flip rate + cost"]
-  CLI --> G["golden + replay<br/>no model"]
+  CLI --> G["后续：golden + replay<br/>no model"]
   G --> P["xylitol print"]
 ```
 
@@ -92,18 +89,17 @@ Harbor compose 仍可能尝试 registry metadata，需记录为已知环境问�
 
 | 基准 | 规模 | 作用 | 备注 |
 |---|---|---|---|
-| Terminal-Bench 4.0 | 10 | 能力闸 | 66 task；8h 超时；排除 GPU/多容器 |
-| DeepSWE v1.1 | 10 | 长程能力闸 | 113 task；Harbor schema 1.3 + separate verifier 已验证单 task；no-network 需 egress sidecar |
+| Terminal-Bench 4.0 | 10 | 历史记录 | 66 task；已移出当前典型集 |
+| DeepSWE v1.1 | 5 | 典型能力闸 | 113 task；Harbor schema 1.3 + separate verifier；no-network 需 egress sidecar |
 
 Pi 调用：`-a pi -m openai/group/glm-5.3-flash --effort high`，
 `--base-url "$MAGPIE_GATEWAY_URL/v1"`，`--api-key-name MAGPIE_GATEWAY_KEY`，
 `--api-format openai_responses`，`--ak model_api=openai-responses`。
 Pi baseline 用预装镜像，同数据同 verifier；mini-SWE 已移除。
 
-DeepSWE 使用 Pier 时，官方榜用 mini-SWE on Modal；Pier 当前 agents 不含 Pi，
-因此不得把 Pier 的 xylitol/mini-SWE 结果与 Harbor 的 Pi 结果混成同一张 cross-scaffold 表。
-Phase 2 已验证 Harbor 能跑 DeepSWE v1.1 单 task；no-network task 需要 egress
-sidecar（`gogost/gost`），Docker Hub metadata 不可达时先本地构建并打 tag。
+DeepSWE 官方榜口径与本地 Harbor 不同；不得把官方榜结果与本地 Pi 结果混成
+同一张 cross-scaffold 表。no-network task 需要 egress sidecar（`gogost/gost`），
+Docker Hub metadata 不可达时先本地构建并打 tag。
 
 ## 指标
 
@@ -129,8 +125,8 @@ sidecar（`gogost/gost`），Docker Hub metadata 不可达时先本地构建并�
 | Phase 1 | Harbor adapter + xylitol 单 task | agent 跑通；verifier 产出 reward |
 | Phase 2 | TB4.0 单 task + DeepSWE spike + musl | 两个基准各 1 task 跑通 |
 | Phase 3 | Pi + DeepSWE 5-task typical, N=3 | pass@1 + flip rate 表 |
-| Phase 4 | golden + replay + snapshot | PR 门禁可跑 |
-| Phase 5 | CI / Langfuse 旁路 / 云 | 回归与全量可复现 |
+| Phase 4 | 后续：golden + replay + snapshot | 不在本 change |
+| Phase 5 | 后续：CI / Langfuse 旁路 / 云 | 不在本 change |
 
 ## 报告
 
@@ -150,8 +146,8 @@ cost、wall time。报告必须写明 scaffold 与 verifier，不写“xylitol �
 - magpie catalog 只有 7 个模型；最新为 GLM-5.3 家族，无 Opus/GPT/K3；需要时先扩网关。
 - `group/glm-5.3-flash` pricing 未返回；成本以 usage 为准。
 - Docker Hub 不稳定；Harbor compose 可能卡在 registry metadata。
-- TB4.0 含 GPU/多容器任务；本地先排除。
-- DeepSWE Harbor 兼容性已验证单 task；10 task 子集仍需验证。
+- TB4.0 已移出当前典型集；只保留历史记录。
+- DeepSWE 5-task 已用 Harbor + separate verifier 验证；全量 10 task 留待以后。
 - SWE-bench Verified 已移除：上游镜像只有 linux/amd64，Harbor Compose build 在
   arm64 主机上按宿主平台拉取会失败；TB4.0 / DeepSWE 镜像同为 amd64，在
   macOS arm64 走 Docker amd64 模拟。
