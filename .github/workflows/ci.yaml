@@ -38,7 +38,7 @@ jobs:
           sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
       - name: Install uv + Python for stateful MCP fixture
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.11"
 
