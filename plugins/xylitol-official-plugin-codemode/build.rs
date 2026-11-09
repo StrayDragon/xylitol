@@ -27,20 +27,13 @@ fn main() {
         return;
     }
 
-    let sdk = env::var("WASI_SDK_PATH").unwrap_or_else(|_| {
-        panic!(
-            "WASI_SDK_PATH is not set. Install WASI SDK 24 and set WASI_SDK_PATH, or run: just codemode-guest"
-        )
-    });
+    let sdk = env::var("WASI_SDK_PATH").unwrap_or_else(|_| panic!("{}", sdk_bootstrap_help(None)));
     let sdk = PathBuf::from(sdk);
     let clang = sdk.join("bin").join("clang");
     let ar = sdk.join("bin").join("llvm-ar");
     let sysroot = sdk.join("share").join("wasi-sysroot");
     if !clang.exists() || !ar.exists() || !sysroot.exists() {
-        panic!(
-            "WASI_SDK_PATH={} does not look like WASI SDK 24 (need bin/clang, bin/llvm-ar, share/wasi-sysroot). Install WASI SDK 24 or run: just codemode-guest",
-            sdk.display()
-        );
+        panic!("{}", sdk_bootstrap_help(Some(&sdk)));
     }
 
     let status = Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
@@ -82,6 +75,30 @@ fn main() {
         )
     });
     log_sha256(&out_wasm);
+}
+
+fn sdk_bootstrap_help(sdk_path: Option<&Path>) -> String {
+    let mut help = match sdk_path {
+        Some(path) => format!(
+            "WASI_SDK_PATH={} does not look like WASI SDK 24 (need bin/clang, bin/llvm-ar, share/wasi-sysroot).\n",
+            path.display()
+        ),
+        None => "WASI_SDK_PATH is not set.\n".to_string(),
+    };
+    help.push_str(concat!(
+        "codemode guest compiles guest.wasm from source for wasm32-wasip1.\n",
+        "One-shot bootstrap:\n",
+        "    just wasi-sdk\n",
+        "  (downloads WASI SDK 24 to ~/.local/share/wasi-sdk-24 and prints the export line)\n",
+        "Manual bootstrap:\n",
+        "    1. download wasi-sdk-24.0-<arch>-linux.tar.gz (or -macos.tar.gz) from\n",
+        "       https://github.com/WebAssembly/wasi-sdk/releases/tag/wasi-sdk-24\n",
+        "    2. tar -xzf <tarball> -C ~/.local/share/wasi-sdk-24 --strip-components=1\n",
+        "    3. export WASI_SDK_PATH=\"$HOME/.local/share/wasi-sdk-24\"\n",
+        "    4. rustup target add wasm32-wasip1\n",
+        "Then re-run cargo build; this build script compiles the guest itself.",
+    ));
+    help
 }
 
 fn needs_rebuild(wasm: &Path, guest_dir: &Path, build_rs: &Path) -> bool {

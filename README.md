@@ -32,12 +32,21 @@ TUI 只负责键盘输入、界面渲染和终端（TTY）适配等端侧能力�
 
 ### 1. 构建
 
-从源码构建。`rust-toolchain.toml` 固定了 nightly 工具链，rustup 会自动安装：
+从源码构建。`rust-toolchain.toml` 固定了 nightly 工具链，rustup 会自动安装。
+
+codemode 插件的 JS guest（`guest.wasm`）在构建时由源码编译为 `wasm32-wasip1`，需要 WASI SDK 24。一条命令装好并打印待导出的环境变量：
+
+```bash
+just wasi-sdk
+export WASI_SDK_PATH="$HOME/.local/share/wasi-sdk-24"
+```
 
 ```bash
 git clone https://github.com/straydragon/xylitol && cd xylitol
 cargo build --release --locked
 ```
+
+guest wasm 只在首次构建时编译，之后走缓存；未设置 `WASI_SDK_PATH` 时构建会失败并给出上述引导。
 
 ### 2. 配置模型
 

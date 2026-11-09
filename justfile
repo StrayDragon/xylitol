@@ -26,7 +26,7 @@ _default:
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
-    : "${WASI_SDK_PATH:?set WASI_SDK_PATH to a wasi-sdk 24 install for codemode guest build}"
+    : "${WASI_SDK_PATH:?run 'just wasi-sdk' to install WASI SDK 24, then export WASI_SDK_PATH (codemode guest build needs it)}"
     # pre-commit + commit-msg only: prek owns text hygiene and the commit
     # convention; cargo gates live in `just qa` (manual / CI), never hooks.
     prek install -t pre-commit -t commit-msg
@@ -136,12 +136,42 @@ test-changed:
 gen-config-schema:
     cargo run -q -p xylitol-official-plugin-config --bin gen-config-schema
 
-# Rebuild the rquickjs WASI guest into the build target dir.
-# Requires WASI SDK 24 (`WASI_SDK_PATH=/path/to/wasi-sdk`).
+# Download WASI SDK 24 into ~/.local/share/wasi-sdk-24 (idempotent).
+# The codemode guest build (build.rs / codemode-guest) needs it; see
+# llmanspec/specs/agent-codemode (guest-wasm-source-build).
+wasi-sdk:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dest="${WASI_SDK_INSTALL_DIR:-$HOME/.local/share/wasi-sdk-24}"
+    if [[ -x "$dest/bin/clang" && -x "$dest/bin/llvm-ar" && -d "$dest/share/wasi-sysroot" ]]; then
+      echo "wasi-sdk 24 already installed: $dest"
+    else
+      case "$(uname -s)/$(uname -m)" in
+        Linux/x86_64)  slug="x86_64-linux" ;;
+        Linux/aarch64) slug="aarch64-linux" ;;
+        Darwin/arm64)  slug="arm64-macos" ;;
+        Darwin/x86_64) slug="x86_64-macos" ;;
+        *) echo "unsupported platform $(uname -s)/$(uname -m); download WASI SDK 24 manually" >&2; exit 1 ;;
+      esac
+      url="https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-${slug}.tar.gz"
+      echo "downloading $url"
+      mkdir -p "$dest"
+      tmp="$(mktemp)"
+      trap 'rm -f "$tmp"' EXIT
+      curl -fL --retry 5 --retry-all-errors -o "$tmp" "$url"
+      tar -xzf "$tmp" -C "$dest" --strip-components=1
+      echo "installed: $dest"
+    fi
+    rustup target add wasm32-wasip1
+    echo
+    echo "next: add to your shell profile -> export WASI_SDK_PATH=\"$dest\""
+
+# Rebuild the rquickjs WASI guest and refresh the checked-in asset.
+# Requires WASI SDK 24 (`just wasi-sdk`; `WASI_SDK_PATH=/path/to/wasi-sdk`).
 codemode-guest:
     #!/usr/bin/env bash
     set -euo pipefail
-    : "${WASI_SDK_PATH:?set WASI_SDK_PATH to a wasi-sdk 24 install}"
+    : "${WASI_SDK_PATH:?run 'just wasi-sdk' to install WASI SDK 24, then export WASI_SDK_PATH}"
     cd plugins/xylitol-official-plugin-codemode/guest
     CC_wasm32_wasip1="$WASI_SDK_PATH/bin/clang" \
       AR_wasm32_wasip1="$WASI_SDK_PATH/bin/llvm-ar" \
