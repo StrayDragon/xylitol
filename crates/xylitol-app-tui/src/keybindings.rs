@@ -11,6 +11,16 @@ use xylitol_tui::{
 static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
     ("app.interrupt", &["escape"], Some("Cancel or abort")),
     (
+        "app.slot.pageUp",
+        &["pageUp"],
+        Some("Scroll slot detail up"),
+    ),
+    (
+        "app.slot.pageDown",
+        &["pageDown"],
+        Some("Scroll slot detail down"),
+    ),
+    (
         "app.clear",
         &["ctrl+c"],
         Some("Clear editor / exit when empty"),

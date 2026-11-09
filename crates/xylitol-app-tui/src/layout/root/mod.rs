@@ -150,6 +150,7 @@ pub struct UiRoot {
     todo_selection: xylitol_tui::SelectionController,
     todo_clipboard: Vec<String>,
     todo_pointer_dirty: bool,
+    slot_pointer_dirty: bool,
     client_notices: VecDeque<ClientNotice>,
     #[cfg(test)]
     upper_rebuild_count: u64,
@@ -277,6 +278,7 @@ impl UiRoot {
             todo_selection: xylitol_tui::SelectionController::new(),
             todo_clipboard: Vec::new(),
             todo_pointer_dirty: false,
+            slot_pointer_dirty: false,
             client_notices: VecDeque::new(),
             #[cfg(test)]
             upper_rebuild_count: 0,

@@ -58,6 +58,7 @@ pub use components::markdown::{
 };
 pub use components::mermaid_ascii::try_render_mermaid;
 pub use components::panel::Panel;
+pub use components::scroll_region::ScrollRegion;
 pub use components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
     SelectListTruncatePrimaryContext,

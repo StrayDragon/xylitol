@@ -234,3 +234,15 @@ async fn test_c2855_notice_stack_copied(host_pump_bdd: HostPumpBdd) {}
     name = "提示栈已复制钉住已滚动视口"
 )]
 fn test_notice_stack_copied_pins_scrolled_viewport(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "窄宽 mcp 详情可滚动且不挤压 status"
+)]
+async fn test_c3227_fixed_zone_wide_mcp_detail(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "短终端不溢出"
+)]
+async fn test_c3227_fixed_zone_short_terminal(host_pump_bdd: HostPumpBdd) {}

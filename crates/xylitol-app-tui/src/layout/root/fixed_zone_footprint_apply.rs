@@ -43,8 +43,14 @@ fn apply_slot_footprint(slot: &mut EditorSlot, rows: usize, reserved: usize) {
             imp.set_max_visible(slot_body_budget(rows, reserved, IMPORT_SLOT));
         }
         EditorSlot::Mcp(mcp) => {
+            let available = rows.saturating_sub(reserved);
+            let detail_rows = mcp
+                .detail_len()
+                .min(mcp.detail_cap())
+                .min(available.saturating_sub(3));
+            mcp.set_detail_rows(detail_rows);
             let mut mcp_slot = MCP_SLOT_BASE;
-            mcp_slot.trailer = mcp_slot.trailer.saturating_add(mcp.diag_len());
+            mcp_slot.trailer = mcp_slot.trailer.saturating_add(detail_rows);
             mcp.set_max_visible(slot_body_budget(rows, reserved, mcp_slot));
         }
         EditorSlot::McpPrompts(prompts) => {

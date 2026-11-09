@@ -126,3 +126,9 @@ fn test_atc_mvp_two_commands(cli_entry_bdd: CliEntryBdd) {}
     name = "单一斜杠解析器于命令模块"
 )]
 fn test_atc_single_parser(cli_entry_bdd: CliEntryBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
+    name = "窄宽诊断可 PageDown 查看末段"
+)]
+async fn test_c3227_commands_mcp_detail_tail(host_pump_bdd: HostPumpBdd) {}

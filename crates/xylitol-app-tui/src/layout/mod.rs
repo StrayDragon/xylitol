@@ -23,7 +23,7 @@ pub(crate) use slash_catalog::{product_slash_commands_for_editor, slash_commands
 #[cfg(test)]
 pub(crate) use root::sample_tree_nodes_for_test;
 pub use root::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
-pub use slots::{EditorSlot, EditorSlotKind, ImportConfirmDecision};
+pub use slots::{EditorSlot, EditorSlotKind, ImportConfirmDecision, McpDetailViewport};
 pub use theme::LayoutTheme;
 pub(crate) use tier::{TIER_WIDE_MIN_COLS, WidthTier, width_tier};
 

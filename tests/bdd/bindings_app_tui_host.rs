@@ -349,3 +349,9 @@ fn test_c2826_ath_fold_click(tui_interaction: TuiInteraction) {}
     name = "会话切换跟随不栈"
 )]
 fn test_session_switch_trails_not_stack(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "打开 mcp 详情不 abort agent"
+)]
+async fn test_c3227_host_mcp_detail_busy(host_pump_bdd: HostPumpBdd) {}

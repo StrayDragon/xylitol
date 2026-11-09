@@ -469,7 +469,23 @@ impl Component for UiRoot {
     }
 
     fn handle_input(&mut self, event: InputEvent) {
+        self.slot_pointer_dirty = false;
         self.handle_slot_input(event);
+    }
+
+    fn offer_pointer(&mut self, event: &InputEvent) -> bool {
+        let InputEvent::Mouse(mouse) = event else {
+            return false;
+        };
+        self.handle_slot_detail_pointer(mouse)
+    }
+
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        if matches!(event, InputEvent::Mouse(_)) {
+            self.slot_pointer_dirty
+        } else {
+            true
+        }
     }
 
     fn take_pending_clipboard(&mut self) -> Vec<String> {

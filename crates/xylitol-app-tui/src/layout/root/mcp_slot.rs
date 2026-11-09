@@ -1,4 +1,4 @@
-use super::super::slots::{EditorSlot, McpPromptSlot, McpResourceSlot, McpSlot};
+use super::super::slots::{EditorSlot, McpDetailViewport, McpPromptSlot, McpResourceSlot, McpSlot};
 use super::UiRoot;
 use crate::driver::LoadedResourcesSnapshot;
 
@@ -49,6 +49,39 @@ impl UiRoot {
         match &self.slot {
             EditorSlot::Mcp(mcp) => mcp.selected_index(),
             _ => 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn mcp_detail_debug_for_test(&self) -> (usize, usize, usize, usize) {
+        match &self.slot {
+            EditorSlot::Mcp(mcp) => mcp.detail_debug_for_test(),
+            _ => (0, 0, 0, 0),
+        }
+    }
+
+    pub fn mcp_detail_viewport(&self) -> Option<McpDetailViewport> {
+        let top = self.last_slot_top_row?;
+        match &self.slot {
+            EditorSlot::Mcp(mcp) => mcp.detail_viewport(top),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn mcp_detail_scroll_top_for_test(&self) -> usize {
+        match &self.slot {
+            EditorSlot::Mcp(mcp) => mcp.detail_scroll_top(),
+            _ => 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn mcp_detail_top_for_test(&self) -> Option<usize> {
+        let top = self.last_slot_top_row?;
+        match &self.slot {
+            EditorSlot::Mcp(mcp) => Some(top + 1 + mcp.last_list_rows_for_test()),
+            _ => None,
         }
     }
 

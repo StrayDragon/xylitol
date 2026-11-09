@@ -6131,6 +6131,201 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c1210_mcp_panel_detail_scrolls_with_page_wheel_and_gutter() {
+        use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+        use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        let details: Vec<String> = (0..8)
+            .map(|i| format!("detail {i}: {}", "x".repeat(200)))
+            .collect();
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
+            mcp_connected: vec![("fixture".into(), 2)],
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fixture".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            }],
+            mcp_details: details,
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+
+        root.borrow_mut().set_editor_text("/mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().mcp_open());
+        session.render_now().unwrap();
+        let detail_top = root.borrow().mcp_detail_top_for_test().expect("detail top");
+        let debug = root.borrow().mcp_detail_debug_for_test();
+        assert_eq!(debug.0, 4, "detail rows: {debug:?}");
+        assert_eq!(debug.1, 4, "detail height: {debug:?}");
+        assert!(debug.2 > 4, "detail content rows: {debug:?}");
+        assert_eq!(root.borrow().mcp_detail_scroll_top_for_test(), 0);
+        let gutter_col = debug.3.saturating_sub(1) as u16;
+
+        session
+            .step(HostEvent::Input(key_event(
+                KeyCode::PageDown,
+                KeyModifiers::NONE,
+            )))
+            .unwrap();
+        session.render_now().unwrap();
+        let after_page = root.borrow().mcp_detail_scroll_top_for_test();
+        assert!(after_page > 0, "PageDown MUST scroll detail");
+
+        let wheel = InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 5,
+            row: detail_top as u16,
+            modifiers: KeyModifiers::NONE,
+        });
+        session.step(HostEvent::Input(wheel)).unwrap();
+        session.render_now().unwrap();
+        let after_wheel = root.borrow().mcp_detail_scroll_top_for_test();
+        assert!(after_wheel > after_page, "wheel MUST scroll detail");
+
+        let gutter_top_mouse = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: gutter_col,
+            row: detail_top as u16,
+            modifiers: KeyModifiers::NONE,
+        };
+        session
+            .step(HostEvent::Input(InputEvent::Mouse(gutter_top_mouse)))
+            .unwrap();
+        session.render_now().unwrap();
+        assert_eq!(
+            root.borrow().mcp_detail_scroll_top_for_test(),
+            0,
+            "gutter top click MUST reset"
+        );
+    }
+
+    #[tokio::test]
+    async fn c3227_mcp_detail_wide_100x30_pages_to_bottom() {
+        use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        let details: Vec<String> = (0..8)
+            .map(|i| format!("detail {i}: {}", "x".repeat(200)))
+            .collect();
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
+            mcp_connected: vec![("fixture".into(), 2)],
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fixture".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            }],
+            mcp_details: details,
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+
+        root.borrow_mut().set_editor_text("/mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().mcp_open());
+        session.render_now().unwrap();
+        let (rows, height, content, _) = root.borrow().mcp_detail_debug_for_test();
+        assert_eq!(rows, 4);
+        assert_eq!(height, 4);
+        assert!(content > height);
+
+        let mut last = 0;
+        for _ in 0..10 {
+            session
+                .step(HostEvent::Input(key_event(
+                    KeyCode::PageDown,
+                    KeyModifiers::NONE,
+                )))
+                .unwrap();
+            session.render_now().unwrap();
+            let top = root.borrow().mcp_detail_scroll_top_for_test();
+            if top == last {
+                break;
+            }
+            last = top;
+        }
+        assert_eq!(
+            root.borrow().mcp_detail_scroll_top_for_test(),
+            content - height,
+            "PageDown MUST reach bottom"
+        );
+        let frame = root.borrow_mut().render(100);
+        assert!(
+            frame.iter().any(|line| line.contains("detail 7")),
+            "tail detail MUST be visible at bottom"
+        );
+    }
+
+    #[tokio::test]
+    async fn c3227_mcp_detail_footprint_keeps_status_on_short_terminal() {
+        use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 8));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        let details: Vec<String> = (0..8)
+            .map(|i| format!("detail {i}: {}", "x".repeat(200)))
+            .collect();
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
+            mcp_connected: vec![("fixture".into(), 2)],
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fixture".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            }],
+            mcp_details: details,
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+
+        root.borrow_mut().set_editor_text("/mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().mcp_open());
+        session.render_now().unwrap();
+        assert!(
+            root.borrow().last_dock_rows() <= 8,
+            "dock must fit short terminal: {}",
+            root.borrow().last_dock_rows()
+        );
+        let debug = root.borrow().mcp_detail_debug_for_test();
+        assert_eq!(debug.0, 3, "detail rows: {debug:?}");
+        assert_eq!(debug.1, 3, "detail height: {debug:?}");
+    }
+
+    #[tokio::test]
     async fn c1900_idle_next_turn_clear_must_not_restore_mcp_cue_after_freeze() {
         use crate::driver::{
             LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,

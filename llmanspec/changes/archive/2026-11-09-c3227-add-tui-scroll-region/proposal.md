@@ -2,6 +2,9 @@
 depends_on: []
 title: "TUI 有界滚动区域与 MCP 详情接线"
 needs_specs_change: true
+branch: sdd/c3227-add-tui-scroll-region
+base_branch: main
+base_sha: 4a2cd9a98877dfd58f19df9aacb01dd1345269a3
 ---
 
 # TUI 有界滚动区域与 MCP 详情接线

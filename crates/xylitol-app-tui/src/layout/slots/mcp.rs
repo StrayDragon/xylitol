@@ -1,5 +1,6 @@
+use crossterm::event::MouseEvent;
 use xylitol_tui::components::select_list::{SelectItem, SelectList};
-use xylitol_tui::{Component, InputEvent, truncate_to_width};
+use xylitol_tui::{Component, InputEvent, ScrollRegion, truncate_to_width};
 
 use super::super::theme::LayoutTheme;
 use crate::driver::{LoadedResourcesSnapshot, McpServerPhase};
@@ -12,10 +13,24 @@ pub enum McpAction {
     Authorize(String),
 }
 
+const MAX_DETAIL_ROWS: usize = 4;
+
+#[derive(Debug, Clone, Copy)]
+pub struct McpDetailViewport {
+    pub top: usize,
+    pub rows: usize,
+    pub width: usize,
+    pub content_rows: usize,
+    pub scroll_top: usize,
+}
+
 pub struct McpSlot {
     list: SelectList,
     summary_line: String,
     diag_lines: Vec<String>,
+    detail: Option<ScrollRegion>,
+    detail_rows: usize,
+    last_list_rows: usize,
 }
 
 impl McpSlot {
@@ -30,12 +45,21 @@ impl McpSlot {
             "configured {} · connected {} · armed {}",
             snap.mcp_configured, connected, armed
         );
-        let diag_lines = snap
+        let diag_lines: Vec<String> = snap
             .mcp_diag_short
             .iter()
             .map(|d| format!(" diag: {d}"))
             .chain(snap.mcp_details.iter().map(|d| format!(" detail: {d}")))
             .collect();
+        let detail_rows = diag_lines.len().min(MAX_DETAIL_ROWS);
+        let detail = if diag_lines.is_empty() {
+            None
+        } else {
+            let mut detail = ScrollRegion::new(detail_rows, "app.slot.pageUp", "app.slot.pageDown");
+            detail.set_content(diag_lines.clone());
+            detail.set_height(detail_rows);
+            Some(detail)
+        };
 
         let items: Vec<SelectItem> = if snap.mcp_servers.is_empty() {
             vec![SelectItem::new("", "(no MCP servers configured)")]
@@ -59,11 +83,25 @@ impl McpSlot {
             list: theme.select_list(items, DEFAULT_MAX_VISIBLE, (24, 72)),
             summary_line,
             diag_lines,
+            detail,
+            detail_rows,
+            last_list_rows: 0,
         }
     }
 
-    pub fn diag_len(&self) -> usize {
+    pub fn detail_len(&self) -> usize {
         self.diag_lines.len()
+    }
+
+    pub fn detail_cap(&self) -> usize {
+        MAX_DETAIL_ROWS
+    }
+
+    pub fn set_detail_rows(&mut self, rows: usize) {
+        self.detail_rows = rows.min(self.diag_lines.len()).min(MAX_DETAIL_ROWS);
+        if let Some(detail) = self.detail.as_mut() {
+            detail.set_height(self.detail_rows);
+        }
     }
 
     pub fn set_max_visible(&mut self, max_visible: usize) {
@@ -72,6 +110,9 @@ impl McpSlot {
 
     pub fn invalidate(&mut self) {
         self.list.invalidate();
+        if let Some(detail) = self.detail.as_mut() {
+            detail.invalidate();
+        }
     }
 
     pub fn retheme(&mut self, theme: LayoutTheme) {
@@ -79,6 +120,15 @@ impl McpSlot {
     }
 
     pub fn handle_input(&mut self, event: InputEvent) -> McpAction {
+        if let InputEvent::Key(ref key) = event
+            && (matches_binding(key, "app.slot.pageUp")
+                || matches_binding(key, "app.slot.pageDown"))
+            && self.detail_rows > 0
+            && let Some(detail) = self.detail.as_mut()
+        {
+            detail.handle_input(event.clone());
+            return McpAction::None;
+        }
         let InputEvent::Key(ref key) = event else {
             return McpAction::None;
         };
@@ -114,14 +164,14 @@ impl McpSlot {
             "…",
             false,
         ));
-        lines.extend(self.list.render(width));
-        for diag in &self.diag_lines {
-            lines.push(truncate_to_width(
-                &theme.paint_muted(diag),
-                width,
-                "…",
-                false,
-            ));
+        let list_lines = self.list.render(width);
+        self.last_list_rows = list_lines.len();
+        lines.extend(list_lines);
+        if let Some(detail) = self.detail.as_mut()
+            && self.detail_rows > 0
+        {
+            detail.set_height(self.detail_rows);
+            lines.extend(detail.render(width));
         }
         lines.push(truncate_to_width(
             &theme.paint_muted(" Esc · Enter closes"),
@@ -130,6 +180,21 @@ impl McpSlot {
             false,
         ));
         lines
+    }
+
+    pub fn pointer_event(&mut self, mouse: &MouseEvent, slot_top: usize) -> bool {
+        let Some(detail) = self.detail.as_mut() else {
+            return false;
+        };
+        if self.detail_rows == 0 {
+            return false;
+        }
+        let detail_top = slot_top
+            .saturating_add(1)
+            .saturating_add(self.last_list_rows)
+            .min(u16::MAX as usize) as u16;
+        detail.set_screen_origin(0, detail_top);
+        detail.offer_pointer(&InputEvent::Mouse(*mouse))
     }
 
     pub fn panel_text(&self) -> String {
@@ -151,6 +216,44 @@ impl McpSlot {
 
     pub fn selected_index(&self) -> usize {
         self.list.selected_index
+    }
+
+    pub fn detail_scroll_top(&self) -> usize {
+        self.detail
+            .as_ref()
+            .map(ScrollRegion::scroll_top)
+            .unwrap_or(0)
+    }
+
+    pub fn detail_viewport(&self, slot_top: usize) -> Option<McpDetailViewport> {
+        let detail = self.detail.as_ref()?;
+        Some(McpDetailViewport {
+            top: slot_top
+                .saturating_add(1)
+                .saturating_add(self.last_list_rows),
+            rows: self.detail_rows,
+            width: detail.last_width(),
+            content_rows: detail.content_rows(),
+            scroll_top: detail.scroll_top(),
+        })
+    }
+
+    #[cfg(test)]
+    pub fn last_list_rows_for_test(&self) -> usize {
+        self.last_list_rows
+    }
+
+    #[cfg(test)]
+    pub fn detail_debug_for_test(&self) -> (usize, usize, usize, usize) {
+        let Some(detail) = self.detail.as_ref() else {
+            return (0, 0, 0, 0);
+        };
+        (
+            self.detail_rows,
+            detail.height(),
+            detail.content_rows(),
+            detail.last_width(),
+        )
     }
 }
 
@@ -360,4 +463,50 @@ impl McpResourceSlot {
 
 fn empty_mcp_list(theme: LayoutTheme) -> SelectList {
     theme.select_list(Vec::new(), DEFAULT_MAX_VISIBLE, (24, 72))
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    fn snapshot() -> LoadedResourcesSnapshot {
+        LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fixture".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            }],
+            mcp_details: (0..8)
+                .map(|i| format!("detail {i}: {}", "x".repeat(200)))
+                .collect(),
+            ..LoadedResourcesSnapshot::default()
+        }
+    }
+
+    #[test]
+    fn pointer_event_scrolls_detail_and_gutter() {
+        let theme = LayoutTheme::product_dark();
+        let mut slot = McpSlot::mount(theme, &snapshot());
+        slot.set_detail_rows(4);
+        let _ = slot.render(80, theme);
+        let wheel = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 5,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(slot.pointer_event(&wheel, 0));
+        assert!(slot.detail_scroll_top() > 0);
+        let top = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 79,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(slot.pointer_event(&top, 0));
+        assert_eq!(slot.detail_scroll_top(), 0);
+    }
 }

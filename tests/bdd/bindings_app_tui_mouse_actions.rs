@@ -65,3 +65,15 @@ async fn test_mat36_capabilities_row(host_pump_bdd: HostPumpBdd) {}
     name = "块头不写组合键"
 )]
 fn test_mat37_no_chord_names(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-mouse-actions/app-tui-mouse-actions.feature",
+    name = "详情视口滚轮滚动"
+)]
+async fn test_c3227_mouse_wheel_detail(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-mouse-actions/app-tui-mouse-actions.feature",
+    name = "gutter 顶部点击回顶"
+)]
+async fn test_c3227_mouse_gutter_top(host_pump_bdd: HostPumpBdd) {}

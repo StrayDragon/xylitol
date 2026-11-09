@@ -26,7 +26,11 @@ impl Component for SharedUiRoot {
     fn input_wants_rerender(&self, event: &InputEvent) -> bool {
         let mut root = self.0.borrow_mut();
         let todo = std::mem::take(&mut root.todo_pointer_dirty);
-        todo || root.editor_wants_rerender(event)
+        todo || root.slot_pointer_dirty || root.editor_wants_rerender(event)
+    }
+
+    fn offer_pointer(&mut self, event: &InputEvent) -> bool {
+        self.0.borrow_mut().offer_pointer(event)
     }
 
     fn take_pending_clipboard(&mut self) -> Vec<String> {

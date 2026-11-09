@@ -328,6 +328,9 @@ impl UiRoot {
     }
 
     fn handle_pointer_input(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {
+        if self.handle_slot_detail_pointer(mouse) {
+            return true;
+        }
         if self.handle_tray_pointer(mouse) {
             return true;
         }
@@ -353,6 +356,24 @@ impl UiRoot {
                 true
             }
             _ => self.handle_todo_bar_selection(mouse),
+        }
+    }
+
+    pub(super) fn handle_slot_detail_pointer(
+        &mut self,
+        mouse: &crossterm::event::MouseEvent,
+    ) -> bool {
+        let EditorSlot::Mcp(mcp) = &mut self.slot else {
+            return false;
+        };
+        let Some(top) = self.last_slot_top_row else {
+            return false;
+        };
+        if mcp.pointer_event(mouse, top) {
+            self.slot_pointer_dirty = true;
+            true
+        } else {
+            false
         }
     }
 

@@ -84,3 +84,17 @@
   @req:r3086
   规则: editor-chrome-chip-hit
     产品 TUI `[侧栏]` / `[重置折叠]` / `[步骤显示级别: <级别>]` chip 须按屏上实际绘制行注册命中；左键单击须分别切换侧栏、重置覆盖、原地循环 display level；宽度不足未绘制时 不得命中。由 harness 覆盖，不扩 BDD step。
+
+  @req:r3286
+  规则: slot-detail-scroll-pointer
+    槽内详情视口 须 有指针入口：滚轮在视口内 须 滚动；gutter 顶部/底部 须 可左键点击跳转；命中 须 按屏上实际矩形；槽外点击 不得 被吞掉或穿透到 transcript 选区。
+
+    场景: 详情视口滚轮滚动
+      假如 `/mcp` 详情视口已渲染
+      当 在视口内滚轮向下
+      那么 滚动位置前进且不启动 transcript 拖选
+
+    场景: gutter 顶部点击回顶
+      假如 详情视口已向下滚动
+      当 左键点击 gutter 顶行
+      那么 滚动位置归零

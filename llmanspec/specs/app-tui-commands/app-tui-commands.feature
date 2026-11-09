@@ -187,3 +187,14 @@
   @req:r3091
   规则: slash-perf
     产品 TUI 须解析 `/perf`（无参）：读取最近一次渲染快照并以滚动提示输出 `perf: render Xms · lines N · paint M · ao_reprojected yes|no · ao_shift yes|no`；无快照 须提示 `perf: no render snapshot yet`；不得开面板、不得常驻、不得写入模型上下文；`SlashCommandSource` 须列出 `perf`；busy 时 Allow。由 harness 覆盖，不扩 BDD step。
+
+  @req:r3285
+  规则: slash-mcp-diagnostics-scroll
+    产品 TUI 的 `/mcp` 诊断详情 须 在有界滚动视口内完整可读：窄宽 须 换行，不得 只以 `…` 截断；视口 须 支持 PageUp/PageDown、滚轮与 gutter 顶部/底部点击；不得 把诊断写入模型上下文。
+    须 注册 `app.slot.pageUp` / `app.slot.pageDown`，默认 PageUp/PageDown，仅在详情视口存在时响应；不得 改变 `tui.select.*` 列表选择语义。
+    诊断字段 仍须 满足 slash-mcp-diagnostics。
+
+    场景: 窄宽诊断可 PageDown 查看末段
+      假如 `/mcp` 详情超过视口高度
+      当 按 PageDown 到底
+      那么 末段字段可见且不触发 agent

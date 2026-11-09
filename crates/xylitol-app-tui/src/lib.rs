@@ -72,7 +72,7 @@ pub use self::host::{
     TOO_SMALL_HINT, display_cwd, is_too_small,
 };
 pub use self::layout::UiRoot;
-pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
+pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme, McpDetailViewport};
 pub use self::widgets::{FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold};
 pub use activity_fold::{ActivityFoldSettings, DisplayLevel, SegmentLevel, VisibleItems};
 pub use bridge::TODO_EMPTY_BODY_HINT;

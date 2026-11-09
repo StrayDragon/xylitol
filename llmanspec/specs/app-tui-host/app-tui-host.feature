@@ -379,3 +379,12 @@
       那么 一次性提示进入观景并指引 session-resume
       当 远端驱动报告对端回合已结束
       那么 一次性提示可重挂收看
+
+  @req:r3287
+  规则: mcp-detail-viewport-surface
+    产品 host 的 `/mcp` 发现面 须 在既有 SelectList 之外提供有界详情视口：打开 `/mcp` 不得 abort agent；详情滚动 只走端侧视口，不得 从 app/tui reach infra::mcp；详情视口高度 须 服从 Fixed-Zone Footprint。
+
+    场景: 打开 mcp 详情不 abort agent
+      假如 agent 正在运行且 `/mcp` 可打开
+      当 打开 `/mcp` 并滚动详情
+      那么 agent 未被 abort 且详情滚动不触发 host MCP 重连

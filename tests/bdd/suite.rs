@@ -84,6 +84,7 @@ mod steps_app_tui_host;
 mod steps_app_tui_interaction;
 mod steps_app_tui_mouse_actions;
 mod steps_app_tui_preview;
+mod steps_app_tui_scroll_region;
 mod steps_app_tui_transcript;
 mod steps_bridge;
 mod steps_capability;

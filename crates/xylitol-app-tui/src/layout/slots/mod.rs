@@ -13,7 +13,7 @@ use crate::keybindings::matches_binding;
 pub use ask::AskSlot;
 pub use capabilities::CapabilitiesSlot;
 pub use import::{ImportConfirmDecision, ImportSlot};
-pub use mcp::{McpPromptSlot, McpResourceSlot, McpSlot};
+pub use mcp::{McpDetailViewport, McpPromptSlot, McpResourceSlot, McpSlot};
 pub use models::ModelsSlot;
 pub use scenes::ScenesSlot;
 pub use themes::ThemesSlot;

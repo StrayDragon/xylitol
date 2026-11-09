@@ -2,6 +2,7 @@ mod support;
 
 use insta::assert_snapshot;
 use support::TuiTestHarness;
+use xylitol_tui::ScrollRegion;
 use xylitol_tui::components::panel::Panel;
 use xylitol_tui::components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
@@ -43,6 +44,16 @@ fn select_list_renders_highlighted_first_item() {
     h.mount(Box::new(list));
     h.render();
     snap("select_list", &h);
+}
+
+#[test]
+fn scroll_region_clips_and_draws_gutter() {
+    let mut region = ScrollRegion::new(3, "app.slot.pageUp", "app.slot.pageDown");
+    region.set_content((0..8).map(|i| format!("line {i}")).collect());
+    let mut h = TuiTestHarness::new(20, 3);
+    h.mount(Box::new(region));
+    h.render();
+    snap("scroll_region_gutter", &h);
 }
 
 #[test]

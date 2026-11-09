@@ -3,7 +3,7 @@
 ## 1. 引擎组件形状
 
 - 新增 `ScrollRegion`（`crates/xylitol-tui/src/components/scroll_region.rs`），包一个 `ScrollView`。
-- 公开构造：`ScrollRegion::new(height, KeybindingIds { page_up, page_down })`；`KeybindingIds` 由应用端传入，引擎不硬编码产品动作 id。
+- 公开构造：`ScrollRegion::new(height, page_up, page_down)`；两个动作 id 由应用端传入，引擎不硬编码产品动作 id。
 - 内容：`set_content(Vec<String>)`；`set_height(usize)`；`height()`；`content_rows()`（按上次渲染宽度换行后的行数）；`scroll_by` / `scroll_to_top` / `scroll_to_bottom`。
 - `Component` 实现：`render(width)` 输出恰好 `height` 行；`handle_input` 只处理 PageUp/PageDown 键；`offer_pointer` 处理滚轮与 gutter 点击；`set_screen_origin` 记录屏幕原点。
 - 不新增第二套滚动状态；`ScrollView` 仍是滚动位置/视口高度的唯一模型。
@@ -22,7 +22,7 @@
 - 滚轮：`offer_pointer` 收到 `ScrollUp` / `ScrollDown` 且指针在视口矩形内时滚动 `ScrollView::wheel_notch()`，返回 `true`；矩形外返回 `false`。
 - gutter：`offer_pointer` 收到 `Left Down` 且列 = 视口最右列、行 = 顶/底行时，等价 `scroll_to_top` / `scroll_to_bottom`，返回 `true`；轨道行不产生动作。
 - 不启动 transcript 拖选；不认领视口外事件。
-- 应用端在 `UiRoot::handle_pointer_input` / `handle_overlay_pointer` 中把鼠标事件转给当前槽的详情视口；命中按屏上实际矩形，不按冻结坐标。
+- 应用端在 `UiRoot::offer_pointer` / `handle_pointer_input` 中把鼠标事件转给当前槽的详情视口；命中按屏上实际矩形，不按冻结坐标。
 
 ## 4. McpSlot 布局与 footprint
 
@@ -30,7 +30,7 @@
 - `detail_rows = min(详情逻辑行数, MAX_DETAIL_ROWS=4)`；无详情时为 0。
 - `apply_slot_footprint`：`mcp_slot.trailer = MCP_SLOT_BASE.trailer + detail_rows`；`mcp.set_max_visible(slot_body_budget(...))`。
 - `set_max_visible` 只设置列表 `max_visible`；详情视口高度由 `detail_rows` 固定。
-- `render`：摘要 1 行 + 列表 `max_visible` 行 + 详情视口 `detail_rows` 行 + footer 1 行；总数 = `term_rows - reserved_lower`。
+- `render`：摘要 1 行 + 列表实际渲染行（最多 `max_visible`）+ 详情视口 `detail_rows` 行 + footer 1 行；总数不超过 `term_rows - reserved_lower`。
 - 短终端：`slot_body_budget` 已扣 reserved；列表与详情视口仍至少保留 1 行；status/editor 不被挤出。
 - `panel_text` 保留全部详情行供 harness 断言；渲染只显示视口窗口。
 
