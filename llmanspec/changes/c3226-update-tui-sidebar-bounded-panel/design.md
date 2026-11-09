@@ -171,7 +171,115 @@ open_intent
 8. 左栏产品接线：后续复用 `PanelRegion` + `DockLeft` / `FloatLeft`，本 change 不做。
 9. FloatRight 的 overlay 是否 `non_capturing`：侧栏不抢键盘焦点时宜非捕获，但滚轮 / 命中仍由 app 路由。
 
-## 9. 参考
+## 9. 架构图
+
+### 9.1 整体分层
+
+~~~mermaid
+flowchart TB
+  subgraph APP["crates/xylitol-app-tui（产品端）"]
+    UI["UiRoot"]
+    LAYOUT["layout/root/render"]
+    STATE["sidebar state<br/>open_intent · placement · width · height"]
+    HITS["overlay_hits / pointer"]
+    DOCK["下缘固定区<br/>queue · todo · toast · status · tray · editor · footer"]
+    STORE["client-local storage<br/>sidebar-layout"]
+  end
+
+  subgraph ENGINE["crates/xylitol-tui（引擎）"]
+    PANEL["PanelRegion"]
+    BOUNDS["PanelBounds"]
+    PLACE["PanelPlacement<br/>DockLeft / DockRight / FloatLeft / FloatRight"]
+    SCROLL["ScrollView / ScrollRegion"]
+    OVERLAY["OverlayOptions<br/>clip · max_width · min_height"]
+    COMPOSITE["composite_overlays"]
+    RUNTIME["ApplicationOwnedRuntime"]
+  end
+
+  UI --> LAYOUT
+  LAYOUT --> STATE
+  STATE --> PANEL
+  PANEL --> BOUNDS
+  PANEL --> PLACE
+  PANEL --> SCROLL
+  LAYOUT --> DOCK
+  LAYOUT --> RUNTIME
+  PLACE -->|DockRight| LAYOUT
+  PLACE -->|FloatRight| OVERLAY
+  OVERLAY --> COMPOSITE
+  COMPOSITE --> RUNTIME
+  STATE --> STORE
+  LAYOUT --> HITS
+~~~
+
+### 9.2 Placement 状态机
+
+~~~mermaid
+stateDiagram-v2
+  [*] --> Closed
+  Closed --> OpenIntent: toggle
+  OpenIntent --> DockRight: width_tier >= Standard, content >= 40, transcript >= 3
+  OpenIntent --> FloatRight: term_cols >= 26, transcript >= 3
+  OpenIntent --> Hidden: 放不下
+  DockRight --> FloatRight: resize 后 DockRight 放不下
+  DockRight --> Hidden: resize 后都放不下
+  FloatRight --> DockRight: resize 后空间恢复
+  FloatRight --> Hidden: resize 后放不下
+  Hidden --> DockRight: resize 后空间恢复
+  Hidden --> FloatRight: resize 后部分恢复
+  DockRight --> Closed: toggle
+  FloatRight --> Closed: toggle
+  Hidden --> Closed: toggle
+  note right of Hidden
+    open_intent 保留
+    ◨ 隐藏
+    切换静默
+  end note
+~~~
+
+### 9.3 DockRight 渲染管线
+
+~~~mermaid
+flowchart LR
+  A["term_cols / term_rows"] --> B["compute placement"]
+  B -->|DockRight| C["content_w = term_cols - panel_w"]
+  C --> D["render upper at content_w"]
+  C --> E["render dock at term_cols"]
+  D --> F["render panel at panel_w"]
+  F --> G["stitch transcript rows<br/>content + separator + panel"]
+  E --> H["append dock rows full width"]
+  G --> H
+  H --> I["project_frame / paint"]
+  I --> J["overlay_viewport: notices only"]
+~~~
+
+### 9.4 FloatRight 渲染管线
+
+~~~mermaid
+flowchart LR
+  A["term_cols / term_rows"] --> B["compute placement"]
+  B -->|FloatRight| C["transcript + dock at term_cols"]
+  C --> D["PanelRegion overlay"]
+  D --> E["OverlayOptions<br/>clip = transcript rect<br/>max_width · min_height · max_height"]
+  E --> F["composite_overlays within clip"]
+  F --> G["paint; dock untouched"]
+~~~
+
+### 9.5 Spec 与代码落点
+
+~~~mermaid
+flowchart LR
+  P["c3226 proposal"] --> D["c3226 design"]
+  D --> A["app-tui-fixed-zone r2904"]
+  D --> E["package-tui-engine"]
+  D --> H["package-tui-pointer"]
+  A --> AC["crates/xylitol-app-tui"]
+  E --> EC["crates/xylitol-tui"]
+  H --> PC["pointer pipeline"]
+  EC --> AC
+~~~
+
+## 10. 参考
 
 - API 草案、状态机、效果示例与测试底稿：`research/engine-panel-api.md`。
 - 决策全文：`proposal.md`。
