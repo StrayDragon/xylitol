@@ -181,3 +181,21 @@ fn test_run_code_details(bridge_bdd: BridgeBdd) {}
     name = "run-code-no-details-fallback"
 )]
 fn test_run_code_no_details(bridge_bdd: BridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "过大diff已截断带已省略"
+)]
+fn test_at_diff_cap(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "diff复用包组件"
+)]
+fn test_att_diff_package() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "左轨复用包绘制器"
+)]
+fn test_att_rail_package() {}

@@ -2,8 +2,8 @@ use crate::bdd::fixtures::*;
 use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_bridge::{ProviderBdd, provider_bdd};
-use crate::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
 use crate::bdd::steps_cli_surface::{SurfaceFlagsBdd, surface_flags_bdd};
+use crate::bdd::steps_infra_mcp_extra::{T6McpBdd, t6_mcp_bdd};
 use crate::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
 use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
@@ -79,3 +79,15 @@ async fn test_la_r1513_session_unit(host_pump_bdd: HostPumpBdd) {}
     name = "厂商diff收纳于桥缝"
 )]
 fn test_la_r1528_bridge_open_close(provider_bdd: ProviderBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
+    name = "重载双结束效果"
+)]
+fn test_la_reload_dual(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
+    name = "嵌入print无监听"
+)]
+fn test_la_embed_print(host_pump_bdd: HostPumpBdd) {}

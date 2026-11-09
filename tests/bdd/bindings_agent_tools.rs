@@ -1,4 +1,5 @@
 use crate::bdd::fixtures::*;
+use crate::bdd::steps_agent_tools_extra::{T2SchemaBdd, t2_schema_bdd};
 use crate::bdd::steps_agent_tools_outcome::{OutcomeBdd, outcome_bdd};
 use crate::bdd::steps_tool_selection::{ToolSelectionBdd, tool_selection_bdd};
 use rstest_bdd_macros::scenario;
@@ -386,7 +387,7 @@ fn test_tools_write_in_session_workspace(ws: Workspace) {}
 )]
 fn test_tools_bash_runs_in_session_workspace(ws: Workspace) {}
 
-use crate::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
+use crate::bdd::steps_infra_mcp_extra::{T6McpBdd, t6_mcp_bdd};
 
 #[scenario(
     path = "llmanspec/specs/agent-tools/agent-tools.feature",
@@ -501,3 +502,15 @@ fn test_structured_outcome_timeout(outcome_bdd: OutcomeBdd, ws: Workspace) {}
     name = "missing-details-fallback"
 )]
 fn test_structured_outcome_fallback(outcome_bdd: OutcomeBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "搜索工具暴露可选超时"
+)]
+fn test_at_search_timeout(ws: Workspace, t2_schema_bdd: T2SchemaBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "文件系统工具隐藏每调用超时"
+)]
+fn test_at_fs_no_timeout(ws: Workspace, t2_schema_bdd: T2SchemaBdd) {}

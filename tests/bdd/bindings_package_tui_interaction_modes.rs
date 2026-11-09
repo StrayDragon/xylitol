@@ -48,3 +48,15 @@ fn test_copy_notice_after_success(ws: Workspace) {
 fn test_editor_multiline_selection(ws: Workspace) {
     let _ = ws;
 }
+
+#[scenario(
+    path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
+    name = "拖选选择复制誊本"
+)]
+fn test_pt_drag_copy() {}
+
+#[scenario(
+    path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
+    name = "停靠栏行排除来自选区"
+)]
+fn test_pt_dock_exclude() {}

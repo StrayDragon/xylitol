@@ -1,5 +1,6 @@
 use crate::bdd::fixtures::*;
-use crate::bdd::steps_c2844::compaction_probe;
+use crate::bdd::steps_domain_compaction::compaction_probe;
+use crate::bdd::steps_domain_compaction::{T4PolicyBdd, t4_policy_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -237,7 +238,7 @@ async fn test_c7_thinking_override(agent: AgentState, sess: XySessionStore, ws: 
     name = "回合结束溢出事件之前agent结束"
 )]
 async fn test_c2844_turn_end_compaction_events(
-    compaction_probe: crate::bdd::steps_c2844::CompactionProbe,
+    compaction_probe: crate::bdd::steps_domain_compaction::CompactionProbe,
     agent: AgentState,
     ws: Workspace,
 ) {
@@ -247,7 +248,7 @@ async fn test_c2844_turn_end_compaction_events(
     name = "推理仅摘要不空"
 )]
 async fn test_c2844_reasoning_only_summary(
-    compaction_probe: crate::bdd::steps_c2844::CompactionProbe,
+    compaction_probe: crate::bdd::steps_domain_compaction::CompactionProbe,
     sess: XySessionStore,
     agent: AgentState,
     ws: Workspace,
@@ -258,3 +259,57 @@ async fn test_c2844_reasoning_only_summary(
     name = "压缩裁切指标同一来源"
 )]
 fn test_c2848_cut_metric_same_source(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "强制指令追加焦点"
+)]
+fn test_dc_focus(ws: Workspace, agent: AgentState) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "策略快照已记录"
+)]
+async fn test_dc_policy(
+    ws: Workspace,
+    agent: AgentState,
+    sess: XySessionStore,
+    t4_policy_bdd: T4PolicyBdd,
+) {
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "预留共享页脚估算"
+)]
+async fn test_cp_r1402_shared_estimate(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "阈值路由之后结算"
+)]
+async fn test_cp_r1410_threshold_route(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "裁切时叶子分支"
+)]
+async fn test_cp_r1412_leaf_cut(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "一估算每结算"
+)]
+async fn test_cp_r1413_one_estimate(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "摘要节来自保留分支"
+)]
+async fn test_cp_r1414_summary_sections(agent: AgentState, ws: Workspace, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "下限诊断在至多一次"
+)]
+async fn test_cp_r1415_once(agent: AgentState, ws: Workspace, sess: XySessionStore) {}

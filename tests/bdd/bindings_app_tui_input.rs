@@ -1,3 +1,4 @@
+use crate::bdd::fixtures::{AgentState, Workspace, XySessionStore, agent, sess, ws};
 use crate::bdd::steps_app_tui_fixed_zone::{FixedZoneBdd, fixed_zone_bdd};
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use rstest_bdd_macros::scenario;
@@ -91,3 +92,69 @@ fn test_c2826_ati_keybindings(host_pump_bdd: HostPumpBdd) {}
     name = "队列条点击还原"
 )]
 async fn test_c3001_queue_hover_click(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "模型参数弹出层与应用"
+)]
+fn test_ati_model_apply(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "模型参数Esc无SetModel"
+)]
+fn test_ati_model_esc(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "在路径弹出层与应用"
+)]
+fn test_ati_at_popup(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "粘贴标记已展开时提交"
+)]
+fn test_ati_paste_expand(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "美元符技能弹出层应用"
+)]
+fn test_ati_dollar_popup(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "yolo切换之后信任"
+)]
+async fn test_ai_r1314_yolo(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "改向保留于誊本"
+)]
+async fn test_ai_r1322_steer(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "bang前缀单一块"
+)]
+async fn test_ai_r1323_bang(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "外部编辑器和弦键已记录"
+)]
+async fn test_ai_r1324_editor(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "历史种子来自上一会话"
+)]
+fn test_ai_r1316_seed(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "续跑面板键"
+)]
+async fn test_ai_r1304_resume(host_pump_bdd: HostPumpBdd) {}

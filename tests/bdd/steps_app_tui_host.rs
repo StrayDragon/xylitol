@@ -4,6 +4,7 @@ use rstest_bdd_macros::{given, then, when};
 use xylitol_app_tui::TuiHostEvent as HostEvent;
 use xylitol_app_tui::TuiHostSession as HostSession;
 use xylitol_app_tui::UiRoot;
+use xylitol_app_tui::driver::ModelInfo;
 use xylitol_app_tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
 use xylitol_app_tui::{BashBlockStatus, UiEntry, UiModel};
 use xylitol_plugin_sdk::XyBashResult;
@@ -3528,4 +3529,845 @@ pub(crate) fn t_c3001_queue_click(host_pump_bdd: &HostPumpBdd) {
         clears.iter().any(|(steer, follow)| *steer && *follow),
         "c3001: 点击应经 ClearQueue 清空双向队列：{clears:?}"
     );
+}
+
+pub struct C2827Bdd {
+    pub pump: RefCell<Option<HostPump>>,
+    pub frames: RefCell<Vec<u64>>,
+}
+
+#[fixture]
+pub fn c2827_bdd() -> C2827Bdd {
+    C2827Bdd {
+        pump: RefCell::new(None),
+        frames: RefCell::new(Vec::new()),
+    }
+}
+
+fn take_c(bdd: &C2827Bdd) -> HostPump {
+    bdd.pump.borrow_mut().take().expect("c2827 pump mounted")
+}
+
+fn put_c(bdd: &C2827Bdd, pump: HostPump) {
+    *bdd.pump.borrow_mut() = Some(pump);
+}
+
+fn take_host(bdd: &HostPumpBdd) -> HostPump {
+    bdd.pump.borrow_mut().take().expect("host pump mounted")
+}
+
+struct Snapshot {
+    should_quit: bool,
+    tree_open: bool,
+    aborts: usize,
+    tree_calls: usize,
+}
+
+fn snap(pump: &HostPump) -> Snapshot {
+    let root = pump.session.ui_root().expect("ui").clone();
+    Snapshot {
+        should_quit: pump.session.should_quit(),
+        tree_open: root.borrow().tree_open(),
+        aborts: pump.driver.abort_count(),
+        tree_calls: pump.driver.session_tree_calls(),
+    }
+}
+
+fn render_pump_frame(pump: &mut HostPump) -> String {
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().render(120).join("\n")
+}
+
+fn last_entries_text(pump: &HostPump) -> Vec<String> {
+    pump.session
+        .ui_model()
+        .entries
+        .iter()
+        .map(|e| match e {
+            UiEntry::ScrollNotice { text } | UiEntry::Error { text } => text.clone(),
+            UiEntry::Assistant { text, .. } => text.clone(),
+            UiEntry::User { text, .. } => text.clone(),
+            _ => String::new(),
+        })
+        .collect()
+}
+
+fn key_event(
+    code: crossterm::event::KeyCode,
+    mods: crossterm::event::KeyModifiers,
+) -> xylitol_tui::InputEvent {
+    use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState};
+    xylitol_tui::InputEvent::Key(KeyEvent {
+        code,
+        modifiers: mods,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+fn c2827_esc_stream(
+    after_ms: u64,
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol_app_tui::XyDriverError>> {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(after_ms)).await;
+        let _ = tx.send(Ok(HostEvent::Input(key_event(
+            crossterm::event::KeyCode::Esc,
+            crossterm::event::KeyModifiers::NONE,
+        ))));
+        std::future::pending::<()>().await;
+    });
+    futures::stream::unfold(
+        rx,
+        |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
+    )
+}
+
+fn type_text(pump: &mut HostPump, text: &str) {
+    use crossterm::event::KeyModifiers;
+    for c in text.chars() {
+        pump.session
+            .step(HostEvent::Input(key_event(
+                crossterm::event::KeyCode::Char(c),
+                KeyModifiers::NONE,
+            )))
+            .expect("type step");
+    }
+}
+
+async fn pump_host(bdd: &HostPumpBdd) {
+    let mut pump = take_host(bdd);
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("pump");
+    *bdd.pump.borrow_mut() = Some(pump);
+}
+
+fn editor_text_of(pump: &HostPump) -> String {
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow().editor_text()
+}
+
+fn mount_if_needed(bdd: &HostPumpBdd) {
+    if bdd.pump.borrow().is_none() {
+        *bdd.pump.borrow_mut() = Some(fresh_pump());
+    }
+}
+
+#[then("会话请求退出且终端已恢复")]
+pub(crate) fn t_c2827_exit_restores(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    assert!(pump.session.should_quit(), "c2827: /exit 应请求退出");
+    assert!(
+        pump.session.engine_stopped(),
+        "c2827: 退出路径应已 finish()（终端恢复）"
+    );
+}
+
+#[given("以小于最小尺寸的终端挂载主机泵")]
+pub(crate) fn g_c2827_tiny_terminal(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = fresh_pump();
+    pump.session
+        .step(HostEvent::Resize { cols: 30, rows: 5 })
+        .expect("resize to tiny");
+    assert_eq!(
+        pump.session.mode(),
+        xylitol_app_tui::LayoutMode::TooSmall,
+        "c2827: 前置应为 TooSmall 布局"
+    );
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("显示友好的最小尺寸提示而非 panic")]
+pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_host(host_pump_bdd);
+    assert_eq!(
+        pump.session.mode(),
+        xylitol_app_tui::LayoutMode::TooSmall,
+        "c2827: 极端尺寸应切 TooSmall 布局"
+    );
+    let frames_before = pump.session.engine_frame_count();
+    pump.session.render_now().expect("TooSmallHint must render");
+    assert!(
+        pump.session.engine_frame_count() > frames_before,
+        "c2827: TooSmall 布局应完成一次提示帧绘制"
+    );
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[when("以主机泵提交挂起 bang 并注入事件后按 Esc")]
+pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
+    use xylitol_app_tui::driver::XyDriver as _;
+    use xylitol_app_tui::harness::drain_pending;
+
+    let mut pump = fresh_pump();
+    pump.driver.set_hang_bash_until_abort(true);
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_editor_text("!sleep 99");
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter");
+    let mut stream: Option<xylitol_app_tui::driver::EventStream> = None;
+    drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("drain start");
+    pump.driver.push_script(vec![
+        XyEvent::MessageStart {
+            role: "assistant".into(),
+            message: None,
+        },
+        XyEvent::TextDelta("late-agent".into()),
+        XyEvent::MessageEnd {
+            role: "assistant".into(),
+            message: None,
+        },
+        XyEvent::AgentEnd { messages: vec![] },
+    ]);
+    let mut agent_stream: Option<xylitol_app_tui::driver::EventStream> =
+        Some(pump.driver.run("bg").await);
+    let bash = pump
+        .session
+        .take_bash()
+        .expect("hanging bang pending after drain");
+    xylitol_app_tui::harness::run_interactive_bang(
+        &mut pump.session,
+        &mut pump.driver,
+        bash,
+        &mut agent_stream,
+        c2827_esc_stream(60),
+    )
+    .await
+    .expect("bang loop");
+    assert!(
+        agent_stream.is_none(),
+        "c2827: bang 循环 MUST 仍 poll agent EventStream（流应被消费至尽）"
+    );
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("事件被消费且中止计一次且未退出")]
+pub(crate) fn t_c2827_bang_events_consumed(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    let s = snap(&pump);
+    assert!(!s.should_quit, "c2827: Esc 中止 bang 不应退出");
+    assert_eq!(s.aborts, 1, "c2827: 应恰中止一次");
+}
+
+#[given("驱动对消息快照返回失败")]
+pub(crate) fn g_c2827_get_messages_error(host_pump_bdd: &HostPumpBdd) {
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    pump.driver
+        .set_get_messages_error(Some("get messages boom".into()));
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[when("以主机泵在面板中确认选定")]
+pub(crate) async fn w_c2827_panel_confirm(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_host(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[then("写入错误提示而非静默空 transcript")]
+pub(crate) fn t_c2827_get_messages_surfaced(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    let texts = last_entries_text(&pump).join("\n");
+    assert!(
+        texts.contains("get_messages failed") || texts.contains("boom"),
+        "c2827: GetMessages 失败必须显错而非静默，实际 entries={texts:?}"
+    );
+}
+
+#[when("以主机泵注入含当前会话的可恢复列表后提交 {cmd:string}")]
+pub(crate) async fn w_c2827_resume_with_current(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"').to_string();
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    let current = pump.driver.active_session_id();
+    pump.driver
+        .set_session_list(vec![xylitol_plugin_sdk::SessionListEntry {
+            id: current,
+            name: Some("当前样本".into()),
+            first_message: Some("预览".into()),
+            message_count: 2,
+            modified_unix: Some(1_700_000_000),
+            parent_session_id: None,
+            tree_prefix: String::new(),
+            cwd: Some(".".into()),
+            path: None,
+        }]);
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_editor_text(&cmd);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[when("以主机泵在面板中按删除")]
+pub(crate) async fn w_c2827_panel_delete(host_pump_bdd: &HostPumpBdd) {
+    use crossterm::event::KeyModifiers;
+    let mut pump = take_host(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(key_event(
+            crossterm::event::KeyCode::Char('d'),
+            KeyModifiers::CONTROL,
+        )))
+        .expect("ctrl+d");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[when("以主机泵在面板中按删除再确认")]
+pub(crate) async fn w_c2827_panel_delete_confirm(host_pump_bdd: &HostPumpBdd) {
+    use crossterm::event::KeyModifiers;
+    let mut pump = take_host(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(key_event(
+            crossterm::event::KeyCode::Char('d'),
+            KeyModifiers::CONTROL,
+        )))
+        .expect("ctrl+d");
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("confirm enter");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[then("提示无法删除当前会话且未调用删除")]
+pub(crate) fn t_c2827_delete_current_refused(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_host(host_pump_bdd);
+    assert!(
+        pump.driver.delete_session_calls().is_empty(),
+        "c2827: 删除当前会话必须被拒绝"
+    );
+    let frame = render_pump_frame(&mut pump);
+    assert!(
+        frame.contains("Cannot delete the active session"),
+        "c2827: 应提示无法删除当前会话：{frame}"
+    );
+}
+
+#[then("删除恰经驱动调用一次")]
+pub(crate) fn t_c2827_delete_once(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    let calls = pump.driver.delete_session_calls();
+    assert_eq!(calls.len(), 1, "c2827: 确认后应恰删除一次：{calls:?}");
+}
+
+#[given("以主机泵在空闲态渲染基线帧")]
+pub(crate) fn g_c2827_idle_baseline(c2827_bdd: &C2827Bdd) {
+    let mut pump = fresh_pump();
+    pump.session.render_now().expect("baseline render");
+    let count = pump.session.engine_frame_count();
+    *c2827_bdd.frames.borrow_mut() = vec![count];
+    put_c(c2827_bdd, pump);
+}
+
+#[when("空闲态推进一次 Tick")]
+pub(crate) fn w_c2827_idle_tick(c2827_bdd: &C2827Bdd) {
+    let mut pump = take_c(c2827_bdd);
+    pump.session.step(HostEvent::Tick).expect("tick");
+    put_c(c2827_bdd, pump);
+}
+
+#[when("注入无态变的鼠标移动")]
+pub(crate) fn w_c2827_mouse_moved(c2827_bdd: &C2827Bdd) {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    let mut pump = take_c(c2827_bdd);
+    pump.session
+        .step(HostEvent::Input(xylitol_tui::InputEvent::Mouse(
+            MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: 1,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            },
+        )))
+        .expect("mouse moved");
+    put_c(c2827_bdd, pump);
+}
+
+#[then("未触发整帧重绘")]
+pub(crate) fn t_c2827_no_repaint(c2827_bdd: &C2827Bdd) {
+    let pump = take_c(c2827_bdd);
+    let before = c2827_bdd.frames.borrow()[0];
+    let after = pump.session.engine_frame_count();
+    put_c(c2827_bdd, pump);
+    assert_eq!(
+        before, after,
+        "c2827: 无态变 MUST NOT 触发整帧重绘（{before} → {after}）"
+    );
+}
+
+#[when("指针探针已武装并注入落在折叠块头的鼠标移动")]
+pub(crate) fn w_c2827_armed_hover_header(c2827_bdd: &C2827Bdd) {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    use xylitol_app_tui::FoldTarget;
+    let mut pump = take_c(c2827_bdd);
+    assert!(
+        pump.session.tui.pointer_probe_armed(),
+        "product AO begin must arm the pointer probe"
+    );
+    {
+        let mut model = pump.session.ui_model().clone();
+        model.entries.push(UiEntry::Tool {
+            timeout_secs: None,
+            id: "hover-bdd".into(),
+            name: "read".into(),
+            args_preview: "h.rs".into(),
+            args_full: String::new(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "hover-body".into(),
+            is_error: false,
+            done: true,
+        });
+        let root = pump.session.ui_root().expect("ui").clone();
+        root.borrow_mut().apply_ui_model(&model);
+    }
+    pump.session.tui.request_render(true);
+    pump.session.step(HostEvent::Tick).expect("paint fold hits");
+    let root = pump.session.ui_root().expect("ui").clone();
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "hover-bdd"))
+        .cloned()
+        .expect("tool header hit after paint");
+    let row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    pump.session
+        .step(HostEvent::Input(xylitol_tui::InputEvent::Mouse(
+            MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: region.col_start as u16,
+                row,
+                modifiers: KeyModifiers::NONE,
+            },
+        )))
+        .expect("armed hover moved");
+    put_c(c2827_bdd, pump);
+}
+
+#[then("未触发整帧重绘且悬停目标已送达")]
+pub(crate) fn t_c2827_hover_delivered_cheap(c2827_bdd: &C2827Bdd) {
+    let pump = take_c(c2827_bdd);
+    assert!(
+        pump.session.tui.pointer_hover_id().is_some(),
+        "armed probe must deliver a hover id"
+    );
+    assert!(
+        !pump.session.tui.ao_components_stale(),
+        "hover must not stale the component tree"
+    );
+    put_c(c2827_bdd, pump);
+}
+
+#[when("空输入按下 Enter")]
+pub(crate) async fn w_c2827_empty_enter(host_pump_bdd: &HostPumpBdd) {
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("empty enter");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[then("未创建提交且仍在编辑器槽")]
+pub(crate) fn t_c2827_empty_enter_no_submit(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    assert!(
+        pump.driver.runs.is_empty(),
+        "c2827: 空输入 Enter MUST NOT 创建提交"
+    );
+    let root = pump.session.ui_root().expect("ui").clone();
+    assert_eq!(
+        format!("{:?}", root.borrow().slot()),
+        "Editor",
+        "c2827: 应仍在编辑器槽"
+    );
+}
+
+#[when("以主机泵空编辑器双 Esc 开树")]
+pub(crate) async fn w_c2827_open_tree(host_pump_bdd: &HostPumpBdd) {
+    use crossterm::event::KeyModifiers;
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    for _ in 0..2 {
+        pump.session
+            .step(HostEvent::Input(key_event(
+                crossterm::event::KeyCode::Esc,
+                KeyModifiers::NONE,
+            )))
+            .expect("esc");
+    }
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[when("在树槽按下分叉和弦")]
+pub(crate) async fn w_c2827_tree_fork(host_pump_bdd: &HostPumpBdd) {
+    use crossterm::event::KeyModifiers;
+    let mut pump = take_host(host_pump_bdd);
+    pump.driver
+        .set_session_messages(xylitol_app_tui::harness::harness_sample_session_messages());
+    pump.session
+        .step(HostEvent::Input(key_event(
+            crossterm::event::KeyCode::Char('f'),
+            KeyModifiers::SHIFT,
+        )))
+        .expect("shift+f");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[then("新建子会话并切换且树关闭")]
+pub(crate) fn t_c2827_tree_fork_child(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    let forks = pump.driver.fork_calls();
+    assert_eq!(forks.len(), 1, "c2827: 树内 fork 应新建子会话：{forks:?}");
+    let switches = pump.driver.switch_calls();
+    assert_eq!(switches.len(), 1, "c2827: fork 后应切换到子会话");
+    let s = snap(&pump);
+    assert!(!s.tree_open, "c2827: fork 后应关闭树");
+}
+
+#[then("树槽渲染 Search 行与 TreeHelp 行")]
+pub(crate) fn t_c2827_tree_search_help(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_host(host_pump_bdd);
+    let frame = render_pump_frame(&mut pump);
+    assert!(
+        frame.contains("Search") || frame.contains("Type to search"),
+        "c2827: 树槽应渲染 Search 行：{frame}"
+    );
+    assert!(
+        frame.contains("fold") || frame.contains("filters") || frame.contains("move"),
+        "c2827: TreeHelp 应含键位用途片段：{frame}"
+    );
+}
+
+#[when("在树槽编辑选中节点标签为 {label:string}")]
+pub(crate) async fn w_c2827_tree_label(host_pump_bdd: &HostPumpBdd, label: String) {
+    use crossterm::event::KeyModifiers;
+    let label = label.trim_matches('"').to_string();
+    let mut pump = take_host(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(key_event(
+            crossterm::event::KeyCode::Char('l'),
+            KeyModifiers::SHIFT,
+        )))
+        .expect("shift+l");
+    type_text(&mut pump, &label);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("label enter");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[then("标签经驱动写入且注解生效")]
+pub(crate) fn t_c2827_tree_label_persisted(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    let labels = pump.driver.label_calls();
+    assert!(
+        labels.iter().any(|(_, l)| l.as_deref() == Some("重点")),
+        "c2827: 树内标签应经驱动写入：{labels:?}"
+    );
+}
+
+#[then("会话树非空且含 fixture 用户正文")]
+pub(crate) fn t_c2827_debug_tree_fixture(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_host(host_pump_bdd);
+    let s = snap(&pump);
+    assert!(s.tree_open, "c2827: 双 Esc 应开树");
+    assert!(s.tree_calls >= 1, "c2827: 应经驱动取树");
+    let frame = render_pump_frame(&mut pump);
+    assert!(
+        frame.contains("hello"),
+        "c2827: 树应含 fixture 用户正文 hello：{frame}"
+    );
+}
+
+#[given("驱动可用模型含 test-model")]
+pub(crate) fn g_c2827_available_model(host_pump_bdd: &HostPumpBdd) {
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    let models = vec![ModelInfo {
+        id: "test-model".into(),
+        display_name: "test-model".into(),
+        thinking: false,
+        thinking_levels: vec!["off".into()],
+        context_window: 8_000,
+    }];
+    pump.driver.set_available_models(models.clone());
+    pump.session.set_model_arg_catalog_from_models(&models);
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[when("在编辑器键入 {text:string}")]
+pub(crate) async fn w_c2827_type(host_pump_bdd: &HostPumpBdd, text: String) {
+    let text = text.trim_matches('"').to_string();
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    type_text(&mut pump, &text);
+    tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("pump after type");
+    pump.session.render_now().expect("render");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[when("在编辑器键入 {text:string} 并按 Esc")]
+pub(crate) async fn w_c2827_type_esc(host_pump_bdd: &HostPumpBdd, text: String) {
+    let text = text.trim_matches('"').to_string();
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    type_text(&mut pump, &text);
+    tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("pump after type");
+    pump.session
+        .step(HostEvent::Input(key_event(
+            crossterm::event::KeyCode::Esc,
+            crossterm::event::KeyModifiers::NONE,
+        )))
+        .expect("esc");
+    pump.session.render_now().expect("render");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+fn press_tab(pump: &mut HostPump) {
+    pump.session
+        .step(HostEvent::Input(key_event(
+            crossterm::event::KeyCode::Tab,
+            crossterm::event::KeyModifiers::NONE,
+        )))
+        .expect("tab");
+}
+
+#[then("弹出模型补全且 Tab 写入模型 id")]
+pub(crate) fn t_c2827_model_popup_apply(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_host(host_pump_bdd);
+    let frame = render_pump_frame(&mut pump);
+    assert!(
+        frame.contains("test-model"),
+        "c2827: /model 空格应弹出模型补全：{frame}"
+    );
+    press_tab(&mut pump);
+    let text = editor_text_of(&pump);
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    assert!(
+        text.contains("test-model"),
+        "c2827: Tab 应把模型 id 写入编辑器：{text}"
+    );
+}
+
+#[then("补全关闭且未调用换模")]
+pub(crate) fn t_c2827_model_esc_no_set(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    assert_ne!(
+        pump.driver.current_model_id(),
+        "test-model",
+        "c2827: Esc 关补全 MUST NOT 调用 SetModel"
+    );
+}
+
+#[then("弹出路径补全且 Tab 写入路径引用")]
+pub(crate) fn t_c2827_at_popup_apply(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_host(host_pump_bdd);
+    let frame = render_pump_frame(&mut pump);
+    assert!(
+        frame.contains("(1/") && frame.contains("/"),
+        "c2827: @ 应弹出路径补全（分页指示）：{frame}"
+    );
+    press_tab(&mut pump);
+    let text = editor_text_of(&pump);
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    assert!(
+        text.starts_with('@') && text.len() > 1,
+        "c2827: Tab 应写入路径引用：{text}"
+    );
+}
+
+#[when("以主机泵在编辑器粘贴多段文本并提交")]
+pub(crate) async fn w_c2827_paste_submit(host_pump_bdd: &HostPumpBdd) {
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    let long = (0..30)
+        .map(|i| format!("line-{i} of paste"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    pump.session
+        .step(HostEvent::Input(xylitol_tui::InputEvent::Paste(long)))
+        .expect("paste");
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("submit");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_host(host_pump_bdd).await;
+}
+
+#[then("驱动收到的正文为展开全文")]
+pub(crate) fn t_c2827_paste_expanded(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    let runs = pump.driver.runs.clone();
+    assert_eq!(runs.len(), 1, "c2827: 粘贴提交应恰一次 run：{runs:?}");
+    assert!(
+        runs[0].contains("line-0 of paste") && runs[0].contains("line-29 of paste"),
+        "c2827: 提交正文 MUST 为展开全文而非占位：{:?}",
+        runs[0]
+    );
+    assert!(
+        !runs[0].contains("[paste #"),
+        "c2827: 占位符 MUST NOT 进入提交正文：{:?}",
+        runs[0]
+    );
+}
+
+#[given("已加载技能目录含 greet")]
+pub(crate) fn g_c2827_skill_catalog(host_pump_bdd: &HostPumpBdd) {
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    pump.driver
+        .set_dollar_skill_catalog_for_driver(vec![("greet".into(), "hello skill body".into())]);
+    pump.session
+        .set_dollar_skill_catalog(vec![("greet".into(), "hello skill body".into())]);
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("弹出技能补全且 Tab 写入 {expected:string}")]
+pub(crate) fn t_c2827_skill_popup_apply(host_pump_bdd: &HostPumpBdd, expected: String) {
+    let expected = expected.trim_matches('"').to_string();
+    let mut pump = take_host(host_pump_bdd);
+    let frame = render_pump_frame(&mut pump);
+    assert!(frame.contains("greet"), "c2827: $ 应弹出技能补全：{frame}");
+    press_tab(&mut pump);
+    let text = editor_text_of(&pump);
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    assert_eq!(
+        text.trim_end(),
+        expected,
+        "c2827: Tab 应写入技能引用：{text}"
+    );
+}
+
+#[when("注入含 {n:u32} 行 display_diff 的 edit 成功结果")]
+pub(crate) fn w_c2827_huge_diff(host_pump_bdd: &HostPumpBdd, n: u32) {
+    mount_if_needed(host_pump_bdd);
+    let mut pump = take_host(host_pump_bdd);
+    pump.session.on_run_started("edit big file");
+    let args = serde_json::json!({ "path": "big.rs", "old_text": "a", "new_text": "b" });
+    pump.session
+        .step(HostEvent::Xy(Box::new(XyEvent::ToolExecutionStart {
+            id: "t1".into(),
+            name: "edit".into(),
+            args,
+        })))
+        .expect("tool start");
+    let diff = (0..n)
+        .map(|i| format!("{i}: changed line content"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let result = serde_json::json!({
+        "path": "big.rs",
+        "success": true,
+        "display_diff": diff
+    });
+    pump.session
+        .step(HostEvent::Xy(Box::new(XyEvent::ToolExecutionEnd {
+            id: "t1".into(),
+            name: "edit".into(),
+            result: result.to_string(),
+            details: None,
+            is_error: false,
+        })))
+        .expect("tool end");
+    pump.session.on_run_stream_closed();
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().expand_nearest_activity();
+    drop(root);
+    pump.session.render_now().expect("render");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("diff 正文截断并提示省略行数")]
+pub(crate) fn t_c2827_diff_capped(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_host(host_pump_bdd);
+    let frame = render_pump_frame(&mut pump);
+    let has_hint = frame.contains("lines")
+        || frame.contains("omitted")
+        || frame.contains('…')
+        || frame.contains("more");
+    let plain_frame: String = {
+        let mut out = String::new();
+        let mut chars = frame.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                for c2 in chars.by_ref() {
+                    if c2 == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    };
+    assert!(
+        has_hint,
+        "c2827: 超大 diff 应截断并提示省略：{}",
+        &plain_frame[..plain_frame.len().min(1600)]
+    );
+    let line_count = frame.lines().count();
+    assert!(
+        line_count < 200,
+        "c2827: diff 渲染 MUST 有可见行硬上限：{line_count}"
+    );
+}
+
+#[when("以同进程驱动完成一轮 print 对话")]
+pub(crate) async fn w_c2827_print_embed_round(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = fresh_pump();
+    pump.driver
+        .push_script(vec![XyEvent::AgentEnd { messages: vec![] }]);
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_editor_text("hi");
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter");
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("pump");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("对话完成且未要求监听器")]
+pub(crate) fn t_c2827_print_embed_done(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_host(host_pump_bdd);
+    assert_eq!(
+        pump.driver.runs.len(),
+        1,
+        "c2827: 同进程 print/嵌入路径应完成一轮对话"
+    );
+    let s = snap(&pump);
+    assert!(!s.should_quit, "c2827: 对话完成不应退出");
 }

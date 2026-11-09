@@ -138,12 +138,14 @@ async fn test_c2826_abort_persist(agent: AgentState, ws: Workspace) {}
 )]
 async fn test_c2826_two_iterations(agent: AgentState, ws: Workspace) {}
 
+use crate::bdd::steps_agent_prompt_extra::{T2CapsBdd, t2_caps_bdd};
 use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
 use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use crate::bdd::steps_bridge::{PromptBdd, prompt_bdd};
-use crate::bdd::steps_c2827::{T2CapsBdd, T2EstBdd, T6McpBdd, t2_caps_bdd, t2_est_bdd, t6_mcp_bdd};
+use crate::bdd::steps_infra_mcp_extra::{T6McpBdd, t6_mcp_bdd};
 use crate::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
+use crate::bdd::steps_provider_openai_accounting_extra::{T2EstBdd, t2_est_bdd};
 use crate::bdd::steps_runtime_config::{RcSnap, rc_snap};
 
 #[scenario(

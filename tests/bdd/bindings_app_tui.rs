@@ -26,3 +26,21 @@ async fn test_at_surface_local(host_pump_bdd: HostPumpBdd) {}
     name = "产品槽点击跳转"
 )]
 async fn test_att_product_gutter(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui/app-tui.feature",
+    name = "三个应用表面于缺省feature设置"
+)]
+fn test_at_three_surfaces() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui/app-tui.feature",
+    name = "TUI导入经公开契约仅"
+)]
+fn test_at_public_contract() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui/app-tui.feature",
+    name = "索引指向至每能力规则"
+)]
+fn test_at_capability_index() {}

@@ -2,7 +2,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use crate::bdd::helpers::{with_test_timeout, with_test_timeout_for};
-use crate::bdd::steps_c2827::{T4PrintBdd, t4_stream};
+use crate::bdd::steps_cli_print_extra::{T4PrintBdd, t4_stream};
 use rstest_bdd_macros::{then, when};
 
 fn assert_layer_invariants() {
