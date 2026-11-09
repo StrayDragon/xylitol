@@ -5,7 +5,7 @@
 
   @req:r1693
   规则: Command 枚举
-    protocol 须定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；command-backed 方法 须反序列化为此枚举。方法 须按方法名寻址，不得引入数字 method_id。
+    protocol 须定义 Command 枚举，至少覆盖 Prompt、Abort、SetModel、SetThinkingLevel、GetCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；command-backed 方法 须反序列化为此枚举。方法 须按方法名寻址，不得引入数字 method_id。
 
     场景: 命令往返保真
       当 对产品命令样例做线协议序列化与反序列化往返
@@ -13,7 +13,7 @@
 
   @req:r1695
   规则: Event 枚举
-    protocol/ 须定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 须反序列化为此枚举。Event 须覆盖全部 XyEvent 变体（见 r1698）；未知 type 须降级为 Unknown 变体。
+    protocol/ 须定义 Event 枚举，至少覆盖 TurnStart、TextDelta、ThinkingDelta、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、TurnEnd；每个 core→client 消息 须反序列化为此枚举。Event 须覆盖全部 XyEvent 变体（见 r1698）；未知 type 须降级为 Unknown 变体。
 
     场景: 事件枚举覆盖agent流
       当 对 Agent 流族事件做线协议序列化与反序列化往返
@@ -297,7 +297,7 @@
 
     场景: 反向RPC首次作答生效
       假如 工具需审批
-      当 推送 ApprovalRequired
+      当 推送审批请求
       那么 客户端经 POST /rpc 调用 approve_tool 且回合恢复
 
   @req:r1927

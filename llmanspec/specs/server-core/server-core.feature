@@ -131,11 +131,11 @@
 
   @req:r1799
   规则: 审批与问卷
-    Host 须支持 ApprovalRequired 与 QuestionRequired：经 WS /rpc 下行通知告知，挂起回合，并在匹配 call 的第一笔审批/问卷 unary 时恢复。不得再以 POST /api/respond 为产品作答路径。
+    Host 须支持审批与问卷：经 WS /rpc 下行 `approval/requested` 与 `question/requested` 通知告知，挂起回合，并在匹配 call 的第一笔审批/问卷 unary 时恢复。不得再以 POST /api/respond 为产品作答路径。
 
     场景: 审批往返
       假如 工具需审批
-      当 推送 ApprovalRequired
+      当 推送审批请求
       那么 客户端经 POST /rpc 调用 approve_tool 且回合恢复
 
   @req:r1800
@@ -492,7 +492,7 @@
 
   @req:r1771
   规则: reverse-rpc-approval
-    ApprovalRequired 时，Host 须向该 session 的订阅连接广播 approval/requested notification；首个匹配该 call 的审批 unary 胜出。
+    审批请求 时，Host 须向该 session 的订阅连接广播 approval/requested notification；首个匹配该 call 的审批 unary 胜出。
 
     场景: 批准往返
       假如 服务端和已连接的 mux 客户端
@@ -510,13 +510,13 @@
       并且 turn 继续但不包含工具结果
 
     场景: 审批广播
-      假如 agent 发出 ApprovalRequired，call_id 为 xyz
+      假如 agent 发出审批请求，call_id 为 xyz
       当 server 检查 session 的 mux 连接
       那么 3 个已连接客户端均收到 approval/requested
 
   @req:r1772
   规则: reverse-rpc-question
-    QuestionRequired 时，Host 须向该 session 的订阅连接广播 question/requested notification；首个匹配该 call 的问卷 unary 胜出。
+    问卷请求 时，Host 须向该 session 的订阅连接广播 question/requested notification；首个匹配该 call 的问卷 unary 胜出。
 
     场景: 首次胜出
       假如 2 个客户端 POST /rpc 调用 approve_tool，call_id xyz（首个 true，50ms 后 false）

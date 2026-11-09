@@ -8,7 +8,7 @@
 <!-- LLMANSPEC:END -->
 
 change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层、seam、Xy\*）真源在
-`src/AGENTS.md`，不在此重复；BDD 配置真源在 `llmanspec/config.yaml` 的 `bdd:` 段。
+`src/AGENTS.md`，不在此重复；BDD 配置真源在 `llmanspec/config.yaml` 的 `specs:` 段。
 
 > 写作原则：只写稳定规则与硬约束（有 specs/changes 代码事实支撑）。进度、当前 active
 > 清单、行数等易腐内容不写——查 `llman-sdd list` / `llman-sdd status`。
@@ -55,7 +55,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 ## 语言
 
 - spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。`规则:` 标题用术语表标准词写需求句。嵌套 `场景:` 名写这一例在测什么的独立中文名；不得英文 kebab，不得复制规则标题。
-- **单轨 feature-as-spec**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；validate 只读取 `.feature`。文件头部注释 `# language:` / `# capability:` / `# purpose:` / `# scope:` 必备。
+- **单轨 feature-as-spec**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；validate 只读取 `.feature`。文件头部注释 `# language:` 与 `# purpose:` 必备；capability 由 `specs/<capability>/` 目录名承载。
 - 场景语义（原生分层，完整格式以 `llman-sdd-propose` / `llman-sdd-ff` skill 内嵌 feature-contract 为 SSOT）：`@req:<id`> 挂 `规则:` 块头 = 全局唯一需求句柄（validate 查重）；嵌套 `场景:`（假如/当/那么）= 可执行示例，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；无嵌套场景 = 裸规则（review `pending` 计量；无法程序化表达的需求才保留，理由记 proposal/design）。增删改既有 `规则:` 块 = WARNING 报告制，不阻断 validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
 - **情态动词词表（对齐 STC 简明技术中文词表强度词条）**：约束 statement 用中文情态——要求 `必须`，否定 `不得`／`禁止`，推荐 `宜`；避免 `应`／`应当`／`应该`／`务必`／`一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
 - `背景:`（Background）MUST 紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
@@ -118,7 +118,7 @@ lifecycle v2 起 stage 为四档：`draft`（仅 proposal）→ `designed`（+de
 
 ## delayed-changes（搁置提案）
 
-`llmanspec/delayed-changes/` 收纳**未启动**的搁置提案（可按 `tui/`、`models/`、`tools/` 等分类；`legacy/` 存旧代提案）：
+`llmanspec/delayed-changes/` 收纳**未启动**的搁置提案（可按 `tui/`、`models/`、`tools/` 等分类）：
 
 - park 内只放 proposal / design / tasks / research 等规划工件；**禁止** `specs/`（spec landing 只发生在 propose 之后）。
 - 启动实现 = 经 propose / ff 正式化迁回 `changes/`；**归档时必须删除 delayed 副本**（一 id 一处真值）。

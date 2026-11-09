@@ -281,7 +281,7 @@
 
   @req:r1051
   规则: context-policy-responses-assembler
-    agent 层 须提供 ContextPolicy（或等价）code-first 默认板：至少含 tools_mode（默认 full）、status_bar_mode（默认 off）；系统提示 不得含日历日/CWD（无 date_placement 旋钮，c2730 删消融）；不得本 change 实现 search/状态栏完整行为。openai-responses 主路径 须经 ResponsesAssembler（bridge）构造请求 body，并传入 WirePolicy；不得在 ReAct/adapter 散落第二套业务布局。由单测覆盖，不得单独扩 BDD step。
+    agent 层 须提供 ContextPolicy（或等价）code-first 默认板：至少含 tools_mode（默认 full）；系统提示 不得含日历日/CWD（无 date_placement 旋钮，c2730 删消融）；不得本 change 实现 search/状态栏完整行为。openai-responses 主路径 须经 ResponsesAssembler（bridge）构造请求 body，并传入 WirePolicy；不得在 ReAct/adapter 散落第二套业务布局。由单测覆盖，不得单独扩 BDD step。
     场景: 代码首次上下文策略缺省
       假如 工具片段含 mcp 前缀工具
       当 以默认路径组装系统提示

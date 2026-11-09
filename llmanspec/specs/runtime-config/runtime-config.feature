@@ -52,7 +52,7 @@
       那么 两键被忽略且不进入运行时 CompactionSettings
   @req:r1722
   规则: ConfigValue 在 infra
-    ConfigValueResolver（环境变量、shell 命令与 ${VAR:-default} 解析，或等价）须收敛于 infra 配置边界且零内部依赖；agent 层 不得含重复解析实现。
+    配置值解析（resolve_from_env / resolve_value，环境变量、shell 命令与 ${VAR:-default} 解析，或等价）须收敛于 infra 配置边界且零内部依赖；agent 层 不得含重复解析实现。
     场景: 配置值解析器在基建边缘
       假如 仅存在 config.local.yaml 含可观测字段而无同层 config.yaml
       当 从全局 config.yaml 加载完整 settings

@@ -240,7 +240,7 @@
       那么 不产生糊成一体的合法 Assistant Text；失败或跳过可观测
   @req:r1083
   规则: compaction-aware session context
-    build_session_context / build_session_context_v2（及等价 LLM history 播种）须对 leaf 分支路径应用与 pi buildContextEntries 同构的裁切：存在 CompactionEntry 时仅保留路径上最新一条 compaction 摘要 + firstKeptEntryId 起至该条之前的条目 + 该条之后的条目；不得把 firstKept 之前已被摘要的消息再送入 LLM 上下文。
+    build_session_context（及等价 LLM history 播种）须对 leaf 分支路径应用与 pi buildContextEntries 同构的裁切：存在 CompactionEntry 时仅保留路径上最新一条 compaction 摘要 + firstKeptEntryId 起至该条之前的条目 + 该条之后的条目；不得把 firstKept 之前已被摘要的消息再送入 LLM 上下文。
 
     场景: 压缩后按叶分支裁切上下文
       假如 叶分支路径存在 CompactionEntry

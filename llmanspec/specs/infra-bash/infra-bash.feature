@@ -75,7 +75,7 @@
 
   @req:r1435
   规则: 运行时可达 abort
-    交互 bash 的取消入口 abort_bash 须可从 AgentRuntime::abort（&self）到达，无需独占 &mut AgentCapabilities 才能在 Driver::abort 路径杀进程树；CancellationToken 取消后 须触发既有杀树路径（be2）。
+    交互 bash 的取消入口 BangExecHandler::abort 须可从 AgentRuntime::abort（&self）到达，无需独占 &mut AgentCapabilities 才能在 Driver::abort 路径杀进程树；CancellationToken 取消后 须触发既有杀树路径（be2）。
     场景: 中止可达来自运行时
       假如 启动交互 bang 长命令后 abort
       当 检查 bash 结果

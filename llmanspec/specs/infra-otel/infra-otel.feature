@@ -147,7 +147,7 @@
 
   @req:r1476
   规则: otel-compaction-span
-    当低频观测 span 激活且实际执行会话 compaction（manual / threshold / overflow）时，须导出名为 agent.compaction 的 fastrace span，且 langfuse.observation.type 须为 span；「实际执行」须定义为已通过 prepare_compaction（或等价门闸）之后的压缩尝试——prepare 早退（无可摘要历史 / Already compacted 等）不得导出 agent.compaction；若存在活跃 agent.turn，该 span 须为其子 span 并共享 trace_id；若不存在 turn 上下文，须可为独立根且在 session 已知时携带同一 langfuse.session.id；须携带诚实 reason（manual|threshold|overflow）与 xylitol.obs.lane=llm，结束时 须能暴露 will_retry / aborted 或失败 status（或等价属性）；默认 不得将压缩摘要全文写入 langfuse.observation.input/output；观测闸关闭时 须为零/近零开销。由单测（CollectingReporter）覆盖，不得为静态存在性单独扩 BDD step。不得改变 XyEvent CompactionStart/End 的面语义。
+    当低频观测 span 激活且实际执行会话 compaction（manual / threshold / overflow）时，须导出名为 agent.compaction 的 fastrace span，且 langfuse.observation.type 须为 span；「实际执行」须定义为已通过 prepare_compaction（或等价门闸）之后的压缩尝试——prepare 早退（无可摘要历史 / Already compacted 等）不得导出 agent.compaction；若存在活跃 agent.turn，该 span 须为其子 span 并共享 trace_id；若不存在 turn 上下文，须可为独立根且在 session 已知时携带同一 langfuse.session.id；须携带诚实 reason（manual|threshold|overflow）与 xylitol.obs.lane=llm，结束时 须能暴露 will_retry / aborted 或失败 status（或等价属性）；默认 不得将压缩摘要全文写入 langfuse.observation.input/output；观测闸关闭时 须为零/近零开销。由单测（SpanCollectScope）覆盖，不得为静态存在性单独扩 BDD step。不得改变 XyEvent CompactionStart/End 的面语义。
 
     场景: 压缩跨度越过准备
       当 以观测闸开启并触发一次会话压缩
@@ -162,7 +162,7 @@
       那么 agent.turn 不携带 ERROR 或 aborted 终态
   @req:r1479
   规则: otel-token-estimate-settlement-once
-    当低频观测 span 激活且完成一次 TurnSettled（无随后 AfterCompaction 失效）时，导出的 token.estimate span 计数 须为 1 且挂在该 agent.turn 下；不得再出现同秒同 tokens 的第二 token.estimate（含独立根）。由 CollectingReporter 或 provider-trace 窄读覆盖，不得为静态存在性单独扩 BDD step。
+    当低频观测 span 激活且完成一次 TurnSettled（无随后 AfterCompaction 失效）时，导出的 token.estimate span 计数 须为 1 且挂在该 agent.turn 下；不得再出现同秒同 tokens 的第二 token.estimate（含独立根）。由 SpanCollectScope 或 provider-trace 窄读覆盖，不得为静态存在性单独扩 BDD step。
 
     场景: 结算单一词元估算
       假如 mock 模型先 tool 后无 tool
@@ -219,7 +219,7 @@
 
   @req:r1485
   规则: otel-compaction-skipped-span
-    当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，须导出名为 agent.compaction.skipped 的轻量 span：须携带跳过原因（skip_reason）与该会话的 langfuse.session.id / xylitol.session.id；不得使用 agent.compaction 名（otel19 保留予过 prepare 的尝试），不得携带 xylitol.obs.lane=llm，不得伪装 LLM 语义（otel22）；auto 早退 不得因此发出 CompactionEnd；auto 预检 须仅发生在 Settle（或 overflow 错误收尾），不得在工具续跑的 iteration 关闭时导出 skipped；存在活跃 agent.turn 时 MAY 为其子 span；无活跃会话（无可附的会话身份）MAY 省略；观测闸关闭时 须为零/近零开销。由单测（CollectingReporter）覆盖，不得为静态存在性单独扩 BDD step。
+    当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，须导出名为 agent.compaction.skipped 的轻量 span：须携带跳过原因（skip_reason）与该会话的 langfuse.session.id / xylitol.session.id；不得使用 agent.compaction 名（otel19 保留予过 prepare 的尝试），不得携带 xylitol.obs.lane=llm，不得伪装 LLM 语义（otel22）；auto 早退 不得因此发出 CompactionEnd；auto 预检 须仅发生在 Settle（或 overflow 错误收尾），不得在工具续跑的 iteration 关闭时导出 skipped；存在活跃 agent.turn 时 MAY 为其子 span；无活跃会话（无可附的会话身份）MAY 省略；观测闸关闭时 须为零/近零开销。由单测（SpanCollectScope）覆盖，不得为静态存在性单独扩 BDD step。
     场景: 已跳过压缩单一估算
       当 以观测闸开启并触发一次会话压缩
       那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane

@@ -26,7 +26,7 @@
       那么 使用 crates.io 当前版本
   @req:r1813
   规则: Partitioned live feature BDD
-    BDD 场景 须支持在 live llmanspec/specs/<capability>/<capability>.feature 中以 @req 绑定 requirement，并由 tests/bdd/ 下的 #[scenario(path=..., name=<scenario.id>)] 消费；场景标题 须等于 scenario.id；该链路 须与现有 tests/features/ 手写链路并存，互不干扰。可执行 GWT 写在 .feature；架构/静态断言留在 spec.toon（feature:false）并由单测覆盖。不得依赖已移除的 solidify / feature.delta。
+    BDD 场景 须支持在 live llmanspec/specs/<capability>/<capability>.feature 中以 @req 绑定 requirement，并由 tests/bdd/ 下的 #[scenario(path=..., name=<scenario.id>)] 消费；场景标题 须等于 scenario.id；该链路 须与现有 tests/bdd/ 手写链路并存，互不干扰。可执行 GWT 写在 .feature；架构/静态断言留在 spec.toon（feature:false）并由单测覆盖。不得依赖已移除的 solidify / feature.delta。
 
     场景: 在线feature分区已绑
       当 读取 BDD 绑定机制

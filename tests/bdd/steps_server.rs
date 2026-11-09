@@ -636,7 +636,7 @@ async fn g_tool_needs_approval(server_test: &ServerTest) {
     start_host(server_test).await;
 }
 
-#[when("推送 ApprovalRequired")]
+#[when("推送审批请求")]
 async fn w_push_approval(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot(&host.fallback_session).await;
@@ -1516,7 +1516,7 @@ fn t_turn_no_tool(approval_test: &ServerTest) {
     t_tool_denied(approval_test);
 }
 
-#[given("agent 发出 ApprovalRequired，call_id 为 xyz")]
+#[given("agent 发出审批请求，call_id 为 xyz")]
 async fn g_rr1(approval_test: &ServerTest) {
     start_host(approval_test).await;
     let host = approval_test.host.borrow().as_ref().expect("host").clone();
