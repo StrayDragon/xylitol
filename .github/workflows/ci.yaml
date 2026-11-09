@@ -49,7 +49,7 @@ jobs:
         run: pipx install prek
 
       - name: Install uncomment
-        run: pipx install uncomment
+        run: cargo install uncomment --version 3.10.4 --locked
 
       - name: Cache .tools (cccc-rs)
         uses: actions/cache@v6
