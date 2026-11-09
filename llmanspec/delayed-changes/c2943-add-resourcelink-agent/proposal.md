@@ -66,3 +66,7 @@ needs_specs_change: true
 | 粘贴图 | 编辑器里的绝对路径 | 取决于 prompt 文本是否被模型当路径处理（无专用 multimodal prompt RPC） |
 
 增强面应明确：TUI **展示**（缩略图 / 路径）、**线协议**（ResourceLink）、**history parts**（r1145，已落地）三条线是否一并改；**OpenAI 族图片投影** 已由 c2993 落地，不再作为本草案前置缺口。
+
+## 2026-11-09 复审
+
+结论：暂不做。当前 `Command::Prompt.message` 仍是文本；本地图片经 `read` 进 `AgentPart::Image`，没有远程媒体 attach 产品面。触发条件：remote client 需要贴图或历史 replay 媒体，且线协议 4 MiB 上限成为真实问题。

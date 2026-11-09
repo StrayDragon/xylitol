@@ -68,3 +68,7 @@ depends_on:
 - required_evidence: 升格时假 provider + 声明表；Ornith 不标 hosted
 - refusal_contract: 不把本 change 写成开箱 MUST
 - escalation_policy: 与 c1900 定稿策略冲突时以产品确认档位为准
+
+## 2026-11-09 复审
+
+结论：暂不做。当前 `ToolsMode` 只有 Full；MCP 首轮冻表已覆盖开箱路径；tool_search 需要 provider 声明支持，Ornith 不满足。触发条件：出现大 MCP catalog，且 provider 支持 `defer_loading` / `tool_search`。

@@ -32,3 +32,7 @@ Agent 改代码需要分支级工作区：当前 session 只绑定 cwd，没有 
 - worktree 粒度：每 branch 还是每 session。
 - merge / rewind 的产品语义与冲突处理。
 - LayerFS 2.0 形状与跨平台限制。
+
+## 2026-11-09 复审
+
+结论：仍必要。当前 session 只绑定 cwd/workspace set，fork 共享 cwd；`WorkspaceRef` 字段存在但恒为 None。建议排在 c3207/c3208 之后，先 git worktree，LayerFS 仅 sidecar。

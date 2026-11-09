@@ -1,6 +1,7 @@
 ---
 depends_on:
   - c3206-refactor-session-graph
+  - c3207-add-loop-scheduler
 title: "Add goal tracking"
 ---
 
@@ -12,16 +13,26 @@ title: "Add goal tracking"
 
 ## What Changes
 
-- Goal 事实：id、branch、objective、acceptance、status（open / running / done / failed / blocked）、max_iterations、iterations_used、evidence。
-- 每轮结束（after_turn / decide_continue）给 agent 一次判定机会：标记 done 须附 evidence；未达成则继续，达到 max_iterations 标记 failed / blocked，不得无限续跑。
+- Goal 事实：id、branch、objective、acceptance、status（open / running / done / failed / blocked / paused / cancelled）、max_iterations、iterations_used、evidence。
+- 每轮结束由独立 evaluator 判定：met / not_met / impossible；agent 须附 evidence；未达成则继续，达到 max_iterations 标记 failed / blocked，不得无限续跑。
+- 续跑在同一 run 内通过 DecideContinue 完成；不新开 run。
 - 用户可 pause / cancel / 修改 acceptance；状态变更只追加事实，不覆盖。
-- 与 /loop 组合：loop 触发检查，goal 判定完成。
-- UI：目标、进度、剩余迭代、证据（TUI / nsh 同源）。
+- goal 活跃时跳过同 branch 的 loop tick；goal done 时自动暂停关联 schedule。
+- 一个 branch 同时最多一个 active goal。
+- LLM 工具：goal_set / goal_status / goal_clear。
+- TUI 后置；nsh 不做。
+
+## Automation Core 依赖
+
+- 复用 c3207 的 Automation Core：事实模型、host 派生索引、单一 admission。
+- c3208 追加 GoalDefined、GoalEvaluated；TriggerFired 的 source 可以是 turn_end。
+- goal 续跑不绕过 runtime 的 turn 边界、取消与权限终裁。
 
 ## Scope
 
 - 不在 c3206 内实现；c3206 只提供 branch 与图边基础。
 - 不做自动改写 acceptance 或无限自我迭代。
+- 不做 TUI 侧栏；不做 nsh。
 
 ## Related
 
@@ -32,5 +43,9 @@ title: "Add goal tracking"
 ## Open Questions
 
 - acceptance 的结构化格式与证据类型。
-- 谁有权标记 done：agent 自评、用户确认，还是两者。
+- evaluator 用哪个模型 / 预算；是否允许用户 override。
 - 与 todo / workflow 的边界：goal 是终止标准，不是步骤清单。
+
+## Research
+
+- [Automation Core 架构与 harness 选型](../c3207-add-loop-scheduler/research/automation-architecture-2026-11.md)

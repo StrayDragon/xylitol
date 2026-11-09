@@ -31,3 +31,7 @@ c3206 提供图数据（nodes / edges / branches / heads），但 TUI 仍是树�
 - 图的布局与规模上限。
 - 连线编辑权限：用户可编辑，agent 是否可写。
 - 与 fork / travel 的交互一致性。
+
+## 2026-11-09 复审
+
+结论：可延后。当前 TUI 的 `build_session_tree` 已覆盖 fork / travel；图数据在 c3206 内部，尚未有协议。触发条件：多分支使用变多，或 #74 nsh M1 spike 通过；先做 TUI 图视图，nsh 后置。
