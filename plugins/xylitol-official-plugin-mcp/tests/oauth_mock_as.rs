@@ -26,14 +26,19 @@ async fn mock_as() -> (String, tokio::task::JoinHandle<()>) {
                     .unwrap_or("/");
                 let body = if path.starts_with("/.well-known/oauth-authorization-server") {
                     format!(
-                        r#"{{"issuer":"{issuer}","authorization_endpoint":"{issuer}/authorize","token_endpoint":"{issuer}/token","response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],"code_challenge_methods_supported":["S256"],"token_endpoint_auth_methods_supported":["none"]}}"#
+                        r#"{{"issuer":"{issuer}","authorization_endpoint":"{issuer}/authorize","token_endpoint":"{issuer}/token","response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],"registration_endpoint":"{issuer}/register","code_challenge_methods_supported":["S256"],"token_endpoint_auth_methods_supported":["none"]}}"#
                     )
                 } else if path.starts_with("/token") {
                     r#"{"access_token":"test-access","token_type":"Bearer","expires_in":3600,"refresh_token":"test-refresh","scope":"read"}"#.to_string()
+                } else if path.starts_with("/register") {
+                    r#"{"client_id":"dcr-client","client_name":"xylitol","redirect_uris":["http://127.0.0.1/callback"]}"#.to_string()
                 } else {
                     r#"{"error":"not_found"}"#.to_string()
                 };
-                let status = if path.starts_with("/token") || path.starts_with("/.well-known") {
+                let status = if path.starts_with("/token")
+                    || path.starts_with("/.well-known")
+                    || path.starts_with("/register")
+                {
                     "200 OK"
                 } else {
                     "404 Not Found"
@@ -98,5 +103,29 @@ async fn oauth_state_round_trip_against_mock_as() {
         .into_authorization_manager()
         .expect("authorized manager");
     assert!(manager.get_access_token().await.is_ok());
+    server.abort();
+}
+
+#[tokio::test]
+async fn oauth_state_dcr_registers_client() {
+    let (issuer, server) = mock_as().await;
+    let http_client = reqwest::Client::new();
+    let mut state = OAuthState::new(issuer.clone(), Some(http_client.clone()))
+        .await
+        .expect("state");
+    let redirect = format!("{issuer}/callback");
+    state
+        .start_authorization(
+            AuthorizationRequest::new(redirect.clone())
+                .with_client_name("xylitol")
+                .with_scopes(["read"]),
+        )
+        .await
+        .expect("DCR authorization start");
+    let auth_url = state.get_authorization_url().await.expect("auth url");
+    assert!(
+        auth_url.contains("client_id=dcr-client"),
+        "DCR must register a client: {auth_url}"
+    );
     server.abort();
 }

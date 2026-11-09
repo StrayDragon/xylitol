@@ -423,3 +423,11 @@ async fn export_jsonl_writes_inline_content() {
         "{\"type\":\"message\"}\n"
     );
 }
+
+#[tokio::test]
+async fn remote_tui_oauth_is_unsupported() {
+    let mut driver = XyRemoteDriver::with_host(MuxOkHost::new(false), "s-test");
+    assert!(driver.mcp_oauth_start("server").await.is_err());
+    assert!(driver.mcp_oauth_cancel("flow").await.is_err());
+    assert!(driver.mcp_oauth_status("flow").await.is_err());
+}

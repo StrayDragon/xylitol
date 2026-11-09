@@ -452,6 +452,17 @@ fn oauth_flow_id(server: &str) -> String {
     )
 }
 
+fn oauth_step_up_config(
+    config: &McpServerConfig,
+    required_scope: Option<&str>,
+) -> Option<McpOAuthConfig> {
+    let mut oauth = config.oauth.clone()?;
+    if let Some(scope) = required_scope {
+        oauth.scopes = vec![scope.to_string()];
+    }
+    Some(oauth)
+}
+
 pub(crate) fn classify_probe_error(message: &str) -> &'static str {
     let lower = message.to_ascii_lowercase();
     if lower.contains("method not found")
@@ -1191,13 +1202,12 @@ impl McpClientManager {
                         });
                     }
                     if let StreamableHttpError::InsufficientScope(challenge) = auth_required {
-                        let mut oauth = config.oauth.clone().ok_or_else(|| McpError::OAuth {
-                            server: name.to_string(),
-                            message: "insufficient scope without oauth config".into(),
-                        })?;
-                        if let Some(scope) = challenge.required_scope.as_deref() {
-                            oauth.scopes = vec![scope.to_string()];
-                        }
+                        let oauth =
+                            oauth_step_up_config(config, challenge.required_scope.as_deref())
+                                .ok_or_else(|| McpError::OAuth {
+                                    server: name.to_string(),
+                                    message: "insufficient scope without oauth config".into(),
+                                })?;
                         let flow = self
                             .start_oauth_with_new_state(
                                 name,
@@ -1824,6 +1834,87 @@ mod tests {
             "properties": {"api_key": {"type": "string"}}
         });
         assert!(schema_requests_secrets_value(&secret));
+    }
+
+    #[test]
+    fn oauth_step_up_uses_required_scope() {
+        let config = McpServerConfig {
+            name: "oauth".into(),
+            transport: McpTransportKind::Http,
+            url: Some("https://example.com/mcp".into()),
+            oauth: Some(crate::config::McpOAuthConfig {
+                scopes: vec!["read".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let stepped = oauth_step_up_config(&config, Some("write")).expect("step-up config");
+        assert_eq!(stepped.scopes, vec!["write".to_string()]);
+        assert!(oauth_step_up_config(&config, None).is_some());
+        assert!(
+            oauth_step_up_config(
+                &McpServerConfig {
+                    name: "plain".into(),
+                    transport: McpTransportKind::Http,
+                    url: Some("https://example.com/mcp".into()),
+                    ..Default::default()
+                },
+                Some("write")
+            )
+            .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn oauth_status_tracks_cancel_and_unknown() {
+        let manager = McpClientManager::new();
+        assert_eq!(
+            manager.oauth_status("missing").await,
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Unknown
+        );
+        manager.cancel_oauth("flow-1").await;
+        assert_eq!(
+            manager.oauth_status("flow-1").await,
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Cancelled
+        );
+    }
+
+    #[tokio::test]
+    async fn oauth_without_gateway_records_diagnostic_without_blocking() {
+        let manager = Arc::new(McpClientManager::new());
+        let servers = vec![McpServerConfig {
+            name: "oauth-server".into(),
+            transport: McpTransportKind::Http,
+            url: Some("http://127.0.0.1:9/mcp".into()),
+            oauth: Some(crate::config::McpOAuthConfig {
+                scopes: vec!["read".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }];
+        let started = std::time::Instant::now();
+        manager.connect_servers(&servers).await;
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "auth-required must not block bootstrap"
+        );
+        let diags = manager.diagnostics().await;
+        assert!(
+            diags.iter().any(|d| d.server == "oauth-server"),
+            "auth-required must be exposed as diagnostic"
+        );
+    }
+
+    #[tokio::test]
+    async fn revoke_requires_oauth_config() {
+        let manager = McpClientManager::new();
+        let config = McpServerConfig {
+            name: "no-oauth".into(),
+            transport: McpTransportKind::Http,
+            url: Some("https://example.com/mcp".into()),
+            ..Default::default()
+        };
+        assert!(manager.revoke_oauth("no-oauth", &config).await.is_err());
     }
 
     #[tokio::test]

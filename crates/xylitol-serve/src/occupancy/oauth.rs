@@ -172,6 +172,18 @@ mod tests {
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    #[tokio::test(start_paused = true)]
+    async fn wait_times_out_and_cancels() {
+        let gateway = Arc::new(HostOAuthGateway::new());
+        let _ = gateway.bind("flow-timeout", None).await.expect("bind");
+        let wait = tokio::spawn({
+            let gateway = gateway.clone();
+            async move { gateway.wait("flow-timeout").await }
+        });
+        tokio::time::advance(std::time::Duration::from_secs(301)).await;
+        assert!(wait.await.expect("join").is_err());
+    }
+
     #[tokio::test]
     async fn cancel_removes_flow() {
         let gateway = Arc::new(HostOAuthGateway::new());

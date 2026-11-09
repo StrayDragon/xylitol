@@ -179,7 +179,7 @@
 
   @req:r3270
   规则: mcp-oauth-host-callback
-    Host 须监听 localhost 一次性 callback（默认 127.0.0.1 临时端口；pre-registered client 可固定 redirect URI）；redirect URI 须与 client 注册一致；多个并发 flow 须按 flow_id / state 隔离；TUI 须展示 URL 与同意/取消；code exchange 成功后 须保存 credential 并发完成事件，失败 须发失败事件；code/token 不得进事件或日志；TUI 与 Host 不同机器时 不得承诺 localhost callback 可达，须明确不支持远程 TUI OAuth。由单测覆盖，不扩 BDD step。
+    Host 须监听 localhost 一次性 callback（默认 127.0.0.1 临时端口；pre-registered client 可固定 redirect URI，固定端口不得为 0）；callback 只接受 GET；取消须终止 listener；redirect URI 须与 client 注册一致；多个并发 flow 须按 flow_id / state 隔离；TUI 须展示 URL 与同意/取消；code exchange 成功后 须保存 credential 并发完成事件，失败 须发失败事件；code/token 不得进事件或日志；TUI 与 Host 不同机器时 不得承诺 localhost callback 可达，须明确不支持远程 TUI OAuth。由单测覆盖，不扩 BDD step。
 
   @req:r3271
   规则: mcp-capability-probe

@@ -2,9 +2,9 @@
 depends_on:
   - c3065-add-mcp-oauth-credentials
 title: "Add MCP OAuth authorization flow"
-branch: main
-base_branch: origin/main
-base_sha: 4e422320e5d2e5648f48d06ca1321f78d3c569d9
+branch: sdd/c3212-add-mcp-oauth-authorization
+base_branch: main
+base_sha: d9b1a23775b14dd5ac543106af13b3cb874f1604
 ---
 
 ## Why

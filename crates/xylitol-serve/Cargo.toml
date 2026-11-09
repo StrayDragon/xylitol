@@ -8,6 +8,9 @@ description = "HTTP/WS carrier for the JSON-RPC product wire"
 repository = "https://github.com/StrayDragon/xylitol"
 publish = false
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time", "test-util"] }
+
 [dependencies]
 xylitol-runtime = { workspace = true, optional = true }
 xylitol-plugin-sdk = { workspace = true, optional = true }
