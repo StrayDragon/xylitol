@@ -186,4 +186,5 @@ Fallback：若 `FloatRight` / Hidden 的实现复杂度超预期，可退回“�
 ## Further Notes
 
 - 当前在 explore 阶段，未绑定分支，未编辑 `llmanspec/specs/**`；本 proposal 只记录方向与决策。
-- 全部决策已对齐（Q1–Q13）；下一步进入 `llman-sdd-propose`：绑定分支、补 design/tasks、land 三处 specs。
+- 引擎 API / 状态机 / 命中与测试底稿：`research/engine-panel-api.md`。
+- 全部决策已对齐（Q1–Q13）；当前停在 explore。等其他人处理完成后，补 `design.md` 推进到 designed，再进入 `llman-sdd-propose` / apply。
