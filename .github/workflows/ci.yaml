@@ -15,7 +15,7 @@ env:
 
 jobs:
   qa:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -38,7 +38,7 @@ jobs:
           sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
       - name: Install uv + Python for stateful MCP fixture
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10
         with:
           python-version: "3.11"
 
@@ -52,7 +52,7 @@ jobs:
         run: pipx install uncomment
 
       - name: Cache .tools (cccc-rs)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .tools
           key: tools-cccc-rs-0.4.0
