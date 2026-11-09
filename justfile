@@ -136,7 +136,7 @@ test-changed:
 gen-config-schema:
     cargo run -q -p xylitol-official-plugin-config --bin gen-config-schema
 
-# Rebuild the rquickjs WASI guest and refresh the checked-in asset.
+# Rebuild the rquickjs WASI guest into the build target dir.
 # Requires WASI SDK 24 (`WASI_SDK_PATH=/path/to/wasi-sdk`).
 codemode-guest:
     #!/usr/bin/env bash

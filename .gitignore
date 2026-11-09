@@ -1,227 +1,57 @@
-# .gitignore file created for free with Tower (https://www.git-tower.com/)
-# For suggestions or improvements please contact us using support@git-tower.com
-# Generated on 2026-05-14
-# Includes: rust, python, go, typescript, javascript
+# 本仓专用忽略项（按用途分组；新增条目先判断是否属于本仓）
 
-### Universal ###
-# Common files that should be ignored in all projects
+# 构建与缓存
+/target/
+target/
+**/llmanspec/.context/
 
-# Local tooling installs (e.g. cccc-rs via scripts/check_complexity.py)
+# 本地工具安装（cccc-rs 等经 .tools/）
 .tools/
 
-# Eval harness local artifacts (swebench writes logs/ under its cwd)
-tools/eval/logs/
-# Harbor job artifacts (default jobs/ under cwd)
-/jobs/
-
-# Logs
-*.log
-# Temporary files
-*.tmp
-*.tmp.md
-# Temp notes (AGENTS: _HANDOFF / *.tmp.md, don't promote to norms)
+# 会话临时笔记与队列（_HANDOFF / *.tmp.md 不入库）
 _HANDOFF/
-# One-shot local queues (gh issue create, etc.). Do not commit.
 .tmp/
-*~
 
-*.bak
-# macOS metadata
-.DS_Store
-# Environment files (containing secrets, API keys, credentials)
-.env
-*.env
-.env.*
+# 评测产物（Harbor 默认在当前目录写 jobs/）
+/jobs/
+tools/eval/logs/
+tools/eval/.venv/
 
-# Local configuration that shouldn't be shared
-*.local
-config.local.yaml
-# Machine / project AppConfig — use configs/example.yaml; keep secrets in secret.env
+# 本机配置与凭据
 .xylitol/config.yaml
 .xylitol/config.yml
+.env
+*.env
+!*.env.example
 
-### Rust ###
-# rust specific files
 
-/target/
+# 生成产物（guest wasm 不得入库）
 plugins/xylitol-official-plugin-codemode/assets/guest.wasm
+
+# 通用临时文件
+*.tmp
+*.tmp.md
+*.bak
+*~
+*.log
+.DS_Store
+
+# Rust
 **/*.rs.bk
-debug/
-target/debug/
-target/release/
 
-# mdbook output
-docs/book/
-
-### Python ###
-# Python compiled files, virtual environments, and cache
-
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-
-pypackages/
-build/
-develop-eggs/
-dist/
-downloads/
-
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-
-.installed.cfg
-*.egg
-MANIFEST
-.venv
-env/
-
-venv/
-ENV/
 .pytest_cache/
+.venv/
 .coverage
-htmlcov/
-
-# PyInstaller
-*.manifest
-*.spec
-# Installer logs
-pip-log.txt
-
-pip-delete-this-directory.txt
-# Unit test / coverage reports
-.tox/
-.nox/
-.coverage.*
-
-nosetests.xml
-coverage.xml
-lcov.info
-*.cover
-*.py,cover
-.hypothesis/
-
-cover/
-# Translations
-*.mo
-*.pot
-# Django
-
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-# Flask
-instance/
-
-.webassets-cache
-# Scrapy
-.scrapy
-# Sphinx
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-# pyenv
-#.python-version
-
-# pipenv
-#Pipfile.lock
-# poetry
-#poetry.lock
-# pdm
-
-.pdm.toml
-__pypackages__/
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath
-*.sage.py
-# Spyder
-.spyderproject
-.spyproject
-
-# Rope
-.ropeproject
-# mkdocs
-/site
-# mypy
-
-.mypy_cache/
-.dmypy.json
-dmypy.json
-# Pyre
-.pyre/
-
-# pytype
-.pytype/
-# Cython
-cython_debug/
-# Poetry
-
-poetry.toml
-# ruff
 .ruff_cache/
-# LSP
-pyrightconfig.json
 
-*.sage.py
-.pdm.toml
-profile_default/
-.nox/
-.spyproject
+# Node（examples/plugins/bun-demo）
+node_modules/
+dist/
 
-site/
-
-### Go ###
-# go specific files
-
-*.exe
-*.test
+# vendor 例外：gherkin 补丁入库
 vendor/
-# Root-level vendored patch (gherkin, see vendor/README.md) for the BDD chain.
 !vendor/
 !vendor/**
-*.out
-go.work
-
-go.sum
-
-### Typescript ###
-# typescript specific files
-
-*.tsbuildinfo
-node_modules/
-dist/
-
-### Javascript ###
-# javascript specific files
-
-node_modules/
-*.log
-npm-debug.log*
-yarn-debug.log*
-.cache/
-
-dist/
-coverage/
-# llman-sdd pageindex cache (root + crate instances).
-**/llmanspec/.context/
