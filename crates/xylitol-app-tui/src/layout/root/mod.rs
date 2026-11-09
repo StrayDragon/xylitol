@@ -176,6 +176,7 @@ fn snapshot_has_mcp(snap: &LoadedResourcesSnapshot) -> bool {
         || !snap.mcp_servers.is_empty()
         || snap.mcp_connecting_label.is_some()
         || !snap.mcp_diag_short.is_empty()
+        || !snap.mcp_details.is_empty()
 }
 
 impl UiRoot {
@@ -461,6 +462,7 @@ impl UiRoot {
             snap.mcp_connected = prev.mcp_connected.clone();
             snap.mcp_servers = prev.mcp_servers.clone();
             snap.mcp_diag_short = prev.mcp_diag_short.clone();
+            snap.mcp_details = prev.mcp_details.clone();
             snap.mcp_connecting_label = prev.mcp_connecting_label.clone();
             snap.mcp_bootstrap_complete = prev.mcp_bootstrap_complete;
             snap.tools_table_frozen = prev.tools_table_frozen;

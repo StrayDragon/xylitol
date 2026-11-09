@@ -291,16 +291,13 @@ impl XyInProcessDriver {
                 }
             })
             .collect();
+        let (mcp_diag_short, mcp_details) = mcp_diagnostic_lines(&view);
         LoadedResourcesSnapshot {
             skill_names,
             mcp_connected: view.connected,
             mcp_configured: view.configured,
-            mcp_diag_short: view
-                .diags
-                .into_iter()
-                .chain(view.probe_lines)
-                .chain(view.server_details)
-                .collect(),
+            mcp_diag_short,
+            mcp_details,
             mcp_connecting_label: if settled { None } else { view.connecting_label },
             mcp_servers,
             mcp_bootstrap_complete: view.complete || settled,
@@ -321,5 +318,35 @@ impl XyInProcessDriver {
         }
         self.last_ui_mcp_label = Some(current);
         true
+    }
+}
+
+fn mcp_diagnostic_lines(view: &SessionPrepareView) -> (Vec<String>, Vec<String>) {
+    (
+        view.diags.clone(),
+        view.probe_lines
+            .iter()
+            .chain(view.server_details.iter())
+            .cloned()
+            .collect(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mcp_diagnostics_split_short_and_details() {
+        let view = SessionPrepareView {
+            diags: vec!["bad: spawn failed".into()],
+            probe_lines: vec!["probe server=bad status=unsupported".into()],
+            server_details: vec!["server=bad transport=Stdio scope=Workspace".into()],
+            ..SessionPrepareView::default()
+        };
+        let (short, details) = mcp_diagnostic_lines(&view);
+        assert_eq!(short, vec!["bad: spawn failed"]);
+        assert!(details.iter().any(|line| line.contains("server=bad")));
+        assert!(!short.iter().any(|line| line.contains("server=")));
     }
 }

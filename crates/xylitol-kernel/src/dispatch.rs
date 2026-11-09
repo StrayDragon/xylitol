@@ -536,6 +536,7 @@ mod tests {
                 "mcp_connected": [],
                 "mcp_configured": 0,
                 "mcp_diag_short": [],
+                "mcp_details": [],
                 "mcp_connecting_label": null,
                 "mcp_servers": [],
                 "mcp_bootstrap_complete": false,

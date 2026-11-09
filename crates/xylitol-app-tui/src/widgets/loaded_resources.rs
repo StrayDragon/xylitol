@@ -51,7 +51,7 @@ pub fn render_loaded_resources(
             .iter()
             .map(|(id, n)| format!("{id}({n})"))
             .collect();
-        let mut body = if let Some(label) = snap.mcp_connecting_label.as_deref() {
+        let body = if let Some(label) = snap.mcp_connecting_label.as_deref() {
             label.to_string()
         } else if ids.is_empty() {
             format!("{} configured · 0 connected", snap.mcp_configured)
@@ -62,10 +62,6 @@ pub fn render_loaded_resources(
                 ids.join(" · ")
             )
         };
-        if !snap.mcp_diag_short.is_empty() {
-            body.push_str(" · ");
-            body.push_str(&snap.mcp_diag_short.join("; "));
-        }
         meta.extend(field_lines(
             theme,
             "mcp",
@@ -73,6 +69,15 @@ pub fn render_loaded_resources(
             theme.palette().success,
             inner,
         ));
+        if !snap.mcp_diag_short.is_empty() {
+            meta.extend(field_lines(
+                theme,
+                "mcp diag",
+                &snap.mcp_diag_short.join("; "),
+                theme.palette().warning,
+                inner,
+            ));
+        }
     }
 
     if let Some(diag) = snap.obs_diag.as_deref() {
@@ -273,6 +278,44 @@ mod tests {
             for line in &lines {
                 assert_eq!(visible_width(line), w.max(1), "w={w} line={line:?}");
             }
+        }
+    }
+
+    #[test]
+    fn mcp_details_stay_out_of_welcome_card() {
+        let snap = LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_connected: vec![("fixture".into(), 2)],
+            mcp_details: vec!["server=fixture transport=Stdio scope=Workspace".into()],
+            ..Default::default()
+        };
+        let joined =
+            render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", 72).join("\n");
+        assert!(
+            joined.contains("mcp:") && joined.contains("fixture(2)"),
+            "{joined}"
+        );
+        assert!(
+            !joined.contains("server=fixture"),
+            "details belong to /mcp, not the welcome card: {joined}"
+        );
+    }
+
+    #[test]
+    fn mcp_failure_diag_renders_warning_row_within_width() {
+        let snap = LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_diag_short: vec![
+                "broken: spawn failed: No such file or directory (os error 2)".into(),
+            ],
+            ..Default::default()
+        };
+        let lines = render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", 72);
+        let joined = lines.join("\n");
+        assert!(joined.contains("mcp diag:"), "{joined}");
+        assert!(joined.contains("broken: spawn failed"), "{joined}");
+        for line in &lines {
+            assert_eq!(visible_width(line), 72, "{line:?}");
         }
     }
 }

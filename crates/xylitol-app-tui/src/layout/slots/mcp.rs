@@ -1,5 +1,5 @@
 use xylitol_tui::components::select_list::{SelectItem, SelectList};
-use xylitol_tui::{Component, InputEvent};
+use xylitol_tui::{Component, InputEvent, truncate_to_width};
 
 use super::super::theme::LayoutTheme;
 use crate::driver::{LoadedResourcesSnapshot, McpServerPhase};
@@ -34,6 +34,7 @@ impl McpSlot {
             .mcp_diag_short
             .iter()
             .map(|d| format!(" diag: {d}"))
+            .chain(snap.mcp_details.iter().map(|d| format!(" detail: {d}")))
             .collect();
 
         let items: Vec<SelectItem> = if snap.mcp_servers.is_empty() {
@@ -105,13 +106,29 @@ impl McpSlot {
     }
 
     pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
+        let width = width.max(1);
         let mut lines = Vec::new();
-        lines.push(theme.paint_muted(&format!(" MCP · {}", self.summary_line)));
-        lines.extend(self.list.render(width.max(1)));
+        lines.push(truncate_to_width(
+            &theme.paint_muted(&format!(" MCP · {}", self.summary_line)),
+            width,
+            "…",
+            false,
+        ));
+        lines.extend(self.list.render(width));
         for diag in &self.diag_lines {
-            lines.push(theme.paint_muted(diag));
+            lines.push(truncate_to_width(
+                &theme.paint_muted(diag),
+                width,
+                "…",
+                false,
+            ));
         }
-        lines.push(theme.paint_muted(" Esc · Enter closes"));
+        lines.push(truncate_to_width(
+            &theme.paint_muted(" Esc · Enter closes"),
+            width,
+            "…",
+            false,
+        ));
         lines
     }
 

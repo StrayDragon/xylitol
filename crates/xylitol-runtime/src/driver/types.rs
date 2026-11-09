@@ -76,6 +76,8 @@ pub struct LoadedResourcesSnapshot {
     pub mcp_connected: Vec<(String, usize)>,
     pub mcp_configured: usize,
     pub mcp_diag_short: Vec<String>,
+    #[serde(default)]
+    pub mcp_details: Vec<String>,
     pub mcp_connecting_label: Option<String>,
     pub mcp_servers: Vec<McpServerSnapshot>,
     pub mcp_bootstrap_complete: bool,

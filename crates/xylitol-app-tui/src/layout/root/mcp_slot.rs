@@ -100,5 +100,8 @@ impl UiRoot {
 }
 
 pub(crate) fn mcp_cache_usable(snap: &LoadedResourcesSnapshot) -> bool {
-    snap.mcp_configured > 0 || !snap.mcp_servers.is_empty() || snap.mcp_connecting_label.is_some()
+    snap.mcp_configured > 0
+        || !snap.mcp_servers.is_empty()
+        || snap.mcp_connecting_label.is_some()
+        || !snap.mcp_details.is_empty()
 }

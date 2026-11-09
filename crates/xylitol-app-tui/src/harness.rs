@@ -6085,6 +6085,52 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c1210_mcp_panel_clamps_long_details_to_terminal_width() {
+        use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        let long_detail = format!(
+            "server=fixture transport=Stdio scope=Workspace credential=none connected=true tools=2 prompts=0 resources=0 connect_timeout_ms=8000 call_timeout_ms=120000 reconnect_count=0 probe={} last_error=none",
+            "x".repeat(160)
+        );
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
+            mcp_connected: vec![("fixture".into(), 2)],
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fixture".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            }],
+            mcp_details: vec![long_detail],
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+
+        root.borrow_mut().set_editor_text("/mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().mcp_open(), "/mcp MUST open with long details");
+        session
+            .render_now()
+            .expect("long MCP details MUST be clamped to terminal width");
+        let panel = root.borrow().mcp_panel_text_for_test();
+        assert!(panel.contains("detail:"), "panel shows details: {panel}");
+        assert!(
+            panel.contains("server=fixture"),
+            "panel shows server details: {panel}"
+        );
+    }
+
+    #[tokio::test]
     async fn c1900_idle_next_turn_clear_must_not_restore_mcp_cue_after_freeze() {
         use crate::driver::{
             LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
