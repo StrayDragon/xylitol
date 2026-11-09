@@ -68,10 +68,14 @@ jobs:
       - name: Add wasm32-wasip1 target
         run: rustup target add wasm32-wasip1
 
+      - name: Install cargo-crap
+        if: github.event_name != 'pull_request' || steps.changes.outputs.rust == 'true'
+        run: cargo install cargo-crap --version 0.9.0 --locked --root .tools
+
       - uses: minikin/cargo-crap@v1
         if: github.event_name != 'pull_request' || steps.changes.outputs.rust == 'true'
         with:
-          version: "0.9.0"
+          binary: .tools/bin/cargo-crap
           args: --workspace
           coverage-args: >-
             nextest --workspace --all-features --profile ci
