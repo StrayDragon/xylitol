@@ -500,6 +500,18 @@
             "null"
           ]
         },
+        "idle_ttl_ms": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "keep_alive_ms": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "name": {
           "type": "string"
         },

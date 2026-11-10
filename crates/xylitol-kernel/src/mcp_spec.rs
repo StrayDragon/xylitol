@@ -24,6 +24,8 @@ pub struct McpServerSpec {
     pub credential: Option<String>,
     pub connect_timeout_ms: u64,
     pub call_timeout_ms: u64,
+    pub keep_alive_ms: u64,
+    pub idle_ttl_ms: u64,
     pub custom_transport: Option<String>,
     pub oauth: Option<McpOAuthConfig>,
 }
@@ -46,6 +48,8 @@ impl From<&McpServerConfig> for McpServerSpec {
             credential: c.credential.clone(),
             connect_timeout_ms: c.connect_timeout_ms,
             call_timeout_ms: c.call_timeout_ms,
+            keep_alive_ms: c.keep_alive_ms,
+            idle_ttl_ms: c.idle_ttl_ms,
             custom_transport: c.custom_transport.clone(),
             oauth: c.oauth.clone(),
         }
@@ -70,6 +74,8 @@ impl From<&McpServerSpec> for McpServerConfig {
             credential: s.credential.clone(),
             connect_timeout_ms: s.connect_timeout_ms,
             call_timeout_ms: s.call_timeout_ms,
+            keep_alive_ms: s.keep_alive_ms,
+            idle_ttl_ms: s.idle_ttl_ms,
             custom_transport: s.custom_transport.clone(),
             oauth: s.oauth.clone(),
         }

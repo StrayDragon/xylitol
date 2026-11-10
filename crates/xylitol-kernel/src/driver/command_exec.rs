@@ -77,6 +77,7 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 clear_follow_up,
                 ..
             } => exec_clear_queue(self, clear_steer, clear_follow_up).await,
+            Command::SessionDetach { .. } => Ok(DispatchOutcome::Empty),
             Command::Prompt { .. }
             | Command::Quit { .. }
             | Command::Subscribe { .. }

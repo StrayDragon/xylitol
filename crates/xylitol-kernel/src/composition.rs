@@ -482,6 +482,8 @@ mod tests {
             credential: None,
             connect_timeout_ms: 8_000,
             call_timeout_ms: 120_000,
+            keep_alive_ms: 0,
+            idle_ttl_ms: 0,
             custom_transport: None,
             oauth: None,
         }

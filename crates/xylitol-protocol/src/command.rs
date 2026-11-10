@@ -104,6 +104,9 @@ pub enum Command {
     DeleteSession {
         session_id: String,
     },
+    SessionDetach {
+        session_id: String,
+    },
     Reload {},
     LoadedResources {},
     McpCatalog {},

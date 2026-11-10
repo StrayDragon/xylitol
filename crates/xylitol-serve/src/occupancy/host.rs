@@ -39,7 +39,7 @@ use xylitol_protocol::registry::{
     METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_MCP_CATALOG,
     METHOD_MCP_OAUTH_CANCEL, METHOD_MCP_OAUTH_START, METHOD_MCP_OAUTH_STATUS,
     METHOD_MCP_PROMPT_GET, METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST, METHOD_PROMPT,
-    METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
+    METHOD_RELOAD, METHOD_SESSION_DETACH, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
 use xylitol_protocol::{
     ApprovalRequestedPayload, BashOutputPayload, Notification, QuestionRequestedPayload, RpcResult,
@@ -205,7 +205,6 @@ impl HostState {
             task.abort();
         }
         *slot.automation.lock().await = None;
-        // TODO(c3228): replace with host resource lease; temporary workaround.
         self.factory.release_session(&slot.session_id);
         *slot.driver.lock().await = None;
         self.sessions.write().await.remove(&slot.session_id);
@@ -1536,6 +1535,29 @@ pub async fn handle_unary(
         );
     }
 
+    if method == METHOD_SESSION_DETACH {
+        let session_id = host.session_id_from_payload(&payload);
+        if session_id.is_empty() {
+            return RpcResult::error("invalid_input", "session_detach requires session_id");
+        }
+        let Some(slot) = host.existing_slot(&session_id).await else {
+            return RpcResult::ok_value(json!({ "detached": true }));
+        };
+        if slot.run_inflight.load(Ordering::SeqCst) {
+            return RpcResult::ok_value(json!({
+                "detached": false,
+                "reason": "session busy"
+            }));
+        }
+        if HostState::live_subscriber_count(&slot).await > 1 {
+            return RpcResult::ok_value(json!({
+                "detached": false,
+                "reason": "other clients attached"
+            }));
+        }
+        host.factory.release_session(&session_id);
+        return RpcResult::ok_value(json!({ "detached": true }));
+    }
     if method == METHOD_RELOAD {
         return match host.reload_resources().await {
             Ok(report) => RpcResult::ok_value(serde_json::to_value(report).unwrap_or(Value::Null)),

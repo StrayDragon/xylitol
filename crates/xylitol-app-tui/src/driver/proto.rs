@@ -103,6 +103,10 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
         Ok(())
     }
 
+    async fn detach_session(&mut self) -> Result<(), XyDriverError> {
+        Ok(())
+    }
+
     async fn refresh_surface_caches(&mut self) -> Result<(), XyDriverError> {
         Ok(())
     }

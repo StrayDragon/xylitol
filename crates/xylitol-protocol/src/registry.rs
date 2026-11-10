@@ -109,6 +109,7 @@ pub const METHOD_SET_SESSION_NAME: &str = "set_session_name";
 pub const METHOD_SET_SESSION_NAME_FOR: &str = "set_session_name_for";
 pub const METHOD_GENERATE_SESSION_NAME: &str = "generate_session_name";
 pub const METHOD_DELETE_SESSION: &str = "delete_session";
+pub const METHOD_SESSION_DETACH: &str = "session_detach";
 pub const METHOD_RELOAD: &str = "reload";
 pub const METHOD_LOADED_RESOURCES: &str = "loaded_resources";
 pub const METHOD_MCP_CATALOG: &str = "mcp_catalog";
@@ -363,6 +364,14 @@ pub const REGISTRY: &[MethodEntry] = &[
         true,
     ),
     mx(
+        METHOD_SESSION_DETACH,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+        Exec::Inline,
+    ),
+    mx(
         METHOD_RELOAD,
         Auth::Readonly,
         Idem::Bypass,
@@ -510,7 +519,8 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::McpOAuthStatus { .. }
         | Command::AppendEntryLabel { .. }
         | Command::SetSessionName { .. }
-        | Command::SetSessionNameFor { .. } => Exec::Inline,
+        | Command::SetSessionNameFor { .. }
+        | Command::SessionDetach { .. } => Exec::Inline,
         Command::Abort { .. }
         | Command::GetSessionStats { .. }
         | Command::Compact { .. }
@@ -640,6 +650,7 @@ mod tests {
                 "set_session_name_for",
                 "generate_session_name",
                 "delete_session",
+                "session_detach",
                 "mcp_oauth_start",
                 "mcp_oauth_cancel",
                 "arm_tool_freeze",
@@ -787,6 +798,7 @@ mod tests {
                 "mcp_resource_read",
                 "plugin_command",
                 "queue_stats",
+                "session_detach",
                 "set_capability",
                 "set_model",
                 "set_session_name",
@@ -933,6 +945,12 @@ mod tests {
                     session_id: String::new(),
                 },
             ),
+            (
+                "session_detach",
+                Command::SessionDetach {
+                    session_id: String::new(),
+                },
+            ),
             ("reload", Command::Reload {}),
             ("loaded_resources", Command::LoadedResources {}),
             ("mcp_catalog", Command::McpCatalog {}),
@@ -998,7 +1016,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(cases.len(), 46, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 47, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

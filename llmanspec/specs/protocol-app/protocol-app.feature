@@ -406,3 +406,7 @@
   @req:r3224
   规则: subscribe-workspaces
     subscribe 载荷 须正式化 `workspaces` 列表（primary = 首项）；缺省回退既有 `cwd`；additional 条目在 MVP 产生可读诊断且不启用。`Command::Subscribe` 须含 `workspaces: Vec<String>`（serde 缺省空）。由 host / 协议单测覆盖，不扩 BDD step。
+
+  @req:r3296
+  规则: session-detach
+    产品方法表 须登记 `session_detach` unary（写入、Result、Inline），参数 session_id；最后一个 client detach 时释放该 session 资源租约；仍有其他 client 或 run in flight 时不得释放。client clean exit 须发送该 unary；失败由 transport close / linger 兜底。由协议注册表 / host 单测覆盖，不扩 BDD step。

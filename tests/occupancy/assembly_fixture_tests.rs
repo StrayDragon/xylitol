@@ -14,6 +14,7 @@ use xylitol_app_tui::driver::{
 use xylitol_app_tui::host_client::{HostClient, HostClientError, InProcessClient, MuxStream};
 use xylitol_protocol::Notification;
 use xylitol_protocol::SessionTreeKind;
+use xylitol_protocol::registry::METHOD_SESSION_DETACH;
 use xylitol_runtime::driver::LoadedResourcesSnapshot;
 use xylitol_serve::occupancy::{
     HostState, handle_unary, materialize_writer, materialize_writer_at,
@@ -796,6 +797,8 @@ fn fixture_mcp(name: &str) -> xylitol_kernel::mcp_spec::McpServerSpec {
         credential: None,
         connect_timeout_ms: 8_000,
         call_timeout_ms: 120_000,
+        keep_alive_ms: 0,
+        idle_ttl_ms: 0,
         custom_transport: None,
         oauth: None,
     }
@@ -1115,6 +1118,8 @@ async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
         credential: None,
         connect_timeout_ms: 8_000,
         call_timeout_ms: 120_000,
+        keep_alive_ms: 0,
+        idle_ttl_ms: 0,
         custom_transport: None,
         oauth: None,
     };
@@ -1170,6 +1175,8 @@ async fn materialize_writer_does_not_wait_session_prepare() {
         credential: None,
         connect_timeout_ms: 8_000,
         call_timeout_ms: 120_000,
+        keep_alive_ms: 0,
+        idle_ttl_ms: 0,
         custom_transport: None,
         oauth: None,
     };
@@ -1807,4 +1814,39 @@ async fn inflight_set_thinking_does_not_apply_until_flush() {
     );
     slot.mark_run_inflight_for_test(false);
     slot.flush_pending_runtime_for_test().await;
+}
+
+#[tokio::test]
+async fn session_detach_releases_only_when_idle_and_not_busy() {
+    let host = host_state_for_test().expect("host");
+    let slot = host.slot("s1").await;
+    slot.mark_run_inflight_for_test(true);
+    let busy = handle_unary(
+        &host,
+        None,
+        METHOD_SESSION_DETACH,
+        serde_json::json!({ "session_id": "s1" }),
+        None,
+    )
+    .await
+    .into_std()
+    .expect("ok");
+    assert_eq!(busy.get("detached").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        busy.get("reason").and_then(Value::as_str),
+        Some("session busy")
+    );
+
+    slot.mark_run_inflight_for_test(false);
+    let clean = handle_unary(
+        &host,
+        None,
+        METHOD_SESSION_DETACH,
+        serde_json::json!({ "session_id": "s1" }),
+        None,
+    )
+    .await
+    .into_std()
+    .expect("ok");
+    assert_eq!(clean.get("detached").and_then(Value::as_bool), Some(true));
 }

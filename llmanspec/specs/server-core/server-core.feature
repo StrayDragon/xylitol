@@ -738,6 +738,10 @@
   规则: serve-stop
     xylitol serve stop 必须读取注册文件中的 pid 并请求该进程退出；进程退出后注册文件必须不残留。pid 不存在时必须给出可操作错误且不得误杀其他进程。
 
+  @req:r3295
+  规则: host-resource-lease
+    Host 须以资源租约管理长驻连接：资源 key 含 kind / fingerprint / scope / credential / workspace / session；同 key 引用计数；session attach 获取 claim，clean detach / session eviction 释放；最后一个 claim 释放后按 idle grace 关闭；idle 期内新 claim 复用未关闭连接。MCP / LSP / DAP 共用该租约语义，不得各自维护无界连接表。由单测覆盖，不扩 BDD step。
+
     场景: stop终止注册进程
       假如 Host 已写入注册文件并在听
       当 执行 serve stop

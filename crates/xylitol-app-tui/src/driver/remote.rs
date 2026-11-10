@@ -15,7 +15,7 @@ use crate::host_client::{HostClient, HttpWsClient};
 use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::model::THINKING_OFF;
-use xylitol_protocol::registry::{METHOD_HOST_DESCRIBE, METHOD_SUBSCRIBE};
+use xylitol_protocol::registry::{METHOD_HOST_DESCRIBE, METHOD_SESSION_DETACH, METHOD_SUBSCRIBE};
 use xylitol_protocol::{Command, Notification};
 use xylitol_wire::{WireEventError, event_from_wire};
 
@@ -962,6 +962,12 @@ where
         self.refresh_fixed_zone_caches().await
     }
 
+    async fn detach_session(&mut self) -> Result<(), XyDriverError> {
+        let payload = self.with_session(serde_json::json!({}));
+        let _ = self.host.unary(METHOD_SESSION_DETACH, payload).await;
+        Ok(())
+    }
+
     async fn bash_run(
         &mut self,
         command: &str,
@@ -1569,6 +1575,10 @@ where
             | Command::SetSessionNameFor { .. }
             | Command::GenerateSessionName { .. }
             | Command::DeleteSession { .. }) => self.exec_session_meta(cmd).await,
+            Command::SessionDetach { .. } => {
+                self.detach_session().await?;
+                Ok(DispatchOutcome::Empty)
+            }
             Command::Reload { .. } => self.exec_reload().await,
             Command::LoadedResources { .. } => self.exec_loaded_resources().await,
             Command::GetQueueStats { .. } => self.exec_get_queue_stats().await,
@@ -2005,6 +2015,10 @@ where
                 self.exec_generate_session_name(force).await
             }
             Command::DeleteSession { session_id, .. } => self.exec_delete_session(session_id).await,
+            Command::SessionDetach { .. } => {
+                self.detach_session().await?;
+                Ok(DispatchOutcome::Empty)
+            }
             other => Err(crate::dispatch::transport_variant_error(&other)),
         }
     }

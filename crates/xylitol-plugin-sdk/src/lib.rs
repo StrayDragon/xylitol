@@ -25,6 +25,7 @@ mod ports;
 pub mod registry;
 pub mod reload;
 pub mod resource;
+pub mod resource_lease;
 pub mod rt;
 pub mod session;
 pub mod session_env;

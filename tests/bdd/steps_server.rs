@@ -3159,6 +3159,8 @@ fn arm_freeze_fixture_mcp(name: &str) -> xylitol_kernel::composition::McpServerS
         credential: None,
         connect_timeout_ms: 8_000,
         call_timeout_ms: 120_000,
+        keep_alive_ms: 0,
+        idle_ttl_ms: 0,
         custom_transport: None,
         oauth: None,
     }
@@ -3179,6 +3181,8 @@ async fn g_arm_freeze_hang_mcp(server_test: &ServerTest) {
         credential: None,
         connect_timeout_ms: 8_000,
         call_timeout_ms: 120_000,
+        keep_alive_ms: 0,
+        idle_ttl_ms: 0,
         custom_transport: None,
         oauth: None,
     };

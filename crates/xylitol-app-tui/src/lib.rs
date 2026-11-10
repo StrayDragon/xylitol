@@ -522,6 +522,9 @@ async fn run_host_loop(
     }
     .await;
 
+    if let Err(e) = driver.detach_session().await {
+        log::debug!(target: "xylitol::tui", "session detach failed: {e}");
+    }
     session.tui.finish();
     log::info!(target: "xylitol::tui", "product TUI host stopped");
     host_result

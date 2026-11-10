@@ -117,6 +117,10 @@
   规则: mcp-resume-reconcile
     resume 须按当前 profile 与 session workspace set 重建 MCP claims 与 tool set；未使用 server 释放。由单测覆盖，不扩 BDD step。
 
+  @req:r3294
+  规则: mcp-host-resource-lease
+    MCP 连接 须由 host 作为资源租约管理：session attach 获取 claim，clean detach / session eviction 释放 claim；同 key 复用；最后一个 claim 释放后，连接保留 keep_alive_ms + idle_ttl_ms 后关闭；延迟期内新 claim 须复用未关闭连接。Shared 跨 session，Workspace 同 workspace，Session 单 session 且结束即关（忽略 keep_alive_ms / idle_ttl_ms）；有状态 server 须用 Session。LoadedResourcesSnapshot 只含当前 session claim，不得聚合 idle 或其他 session 的连接。由单测覆盖，不扩 BDD step。
+
   @req:r3235
   规则: mcp-canonical-transport
     MCP transport 只支持 `stdio` 与 `http`（Streamable HTTP）；`transport: sse` 须破坏性拒绝并给迁移提示；legacy HTTP+SSE 不支持；不得保留兼容别名。由单测覆盖，不扩 BDD step。

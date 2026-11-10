@@ -431,3 +431,43 @@ async fn remote_tui_oauth_is_unsupported() {
     assert!(driver.mcp_oauth_cancel("flow").await.is_err());
     assert!(driver.mcp_oauth_status("flow").await.is_err());
 }
+#[derive(Clone, Default)]
+struct DetachHost {
+    calls: Arc<Mutex<Vec<(String, Value)>>>,
+}
+
+#[async_trait]
+impl HostClient for DetachHost {
+    async fn unary(&self, method: &str, payload: Value) -> Result<RpcResult, HostClientError> {
+        self.calls
+            .lock()
+            .expect("calls lock")
+            .push((method.to_string(), payload));
+        Ok(RpcResult::ok_value(json!({})))
+    }
+
+    async fn respond(&self, _call_id: &str, _payload: Value) -> Result<(), HostClientError> {
+        Ok(())
+    }
+
+    async fn mux(&self) -> Result<MuxStream, HostClientError> {
+        Err(HostClientError::transport("detach test does not need mux"))
+    }
+}
+
+#[tokio::test]
+async fn detach_session_sends_session_detach_unary() {
+    use xylitol_protocol::registry::METHOD_SESSION_DETACH;
+
+    let host = DetachHost::default();
+    let calls = host.calls.clone();
+    let mut driver = XyRemoteDriver::with_host(host, "s-detach");
+    driver.detach_session().await.expect("detach");
+    let calls = calls.lock().expect("calls lock");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, METHOD_SESSION_DETACH);
+    assert_eq!(
+        calls[0].1.get("session_id").and_then(Value::as_str),
+        Some("s-detach")
+    );
+}

@@ -29,6 +29,10 @@ pub struct McpServerConfig {
     #[serde(default = "default_call_timeout_ms")]
     pub call_timeout_ms: u64,
     #[serde(default)]
+    pub keep_alive_ms: u64,
+    #[serde(default)]
+    pub idle_ttl_ms: u64,
+    #[serde(default)]
     pub custom_transport: Option<String>,
     #[serde(default)]
     pub oauth: Option<McpOAuthConfig>,
@@ -71,6 +75,8 @@ impl Default for McpServerConfig {
             credential: None,
             connect_timeout_ms: default_connect_timeout_ms(),
             call_timeout_ms: default_call_timeout_ms(),
+            keep_alive_ms: 0,
+            idle_ttl_ms: 0,
             custom_transport: None,
             oauth: None,
         }

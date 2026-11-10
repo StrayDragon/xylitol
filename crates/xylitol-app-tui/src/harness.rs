@@ -1261,6 +1261,10 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                     .retain(|e| e.id != session_id);
                 Ok(DispatchOutcome::Empty)
             }
+            Command::SessionDetach { .. } => {
+                self.detach_session().await?;
+                Ok(DispatchOutcome::Empty)
+            }
             Command::Reload { .. } => Ok(DispatchOutcome::Reload(
                 crate::driver::XyDriver::reload_runtime(
                     self,
