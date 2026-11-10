@@ -19,7 +19,7 @@ title: "Add goal tracking"
 - 用户可 pause / cancel / 修改 acceptance；状态变更只追加事实，不覆盖。
 - goal 活跃时跳过同 branch 的 loop tick；goal done 时自动暂停关联 schedule。
 - 一个 branch 同时最多一个 active goal。
-- LLM 工具：goal_set / goal_status / goal_clear。
+- LLM 工具：goal_set / goal_status / goal_pause / goal_resume / goal_clear。
 - TUI 后置；nsh 不做。
 
 ## Automation Core 依赖
