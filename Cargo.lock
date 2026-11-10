@@ -1255,6 +1255,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "croner"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0097e28936e948e8f759478e1b5ec2e5ca70ab62cf38aaa9bd3aa660023e3fca"
+dependencies = [
+ "chrono",
+ "derive_builder",
+ "strum 0.27.2",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3262,7 +3273,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.28.0",
  "unicode-general-category",
  "uuid-simd",
 ]
@@ -5999,11 +6010,32 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
+dependencies = [
+ "strum_macros 0.27.2",
+]
+
+[[package]]
+name = "strum"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.28.0",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -7870,7 +7902,7 @@ dependencies = [
  "serial_test",
  "sha2 0.11.1",
  "similar 3.2.1",
- "strum",
+ "strum 0.28.0",
  "tempfile",
  "thiserror 2.0.21",
  "time",
@@ -7927,6 +7959,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "base64 0.23.1",
+ "chrono",
  "crossterm",
  "dirs 7.0.0",
  "futures",
@@ -7936,7 +7969,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.28.0",
  "tempfile",
  "thiserror 2.0.21",
  "time",
@@ -7946,6 +7979,7 @@ dependencies = [
  "uuid",
  "xylitol-plugin-sdk",
  "xylitol-protocol",
+ "xylitol-runtime",
  "xylitol-tui",
  "xylitol-wire",
 ]
@@ -8031,7 +8065,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.28.0",
  "thiserror 2.0.21",
  "tokio",
  "uuid",
@@ -8090,7 +8124,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.28.0",
  "tempfile",
  "tokio",
  "xylitol-plugin-sdk",
@@ -8210,7 +8244,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.28.0",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
@@ -8259,6 +8293,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.23.1",
+ "chrono",
  "futures",
  "image",
  "libc",
@@ -8267,7 +8302,7 @@ dependencies = [
  "serde",
  "serde_json",
  "similar 3.2.1",
- "strum",
+ "strum 0.28.0",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -8314,6 +8349,8 @@ version = "0.0.0-pre"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
+ "croner",
  "fastrace",
  "futures",
  "insta",
@@ -8324,7 +8361,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
- "strum",
+ "strum 0.28.0",
  "thiserror 2.0.21",
  "time",
  "tokio",
@@ -8340,7 +8377,7 @@ dependencies = [
  "base64 0.23.1",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.28.0",
 ]
 
 [[package]]
@@ -8350,6 +8387,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "async-trait",
+ "chrono",
  "dirs 7.0.0",
  "fastrace",
  "futures",
@@ -8361,7 +8399,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
- "strum",
+ "strum 0.28.0",
  "tempfile",
  "thiserror 2.0.21",
  "time",
@@ -8377,6 +8415,7 @@ version = "0.0.0-pre"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "chrono",
  "dirs 7.0.0",
  "futures",
  "log",
@@ -8402,7 +8441,7 @@ dependencies = [
  "mermaid-text",
  "pulldown-cmark",
  "similar 3.2.1",
- "strum",
+ "strum 0.28.0",
  "syntect",
  "tempfile",
  "tokio",

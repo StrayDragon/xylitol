@@ -1,8 +1,7 @@
 use std::cell::RefCell;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 
 use fastrace::collector::{Config, Reporter, SpanRecord};
 
@@ -149,6 +148,7 @@ pub fn tool_observation_io_tier() -> ObservationIoTier {
 
 static SPAN_SINK: Mutex<Option<std::sync::Arc<Mutex<Vec<SpanRecord>>>>> = Mutex::new(None);
 static SPAN_COLLECT_EXCL: Mutex<()> = Mutex::new(());
+static SPAN_COLLECT_ACTIVE: AtomicUsize = AtomicUsize::new(0);
 
 struct DemuxReporter;
 
@@ -165,10 +165,11 @@ impl Reporter for DemuxReporter {
 }
 
 fn ensure_demux_reporter() {
-    static ONCE: OnceLock<()> = OnceLock::new();
-    ONCE.get_or_init(|| {
-        fastrace::set_reporter(DemuxReporter, Config::default());
-    });
+    fastrace::set_reporter(DemuxReporter, Config::default());
+}
+
+pub fn span_collect_active() -> bool {
+    SPAN_COLLECT_ACTIVE.load(Ordering::SeqCst) > 0
 }
 
 pub struct SpanCollectScope {
@@ -186,6 +187,7 @@ impl SpanCollectScope {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .replace(std::sync::Arc::clone(&buf));
+        SPAN_COLLECT_ACTIVE.fetch_add(1, Ordering::SeqCst);
         Self {
             buf,
             prev,
@@ -212,5 +214,6 @@ impl SpanCollectScope {
 impl Drop for SpanCollectScope {
     fn drop(&mut self) {
         *SPAN_SINK.lock().unwrap_or_else(|e| e.into_inner()) = self.prev.take();
+        SPAN_COLLECT_ACTIVE.fetch_sub(1, Ordering::SeqCst);
     }
 }

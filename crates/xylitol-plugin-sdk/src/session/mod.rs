@@ -1,3 +1,4 @@
+mod automation;
 mod capability;
 mod checkpoint;
 mod entries;
@@ -9,6 +10,12 @@ mod todo;
 mod tree;
 mod workflow;
 
+pub use automation::{
+    AutomationError, AutomationFact, CUSTOM_TYPE_AUTOMATION, Cadence, DEFAULT_MAX_ITERATIONS,
+    DEFAULT_MAX_TICKS, GoalProjection, GoalState, GoalVerdict, RunOutcome, ScheduleProjection,
+    ScheduleState, SkipReason, TriggerSource, has_active_goal, parse_automation_fact,
+    project_goals, project_schedules,
+};
 pub use capability::{CapabilityEntry, CapabilityKind, CapabilitySnapshot};
 pub use checkpoint::{
     CUSTOM_TYPE_TODO_CHECKPOINT, TodoCheckpoint, TodoCheckpointStep, TodoResumeCursor,

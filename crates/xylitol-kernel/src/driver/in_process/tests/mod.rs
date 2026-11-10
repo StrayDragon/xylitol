@@ -93,10 +93,12 @@ fn test_gateways(
 ) -> (
     Arc<xylitol_official_plugin_todo::SessionAgentTodoGateway>,
     Arc<xylitol_official_plugin_workflow::SessionWorkflowGateway>,
+    Arc<xylitol_official_plugin_tools::SessionAutomationGateway>,
 ) {
     (
         xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone()),
-        xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store),
+        xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone()),
+        xylitol_official_plugin_tools::SessionAutomationGateway::new(store),
     )
 }
 
@@ -105,7 +107,7 @@ fn test_gateways(
 fn compose_tools_prefers_fff_and_restores_builtin_when_disabled() {
     let dir = tempfile::tempdir().unwrap();
     let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.path().join("sessions")));
-    let (todo, workflow) = test_gateways(store);
+    let (todo, workflow, automation) = test_gateways(store);
 
     let mut static_tools = xylitol_official_plugin_tools::core_tools();
     static_tools.extend(xylitol_official_plugin_tools_fff::fff_tools());
@@ -126,6 +128,7 @@ fn compose_tools_prefers_fff_and_restores_builtin_when_disabled() {
         &context,
         todo.clone(),
         workflow.clone(),
+        automation.clone(),
         None,
     );
     assert!(set.get("ffgrep").is_some(), "fff grep must be visible");
@@ -135,7 +138,7 @@ fn compose_tools_prefers_fff_and_restores_builtin_when_disabled() {
         tool_selection: vec!["-ffgrep".into(), "-fffind".into()],
         ..features
     };
-    let set = compose_tools(disabled, &context, todo, workflow, None);
+    let set = compose_tools(disabled, &context, todo, workflow, automation, None);
     assert!(set.get("grep").is_some(), "builtin grep must return");
     assert!(set.get("ffgrep").is_none());
 }
@@ -144,7 +147,7 @@ fn compose_tools_prefers_fff_and_restores_builtin_when_disabled() {
 fn compose_tools_falls_back_to_core_when_registry_empty() {
     let dir = tempfile::tempdir().unwrap();
     let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.path().join("sessions")));
-    let (todo, workflow) = test_gateways(store);
+    let (todo, workflow, automation) = test_gateways(store);
     let context = DriverContext {
         project_root: dir.path().to_path_buf(),
         trusted: true,
@@ -155,7 +158,7 @@ fn compose_tools_falls_back_to_core_when_registry_empty() {
         workflow: false,
         ..Default::default()
     };
-    let set = compose_tools(features, &context, todo, workflow, None);
+    let set = compose_tools(features, &context, todo, workflow, automation, None);
     assert!(set.get("grep").is_some());
     assert!(set.get("find").is_some());
     assert!(set.get("ffgrep").is_none());

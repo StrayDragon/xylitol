@@ -144,10 +144,12 @@ pub fn assemble_driver_with_ops_and_features_and_context(
 ) -> RuntimeDriver {
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone());
     let workflow = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone());
+    let automation = xylitol_official_plugin_tools::SessionAutomationGateway::new(store.clone());
     let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
     inner.set_todo_gateway(todo.clone());
+    inner.set_automation_gateway(automation.clone());
     inner.set_workflow_gateway(workflow.clone());
-    let tools = compose_tools(features, &context, todo, workflow, None);
+    let tools = compose_tools(features, &context, todo, workflow, automation, None);
     inner.set_base_tools(tools.clone());
     inner.set_tools(tools);
     inner.set_slash_commands(
@@ -174,9 +176,19 @@ pub fn install_product_ask_tool(
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(driver.store.clone());
     let workflow =
         xylitol_official_plugin_workflow::SessionWorkflowGateway::new(driver.store.clone());
+    let automation =
+        xylitol_official_plugin_tools::SessionAutomationGateway::new(driver.store.clone());
     driver.set_todo_gateway(todo.clone());
+    driver.set_automation_gateway(automation.clone());
     driver.set_workflow_gateway(workflow.clone());
-    let tools = compose_tools(features, &context, todo, workflow, Some(gateway));
+    let tools = compose_tools(
+        features,
+        &context,
+        todo,
+        workflow,
+        automation,
+        Some(gateway),
+    );
     driver.set_base_tools(tools.clone());
     driver.set_tools(tools);
 }
@@ -194,12 +206,14 @@ fn compose_tools(
     context: &DriverContext,
     todo: Arc<xylitol_official_plugin_todo::SessionAgentTodoGateway>,
     workflow: Arc<xylitol_official_plugin_workflow::SessionWorkflowGateway>,
+    automation: Arc<xylitol_official_plugin_tools::SessionAutomationGateway>,
     ask: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
 ) -> xylitol_runtime::agent::tools::ToolSet {
     let mut tools = static_tool_base(context);
     if features.todo {
         tools.extend(xylitol_official_plugin_todo::todo_tools(todo.clone()));
     }
+    tools.extend(xylitol_official_plugin_tools::automation_tools(automation));
     if features.workflow {
         tools.extend(xylitol_official_plugin_workflow::workflow_tools(
             workflow,

@@ -1,4 +1,5 @@
 pub mod ask;
+pub mod automation;
 pub mod bash;
 pub mod compaction;
 pub mod event;
@@ -16,6 +17,7 @@ pub mod typed;
 mod workflow;
 
 pub use ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
+pub use automation::AutomationGateway;
 pub use bash::{BashChunk, BashExecOpts, BashOutputSink, XyBashExecutor, XyBashResult};
 pub use compaction::{
     NoopCompaction, OverflowCompactOutcome, XyCompaction, XyCompactionFactory,

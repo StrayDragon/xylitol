@@ -1,3 +1,4 @@
+pub mod automation;
 pub mod builder;
 pub mod capabilities;
 pub mod compaction;

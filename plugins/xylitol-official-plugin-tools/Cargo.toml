@@ -12,6 +12,7 @@ publish = false
 xylitol-plugin-sdk = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+chrono = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg", "gif", "webp"] }

@@ -8361,4 +8361,130 @@ mod slice_tests {
         assert_eq!(calls[0].1[0].uri, "file:///notes");
         assert_eq!(session.mcp_tray_len(), 0);
     }
+
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use std::sync::Mutex as StdMutex;
+    use xylitol_plugin_sdk::XySessionStore;
+    use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
+    use xylitol_plugin_sdk::session::{
+        CUSTOM_TYPE_AUTOMATION, CustomEntry, EntryBase, ForkPosition, SessionContext, SessionEntry,
+    };
+    use xylitol_runtime::agent::automation::{AutomationAction, AutomationEngine};
+
+    struct AutomationMemStore {
+        entries: StdMutex<Vec<SessionEntry>>,
+    }
+
+    impl AutomationMemStore {
+        fn new() -> Self {
+            Self {
+                entries: StdMutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl XySessionStore for AutomationMemStore {
+        async fn exists(&self, _session_id: &str) -> bool {
+            true
+        }
+
+        async fn load_entries(
+            &self,
+            _session_id: &str,
+        ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Ok(self.entries.lock().map(|e| e.clone()).unwrap_or_default())
+        }
+
+        async fn append_session_entry(
+            &self,
+            _session_id: &str,
+            entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            self.entries
+                .lock()
+                .map_err(|_| XySessionStoreError::io("lock", std::io::Error::other("poison")))?
+                .push(entry.clone());
+            Ok(())
+        }
+
+        async fn build_session_context(
+            &self,
+            _session_id: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            Ok(SessionContext {
+                messages: Vec::new(),
+                thinking_level: String::new(),
+                model: None,
+            })
+        }
+
+        async fn create(
+            &self,
+            _id: &str,
+            _cwd: Option<&str>,
+            _parent: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            Ok(())
+        }
+
+        async fn fork(
+            &self,
+            _parent_id: &str,
+            _child_id: &str,
+            _at_entry_id: &str,
+            _position: ForkPosition,
+        ) -> Result<(), XySessionError> {
+            Err(XySessionError::busy("fork unsupported"))
+        }
+
+        fn set_leaf(&self, _session_id: &str, _entry_id: Option<&str>) {}
+
+        fn leaf_id(&self, _session_id: &str) -> Option<String> {
+            None
+        }
+    }
+
+    fn automation_schedule(created_at: i64) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: CUSTOM_TYPE_AUTOMATION.into(),
+            data: serde_json::json!({
+                "kind": "schedule_defined",
+                "schedule_id": "sched",
+                "branch_id": "s0",
+                "prompt": "poll",
+                "cadence": {"type": "interval", "seconds": 60},
+                "max_ticks": 2,
+                "created_at": created_at
+            }),
+        })
+    }
+
+    #[tokio::test]
+    async fn automation_engine_drives_scripted_driver() {
+        let now = chrono::Local::now();
+        let started = now - chrono::Duration::seconds(120);
+        let store = Arc::new(AutomationMemStore::new());
+        store
+            .append_session_entry("s0", &automation_schedule(started.timestamp()))
+            .await
+            .expect("schedule");
+        let mut engine = AutomationEngine::new_at(store, "s0", started);
+        let actions = engine.tick(now, false, false).await.expect("tick");
+        let prompt = match actions.as_slice() {
+            [AutomationAction::Run { prompt, .. }] => prompt.clone(),
+            other => panic!("expected one scheduled run, got {other:?}"),
+        };
+        let mut driver = ScriptedDriver::new();
+        let mut stream = driver.run_with_context(&prompt, Vec::new()).await;
+        while stream.next().await.is_some() {}
+        assert_eq!(driver.runs, vec![prompt]);
+    }
 }

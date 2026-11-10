@@ -103,6 +103,8 @@ partial-json-fixer = "0.5.5"
 portable-pty = "0.9"
 pulldown-cmark = "0.13"
 regex = "1.13.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+croner = "4.0.3"
 reqwest = "0.13.5"
 rmcp = "3.5.1"
 rstest = "0.28"

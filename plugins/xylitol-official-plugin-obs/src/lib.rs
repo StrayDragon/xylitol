@@ -27,9 +27,11 @@ pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
     let otel_reporter = otel::install::try_build_otlp_reporter(otel);
 
     if !want_log && !want_provider && otel_reporter.is_none() {
-        set_provider_trace_active(false);
-        set_observation_io_tier(ObservationIoTier::None);
-        set_tool_observation_io_tier(ObservationIoTier::None);
+        if !xylitol_plugin_sdk::obs_gate::span_collect_active() {
+            set_provider_trace_active(false);
+            set_observation_io_tier(ObservationIoTier::None);
+            set_tool_observation_io_tier(ObservationIoTier::None);
+        }
         return None;
     }
 
@@ -109,20 +111,21 @@ pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
         );
     }
 
-    set_provider_trace_active(emit_spans);
-    set_observation_io_tier(match otel.observation_io {
-        OtelObservationIo::None => ObservationIoTier::None,
-        OtelObservationIo::Truncated => ObservationIoTier::Truncated,
-        OtelObservationIo::Full => ObservationIoTier::Full,
-    });
-    set_tool_observation_io_tier(match otel.tool_observation_io {
-        OtelObservationIo::None => ObservationIoTier::None,
-        OtelObservationIo::Truncated => ObservationIoTier::Truncated,
-        OtelObservationIo::Full => ObservationIoTier::Full,
-    });
-
-    if !fanout.is_empty() {
-        fastrace::set_reporter(fanout, fastrace::collector::Config::default());
+    if !xylitol_plugin_sdk::obs_gate::span_collect_active() {
+        set_provider_trace_active(emit_spans);
+        set_observation_io_tier(match otel.observation_io {
+            OtelObservationIo::None => ObservationIoTier::None,
+            OtelObservationIo::Truncated => ObservationIoTier::Truncated,
+            OtelObservationIo::Full => ObservationIoTier::Full,
+        });
+        set_tool_observation_io_tier(match otel.tool_observation_io {
+            OtelObservationIo::None => ObservationIoTier::None,
+            OtelObservationIo::Truncated => ObservationIoTier::Truncated,
+            OtelObservationIo::Full => ObservationIoTier::Full,
+        });
+        if !fanout.is_empty() {
+            fastrace::set_reporter(fanout, fastrace::collector::Config::default());
+        }
     }
 
     Some(())

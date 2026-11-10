@@ -663,3 +663,6 @@
       假如 工具未提供 details
       当 TUI 渲染工具结果
       那么 回退到文本且不伪造嵌套摘要
+  @req:r3293
+  规则: schedule-tool-contract
+    模型工具 schedule_create / schedule_list / schedule_pause / schedule_resume / schedule_cancel 须由 automation 插件注册并绑定当前 session；工具只追加 automation 事实，不得直接启动 run；schedule_* 不得计入核心 7 工具闭集；非法 cadence 须返回可分类错误。

@@ -2,6 +2,9 @@
 depends_on:
   - c3206-refactor-session-graph
 title: "Add loop scheduler"
+branch: sdd/c3207-add-loop-scheduler
+base_branch: main
+base_sha: 7b2439c584422852c791d49acd41cce8604988c5
 ---
 
 ## Why

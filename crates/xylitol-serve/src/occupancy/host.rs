@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
+use chrono::Local;
 use futures::StreamExt;
 use serde_json::{Value, json};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
@@ -27,7 +28,7 @@ use xylitol_plugin_sdk::mcp::McpResourceContext;
 use xylitol_plugin_sdk::mcp::{
     McpElicitationAction, McpElicitationGateway, McpElicitationRequest, McpElicitationResponse,
 };
-use xylitol_plugin_sdk::session::SessionEntry;
+use xylitol_plugin_sdk::session::{RunOutcome, SessionEntry};
 use xylitol_protocol::method::{
     APPROVAL_REQUESTED, BASH_OUTPUT, QUESTION_REQUESTED, SESSION_EVENT, SESSION_MODEL,
     SESSION_RESOURCES, SESSION_RESYNC_REQUIRED, SESSION_SUBSCRIBED, is_unary_method,
@@ -47,6 +48,7 @@ use xylitol_protocol::{
 };
 use xylitol_runtime::XyDriverError;
 use xylitol_runtime::agent::RuntimeBaseline;
+use xylitol_runtime::agent::automation::{AutomationAction, AutomationEngine};
 use xylitol_runtime::driver::{
     LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode, RuntimeReloadReport,
 };
@@ -98,6 +100,8 @@ pub struct SessionSlot {
     pub idempotency: IdempotencyLedger,
     pub loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
     pub workspaces: std::sync::Mutex<WorkspaceSet>,
+    automation: Mutex<Option<Arc<Mutex<AutomationEngine>>>>,
+    automation_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -197,6 +201,10 @@ impl HostState {
     pub async fn evict_slot(&self, slot: &Arc<SessionSlot>) {
         let next_seq = slot.journal.lock().await.next_seq();
         self.remember_seq_watermark(&slot.session_id, next_seq);
+        if let Some(task) = slot.automation_task.lock().await.take() {
+            task.abort();
+        }
+        *slot.automation.lock().await = None;
         *slot.driver.lock().await = None;
         self.sessions.write().await.remove(&slot.session_id);
     }
@@ -446,6 +454,8 @@ impl SessionSlot {
             bash_run_cancel: std::sync::Mutex::new(None),
             idempotency: IdempotencyLedger::default(),
             workspaces: std::sync::Mutex::new(WorkspaceSet::default()),
+            automation: Mutex::new(None),
+            automation_task: Mutex::new(None),
             loop_registry: root_loop_registry.map(|registry| Arc::new(registry.derive())),
         })
     }
@@ -1192,6 +1202,7 @@ pub async fn materialize_writer_at(
         driver.set_workspaces(vec![workspace.to_string_lossy().into_owned()]);
         drop(guard);
         slot.ensure_mcp_resources_watch();
+        start_automation_if_needed(host, slot).await;
         return Ok(());
     }
     let mut driver = host.factory.new_driver_at(workspace);
@@ -1213,7 +1224,107 @@ pub async fn materialize_writer_at(
     slot.writer.store(true, Ordering::SeqCst);
     drop(guard);
     slot.ensure_mcp_resources_watch();
+    start_automation_if_needed(host, slot).await;
     Ok(())
+}
+
+async fn start_automation_if_needed(host: &HostState, slot: &Arc<SessionSlot>) {
+    let mut task = slot.automation_task.lock().await;
+    if task.is_some() {
+        return;
+    }
+    let engine = Arc::new(Mutex::new(AutomationEngine::new(
+        host.ports.store.clone(),
+        slot.session_id.clone(),
+    )));
+    *slot.automation.lock().await = Some(engine.clone());
+    let slot_for_task = slot.clone();
+    let handle = tokio::spawn(async move {
+        automation_loop(slot_for_task, engine).await;
+    });
+    *task = Some(handle);
+}
+
+async fn automation_loop(slot: Arc<SessionSlot>, engine: Arc<Mutex<AutomationEngine>>) {
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    loop {
+        interval.tick().await;
+        let busy = slot.run_inflight.load(Ordering::SeqCst);
+        let permission_required = HostState::live_subscriber_count(&slot).await == 0;
+        let mut actions = {
+            let mut guard = engine.lock().await;
+            match guard.tick(Local::now(), busy, permission_required).await {
+                Ok(actions) => actions,
+                Err(error) => {
+                    log::warn!(
+                        target: "xylitol::host",
+                        "automation tick failed session={} error={error}",
+                        slot.session_id
+                    );
+                    Vec::new()
+                }
+            }
+        };
+        if !busy && let Ok(Some(action)) = engine.lock().await.drain_pending(Local::now()).await {
+            actions.push(action);
+        }
+        for action in actions {
+            if let AutomationAction::Run {
+                trigger_id, prompt, ..
+            } = action
+            {
+                run_automation(&slot, &engine, &trigger_id, &prompt).await;
+            }
+        }
+    }
+}
+
+async fn run_automation(
+    slot: &Arc<SessionSlot>,
+    engine: &Arc<Mutex<AutomationEngine>>,
+    trigger_id: &str,
+    prompt: &str,
+) {
+    if slot
+        .run_inflight
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+    let stream = {
+        let mut guard = slot.driver.lock().await;
+        let Some(driver) = guard.as_mut() else {
+            slot.run_inflight.store(false, Ordering::SeqCst);
+            return;
+        };
+        driver.run_with_context(prompt, Vec::new()).await
+    };
+    let mut stream = stream;
+    let mut outcome = RunOutcome::Success;
+    while let Some(event) = stream.next().await {
+        if matches!(event, XyEvent::Error(_)) {
+            outcome = RunOutcome::Failed;
+        }
+        slot.append_and_push(&event).await;
+        if matches!(event, XyEvent::AgentEnd { .. }) {
+            break;
+        }
+    }
+    slot.run_inflight.store(false, Ordering::SeqCst);
+    slot.flush_pending_runtime().await;
+    if let Err(error) = engine
+        .lock()
+        .await
+        .finish(trigger_id, outcome, Local::now())
+        .await
+    {
+        log::warn!(
+            target: "xylitol::host",
+            "automation finish failed session={} error={error}",
+            slot.session_id
+        );
+    }
 }
 
 fn new_reader_driver(host: &HostState) -> Box<dyn OccupancyEngine> {
@@ -2508,6 +2619,249 @@ mod tests {
             cold_value.get("partial").is_none(),
             "a cold subscribe gets the full transcript elsewhere, not a partial"
         );
+    }
+
+    use std::sync::Mutex as StdMutex;
+
+    use async_trait::async_trait;
+    use xylitol_plugin_sdk::XySessionStore;
+    use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
+    use xylitol_plugin_sdk::session::{
+        CUSTOM_TYPE_AUTOMATION, CustomEntry, EntryBase, ForkPosition, SessionContext, SessionEntry,
+    };
+    use xylitol_protocol::Command;
+    use xylitol_runtime::XyDriver;
+    use xylitol_runtime::driver::{CommandInfo, EventStream};
+
+    struct MemStore {
+        entries: StdMutex<Vec<SessionEntry>>,
+    }
+
+    impl MemStore {
+        fn new() -> Self {
+            Self {
+                entries: StdMutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl XySessionStore for MemStore {
+        async fn exists(&self, _session_id: &str) -> bool {
+            true
+        }
+
+        async fn load_entries(
+            &self,
+            _session_id: &str,
+        ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Ok(self.entries.lock().map(|e| e.clone()).unwrap_or_default())
+        }
+
+        async fn append_session_entry(
+            &self,
+            _session_id: &str,
+            entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            self.entries
+                .lock()
+                .map_err(|_| XySessionStoreError::io("lock", std::io::Error::other("poison")))?
+                .push(entry.clone());
+            Ok(())
+        }
+
+        async fn build_session_context(
+            &self,
+            _session_id: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            Ok(SessionContext {
+                messages: Vec::new(),
+                thinking_level: String::new(),
+                model: None,
+            })
+        }
+
+        async fn create(
+            &self,
+            _id: &str,
+            _cwd: Option<&str>,
+            _parent: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            Ok(())
+        }
+
+        async fn fork(
+            &self,
+            _parent_id: &str,
+            _child_id: &str,
+            _at_entry_id: &str,
+            _position: ForkPosition,
+        ) -> Result<(), XySessionError> {
+            Err(XySessionError::busy("fork unsupported"))
+        }
+
+        fn set_leaf(&self, _session_id: &str, _entry_id: Option<&str>) {}
+
+        fn leaf_id(&self, _session_id: &str) -> Option<String> {
+            None
+        }
+    }
+
+    fn model_info() -> ModelInfo {
+        ModelInfo {
+            id: "test".into(),
+            display_name: "Test".into(),
+            thinking: false,
+            thinking_levels: vec!["off".into()],
+            context_window: 1024,
+        }
+    }
+
+    struct ScriptedEngine {
+        runs: Arc<StdMutex<Vec<String>>>,
+    }
+
+    #[async_trait]
+    impl XyDriver for ScriptedEngine {
+        async fn run(&mut self, prompt: &str) -> EventStream {
+            self.runs
+                .lock()
+                .map(|mut runs| runs.push(prompt.to_string()))
+                .ok();
+            Box::pin(futures::stream::iter(vec![XyEvent::AgentEnd {
+                messages: Vec::new(),
+            }]))
+        }
+
+        fn abort(&self) {}
+
+        fn current_model(&self) -> Option<ModelInfo> {
+            Some(model_info())
+        }
+
+        fn available_models(&self) -> Vec<ModelInfo> {
+            vec![model_info()]
+        }
+
+        fn thinking_level(&self) -> String {
+            "off".into()
+        }
+
+        fn session_id(&self) -> Option<String> {
+            Some("s0".into())
+        }
+
+        async fn estimate_context_tokens(
+            &self,
+        ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
+            Ok(Default::default())
+        }
+
+        fn get_commands(&self) -> Vec<CommandInfo> {
+            Vec::new()
+        }
+
+        fn leaf_entry_id(&self) -> Option<String> {
+            None
+        }
+
+        async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+            LoadedResourcesSnapshot::default()
+        }
+    }
+
+    #[async_trait]
+    impl OccupancyEngine for ScriptedEngine {
+        fn install_ask_tool(&mut self, _gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>) {
+        }
+
+        fn bind_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
+            Ok(())
+        }
+
+        async fn restore_model(&mut self, _model_id: &str) -> Result<(), XyDriverError> {
+            Ok(())
+        }
+
+        async fn switch_session(&mut self, _session_id: &str) -> Result<String, XyDriverError> {
+            Ok("s0".into())
+        }
+
+        async fn select_model(&mut self, _model_id: &str) -> Result<ModelInfo, XyDriverError> {
+            Ok(model_info())
+        }
+
+        fn model_provider(&self, _model_id: &str) -> Option<String> {
+            None
+        }
+
+        async fn set_thinking_level(&mut self, _level: String) -> Result<(), XyDriverError> {
+            Ok(())
+        }
+
+        async fn ensure_tool_table_frozen(&mut self) {}
+
+        async fn execute_command(&mut self, _cmd: Command) -> Result<Value, XyDriverError> {
+            Ok(Value::Null)
+        }
+
+        fn agent_cwd_for_test(&self) -> String {
+            ".".into()
+        }
+
+        fn set_loop_middleware_scoped(
+            &mut self,
+            _registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+            _scope: xylitol_plugin_sdk::LoopScope,
+        ) {
+        }
+    }
+
+    fn schedule_entry(created_at: i64, seconds: u64) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: CUSTOM_TYPE_AUTOMATION.into(),
+            data: json!({
+                "kind": "schedule_defined",
+                "schedule_id": "sched",
+                "branch_id": "s0",
+                "prompt": "poll",
+                "cadence": {"type": "interval", "seconds": seconds},
+                "max_ticks": 2,
+                "created_at": created_at
+            }),
+        })
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn automation_timer_runs_scheduled_prompt() {
+        let slot = slot();
+        let store = Arc::new(MemStore::new());
+        store
+            .append_session_entry("s0", &schedule_entry(Local::now().timestamp() - 1, 1))
+            .await
+            .expect("schedule");
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine { runs: runs.clone() }));
+        let (_id, _rx) = subscribe(&slot).await;
+        let engine = Arc::new(Mutex::new(AutomationEngine::new(store, "s0")));
+        let task = tokio::spawn(automation_loop(slot.clone(), engine));
+        for _ in 0..16 {
+            if !runs.lock().map(|runs| runs.is_empty()).unwrap_or(true) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            runs.lock().map(|runs| runs.clone()).unwrap_or_default(),
+            vec!["poll".to_string()]
+        );
+        task.abort();
     }
 }
 

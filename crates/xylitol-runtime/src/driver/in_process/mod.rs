@@ -10,6 +10,7 @@ use crate::agent::runtime::RunPolicy;
 use crate::driver::bang_exec::BangExecHandler;
 use crate::driver::session_export::SessionExporter;
 use xylitol_plugin_sdk::AgentTodoGateway;
+use xylitol_plugin_sdk::AutomationGateway;
 use xylitol_plugin_sdk::WorkflowGateway;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::XySessionError;
@@ -57,6 +58,7 @@ pub struct XyInProcessDriver {
     exporter: SessionExporter,
     ask_gateway: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
     todo_gateway: Arc<dyn AgentTodoGateway>,
+    automation_gateway: Option<Arc<dyn AutomationGateway>>,
     workflow_gateway: Option<Arc<dyn WorkflowGateway>>,
     bash_run_sink: std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
     slash_commands: Vec<CommandInfo>,
@@ -103,6 +105,7 @@ impl XyInProcessDriver {
             exporter,
             ask_gateway: None,
             todo_gateway: Arc::new(NoopTodo),
+            automation_gateway: None,
             workflow_gateway: None,
             bash_run_sink: std::sync::Mutex::new(None),
             slash_commands: Vec::new(),
@@ -137,6 +140,10 @@ impl XyInProcessDriver {
 
     pub fn set_todo_gateway(&mut self, todo: Arc<dyn AgentTodoGateway>) {
         self.todo_gateway = todo;
+    }
+
+    pub fn set_automation_gateway(&mut self, automation: Arc<dyn AutomationGateway>) {
+        self.automation_gateway = Some(automation);
     }
 
     pub fn set_workflow_gateway(&mut self, workflow: Arc<dyn WorkflowGateway>) {
@@ -218,6 +225,9 @@ impl XyInProcessDriver {
     async fn bind_todo_session(&self, session_id: Option<&str>) {
         let session_id = session_id.map(str::to_string);
         self.todo_gateway.bind_session(session_id.clone()).await;
+        if let Some(automation) = self.automation_gateway.as_ref() {
+            automation.bind_session(session_id.clone()).await;
+        }
         self.bind_optional_gateways(session_id).await;
     }
 
