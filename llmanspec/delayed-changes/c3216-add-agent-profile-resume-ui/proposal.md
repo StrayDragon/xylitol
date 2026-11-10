@@ -4,6 +4,8 @@ depends_on:
 title: "Add agent profile resume choice and re-injection"
 ---
 
+> **⚠️ deferred（2026-11-10）**：为隐式状态机修复批次（c3230 起）让路，整体移入 delayed-changes；启动时经 propose 迁回 `changes/`。
+
 ## Why
 
 c3100 已记录 session header 的 profile name + fingerprint，并在 resume 时比较、记录 mismatch notice；但未接 TUI 三选项 Choice、未做全量重新注入、未做 per-session profile binding、profile 缺失 fallback 与审计。

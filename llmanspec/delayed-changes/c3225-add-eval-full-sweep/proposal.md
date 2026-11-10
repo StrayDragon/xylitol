@@ -7,6 +7,8 @@ needs_specs_change: false
 
 # Full eval sweep + reproducible release report SOP
 
+> **⚠️ deferred（2026-11-10）**：为隐式状态机修复批次（c3230 起）让路，整体移入 delayed-changes；启动时经 propose 迁回 `changes/`。
+
 ## Why
 
 第一个公开版需要可对比的指标表：同一模型、同一任务、同一 verifier 下，xylitol 与 Pi 的

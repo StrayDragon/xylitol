@@ -4,6 +4,8 @@ depends_on:
 title: "Add fork-time context reduction"
 ---
 
+> **⚠️ deferred（2026-11-10）**：为隐式状态机修复批次（c3230 起）让路，整体移入 delayed-changes；启动时经 propose 迁回 `changes/`。
+
 ## Why
 
 分叉时上下文可能很大；provider 前缀缓存是否命中不确定（断点、cache key、TTL、最小 token 都可能不满足）。为了让子分支从可工作的上下文开始，可能需要在 fork 时做 summary / compaction / handoff。
