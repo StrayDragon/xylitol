@@ -3,6 +3,9 @@ depends_on:
   - c3206-refactor-session-graph
   - c3207-add-loop-scheduler
 title: "Add goal tracking"
+branch: sdd/c3208-add-goal-tracking
+base_branch: main
+base_sha: 694349a19403bb10828ef4e5f77a3a4f0d9502d6
 ---
 
 ## Why

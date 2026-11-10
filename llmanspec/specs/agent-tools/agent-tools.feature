@@ -666,3 +666,7 @@
   @req:r3293
   规则: schedule-tool-contract
     模型工具 schedule_create / schedule_list / schedule_pause / schedule_resume / schedule_cancel 须由 automation 插件注册并绑定当前 session；工具只追加 automation 事实，不得直接启动 run；schedule_* 不得计入核心 7 工具闭集；非法 cadence 须返回可分类错误。
+
+  @req:r3303
+  规则: goal-tool-contract
+    模型工具 goal_set / goal_status / goal_pause / goal_resume / goal_clear 须由 goal 插件或 automation 插件注册并绑定当前 session；工具只追加 automation 事实，不得直接调用 evaluator 或启动 run；goal_set 须取代旧 active goal；acceptance 上限 4000 字符且不得为空；非法 goal_id 须返回可分类错误；goal_* 不得计入核心 7 工具闭集。

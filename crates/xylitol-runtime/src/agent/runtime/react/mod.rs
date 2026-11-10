@@ -36,6 +36,7 @@ use super::state::{
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::compaction::CompactionError;
+use crate::agent::goal::decide_active_goal;
 use crate::agent::prompt::{AgentStatusBar, expand_skills_in_agent_messages, project_outbound};
 use crate::agent::tools::{ToolCatalog, ToolSet};
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
@@ -1683,7 +1684,32 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         unreachable!()
                     };
                     let has_new_user = !next_pending.is_empty();
-                    if decide_active {
+                    let goal_control = match decide_active_goal(
+                        &store,
+                        &session_id,
+                        &history,
+                        &model_manager,
+                        &cancel,
+                    )
+                    .await
+                    {
+                        Ok(control) => control,
+                        Err(error) => {
+                            turn_aborted = true;
+                            yield XyEvent::error_msg(format!("goal evaluator failed: {error}"));
+                            break 'outer;
+                        }
+                    };
+                    let mut goal_handled = false;
+                    match goal_control {
+                        Some(LoopControl::Continue) => {
+                            goal_handled = true;
+                            continue_after_tools = true;
+                        }
+                        Some(LoopControl::Stop) => break 'outer,
+                        Some(LoopControl::Compact | LoopControl::Handoff) | None => {}
+                    }
+                    if !goal_handled && decide_active {
                         let ctx = DecideContinueCtx {
                             turn_index: turn as u32,
                             settle_count,

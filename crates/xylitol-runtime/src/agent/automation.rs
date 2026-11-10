@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::session::{
-    AutomationFact, RunOutcome, ScheduleState, SkipReason, TriggerSource, has_active_goal,
+    AutomationFact, GoalState, RunOutcome, ScheduleState, SkipReason, TriggerSource, project_goals,
     project_schedules,
 };
 
@@ -39,13 +39,19 @@ pub enum AutomationEngineError {
 pub struct AutomationIndex {
     pub schedules: Vec<xylitol_plugin_sdk::session::ScheduleProjection>,
     pub goal_active: bool,
+    pub goal_done: bool,
 }
 
 impl AutomationIndex {
     pub fn load(entries: &[xylitol_plugin_sdk::session::SessionEntry], branch_id: &str) -> Self {
+        let goals = project_goals(entries, branch_id);
+        let goal_active = goals
+            .iter()
+            .any(|goal| matches!(goal.state, GoalState::Open | GoalState::Running));
         Self {
             schedules: project_schedules(entries, branch_id),
-            goal_active: has_active_goal(entries, branch_id),
+            goal_active,
+            goal_done: !goal_active && goals.iter().any(|goal| goal.state == GoalState::Done),
         }
     }
 }
@@ -127,9 +133,28 @@ impl AutomationEngine {
         }
 
         let restart_cutoff = self.started_at.unwrap_or(now.timestamp());
+        let mut paused_by_goal = std::collections::HashSet::new();
+        if index.goal_done {
+            for schedule in &index.schedules {
+                if schedule.state != ScheduleState::Active {
+                    continue;
+                }
+                self.append(&AutomationFact::ScheduleStateChanged {
+                    schedule_id: schedule.schedule_id.clone(),
+                    state: ScheduleState::Paused,
+                    reason: Some("goal_done".into()),
+                    actor: "engine".into(),
+                    at: now.timestamp(),
+                })
+                .await?;
+                paused_by_goal.insert(schedule.schedule_id.clone());
+            }
+        }
 
         for schedule in index.schedules {
-            if schedule.state != ScheduleState::Active {
+            if schedule.state != ScheduleState::Active
+                || paused_by_goal.contains(&schedule.schedule_id)
+            {
                 continue;
             }
             let Some(next_fire) = schedule.next_fire else {
@@ -599,6 +624,54 @@ mod tests {
                 reason: SkipReason::Restart
             }]
         );
+    }
+
+    fn goal_done_entry(goal_id: &str) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: CUSTOM_TYPE_AUTOMATION.into(),
+            data: json!({
+                "kind": "goal_state_changed",
+                "goal_id": goal_id,
+                "state": "done",
+                "actor": "test",
+                "at": 0
+            }),
+        })
+    }
+
+    #[tokio::test]
+    async fn goal_done_pauses_schedule() {
+        let store = Arc::new(MemoryStore::new());
+        let session = "s1";
+        store
+            .append_session_entry(session, &schedule_entry("sched", session, 2))
+            .await
+            .unwrap();
+        store
+            .append_session_entry(session, &goal_entry("goal", session))
+            .await
+            .unwrap();
+        store
+            .append_session_entry(session, &goal_done_entry("goal"))
+            .await
+            .unwrap();
+        let mut engine = AutomationEngine::new_at(
+            store.clone(),
+            session,
+            Local.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let now = Local.with_ymd_and_hms(2026, 1, 1, 0, 1, 0).unwrap();
+        let actions = engine.tick(now, false, false).await.unwrap();
+        assert!(actions.is_empty());
+        let entries = store.load_entries(session).await.unwrap();
+        let schedules = project_schedules(&entries, session);
+        assert_eq!(schedules[0].state, ScheduleState::Paused);
     }
 
     #[tokio::test]

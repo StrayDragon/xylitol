@@ -3,6 +3,7 @@ pub mod builder;
 pub mod capabilities;
 pub mod compaction;
 pub mod context_policy;
+pub mod goal;
 pub mod llm_project;
 pub mod model;
 pub mod prompt;

@@ -213,7 +213,10 @@ fn compose_tools(
     if features.todo {
         tools.extend(xylitol_official_plugin_todo::todo_tools(todo.clone()));
     }
-    tools.extend(xylitol_official_plugin_tools::automation_tools(automation));
+    tools.extend(xylitol_official_plugin_tools::automation_tools(
+        automation.clone(),
+    ));
+    tools.extend(xylitol_official_plugin_tools::goal_tools(automation));
     if features.workflow {
         tools.extend(xylitol_official_plugin_workflow::workflow_tools(
             workflow,

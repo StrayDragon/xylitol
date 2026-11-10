@@ -120,6 +120,7 @@ pub enum GoalVerdict {
     Met,
     NotMet,
     Impossible,
+    Invalid,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -247,6 +248,7 @@ pub struct GoalProjection {
     pub iterations_used: u64,
     pub last_verdict: Option<GoalVerdict>,
     pub last_evidence: Option<String>,
+    pub consecutive_invalid: u32,
 }
 
 #[derive(Default)]
@@ -403,6 +405,7 @@ struct GoalBuilder {
     iterations_used: u64,
     last_verdict: Option<GoalVerdict>,
     last_evidence: Option<String>,
+    consecutive_invalid: u32,
 }
 
 pub fn project_goals(entries: &[SessionEntry], branch_id: &str) -> Vec<GoalProjection> {
@@ -435,6 +438,7 @@ pub fn project_goals(entries: &[SessionEntry], branch_id: &str) -> Vec<GoalProje
                         iterations_used: 0,
                         last_verdict: None,
                         last_evidence: None,
+                        consecutive_invalid: 0,
                     },
                 );
             }
@@ -454,6 +458,11 @@ pub fn project_goals(entries: &[SessionEntry], branch_id: &str) -> Vec<GoalProje
                     builder.iterations_used = iterations_used;
                     builder.last_verdict = Some(verdict);
                     builder.last_evidence = Some(evidence);
+                    if verdict == GoalVerdict::Invalid {
+                        builder.consecutive_invalid += 1;
+                    } else {
+                        builder.consecutive_invalid = 0;
+                    }
                 }
             }
             _ => {}
@@ -471,6 +480,7 @@ pub fn project_goals(entries: &[SessionEntry], branch_id: &str) -> Vec<GoalProje
             iterations_used: builder.iterations_used,
             last_verdict: builder.last_verdict,
             last_evidence: builder.last_evidence,
+            consecutive_invalid: builder.consecutive_invalid,
         })
         .collect()
 }
@@ -587,6 +597,52 @@ mod tests {
             panic!("custom")
         };
         assert!(parse_automation_fact(&custom).is_none());
+    }
+
+    #[test]
+    fn goal_projection_tracks_state_and_invalid_count() {
+        let entries = vec![
+            custom(json!({
+                "kind": "goal_defined",
+                "goal_id": "g1",
+                "branch_id": "b1",
+                "objective": "tests pass",
+                "acceptance": "cargo test exits 0",
+                "max_iterations": 5,
+                "created_at": 1
+            })),
+            custom(json!({
+                "kind": "goal_state_changed",
+                "goal_id": "g1",
+                "state": "running",
+                "actor": "test",
+                "at": 2
+            })),
+            custom(json!({
+                "kind": "goal_evaluated",
+                "goal_id": "g1",
+                "verdict": "invalid",
+                "evidence": "bad json",
+                "iterations_used": 1,
+                "at": 3
+            })),
+            custom(json!({
+                "kind": "goal_evaluated",
+                "goal_id": "g1",
+                "verdict": "invalid",
+                "evidence": "bad json",
+                "iterations_used": 2,
+                "at": 4
+            })),
+        ];
+        let goals = project_goals(&entries, "b1");
+        assert_eq!(goals.len(), 1);
+        assert_eq!(goals[0].state, GoalState::Running);
+        assert_eq!(goals[0].max_iterations, 5);
+        assert_eq!(goals[0].iterations_used, 2);
+        assert_eq!(goals[0].consecutive_invalid, 2);
+        assert!(has_active_goal(&entries, "b1"));
+        assert!(!has_active_goal(&entries, "b2"));
     }
 
     #[test]
