@@ -77,7 +77,7 @@ flowchart LR
 
 要点：
 
-- `AutomationEngine` 在 runtime，不在 serve；Print 与 TUI 都能用。
+- `AutomationEngine` 在 runtime，不在 serve；Print 与 TUI 都能用。第一版随 session 槽启动，`AutomationIndex` 只覆盖当前 session 的 leaf branch；跨 session 汇总后置。
 - 会话分支 custom facts 是唯一真源；`AutomationIndex` 只是派生缓存。
 - schedule tick 与 goal 续跑都走同一个 admission；不另造执行路径。
 - TUI 状态展示后置；第一版只暴露模型工具。

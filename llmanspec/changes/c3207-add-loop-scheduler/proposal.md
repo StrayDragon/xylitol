@@ -25,7 +25,7 @@ title: "Add loop scheduler"
 ## Automation Core（与 c3208 共享）
 
 - 共用事实：ScheduleDefined、SchedulePaused、TriggerFired、RunAdmitted、RunSkipped；c3208 追加 GoalDefined、GoalEvaluated。
-- 会话分支 custom facts 是唯一真源；host 的 AutomationIndex 只是派生缓存。
+- 会话分支 custom facts 是唯一真源；host 的 AutomationIndex 只是派生缓存。第一版按 session 槽维护；跨 session 汇总后置。
 - schedule tick 与 goal 续跑都走同一 admission；不另造执行路径。
 - 事实按 branch_id 过滤；fork 不继承 schedule/goal。
 - goal 活跃时跳过同 branch 的 loop tick；goal done 时暂停关联 schedule。
