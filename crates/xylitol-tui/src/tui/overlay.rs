@@ -1,7 +1,7 @@
 use super::{Component, TUI};
 use crate::selection::ScreenRect;
 use crate::terminal::Terminal;
-use crate::utils::visible_width;
+use crate::utils::{truncate_to_width, visible_width};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayAnchor {
@@ -43,13 +43,16 @@ impl SizeValue {
 pub struct OverlayOptions {
     pub width: Option<SizeValue>,
     pub min_width: Option<usize>,
+    pub max_width: Option<usize>,
     pub max_height: Option<SizeValue>,
+    pub min_height: Option<usize>,
     pub anchor: Option<OverlayAnchor>,
     pub offset_x: Option<i32>,
     pub offset_y: Option<i32>,
     pub row: Option<SizeValue>,
     pub col: Option<SizeValue>,
     pub margin: Option<OverlayMargin>,
+    pub clip: Option<ScreenRect>,
     pub non_capturing: bool,
 }
 
@@ -437,6 +440,11 @@ impl<T: Terminal> TUI<T> {
                 .is_some_and(|i| !self.overlays[i].2.hidden)
     }
 
+    pub fn overlay_screen_rect(&self, handle: OverlayHandle) -> Option<ScreenRect> {
+        self.overlay_index(handle.overlay_id)
+            .and_then(|index| self.overlays[index].2.last_screen_rect)
+    }
+
     pub fn focus_overlay(&mut self, handle: OverlayHandle) {
         let Some(index) = self.overlay_index(handle.overlay_id) else {
             return;
@@ -533,6 +541,8 @@ impl<T: Terminal> TUI<T> {
         struct LayoutInfo {
             width: usize,
             max_height: Option<usize>,
+            min_height: usize,
+            clip: Option<ScreenRect>,
             opts: OverlayOptions,
         }
         let mut layouts: Vec<LayoutInfo> = Vec::new();
@@ -546,16 +556,33 @@ impl<T: Terminal> TUI<T> {
             if let Some(mw) = opts.min_width {
                 w = w.max(mw);
             }
+            if let Some(mw) = opts.max_width {
+                w = w.min(mw);
+            }
+            if let Some(clip) = opts.clip {
+                w = w.min(clip.width as usize);
+            }
             w = w.clamp(1, term_width);
-            let mh = opts.max_height.as_ref().map(|h| h.resolve(term_height));
+            let mut mh = opts.max_height.as_ref().map(|h| h.resolve(term_height));
+            if let Some(clip) = opts.clip {
+                let clip_h = clip.height as usize;
+                mh = Some(mh.map(|h| h.min(clip_h)).unwrap_or(clip_h));
+            }
+            let min_h = opts
+                .min_height
+                .unwrap_or(1)
+                .min(mh.unwrap_or(usize::MAX))
+                .max(1);
             layouts.push(LayoutInfo {
                 width: w,
                 max_height: mh,
+                min_height: min_h,
+                clip: opts.clip,
                 opts: opts.clone(),
             });
         }
 
-        let mut rendered: Vec<(Vec<String>, usize, usize)> = Vec::new();
+        let mut rendered: Vec<(Vec<String>, usize, usize, Option<ScreenRect>)> = Vec::new();
         for (idx, layout) in indices.iter().zip(layouts.iter()) {
             let ov_lines = {
                 let (comp, _opts, _) = &mut self.overlays[*idx];
@@ -563,27 +590,52 @@ impl<T: Terminal> TUI<T> {
                 if let Some(mh) = layout.max_height {
                     ov.truncate(mh);
                 }
+                while ov.len() < layout.min_height {
+                    ov.push(String::new());
+                }
+                if let Some(clip) = layout.clip {
+                    ov.truncate(clip.height as usize);
+                }
                 ov
             };
-            let (row, col) = self.resolve_overlay_position(
-                &layout.opts,
-                ov_lines.len(),
-                layout.width,
-                term_width,
-                term_height,
-            );
-            self.overlays[*idx].2.last_screen_rect = Some(ScreenRect {
+            let (row, col) = if let Some(clip) = layout.clip {
+                let (r, c) = self.resolve_overlay_position(
+                    &layout.opts,
+                    ov_lines.len(),
+                    layout.width,
+                    clip.width as usize,
+                    clip.height as usize,
+                );
+                (
+                    (clip.row as usize).saturating_add(r),
+                    (clip.col as usize).saturating_add(c),
+                )
+            } else {
+                self.resolve_overlay_position(
+                    &layout.opts,
+                    ov_lines.len(),
+                    layout.width,
+                    term_width,
+                    term_height,
+                )
+            };
+            let rect = ScreenRect {
                 row: row.min(u16::MAX as usize) as u16,
                 col: col.min(u16::MAX as usize) as u16,
                 height: ov_lines.len().min(u16::MAX as usize) as u16,
                 width: layout.width.min(u16::MAX as usize) as u16,
-            });
-            rendered.push((ov_lines, row, col));
+            };
+            self.overlays[*idx].2.last_screen_rect = Some(rect);
+            rendered.push((ov_lines, row, col, layout.clip));
         }
 
         let min_lines_needed = rendered
             .iter()
-            .map(|(ov, row, _)| row + ov.len())
+            .map(|(ov, row, _, clip)| {
+                let bottom = row + ov.len();
+                clip.map(|c| (c.row as usize + c.height as usize).max(bottom))
+                    .unwrap_or(bottom)
+            })
             .max()
             .unwrap_or(0);
         let working_height = lines.len().max(term_height).max(min_lines_needed);
@@ -591,11 +643,23 @@ impl<T: Terminal> TUI<T> {
 
         let viewport_start = working_height.saturating_sub(term_height);
 
-        for (ov_lines, row, col) in rendered {
+        for (ov_lines, row, col, clip) in rendered {
             for (i, ov_line) in ov_lines.iter().enumerate() {
                 let abs_row = viewport_start + row + i;
+                if let Some(clip) = clip
+                    && (abs_row < clip.row as usize
+                        || abs_row >= clip.row as usize + clip.height as usize)
+                {
+                    continue;
+                }
+                let mut overlay = ov_line.clone();
+                if let Some(clip) = clip {
+                    let clip_right = clip.col as usize + clip.width as usize;
+                    let max_w = clip_right.saturating_sub(col);
+                    overlay = truncate_to_width(&overlay, max_w, "", false);
+                }
                 if let Some(base) = lines.get_mut(abs_row) {
-                    *base = self.composite_line(base, ov_line, col, term_width);
+                    *base = self.composite_line(base, &overlay, col, term_width);
                 }
             }
         }

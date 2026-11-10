@@ -1,6 +1,9 @@
 use std::time::Instant;
 
-use xylitol_tui::{Component, InputEvent, truncate_to_width};
+use xylitol_tui::{
+    Component, InputEvent, PanelBounds, PanelOverflow, PanelPlacement, ScreenRect, SizeValue,
+    truncate_to_width,
+};
 
 use super::super::slots::EditorSlot;
 use super::UiRoot;
@@ -69,7 +72,7 @@ impl UiRoot {
             let left = border("│");
             let right = border("│");
             let prompt = self.theme.paint_user(self.glyphs.user());
-            let marker = if self.session_sidebar_on {
+            let marker = if self.session_sidebar_available() {
                 self.theme.paint_chip("◨", true)
             } else {
                 buttons("◨")
@@ -316,22 +319,6 @@ impl UiRoot {
         lines
     }
 
-    pub(super) fn session_sidebar_cell(&self, row: usize, w: usize) -> String {
-        let row = row.saturating_add(self.session_sidebar_scroll);
-        if row == 0 {
-            let title = "┌ 会话侧栏";
-            let tw = xylitol_tui::visible_width(title);
-            return self
-                .theme
-                .paint_muted(&format!("{title} {}", "─".repeat(w.saturating_sub(tw + 1))));
-        }
-        match row {
-            1 => self.theme.paint_muted("实验特性 · 施工中"),
-            2 => self.theme.paint_muted("正式业务后启用"),
-            _ => String::new(),
-        }
-    }
-
     pub(super) fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
         match &mut self.slot {
             EditorSlot::Editor => self.editor.render(width.max(1)),
@@ -377,20 +364,73 @@ impl UiRoot {
     }
 }
 
+impl UiRoot {
+    pub(crate) fn handle_sidebar_drag_pointer(
+        &mut self,
+        mouse: &crossterm::event::MouseEvent,
+    ) -> bool {
+        use crossterm::event::{MouseButton, MouseEventKind};
+
+        let (placement, panel_w, content_w, panel_h) = self.session_sidebar_layout(self.term_cols);
+        let Some(placement) = placement else {
+            return false;
+        };
+        let (separator, separator_height) = match placement {
+            PanelPlacement::DockRight => (content_w, self.transcript_rows()),
+            PanelPlacement::FloatRight => (self.term_cols.saturating_sub(panel_w), panel_h),
+            _ => return false,
+        };
+        let in_separator =
+            mouse.column as usize == separator && (mouse.row as usize) < separator_height;
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) if in_separator => {
+                self.session_sidebar_dragging = true;
+                self.session_sidebar_drag_moved = false;
+                self.session_sidebar_drag_start_col = mouse.column;
+                self.session_sidebar_drag_start_width = self.session_sidebar_width;
+                true
+            }
+            MouseEventKind::Drag(MouseButton::Left) if self.session_sidebar_dragging => {
+                let delta = self.session_sidebar_drag_start_col as isize - mouse.column as isize;
+                let width =
+                    (self.session_sidebar_drag_start_width as isize + delta).max(24) as usize;
+                self.session_sidebar_width = width.min(120);
+                self.session_sidebar_layout_dirty = true;
+                self.session_sidebar_drag_moved = true;
+                true
+            }
+            MouseEventKind::Up(MouseButton::Left) if self.session_sidebar_dragging => {
+                self.session_sidebar_dragging = false;
+                if !self.session_sidebar_drag_moved {
+                    self.session_sidebar_width_cycle();
+                    self.session_sidebar_layout_dirty = true;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
-        let (sidebar_on, _sidebar_w, content_w) = self.session_sidebar_layout(width);
-        let width = if sidebar_on { content_w } else { width };
+        let term_cols = self.term_cols.max(width).max(1);
+        let (placement, panel_w, content_w, panel_h) = self.session_sidebar_layout(term_cols);
+        let upper_w = match placement {
+            Some(PanelPlacement::DockRight) => content_w,
+            _ => term_cols,
+        };
+
         let mut lines = Vec::new();
-        if self.upper_cache_width == width && self.upper_cache_gen == self.upper_gen {
+        if self.upper_cache_width == upper_w && self.upper_cache_gen == self.upper_gen {
             lines.extend(self.upper_cache_lines.iter().cloned());
         } else {
             let mut upper = Vec::new();
-            let loaded = self.render_loaded_resources_slot(width);
+            let loaded = self.render_loaded_resources_slot(upper_w);
             let loaded_rows = loaded.len();
             upper.extend(loaded);
-            upper.extend(self.render_scrollback_slot(width, loaded_rows));
-            self.upper_cache_width = width;
+            upper.extend(self.render_scrollback_slot(upper_w, loaded_rows));
+            self.upper_cache_width = upper_w;
             self.upper_cache_gen = self.upper_gen;
             self.upper_cache_lines = upper.clone();
             #[cfg(test)]
@@ -399,14 +439,51 @@ impl Component for UiRoot {
             }
             lines.extend(upper);
         }
-        let queue = self.render_queue_slot(width);
-        let todo = self.render_todo_bar_slot(width);
-        let toast = self.render_toast_notice_slot(width);
-        let status = self.render_status_slot(width);
-        let tray = self.render_tray_slot(width);
+
+        if let Some(placement) = placement {
+            let panel_content_w = panel_w.saturating_sub(1).max(1);
+            let panel_col = match placement {
+                PanelPlacement::DockRight => content_w,
+                _ => term_cols.saturating_sub(panel_w),
+            };
+            self.session_sidebar_panel.set_bounds(PanelBounds {
+                width: SizeValue::Absolute(panel_content_w),
+                min_width: panel_content_w.min(Self::SESSION_SIDEBAR_WIDTHS[0]).max(1),
+                max_width: Some(panel_content_w),
+                min_height: Self::SESSION_SIDEBAR_CONTENT_ROWS,
+                max_height: SizeValue::Absolute(panel_h.max(Self::SESSION_SIDEBAR_CONTENT_ROWS)),
+                overflow: PanelOverflow::Scroll,
+            });
+            self.session_sidebar_panel.set_available(ScreenRect {
+                row: 0,
+                col: panel_col.min(u16::MAX as usize) as u16,
+                height: panel_h.min(u16::MAX as usize) as u16,
+                width: panel_content_w.min(u16::MAX as usize) as u16,
+            });
+            self.session_sidebar_panel
+                .set_scroll(self.session_sidebar_scroll);
+            let panel_lines = self.session_sidebar_panel.render(panel_content_w);
+            let actual_h = panel_lines.len().min(panel_h);
+            self.session_sidebar_panel_lines = panel_lines.clone();
+            self.session_sidebar_panel_rect = Some(ScreenRect {
+                row: 0,
+                col: panel_col.min(u16::MAX as usize) as u16,
+                height: actual_h.min(u16::MAX as usize) as u16,
+                width: panel_w.min(u16::MAX as usize) as u16,
+            });
+        } else {
+            self.session_sidebar_panel_lines.clear();
+            self.session_sidebar_panel_rect = None;
+        }
+
+        let queue = self.render_queue_slot(term_cols);
+        let todo = self.render_todo_bar_slot(term_cols);
+        let toast = self.render_toast_notice_slot(term_cols);
+        let status = self.render_status_slot(term_cols);
+        let tray = self.render_tray_slot(term_cols);
         self.apply_fixed_zone_footprint(todo.len());
-        let mut editor = self.render_editor_slot(width);
-        let has_chips = self.paint_editor_chips(&mut editor, width);
+        let mut editor = self.render_editor_slot(term_cols);
+        let has_chips = self.paint_editor_chips(&mut editor, term_cols);
         let dock_prefix = queue
             .len()
             .saturating_add(todo.len())
@@ -416,10 +493,10 @@ impl Component for UiRoot {
         let editor_top = self.editor_top_row(dock_prefix, editor.len());
         self.last_slot_top_row = Some(editor_top);
         self.last_chip_row = has_chips.then_some(editor_top);
-        let footer = if width == 0 {
+        let footer = if term_cols == 0 {
             self.footer.text().to_string()
         } else {
-            truncate_to_width(self.footer.text(), width, "...", true)
+            truncate_to_width(self.footer.text(), term_cols, "...", true)
         };
         self.last_queue_rows = queue.len();
         self.last_todo_rows = todo.len();
@@ -449,22 +526,58 @@ impl Component for UiRoot {
     }
 
     fn overlay_viewport(&self, lines: &mut [String], width: usize, transcript_rows: usize) {
-        let (sidebar_on, sidebar_w, content_w) = self.session_sidebar_layout(width);
-        let eff = if sidebar_on { content_w } else { width };
+        let term_cols = self.term_cols.max(width).max(1);
+        let (placement, panel_w, content_w, panel_h) = self.session_sidebar_layout(term_cols);
+        let eff = match placement {
+            Some(PanelPlacement::DockRight) => content_w,
+            _ => term_cols,
+        };
 
         self.overlay_client_notices(lines, eff, transcript_rows);
-        if sidebar_on {
-            let sep = self.theme.paint_muted("│");
-            for (i, line) in lines.iter_mut().enumerate() {
-                let content = truncate_to_width(line, eff, "", false);
-                let cw = xylitol_tui::visible_width(&content);
-                let pad = " ".repeat(eff.saturating_sub(cw));
-                let cell = self.session_sidebar_cell(i, sidebar_w.saturating_sub(1));
-                let cell = truncate_to_width(&cell, sidebar_w.saturating_sub(1), "", false);
-                let cw2 = xylitol_tui::visible_width(&cell);
-                let cpad = " ".repeat(sidebar_w.saturating_sub(1).saturating_sub(cw2));
-                *line = format!("{content}{pad}{sep}{cell}{cpad}");
+        let sep = self.theme.paint_muted("│");
+        let panel_content_w = panel_w.saturating_sub(1).max(1);
+        let actual_h = self.session_sidebar_panel_lines.len().min(panel_h);
+        match placement {
+            Some(PanelPlacement::DockRight) => {
+                let rows = transcript_rows.min(lines.len());
+                for (i, line) in lines.iter_mut().enumerate().take(rows) {
+                    let content = truncate_to_width(line, content_w, "", false);
+                    let cw = xylitol_tui::visible_width(&content);
+                    let pad = " ".repeat(content_w.saturating_sub(cw));
+                    if i < actual_h {
+                        let cell = self
+                            .session_sidebar_panel_lines
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_default();
+                        let cell = truncate_to_width(&cell, panel_content_w, "", false);
+                        let cw2 = xylitol_tui::visible_width(&cell);
+                        let cpad = " ".repeat(panel_content_w.saturating_sub(cw2));
+                        *line = format!("{content}{pad}{sep}{cell}{cpad}");
+                    } else {
+                        *line = format!("{content}{pad}{sep}");
+                    }
+                }
             }
+            Some(PanelPlacement::FloatRight) => {
+                let panel_col = term_cols.saturating_sub(panel_w);
+                let rows = actual_h.min(transcript_rows).min(lines.len());
+                for (i, line) in lines.iter_mut().enumerate().take(rows) {
+                    let content = truncate_to_width(line, panel_col, "", false);
+                    let cw = xylitol_tui::visible_width(&content);
+                    let pad = " ".repeat(panel_col.saturating_sub(cw));
+                    let cell = self
+                        .session_sidebar_panel_lines
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_default();
+                    let cell = truncate_to_width(&cell, panel_content_w, "", false);
+                    let cw2 = xylitol_tui::visible_width(&cell);
+                    let cpad = " ".repeat(panel_content_w.saturating_sub(cw2));
+                    *line = format!("{content}{pad}{sep}{cell}{cpad}");
+                }
+            }
+            _ => {}
         }
     }
 
@@ -477,7 +590,7 @@ impl Component for UiRoot {
         let InputEvent::Mouse(mouse) = event else {
             return false;
         };
-        self.handle_slot_detail_pointer(mouse)
+        self.handle_sidebar_drag_pointer(mouse) || self.handle_slot_detail_pointer(mouse)
     }
 
     fn input_wants_rerender(&self, event: &InputEvent) -> bool {

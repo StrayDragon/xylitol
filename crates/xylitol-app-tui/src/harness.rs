@@ -8487,4 +8487,144 @@ mod slice_tests {
         while stream.next().await.is_some() {}
         assert_eq!(driver.runs, vec![prompt]);
     }
+
+    fn sidebar_plain(session: &HostSession<TestTerminal>, cols: usize) -> Vec<String> {
+        let root = session.ui_root().expect("ui");
+        let mut lines = root.borrow_mut().render(cols);
+        let dock_rows = root.borrow().last_dock_rows();
+        let transcript_rows = lines.len().saturating_sub(dock_rows);
+        {
+            let root_ref = root.borrow();
+            Component::overlay_viewport(&*root_ref, &mut lines, cols, transcript_rows);
+        }
+        lines
+            .into_iter()
+            .map(|line| xylitol_tui::utils::strip_ansi_codes(&line).to_string())
+            .collect()
+    }
+
+    #[test]
+    fn sidebar_dock_harness_keeps_fixed_zone_full_width() {
+        let session = HostSession::new_product_ui(TestTerminal::new(100, 32));
+        let root = session.ui_root().expect("ui").clone();
+        {
+            let mut root = root.borrow_mut();
+            root.set_term_cols(100);
+            root.set_term_rows(32);
+            root.show_session_sidebar("s1");
+        }
+        let plain = sidebar_plain(&session, 100);
+        assert!(
+            plain.iter().take(13).any(|line| line.contains("会话侧栏")),
+            "dock sidebar must paint in transcript rows"
+        );
+        let dock_rows = root.borrow().last_dock_rows();
+        let dock = &plain[plain.len().saturating_sub(dock_rows)..];
+        assert!(
+            dock.iter().all(|line| !line.contains("会话侧栏")),
+            "fixed zone must not contain the sidebar"
+        );
+        assert!(
+            dock.iter()
+                .any(|line| xylitol_tui::visible_width(line) >= 100),
+            "fixed zone must stay full width"
+        );
+    }
+
+    #[test]
+    fn sidebar_float_harness_overlays_only_transcript() {
+        let session = HostSession::new_product_ui(TestTerminal::new(72, 32));
+        let root = session.ui_root().expect("ui").clone();
+        {
+            let mut root = root.borrow_mut();
+            root.set_term_cols(72);
+            root.set_term_rows(32);
+            root.show_session_sidebar("s1");
+        }
+        assert_eq!(
+            root.borrow().session_sidebar_layout(72).0,
+            Some(xylitol_tui::PanelPlacement::FloatRight)
+        );
+        let lines = root.borrow_mut().render(72);
+        let dock_rows = root.borrow().last_dock_rows();
+        let transcript_rows = lines.len().saturating_sub(dock_rows);
+        let mut viewport = lines;
+        {
+            let root_ref = root.borrow();
+            Component::overlay_viewport(&*root_ref, &mut viewport, 72, transcript_rows);
+        }
+        let plain: Vec<String> = viewport
+            .into_iter()
+            .map(|line| xylitol_tui::utils::strip_ansi_codes(&line).to_string())
+            .collect();
+        assert!(
+            plain.iter().take(13).any(|line| line.contains("会话侧栏")),
+            "float sidebar must paint in transcript rows"
+        );
+        let dock = &plain[plain.len().saturating_sub(dock_rows)..];
+        assert!(
+            dock.iter().all(|line| !line.contains("会话侧栏")),
+            "fixed zone must not contain the float sidebar"
+        );
+    }
+
+    #[test]
+    fn sidebar_separator_drag_updates_width() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(120, 40));
+        let root = session.ui_root().expect("ui").clone();
+        {
+            let mut root = root.borrow_mut();
+            root.set_term_cols(120);
+            root.set_term_rows(40);
+            root.show_session_sidebar("s1");
+        }
+        let event = |kind, column, row| {
+            HostEvent::Input(InputEvent::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }))
+        };
+        session
+            .step(event(MouseEventKind::Down(MouseButton::Left), 96, 1))
+            .unwrap();
+        session
+            .step(event(MouseEventKind::Drag(MouseButton::Left), 80, 1))
+            .unwrap();
+        session
+            .step(event(MouseEventKind::Up(MouseButton::Left), 80, 1))
+            .unwrap();
+        assert_eq!(
+            root.borrow().session_sidebar_width(),
+            40,
+            "dragging the separator left must widen the panel"
+        );
+    }
+
+    #[test]
+    fn sidebar_hidden_harness_preserves_open_intent() {
+        let session = HostSession::new_product_ui(TestTerminal::new(20, 32));
+        let root = session.ui_root().expect("ui").clone();
+        {
+            let mut root = root.borrow_mut();
+            root.set_term_cols(20);
+            root.set_term_rows(32);
+            root.show_session_sidebar("s1");
+        }
+        let plain = sidebar_plain(&session, 20);
+        assert!(
+            plain.iter().all(|line| !line.contains("会话侧栏")),
+            "hidden sidebar must not paint"
+        );
+        assert!(!root.borrow().session_sidebar_available());
+        assert!(root.borrow().session_sidebar_on());
+        root.borrow_mut().set_term_cols(100);
+        assert_eq!(
+            root.borrow().session_sidebar_layout(100).0,
+            Some(xylitol_tui::PanelPlacement::DockRight)
+        );
+    }
 }

@@ -43,4 +43,6 @@ pub trait OccupancyFactory: Send + Sync {
     fn loop_registry(&self) -> Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>> {
         None
     }
+
+    fn release_session(&self, _session_id: &str) {}
 }

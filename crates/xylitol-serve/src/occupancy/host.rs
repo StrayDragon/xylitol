@@ -205,6 +205,8 @@ impl HostState {
             task.abort();
         }
         *slot.automation.lock().await = None;
+        // TODO(c3228): replace with host resource lease; temporary workaround.
+        self.factory.release_session(&slot.session_id);
         *slot.driver.lock().await = None;
         self.sessions.write().await.remove(&slot.session_id);
     }

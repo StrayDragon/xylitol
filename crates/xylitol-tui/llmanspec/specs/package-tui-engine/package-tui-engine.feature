@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: package-tui-engine
-# purpose: crates/xylitol-tui 核心 TUI 引擎 API（Container、OverlayHandle、可选 image surface）。
+# purpose: crates/xylitol-tui 核心 TUI 引擎 API（Container、PanelRegion、OverlayHandle、可选 image surface）。
 
 功能: package-tui-engine
 
@@ -40,6 +40,21 @@
       假如 ApplicationOwned 已 ingest 长内容且根组件 overlay_viewport 会在可见顶行写标记
       当 只 reproject_frame 且 scroll_top 大于 0
       那么 可见帧顶行含该标记且 ScrollView 内容第 0 行不含
+
+  @req:r3288
+  规则: panel-region-bounds
+    xylitol-tui 须提供 PanelRegion 组件，包一个子 Component，按 PanelBounds 约束宽高：宽度 须 clamp 到 min_width/max_width；高度 须 clamp 到 min_height/max_height 与 available rect；内容超出 须按 PanelOverflow 裁剪或滚动；内容不足 须按实际高度收口；rect() 须返回上次渲染矩形。PanelPlacement 须支持 DockLeft/DockRight/FloatLeft/FloatRight；Dock 与 Float 须共用同一套 bounds。OverlayOptions 须支持 max_width/min_height/clip；composite_overlays 须把 overlay 矩形与 clip 求交，只合成 clip 内行；last_screen_rect 须为裁剪后矩形。
+
+    场景: 宽度与高度 clamp
+      假如 PanelRegion 的 bounds 为 min_width 24 / max_width 40 / min_height 3 / max_height 10
+      当 以宽度 30 渲染内容 20 行
+      那么 输出宽度不超过 40 且高度不超过 10 且不少于 3
+
+    场景: overlay clip 求交
+      假如 overlay 锚点为 TopRight 且 clip 为 transcript 矩形
+      当 composite_overlays 合成
+      那么 overlay 只出现在 clip 内且 last_screen_rect 为裁剪后矩形
+
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

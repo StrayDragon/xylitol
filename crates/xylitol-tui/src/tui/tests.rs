@@ -349,3 +349,60 @@ fn mouse_consumed_listener_can_bump_frame_count() {
         "ConsumedRerender mouse Down may schedule a frame"
     );
 }
+
+#[test]
+fn overlay_clip_intersects_and_records_rect() {
+    use crate::components::text::Text;
+    use crate::selection::ScreenRect;
+    use crate::tui::{OverlayAnchor, OverlayOptions, SizeValue};
+
+    struct Lines(usize);
+    impl Component for Lines {
+        fn render(&mut self, _width: usize) -> Vec<String> {
+            (0..self.0).map(|i| format!("line{i}")).collect()
+        }
+        fn handle_input(&mut self, _event: InputEvent) {}
+        fn invalidate(&mut self) {}
+    }
+
+    let mut tui = TUI::new(NullTerminal::new(40, 20));
+    tui.add_child(Box::new(Lines(20)));
+    let clip = ScreenRect {
+        row: 2,
+        col: 5,
+        height: 4,
+        width: 10,
+    };
+    tui.show_overlay(
+        Box::new(Text::new("OVERLAY".into(), 0, 0)),
+        OverlayOptions {
+            width: Some(SizeValue::Absolute(10)),
+            max_width: Some(10),
+            max_height: Some(SizeValue::Absolute(5)),
+            min_height: Some(1),
+            anchor: Some(OverlayAnchor::TopRight),
+            clip: Some(clip),
+            ..Default::default()
+        },
+    );
+    tui.render_frame().expect("render");
+    let rect = tui.overlays[0].2.last_screen_rect.expect("rect");
+    assert!(rect.row >= clip.row);
+    assert!(rect.col >= clip.col);
+    assert!(rect.row + rect.height <= clip.row + clip.height);
+    assert!(rect.col + rect.width <= clip.col + clip.width);
+    let mut found = false;
+    for row in clip.row as usize..(clip.row as usize + clip.height as usize) {
+        if tui
+            .previous_lines
+            .get(row)
+            .is_some_and(|line| line.contains("OVERLAY"))
+        {
+            found = true;
+        }
+    }
+    assert!(found, "overlay must be composited inside clip");
+    for row in 0..clip.row as usize {
+        assert!(!tui.previous_lines[row].contains("OVERLAY"));
+    }
+}

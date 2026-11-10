@@ -1,5 +1,5 @@
 use crate::bdd::prelude::*;
-use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol_tui::{Component, Hit, InputEvent, InteractionMode, NullTerminal, TUI, Terminal};
@@ -159,5 +159,106 @@ fn then_hover_leaves_transcript_untouched(pointer_dock_bdd: &PointerDockBdd) {
     assert_eq!(
         *before, *after,
         "dock hover must not repaint any transcript row"
+    );
+}
+
+const PANEL_HIT: u64 = 88;
+
+pub struct PointerPanelBdd {
+    tui: RefCell<Option<TUI<NullTerminal>>>,
+    hit: Cell<Option<u64>>,
+}
+
+#[fixture]
+pub fn pointer_panel_bdd() -> PointerPanelBdd {
+    PointerPanelBdd {
+        tui: RefCell::new(None),
+        hit: Cell::new(None),
+    }
+}
+
+fn seeded_panel_tui() -> TUI<NullTerminal> {
+    let mut tui = TUI::with_interaction_mode(
+        NullTerminal::new(COLS, ROWS),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(DOCK);
+    tui.add_child(Box::new(BodyLines {
+        rows: (0..24).map(|i| format!("body-{i:02}")).collect(),
+    }));
+    tui.mark_hit(
+        Hit::at_screen(PANEL_HIT, 5, 0)
+            .cols(5, 15)
+            .tall(3)
+            .capturing(),
+    );
+    tui.mark_hit(
+        Hit::at_screen(DOCK_HIT, 0, dock_row())
+            .cols(0, 8)
+            .capturing(),
+    );
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    let _ = tui.render_now();
+    tui
+}
+
+#[given("登记面板矩形命中区且 transcript 可拖选")]
+fn g_panel_hit(pointer_panel_bdd: &PointerPanelBdd) {
+    pointer_panel_bdd.tui.replace(Some(seeded_panel_tui()));
+}
+
+#[when("在面板矩形内 Left Down 并拖动")]
+fn w_panel_drag(pointer_panel_bdd: &PointerPanelBdd) {
+    let mut slot = pointer_panel_bdd.tui.borrow_mut();
+    let tui = slot.as_mut().expect("panel hit region first");
+    for (kind, column, row) in [
+        (MouseEventKind::Down(MouseButton::Left), 6, 0),
+        (MouseEventKind::Drag(MouseButton::Left), 8, 1),
+    ] {
+        tui.dispatch_event(InputEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    pointer_panel_bdd.hit.set(tui.hit_id_at(6, 0));
+}
+
+#[then("不启动 transcript 拖选且命中 id 为面板")]
+fn t_panel_captures(pointer_panel_bdd: &PointerPanelBdd) {
+    let slot = pointer_panel_bdd.tui.borrow();
+    let tui = slot.as_ref().expect("panel hit region first");
+    assert_eq!(
+        pointer_panel_bdd.hit.get(),
+        Some(PANEL_HIT),
+        "panel rect must own the hit"
+    );
+    assert!(
+        !tui.application_owned_has_selection(),
+        "panel capture must not start transcript selection"
+    );
+}
+
+#[given("面板矩形命中区与固定区命中区同时登记")]
+fn g_panel_and_dock(pointer_panel_bdd: &PointerPanelBdd) {
+    pointer_panel_bdd.tui.replace(Some(seeded_panel_tui()));
+}
+
+#[when("按固定区绝对行查询")]
+fn w_dock_absolute(pointer_panel_bdd: &PointerPanelBdd) {
+    let slot = pointer_panel_bdd.tui.borrow();
+    let tui = slot.as_ref().expect("panel hit region first");
+    pointer_panel_bdd.hit.set(tui.hit_id_at(2, dock_row()));
+}
+
+#[then("仍命中固定区 id")]
+fn t_dock_hit_survives_panel(pointer_panel_bdd: &PointerPanelBdd) {
+    assert_eq!(
+        pointer_panel_bdd.hit.get(),
+        Some(DOCK_HIT),
+        "fixed zone hit must stay on its absolute row"
     );
 }

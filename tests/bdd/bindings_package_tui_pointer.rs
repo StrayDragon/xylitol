@@ -1,5 +1,7 @@
 use crate::bdd::fixtures::*;
-use crate::bdd::steps_package_tui_pointer::{PointerDockBdd, pointer_dock_bdd};
+use crate::bdd::steps_package_tui_pointer::{
+    PointerDockBdd, PointerPanelBdd, pointer_dock_bdd, pointer_panel_bdd,
+};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -79,4 +81,20 @@ fn test_dock_hit_ignores_scroll_and_row_gate(pointer_dock_bdd: PointerDockBdd) {
 )]
 fn test_hover_skips_dock_rows(pointer_dock_bdd: PointerDockBdd) {
     let _ = pointer_dock_bdd;
+}
+
+#[scenario(
+    path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
+    name = "面板矩形命中不越界"
+)]
+fn test_panel_rect_hit_stays_in_bounds(pointer_panel_bdd: PointerPanelBdd) {
+    let _ = pointer_panel_bdd;
+}
+
+#[scenario(
+    path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
+    name = "固定区命中不受面板影响"
+)]
+fn test_dock_hit_ignores_panel(pointer_panel_bdd: PointerPanelBdd) {
+    let _ = pointer_panel_bdd;
 }

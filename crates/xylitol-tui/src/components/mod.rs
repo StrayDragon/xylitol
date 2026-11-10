@@ -9,6 +9,7 @@ pub mod loader;
 pub mod markdown;
 pub mod mermaid_ascii;
 pub mod panel;
+pub mod panel_region;
 pub mod scroll_region;
 pub mod select_list;
 pub mod settings_list;

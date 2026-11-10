@@ -14,6 +14,22 @@ fn valid_segment(s: &str) -> bool {
 }
 
 pub const KEY_EDITOR_HISTORY: &str = "editor-history";
+pub const KEY_SIDEBAR_LAYOUT: &str = "sidebar-layout";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SidebarLayout {
+    pub width: usize,
+    pub height_cap: usize,
+}
+
+impl Default for SidebarLayout {
+    fn default() -> Self {
+        Self {
+            width: 24,
+            height_cap: 24,
+        }
+    }
+}
 
 const EDITOR_HISTORY_CAP: usize = 100;
 
@@ -224,6 +240,21 @@ mod tests {
         let v = storage.editor_history();
         assert_eq!(v.len(), EDITOR_HISTORY_CAP);
         assert_eq!(v[0], "p3");
+    }
+
+    #[test]
+    fn sidebar_layout_roundtrip() {
+        let storage = ClientStorage::new(tmp_root("sidebar"), "default").unwrap();
+        let value = storage
+            .update(KEY_SIDEBAR_LAYOUT, SidebarLayout::default(), |layout| {
+                layout.width = 32;
+                layout.height_cap = 12;
+            })
+            .unwrap();
+        assert_eq!(value.width, 32);
+        let loaded: SidebarLayout = storage.load(KEY_SIDEBAR_LAYOUT).unwrap();
+        assert_eq!(loaded.width, 32);
+        assert_eq!(loaded.height_cap, 12);
     }
 
     #[test]

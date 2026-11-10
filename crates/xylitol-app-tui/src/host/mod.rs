@@ -1213,9 +1213,14 @@ impl<T: Terminal> HostSession<T> {
             }
             crate::layout::UiRoot::SESSION_SIDEBAR_SEPARATOR_HIT_ID => {
                 if let Some(root) = self.ui_root.as_ref() {
-                    root.borrow_mut().session_sidebar_width_cycle();
+                    let mut root = root.borrow_mut();
+                    if !root.take_session_sidebar_drag_moved() {
+                        root.session_sidebar_width_cycle();
+                        root.take_session_sidebar_layout_dirty();
+                    }
                 }
                 self.sync_session_sidebar_reserve();
+                self.persist_sidebar_layout();
                 self.tui.request_render(false);
             }
             _ => {}
@@ -1242,6 +1247,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn handle_input(&mut self, input: InputEvent) {
+        let is_mouse = matches!(&input, InputEvent::Mouse(_));
         if let InputEvent::Key(ref key) = input
             && key.code == crossterm::event::KeyCode::Up
             && key.modifiers.is_empty()
@@ -1272,6 +1278,26 @@ impl<T: Terminal> HostSession<T> {
         if right_down && self.handle_chip_right_down(&input) {
             return;
         }
+        if let InputEvent::Mouse(mouse) = &input {
+            let handled = self
+                .ui_root
+                .as_ref()
+                .is_some_and(|root| root.borrow_mut().handle_sidebar_drag_pointer(mouse));
+            if handled {
+                self.sync_session_sidebar_reserve();
+                if matches!(
+                    mouse.kind,
+                    crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left)
+                ) {
+                    self.persist_sidebar_layout();
+                    if let Some(root) = self.ui_root.as_ref() {
+                        root.borrow_mut().take_session_sidebar_layout_dirty();
+                    }
+                }
+                self.tui.request_render(false);
+                return;
+            }
+        }
         if left_down {
             self.pointer_down_had_selection = self.tui.application_owned_has_selection();
             if self.handle_chip_left_down(&input) {
@@ -1296,6 +1322,16 @@ impl<T: Terminal> HostSession<T> {
         };
         if left_up {
             self.handle_pointer_left_up();
+        }
+        if is_mouse {
+            self.sync_session_sidebar_reserve();
+            let dirty = self
+                .ui_root
+                .as_ref()
+                .is_some_and(|root| root.borrow_mut().take_session_sidebar_layout_dirty());
+            if dirty {
+                self.persist_sidebar_layout();
+            }
         }
         if self.tui.application_session_active() {
             self.sync_after_session_input();

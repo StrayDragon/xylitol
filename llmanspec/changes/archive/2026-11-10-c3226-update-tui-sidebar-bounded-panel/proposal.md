@@ -2,6 +2,9 @@
 depends_on: []
 title: "会话侧栏有界尺寸与固定区避让"
 needs_specs_change: true
+branch: sdd/c3226-update-tui-sidebar-bounded-panel
+base_branch: main
+base_sha: 19ea44c1face07e5b0d5c60d24d772dfe12e3b90
 ---
 
 # 会话侧栏有界尺寸与固定区避让

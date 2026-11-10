@@ -8,11 +8,13 @@ mod mount;
 mod pending_slot;
 mod render;
 mod scenes_slot;
+mod sidebar_panel;
 mod slot_input;
 mod slot_nav;
 mod theme_apply;
 
 use pending_slot::PendingSlotOps;
+use sidebar_panel::SidebarPanel;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,6 +27,7 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     AtPathSource, ChoiceQuestion, CompletionSource, Focusable, Hit, HitId, HitSpace, InputEvent,
+    PanelBounds, PanelOverflow, PanelPlacement, PanelRegion, ScreenRect, SizeValue,
     SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, fg_rgb, mix_rgb,
 };
 
@@ -111,6 +114,15 @@ pub struct UiRoot {
     session_sidebar_on: bool,
     session_sidebar_width: usize,
     session_sidebar_scroll: usize,
+    session_sidebar_panel: PanelRegion,
+    session_sidebar_panel_lines: Vec<String>,
+    session_sidebar_panel_rect: Option<ScreenRect>,
+    session_sidebar_height_cap: usize,
+    session_sidebar_dragging: bool,
+    session_sidebar_drag_moved: bool,
+    session_sidebar_drag_start_col: u16,
+    session_sidebar_drag_start_width: usize,
+    session_sidebar_layout_dirty: bool,
     last_esc_at: Option<Instant>,
     bash_mode: bool,
     external_editor_invocations: u32,
@@ -239,6 +251,26 @@ impl UiRoot {
             session_sidebar_on: false,
             session_sidebar_width: Self::SESSION_SIDEBAR_WIDTHS[0],
             session_sidebar_scroll: 0,
+            session_sidebar_panel: PanelRegion::new(
+                Box::new(SidebarPanel::new(theme)),
+                PanelBounds {
+                    width: SizeValue::Absolute(Self::SESSION_SIDEBAR_WIDTHS[0]),
+                    min_width: Self::SESSION_SIDEBAR_WIDTHS[0],
+                    max_width: Some(Self::SESSION_SIDEBAR_WIDTHS[0]),
+                    min_height: Self::SESSION_SIDEBAR_CONTENT_ROWS,
+                    max_height: SizeValue::Percent(60.0),
+                    overflow: PanelOverflow::Scroll,
+                },
+                PanelPlacement::DockRight,
+            ),
+            session_sidebar_panel_lines: Vec::new(),
+            session_sidebar_panel_rect: None,
+            session_sidebar_height_cap: 24,
+            session_sidebar_dragging: false,
+            session_sidebar_drag_moved: false,
+            session_sidebar_drag_start_col: 0,
+            session_sidebar_drag_start_width: Self::SESSION_SIDEBAR_WIDTHS[0],
+            session_sidebar_layout_dirty: false,
             last_esc_at: None,
             bash_mode: false,
             external_editor_invocations: 0,
@@ -935,6 +967,7 @@ impl UiRoot {
     pub fn close_session_sidebar(&mut self) {
         self.session_sidebar_on = false;
         self.session_sidebar_scroll = 0;
+        self.session_sidebar_panel.scroll_to_top();
     }
 
     pub fn request_session_sidebar(&mut self) {
@@ -953,6 +986,7 @@ impl UiRoot {
     pub fn show_session_sidebar(&mut self, _session_id: &str) {
         self.session_sidebar_on = true;
         self.session_sidebar_scroll = 0;
+        self.session_sidebar_panel.scroll_to_top();
     }
 
     pub fn set_term_cols(&mut self, cols: usize) {
@@ -960,11 +994,28 @@ impl UiRoot {
     }
 
     pub fn session_sidebar_available(&self) -> bool {
-        width_tier(self.term_cols) >= WidthTier::Standard
+        self.session_sidebar_on && self.session_sidebar_layout(self.term_cols).0.is_some()
     }
 
     pub fn session_sidebar_width(&self) -> usize {
         self.session_sidebar_width
+    }
+
+    pub fn session_sidebar_height_cap(&self) -> usize {
+        self.session_sidebar_height_cap
+    }
+
+    pub fn take_session_sidebar_layout_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.session_sidebar_layout_dirty)
+    }
+
+    pub fn take_session_sidebar_drag_moved(&mut self) -> bool {
+        std::mem::take(&mut self.session_sidebar_drag_moved)
+    }
+
+    pub fn set_session_sidebar_layout(&mut self, width: usize, height_cap: usize) {
+        self.session_sidebar_width = width.max(Self::SESSION_SIDEBAR_WIDTHS[0]);
+        self.session_sidebar_height_cap = height_cap.clamp(Self::SESSION_SIDEBAR_CONTENT_ROWS, 24);
     }
 
     pub fn session_sidebar_width_cycle(&mut self) -> bool {
@@ -978,6 +1029,7 @@ impl UiRoot {
             false
         } else {
             self.session_sidebar_width = next;
+            self.session_sidebar_layout_dirty = true;
             true
         }
     }
@@ -987,19 +1039,21 @@ impl UiRoot {
     }
 
     pub fn session_sidebar_content_rows(&self) -> usize {
-        Self::SESSION_SIDEBAR_CONTENT_ROWS
+        self.session_sidebar_panel
+            .content_rows()
+            .max(Self::SESSION_SIDEBAR_CONTENT_ROWS)
     }
 
     pub fn scroll_session_sidebar(&mut self, delta: isize, visible_rows: usize) -> bool {
-        let max_scroll = self
-            .session_sidebar_content_rows()
-            .saturating_sub(visible_rows);
-        let next =
-            (self.session_sidebar_scroll as isize + delta).clamp(0, max_scroll as isize) as usize;
-        if next == self.session_sidebar_scroll {
+        let content_rows = self.session_sidebar_content_rows();
+        let max_scroll = content_rows.saturating_sub(visible_rows.max(1));
+        let current = self.session_sidebar_panel.scroll_top();
+        let next = (current as isize + delta).clamp(0, max_scroll as isize) as usize;
+        if next == current {
             false
         } else {
             self.session_sidebar_scroll = next;
+            self.session_sidebar_panel.set_scroll(next);
             true
         }
     }
@@ -1014,26 +1068,87 @@ impl UiRoot {
     pub const TODO_SUMMARY_HOVER_HIT_ID: HitId = 1 << 61 | 4;
 
     pub fn session_sidebar_reserved_cols(&self, width: usize) -> usize {
-        let (on, sidebar_w, _) = self.session_sidebar_layout(width);
-        if on { sidebar_w } else { 0 }
-    }
-
-    pub fn session_sidebar_layout(&self, width: usize) -> (bool, usize, usize) {
-        if !self.session_sidebar_on || width_tier(width) < WidthTier::Standard {
-            return (false, 0, width);
+        let (placement, panel_w, _, _) = self.session_sidebar_layout(width);
+        if matches!(placement, Some(PanelPlacement::DockRight)) {
+            panel_w
+        } else {
+            0
         }
-        let sidebar_w = self.sidebar_width_for(width);
-        (true, sidebar_w, width - sidebar_w)
     }
 
-    fn sidebar_width_for(&self, width: usize) -> usize {
-        self.session_sidebar_width
-            .min(width.saturating_sub(Self::SESSION_SIDEBAR_MIN_CONTENT))
+    pub fn session_sidebar_layout(
+        &self,
+        width: usize,
+    ) -> (Option<PanelPlacement>, usize, usize, usize) {
+        let width = width.max(1);
+        let transcript = self.transcript_rows();
+        if !self.session_sidebar_on || transcript < Self::SESSION_SIDEBAR_CONTENT_ROWS {
+            return (None, 0, width, 0);
+        }
+        if width_tier(width) >= WidthTier::Standard {
+            let panel_w = self.session_sidebar_width_for(width);
+            let content_w = width.saturating_sub(panel_w);
+            if content_w >= Self::SESSION_SIDEBAR_MIN_CONTENT {
+                return (
+                    Some(PanelPlacement::DockRight),
+                    panel_w,
+                    content_w,
+                    self.session_sidebar_height(transcript),
+                );
+            }
+        }
+        if width >= 26 {
+            let panel_w = self.session_sidebar_width.clamp(
+                Self::SESSION_SIDEBAR_WIDTHS[0],
+                width.saturating_sub(2).max(Self::SESSION_SIDEBAR_WIDTHS[0]),
+            );
+            return (
+                Some(PanelPlacement::FloatRight),
+                panel_w,
+                width,
+                self.session_sidebar_height(transcript),
+            );
+        }
+        (None, 0, width, 0)
+    }
+
+    fn session_sidebar_width_for(&self, width: usize) -> usize {
+        self.session_sidebar_width.clamp(
+            Self::SESSION_SIDEBAR_WIDTHS[0],
+            width
+                .saturating_sub(Self::SESSION_SIDEBAR_MIN_CONTENT)
+                .max(Self::SESSION_SIDEBAR_WIDTHS[0]),
+        )
+    }
+
+    fn session_sidebar_height(&self, transcript_rows: usize) -> usize {
+        let pct = transcript_rows.saturating_mul(60) / 100;
+        pct.min(24)
+            .min(
+                self.session_sidebar_height_cap
+                    .max(Self::SESSION_SIDEBAR_CONTENT_ROWS),
+            )
+            .max(Self::SESSION_SIDEBAR_CONTENT_ROWS)
+            .min(transcript_rows)
+            .max(1)
+    }
+
+    fn transcript_rows(&self) -> usize {
+        self.term_rows
+            .saturating_sub(self.last_dock_rows.max(1))
+            .max(1)
     }
 
     pub fn session_sidebar_contains(&self, col: usize) -> bool {
-        let (on, _, content_w) = self.session_sidebar_layout(self.term_cols);
-        on && col >= content_w
+        if let Some(rect) = self.session_sidebar_panel_rect {
+            return col >= rect.col as usize && col < rect.col as usize + rect.width as usize;
+        }
+        let (placement, panel_w, content_w, _) = self.session_sidebar_layout(self.term_cols);
+        match placement {
+            Some(PanelPlacement::DockRight) => col >= content_w,
+            Some(PanelPlacement::FloatRight) => col >= self.term_cols.saturating_sub(panel_w),
+            None | Some(PanelPlacement::DockLeft) | Some(PanelPlacement::FloatLeft) => false,
+        }
     }
 
     pub fn overlay_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
@@ -1115,22 +1230,52 @@ impl UiRoot {
     }
 
     fn sidebar_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
-        let (sidebar_on, _, content_w) = self.session_sidebar_layout(width);
-        if !sidebar_on {
+        let (placement, panel_w, content_w, panel_h) = self.session_sidebar_layout(width);
+        let Some(placement) = placement else {
             return Vec::new();
+        };
+        let (rect, body_height) = if let Some(rect) = self.session_sidebar_panel_rect {
+            let body_height = (rect.height as usize).min(transcript_rows);
+            (rect, body_height)
+        } else {
+            let col = match placement {
+                PanelPlacement::DockRight => content_w,
+                PanelPlacement::FloatRight => width.saturating_sub(panel_w),
+                _ => return Vec::new(),
+            };
+            let rect = ScreenRect {
+                row: 0,
+                col: col.min(u16::MAX as usize) as u16,
+                height: panel_h.min(transcript_rows).min(u16::MAX as usize) as u16,
+                width: panel_w.min(u16::MAX as usize) as u16,
+            };
+            (rect, panel_h.min(transcript_rows))
+        };
+        let separator_height = match placement {
+            PanelPlacement::DockRight => transcript_rows,
+            PanelPlacement::FloatRight => body_height,
+            _ => body_height,
+        };
+        let mut hits = Vec::new();
+        if body_height > 0 {
+            hits.push(
+                Hit::at_cell(Self::SESSION_SIDEBAR_HIT_ID, rect.col, rect.row)
+                    .cols(rect.col as usize, rect.col as usize + rect.width as usize)
+                    .tall(body_height)
+                    .capturing()
+                    .space(HitSpace::Chrome),
+            );
         }
-        vec![
-            Hit::at_cell(Self::SESSION_SIDEBAR_HIT_ID, content_w as u16, 0)
-                .cols(content_w, width)
-                .tall(transcript_rows)
-                .capturing()
-                .space(HitSpace::Chrome),
-            Hit::at_cell(Self::SESSION_SIDEBAR_SEPARATOR_HIT_ID, content_w as u16, 0)
-                .cols(content_w, content_w + 1)
-                .tall(transcript_rows)
-                .capturing()
-                .space(HitSpace::Chrome),
-        ]
+        if separator_height > 0 {
+            hits.push(
+                Hit::at_cell(Self::SESSION_SIDEBAR_SEPARATOR_HIT_ID, rect.col, rect.row)
+                    .cols(rect.col as usize, rect.col as usize + 1)
+                    .tall(separator_height)
+                    .capturing()
+                    .space(HitSpace::Chrome),
+            );
+        }
+        hits
     }
 
     pub fn take_pending_tree_open(&mut self) -> bool {
@@ -1820,12 +1965,18 @@ mod tests {
     fn sidebar_layout_gated_on_standard_tier() {
         let mut root = UiRoot::new();
         root.show_session_sidebar("s1");
-        assert_eq!(root.session_sidebar_layout(79), (false, 0, 79));
-        assert_eq!(root.session_sidebar_layout(80), (true, 24, 56));
+        assert_eq!(
+            root.session_sidebar_layout(79),
+            (Some(PanelPlacement::FloatRight), 24, 79, 9)
+        );
+        assert_eq!(
+            root.session_sidebar_layout(80),
+            (Some(PanelPlacement::DockRight), 24, 56, 9)
+        );
         assert_eq!(root.session_sidebar_reserved_cols(79), 0);
         assert_eq!(root.session_sidebar_reserved_cols(80), 24);
         root.close_session_sidebar();
-        assert_eq!(root.session_sidebar_layout(120), (false, 0, 120));
+        assert_eq!(root.session_sidebar_layout(120), (None, 0, 120, 0));
         assert_eq!(root.session_sidebar_reserved_cols(120), 0);
     }
 
@@ -1834,14 +1985,29 @@ mod tests {
         let mut root = UiRoot::new();
         root.set_term_cols(80);
         root.show_session_sidebar("s1");
-        assert_eq!(root.session_sidebar_layout(80), (true, 24, 56));
+        assert_eq!(
+            root.session_sidebar_layout(80),
+            (Some(PanelPlacement::DockRight), 24, 56, 9)
+        );
         assert!(root.session_sidebar_width_cycle());
-        assert_eq!(root.session_sidebar_layout(80), (true, 32, 48));
+        assert_eq!(
+            root.session_sidebar_layout(80),
+            (Some(PanelPlacement::DockRight), 32, 48, 9)
+        );
         assert!(root.session_sidebar_width_cycle());
-        assert_eq!(root.session_sidebar_layout(80), (true, 40, 40));
+        assert_eq!(
+            root.session_sidebar_layout(80),
+            (Some(PanelPlacement::DockRight), 40, 40, 9)
+        );
         assert!(root.session_sidebar_width_cycle());
-        assert_eq!(root.session_sidebar_layout(80), (true, 24, 56));
-        assert_eq!(root.session_sidebar_layout(79), (false, 0, 79));
+        assert_eq!(
+            root.session_sidebar_layout(80),
+            (Some(PanelPlacement::DockRight), 24, 56, 9)
+        );
+        assert_eq!(
+            root.session_sidebar_layout(79),
+            (Some(PanelPlacement::FloatRight), 24, 79, 9)
+        );
     }
 
     #[test]
@@ -1869,6 +2035,106 @@ mod tests {
         assert!(!root.scroll_session_sidebar(1, 1));
         assert!(root.scroll_session_sidebar(-10, 1));
         assert_eq!(root.session_sidebar_scroll(), 0);
+    }
+
+    #[test]
+    fn sidebar_dock_keeps_dock_rows_full_width() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.set_term_rows(30);
+        root.show_session_sidebar("s1");
+        let lines = Component::render(&mut root, 96);
+        let dock_rows = root.last_dock_rows();
+        let transcript_rows = lines.len().saturating_sub(dock_rows);
+        let mut viewport = lines;
+        Component::overlay_viewport(&root, &mut viewport, 120, transcript_rows);
+        assert!(
+            viewport
+                .iter()
+                .take(13)
+                .any(|line| line.contains("会话侧栏")),
+            "dock sidebar must paint in transcript rows"
+        );
+        let dock = &viewport[viewport.len().saturating_sub(dock_rows)..];
+        assert!(
+            dock.iter().all(|line| !line.contains("会话侧栏")),
+            "dock rows must not contain the sidebar"
+        );
+        assert!(
+            dock.iter()
+                .any(|line| xylitol_tui::visible_width(line) > 96),
+            "dock rows must stay full width"
+        );
+    }
+
+    #[test]
+    fn sidebar_float_draws_in_transcript_only() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(72);
+        root.set_term_rows(30);
+        root.show_session_sidebar("s1");
+        assert_eq!(
+            root.session_sidebar_layout(72).0,
+            Some(PanelPlacement::FloatRight)
+        );
+        let lines = Component::render(&mut root, 72);
+        let dock_rows = root.last_dock_rows();
+        let mut viewport = lines.clone();
+        Component::overlay_viewport(
+            &root,
+            &mut viewport,
+            72,
+            lines.len().saturating_sub(dock_rows),
+        );
+        assert!(
+            viewport
+                .iter()
+                .take(13)
+                .any(|line| line.contains("会话侧栏")),
+            "float sidebar must paint in transcript rows"
+        );
+        let dock = &viewport[viewport.len().saturating_sub(dock_rows)..];
+        assert!(
+            dock.iter().all(|line| !line.contains("会话侧栏")),
+            "dock rows must not contain the float sidebar"
+        );
+    }
+
+    #[test]
+    fn sidebar_hidden_on_too_narrow_and_returns() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.set_term_rows(30);
+        root.show_session_sidebar("s1");
+        assert_eq!(
+            root.session_sidebar_layout(120).0,
+            Some(PanelPlacement::DockRight)
+        );
+        root.set_term_cols(72);
+        assert_eq!(
+            root.session_sidebar_layout(72).0,
+            Some(PanelPlacement::FloatRight)
+        );
+        root.set_term_cols(20);
+        assert_eq!(root.session_sidebar_layout(20).0, None);
+        assert!(!root.session_sidebar_available());
+        root.set_term_cols(120);
+        assert_eq!(
+            root.session_sidebar_layout(120).0,
+            Some(PanelPlacement::DockRight)
+        );
+        assert!(root.session_sidebar_on(), "open intent must survive");
+    }
+
+    #[test]
+    fn sidebar_height_cap_uses_percent_and_absolute() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.set_term_rows(30);
+        root.show_session_sidebar("s1");
+        assert_eq!(root.session_sidebar_layout(120).3, 13);
+        root.set_session_sidebar_layout(24, 3);
+        assert_eq!(root.session_sidebar_layout(120).3, 3);
     }
 
     fn root_with_dock(queue_rows: usize) -> UiRoot {

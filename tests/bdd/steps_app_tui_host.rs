@@ -3272,8 +3272,12 @@ fn t_c2911_sidebar_width_cycle(host_pump_bdd: &HostPumpBdd) {
         matches!(width, 24 | 32 | 40),
         "sidebar width must stay on a preset tier: {width}"
     );
-    let (on, sidebar_w, content_w) = root.borrow().session_sidebar_layout(120);
-    assert!(on, "sidebar must stay on");
+    let (placement, sidebar_w, content_w, _) = root.borrow().session_sidebar_layout(120);
+    assert_eq!(
+        placement,
+        Some(xylitol_tui::PanelPlacement::DockRight),
+        "sidebar must stay docked"
+    );
     assert_eq!(sidebar_w, width, "layout must use the selected tier");
     assert!(
         content_w >= 40,
@@ -3309,7 +3313,7 @@ pub(crate) async fn c2911_click(host_pump_bdd: &HostPumpBdd, col: u16, row: u16)
 
 #[when("点击侧栏带")]
 async fn w_c2911_click_sidebar(host_pump_bdd: &HostPumpBdd) {
-    c2911_click(host_pump_bdd, 110, 5).await;
+    c2911_click(host_pump_bdd, 110, 1).await;
 }
 
 #[then("侧栏关闭且内容区无选区")]

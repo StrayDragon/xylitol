@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -557,6 +557,23 @@ impl McpPrepareHub {
 
     async fn view_now(&self) -> SessionPrepareView {
         let servers = self.state.servers.lock().await;
+        let claimed_keys: Option<HashSet<ConnectionKey>> = {
+            let current = self.state.current.lock().await.clone();
+            match current {
+                Some((session_id, _)) => Some(
+                    self.state
+                        .claims
+                        .lock()
+                        .await
+                        .get(&session_id)
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .collect(),
+                ),
+                None => None,
+            }
+        };
         let pool = self.state.pool.lock().await;
         let progress = self.state.progress.lock().await;
         let server_ids: Vec<String> = servers.iter().map(|server| server.name.clone()).collect();
@@ -565,7 +582,13 @@ impl McpPrepareHub {
         let mut tools: Vec<Arc<dyn XyTool>> = Vec::new();
         let mut server_details = Vec::new();
         let mut probe_lines = Vec::new();
-        for entry in pool.values() {
+        for (key, entry) in pool.iter() {
+            if claimed_keys
+                .as_ref()
+                .is_some_and(|keys| !keys.contains(key))
+            {
+                continue;
+            }
             connected.extend(entry.connected.iter().cloned());
             diags.extend(entry.diags.iter().cloned());
             tools.extend(entry.tools.iter().cloned());
@@ -1023,6 +1046,21 @@ mod tests {
                 .any(|detail| detail.contains("reconnect_count=1")),
             "{:?}",
             second.server_details
+        );
+    }
+
+    #[tokio::test]
+    async fn view_filters_to_current_session() {
+        let hub = McpPrepareHub::new(vec![server("fs", McpScope::Workspace)]);
+        hub.ensure_for("s1", &["/a".into()]).await;
+        let first = hub.view_async().await;
+        assert_eq!(first.server_details.len(), 1);
+        hub.ensure_for("s2", &["/b".into()]).await;
+        let second = hub.view_async().await;
+        assert_eq!(
+            second.server_details.len(),
+            1,
+            "old workspace claims must not leak into the current session"
         );
     }
 

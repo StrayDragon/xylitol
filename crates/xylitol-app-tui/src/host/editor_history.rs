@@ -15,6 +15,46 @@ impl<T: Terminal> HostSession<T> {
         storage: Option<std::sync::Arc<crate::storage::ClientStorage>>,
     ) {
         self.client_storage = storage;
+        self.apply_sidebar_layout_from_storage();
+    }
+
+    fn apply_sidebar_layout_from_storage(&mut self) {
+        let Some(storage) = &self.client_storage else {
+            return;
+        };
+        let layout: Option<crate::storage::SidebarLayout> =
+            storage.load(crate::storage::KEY_SIDEBAR_LAYOUT);
+        let Some(layout) = layout else {
+            return;
+        };
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut()
+                .set_session_sidebar_layout(layout.width, layout.height_cap);
+        }
+    }
+
+    pub fn persist_sidebar_layout(&mut self) {
+        let Some(storage) = &self.client_storage else {
+            return;
+        };
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let (width, height_cap) = {
+            let root = root.borrow();
+            (
+                root.session_sidebar_width(),
+                root.session_sidebar_height_cap(),
+            )
+        };
+        let _ = storage.update(
+            crate::storage::KEY_SIDEBAR_LAYOUT,
+            crate::storage::SidebarLayout::default(),
+            |layout| {
+                layout.width = width;
+                layout.height_cap = height_cap;
+            },
+        );
     }
 
     pub(crate) fn persist_client_history(&mut self, text: &str) {

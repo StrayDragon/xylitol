@@ -188,6 +188,14 @@ impl OccupancyFactory for ProductOccupancyFactory {
             .as_ref()
             .and_then(|ctx| ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>())
     }
+
+    fn release_session(&self, session_id: &str) {
+        if let Some(ctx) = &self.ctx
+            && let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>()
+        {
+            hub.release_session(session_id);
+        }
+    }
 }
 
 struct OccupancyDriver {
