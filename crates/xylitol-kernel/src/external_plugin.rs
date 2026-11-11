@@ -80,6 +80,7 @@ struct ClientState {
 
 pub struct ExternalClient {
     state: Mutex<Option<ClientState>>,
+    dead_reason: Mutex<Option<String>>,
     next_id: AtomicU64,
 }
 
@@ -114,6 +115,7 @@ impl ExternalClient {
                 stdin,
                 stdout: BufReader::new(stdout),
             })),
+            dead_reason: Mutex::new(None),
             next_id: AtomicU64::new(1),
         })
     }
@@ -142,7 +144,11 @@ impl ExternalClient {
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
         let mut guard = self.state.lock().await;
         let Some(state) = guard.as_mut() else {
-            return Err("external plugin is not running".to_string());
+            let reason = self.dead_reason.lock().await.clone();
+            return Err(match reason {
+                Some(reason) => format!("external plugin unavailable: {reason}"),
+                None => "external plugin is not running".to_string(),
+            });
         };
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let request = json!({
@@ -153,31 +159,36 @@ impl ExternalClient {
         });
         let line = serde_json::to_string(&request)
             .map_err(|e| format!("serialize external plugin request: {e}"))?;
-        state
-            .stdin
-            .write_all(line.as_bytes())
-            .await
-            .map_err(|e| format!("write external plugin request: {e}"))?;
-        state
-            .stdin
-            .write_all(b"\n")
-            .await
-            .map_err(|e| format!("write external plugin request: {e}"))?;
-        state
-            .stdin
-            .flush()
-            .await
-            .map_err(|e| format!("flush external plugin request: {e}"))?;
+        let written = async {
+            state.stdin.write_all(line.as_bytes()).await?;
+            state.stdin.write_all(b"\n").await?;
+            state.stdin.flush().await
+        }
+        .await;
+        if let Err(e) = written {
+            guard.take();
+            let reason = format!("write failed: {e}");
+            *self.dead_reason.lock().await = Some(reason.clone());
+            return Err(format!("external plugin unavailable: {reason}"));
+        }
 
         loop {
             let mut buffer = String::new();
-            let read = state
-                .stdout
-                .read_line(&mut buffer)
-                .await
-                .map_err(|e| format!("read external plugin response: {e}"))?;
-            if read == 0 {
-                return Err("external plugin exited before responding".to_string());
+            let read = state.stdout.read_line(&mut buffer).await;
+            match read {
+                Ok(0) => {
+                    guard.take();
+                    let reason = format!("process exited before responding to {method}");
+                    *self.dead_reason.lock().await = Some(reason.clone());
+                    return Err(format!("external plugin unavailable: {reason}"));
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    guard.take();
+                    let reason = format!("read failed: {e}");
+                    *self.dead_reason.lock().await = Some(reason.clone());
+                    return Err(format!("external plugin unavailable: {reason}"));
+                }
             }
             let trimmed = buffer.trim();
             if trimmed.is_empty() {
@@ -613,6 +624,41 @@ for line in sys.stdin:
             .expect("tools/call");
         assert_eq!(result["content"], "42");
         client.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn request_after_process_death_reports_unavailable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("dying.py");
+        std::fs::write(
+            &path,
+            r#"
+import json, sys
+line = sys.stdin.readline()
+request = json.loads(line)
+print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"protocol_version": 1, "capabilities": ["tools"], "tools": []}}), flush=True)
+"#,
+        )
+        .expect("write fixture");
+        let client = ExternalClient::spawn(&fixture_config(&path))
+            .await
+            .expect("spawn fixture");
+        client.initialize("fixture").await.expect("initialize");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let error = client
+            .request("tools/call", json!({"name": "echo"}))
+            .await
+            .expect_err("dead client must fail");
+        assert!(error.contains("unavailable"), "{error}");
+        assert!(
+            error.contains("process exited") || error.contains("write failed"),
+            "unavailable must carry the death cause: {error}"
+        );
+        let again = client
+            .request("tools/call", json!({"name": "echo"}))
+            .await
+            .expect_err("dead client must stay unavailable");
+        assert!(again.contains("unavailable"), "{again}");
     }
 
     #[tokio::test]

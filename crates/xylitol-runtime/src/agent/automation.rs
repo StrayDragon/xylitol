@@ -259,6 +259,19 @@ impl AutomationEngine {
         Ok(actions)
     }
 
+    pub async fn admit(
+        &mut self,
+        now: DateTime<Local>,
+        busy: bool,
+        permission_required: bool,
+    ) -> Result<Vec<AutomationAction>, AutomationEngineError> {
+        let mut actions = self.tick(now, busy, permission_required).await?;
+        if !busy && let Some(action) = self.drain_pending(now).await? {
+            actions.push(action);
+        }
+        Ok(actions)
+    }
+
     pub async fn drain_pending(
         &mut self,
         now: DateTime<Local>,
@@ -426,6 +439,33 @@ mod tests {
         assert!(engine.has_pending());
         let drained = engine.drain_pending(now).await.unwrap();
         assert!(matches!(drained, Some(AutomationAction::Run { .. })));
+        assert!(!engine.has_pending());
+    }
+
+    #[tokio::test]
+    async fn admit_merges_tick_and_pending() {
+        let store = Arc::new(MemoryStore::new());
+        let session = "s1";
+        store
+            .append_session_entry(session, &schedule_entry("sched", session, 2))
+            .await
+            .unwrap();
+        let mut engine = AutomationEngine::new_at(
+            store.clone(),
+            session,
+            Local.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let now = Local.with_ymd_and_hms(2026, 1, 1, 0, 1, 0).unwrap();
+
+        let busy_actions = engine.admit(now, true, false).await.unwrap();
+        assert!(busy_actions.is_empty(), "busy admit must not run");
+        assert!(engine.has_pending());
+
+        let idle_actions = engine.admit(now, false, false).await.unwrap();
+        assert!(matches!(
+            idle_actions.as_slice(),
+            [AutomationAction::Run { .. }]
+        ));
         assert!(!engine.has_pending());
     }
 

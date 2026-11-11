@@ -24,7 +24,7 @@
 
   @req:r2991
   规则: 外部插件协议与工具桥
-    外部进程 须经 newline-delimited JSON-RPC 2.0 stdio 握手：initialize 须声明 `protocol_version: 1`、`tools` 能力与工具列表；工具公开名 须为 `{plugin}__{tool}` 且 provider-safe；`tools/call` 结果 须以文本内容回传。协议版本不匹配、缺少 tools 能力、进程退出 须失败可观察且不得静默成功。
+    外部进程 须经 newline-delimited JSON-RPC 2.0 stdio 握手：initialize 须声明 `protocol_version: 1`、`tools` 能力与工具列表；工具公开名 须为 `{plugin}__{tool}` 且 provider-safe；`tools/call` 结果 须以文本内容回传。协议版本不匹配、缺少 tools 能力、进程退出 须失败可观察且不得静默成功。进程消亡后后续请求 须显式报 unavailable（含死因），不得报成功或静默重连。
 
     场景: 外部插件握手与调用
       假如 外部插件 fixture 声明 echo 工具
@@ -35,6 +35,11 @@
       假如 外部插件 fixture 声明 protocol_version 99
       当 初始化外部插件
       那么 握手失败且错误含 protocol mismatch
+
+    场景: 进程消亡后工具调用不可用
+      假如 外部插件进程已消亡
+      当 初始化后调用工具
+      那么 工具调用报 unavailable 且含死因
 
   @req:r2992
   规则: 外部插件失败隔离与清理

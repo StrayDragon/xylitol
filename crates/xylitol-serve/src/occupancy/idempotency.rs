@@ -30,6 +30,12 @@ impl Entry {
         self.method == method && &self.payload == payload
     }
 
+    fn finish_conflict(&self) {
+        if self.tx.borrow().is_none() {
+            let _ = self.tx.send(Some(conflict_result()));
+        }
+    }
+
     async fn result(&self) -> RpcResult {
         let mut rx = self.tx.subscribe();
         loop {
@@ -57,7 +63,7 @@ impl Reservation {
 
 impl Drop for Reservation {
     fn drop(&mut self) {
-        if !self.done.get() {
+        if !self.done.get() && self.entry.tx.borrow().is_none() {
             let _ = self.entry.tx.send(Some(RpcResult::error(
                 "internal_error",
                 "idempotent execution abandoned",
@@ -115,7 +121,9 @@ impl IdempotencyLedger {
                         let Some(oldest) = inner.order.pop_front() else {
                             break;
                         };
-                        inner.entries.remove(&oldest);
+                        if let Some(evicted) = inner.entries.remove(&oldest) {
+                            evicted.finish_conflict();
+                        }
                     }
                     return Admission::Proceed(Reservation {
                         entry,
@@ -212,6 +220,36 @@ mod tests {
             ledger.admit(Some("r0"), "get_state", &json!({})).await,
             Admission::Proceed(_)
         ));
+    }
+
+    #[tokio::test]
+    async fn eviction_finalizes_inflight_as_conflict() {
+        let ledger = Arc::new(IdempotencyLedger::default());
+        let p = json!({});
+        let Admission::Proceed(inflight) = ledger.admit(Some("r_inflight"), "bash", &p).await
+        else {
+            panic!("first must proceed");
+        };
+        let waiter = tokio::spawn({
+            let ledger = ledger.clone();
+            async move {
+                match ledger.admit(Some("r_inflight"), "bash", &p).await {
+                    Admission::Replay(result) => result,
+                    _ => panic!("duplicate must replay while in-flight"),
+                }
+            }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        for i in 0..LEDGER_CAP {
+            let _ = run(&ledger, &format!("r{i}"), "get_state", &json!({})).await;
+        }
+        let replayed = waiter.await.expect("join waiter");
+        assert_eq!(
+            replayed.error.as_ref().map(|e| e.code.as_str()),
+            Some("idempotency_conflict"),
+            "evicted in-flight reservation must replay as conflict"
+        );
+        inflight.complete(RpcResult::ok_value(json!({ "done": true })));
     }
 
     #[tokio::test]

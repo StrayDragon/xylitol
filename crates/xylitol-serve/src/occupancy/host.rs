@@ -83,7 +83,6 @@ pub struct SessionSlot {
     pub session_id: String,
     pub journal: Mutex<EventJournal>,
     pub driver: Arc<Mutex<Option<Box<dyn OccupancyEngine>>>>,
-    pub writer: AtomicBool,
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
     observing: Mutex<HashSet<u64>>,
     linger_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -236,7 +235,7 @@ impl HostState {
             None => self.bind_all_unbound_muxes(slot).await,
         };
         Self::cancel_write_linger(slot).await;
-        let inflight = slot.run_inflight.load(Ordering::SeqCst);
+        let inflight = slot.run_inflight_active();
         let observe = inflight && last_seq == 0;
         if observe {
             slot.observe(bound.iter().copied()).await;
@@ -416,6 +415,36 @@ impl HostState {
     }
 }
 
+pub struct RunInflightGuard {
+    slot: Arc<SessionSlot>,
+    active: bool,
+}
+
+impl RunInflightGuard {
+    pub fn try_acquire(slot: &Arc<SessionSlot>) -> Option<Self> {
+        if slot
+            .run_inflight
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            Some(Self {
+                slot: slot.clone(),
+                active: true,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+impl Drop for RunInflightGuard {
+    fn drop(&mut self) {
+        if self.active {
+            self.slot.run_inflight.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
 impl SessionSlot {
     pub fn new(
         session_id: impl Into<String>,
@@ -439,7 +468,6 @@ impl SessionSlot {
             )),
             session_id,
             driver: Arc::new(Mutex::new(None)),
-            writer: AtomicBool::new(false),
             subscribers: Mutex::new(HashMap::new()),
             observing: Mutex::new(HashSet::new()),
             linger_task: Mutex::new(None),
@@ -459,6 +487,10 @@ impl SessionSlot {
             automation_task: Mutex::new(None),
             loop_registry: root_loop_registry.map(|registry| Arc::new(registry.derive())),
         })
+    }
+
+    pub fn run_inflight_active(&self) -> bool {
+        self.run_inflight.load(Ordering::SeqCst)
     }
 
     pub async fn add_subscriber(&self, tx: MuxSink) -> u64 {
@@ -1222,7 +1254,6 @@ pub async fn materialize_writer_at(
     driver.begin_session_prepare().await;
     restore_default_model(host, driver.as_mut()).await;
     *guard = Some(driver);
-    slot.writer.store(true, Ordering::SeqCst);
     drop(guard);
     slot.ensure_mcp_resources_watch();
     start_automation_if_needed(host, slot).await;
@@ -1250,25 +1281,22 @@ async fn automation_loop(slot: Arc<SessionSlot>, engine: Arc<Mutex<AutomationEng
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     loop {
         interval.tick().await;
-        let busy = slot.run_inflight.load(Ordering::SeqCst);
+        let busy = slot.run_inflight_active();
         let permission_required = HostState::live_subscriber_count(&slot).await == 0;
-        let mut actions = {
+        let actions = {
             let mut guard = engine.lock().await;
-            match guard.tick(Local::now(), busy, permission_required).await {
+            match guard.admit(Local::now(), busy, permission_required).await {
                 Ok(actions) => actions,
                 Err(error) => {
                     log::warn!(
                         target: "xylitol::host",
-                        "automation tick failed session={} error={error}",
+                        "automation admit failed session={} error={error}",
                         slot.session_id
                     );
                     Vec::new()
                 }
             }
         };
-        if !busy && let Ok(Some(action)) = engine.lock().await.drain_pending(Local::now()).await {
-            actions.push(action);
-        }
         for action in actions {
             if let AutomationAction::Run {
                 trigger_id, prompt, ..
@@ -1286,17 +1314,12 @@ async fn run_automation(
     trigger_id: &str,
     prompt: &str,
 ) {
-    if slot
-        .run_inflight
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
+    let Some(guard) = RunInflightGuard::try_acquire(slot) else {
         return;
-    }
+    };
     let stream = {
         let mut guard = slot.driver.lock().await;
         let Some(driver) = guard.as_mut() else {
-            slot.run_inflight.store(false, Ordering::SeqCst);
             return;
         };
         driver.run_with_context(prompt, Vec::new()).await
@@ -1312,7 +1335,7 @@ async fn run_automation(
             break;
         }
     }
-    slot.run_inflight.store(false, Ordering::SeqCst);
+    drop(guard);
     slot.flush_pending_runtime().await;
     if let Err(error) = engine
         .lock()
@@ -1475,7 +1498,7 @@ pub async fn prune_mux_and_maybe_release(host: &Arc<HostState>, clean: bool) {
 }
 
 async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>, clean: bool) {
-    if slot.run_inflight.load(Ordering::SeqCst) {
+    if slot.run_inflight_active() {
         return;
     }
     HostState::cancel_write_linger(slot).await;
@@ -1501,7 +1524,7 @@ async fn schedule_linger_eviction(
     let slot_wait = slot.clone();
     let task = tokio::spawn(async move {
         tokio::time::sleep(linger).await;
-        if slot_wait.run_inflight.load(Ordering::SeqCst) {
+        if slot_wait.run_inflight_active() {
             return;
         }
         if HostState::live_subscriber_count(&slot_wait).await == 0 {
@@ -1543,7 +1566,7 @@ pub async fn handle_unary(
         let Some(slot) = host.existing_slot(&session_id).await else {
             return RpcResult::ok_value(json!({ "detached": true }));
         };
-        if slot.run_inflight.load(Ordering::SeqCst) {
+        if slot.run_inflight_active() {
             return RpcResult::ok_value(json!({
                 "detached": false,
                 "reason": "session busy"
@@ -1667,16 +1690,12 @@ async fn dispatch_session_unary(
         if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
             return *e;
         }
-        if slot
-            .run_inflight
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
+        let Some(guard) = RunInflightGuard::try_acquire(slot) else {
             return RpcResult::error(
                 "session_busy",
                 "会话回合进行中：根提交须等待结束后重试，或以插话（steer / follow_up）改向",
             );
-        }
+        };
         let driver = slot.driver.clone();
         let slot_push = slot.clone();
         let host_push = host.clone();
@@ -1696,7 +1715,6 @@ async fn dispatch_session_unary(
             let stream = {
                 let mut g = driver.lock().await;
                 let Some(d) = g.as_mut() else {
-                    slot_push.run_inflight.store(false, Ordering::SeqCst);
                     return;
                 };
                 slot_push.clear_pending_runtime();
@@ -1725,7 +1743,7 @@ async fn dispatch_session_unary(
                     break;
                 }
             }
-            slot_push.run_inflight.store(false, Ordering::SeqCst);
+            drop(guard);
             slot_push.flush_pending_runtime().await;
             on_prompt_finished(&host_push, &slot_push).await;
         });
@@ -1870,7 +1888,7 @@ async fn dispatch_writer_unary(
     if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
         return *e;
     }
-    if slot.run_inflight.load(Ordering::SeqCst)
+    if slot.run_inflight_active()
         && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
     {
         return defer_runtime_setting(slot, method, &payload).await;
@@ -2102,6 +2120,45 @@ mod tests {
     use super::*;
     use serde_json::json;
     use xylitol_plugin_sdk::BashChunk;
+
+    fn test_slot(id: &str) -> Arc<SessionSlot> {
+        let (tx, _rx) = broadcast::channel(8);
+        SessionSlot::with_seq(id, tx, None, 0)
+    }
+
+    #[tokio::test]
+    async fn inflight_guard_drop_resets_slot() {
+        let slot = test_slot("guard-drop");
+        let guard = RunInflightGuard::try_acquire(&slot).expect("acquire");
+        assert!(slot.run_inflight_active());
+        assert!(RunInflightGuard::try_acquire(&slot).is_none());
+        drop(guard);
+        assert!(!slot.run_inflight_active());
+        assert!(RunInflightGuard::try_acquire(&slot).is_some());
+    }
+
+    #[tokio::test]
+    async fn inflight_guard_unwinds_on_panic() {
+        let slot = test_slot("guard-panic");
+        let guard = RunInflightGuard::try_acquire(&slot).expect("acquire");
+        let handle = tokio::spawn(async move {
+            let _guard = guard;
+            panic!("run task panicked");
+        });
+        assert!(handle.await.is_err(), "task must unwind");
+        assert!(
+            !slot.run_inflight_active(),
+            "panic must release the in-flight slot"
+        );
+    }
+
+    #[tokio::test]
+    async fn inflight_guard_releases_on_early_drop() {
+        let slot = test_slot("guard-early");
+        let guard = RunInflightGuard::try_acquire(&slot).expect("acquire");
+        drop(guard);
+        assert!(!slot.run_inflight_active());
+    }
 
     #[test]
     fn elicitation_questions_and_response_round_trip() {

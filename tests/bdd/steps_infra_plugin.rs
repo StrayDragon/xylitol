@@ -53,6 +53,15 @@ for line in sys.stdin:
 "#
 }
 
+fn dying_script() -> &'static str {
+    r#"
+import json, sys
+line = sys.stdin.readline()
+request = json.loads(line)
+print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"protocol_version": 1, "capabilities": ["tools"], "tools": []}}), flush=True)
+"#
+}
+
 fn bad_protocol_script() -> &'static str {
     r#"
 import json, sys
@@ -258,6 +267,44 @@ async fn w_init(infra_plugin_bdd: &InfraPluginBdd) {
         .expect_err("protocol mismatch must fail");
     infra_plugin_bdd.error.replace(Some(error));
     client.shutdown().await;
+}
+
+#[given("外部插件进程已消亡")]
+fn g_dying_plugin(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
+    ws.init();
+    let script = write_script(ws, "dying.py", dying_script());
+    infra_plugin_bdd.script_path.replace(Some(script));
+}
+
+#[when("初始化后调用工具")]
+async fn w_init_then_call(infra_plugin_bdd: &InfraPluginBdd) {
+    let script = infra_plugin_bdd
+        .script_path
+        .borrow()
+        .clone()
+        .expect("script prepared");
+    let client = ExternalClient::spawn(&fixture_config(&script, "fixture"))
+        .await
+        .expect("spawn fixture");
+    client.initialize("fixture").await.expect("initialize");
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let error = client
+        .request("tools/call", serde_json::json!({"name": "echo"}))
+        .await
+        .expect_err("dead client must fail");
+    infra_plugin_bdd.error.replace(Some(error));
+    client.shutdown().await;
+}
+
+#[then("工具调用报 unavailable 且含死因")]
+fn t_unavailable_with_cause(infra_plugin_bdd: &InfraPluginBdd) {
+    let error = infra_plugin_bdd.error.borrow();
+    let error = error.as_ref().expect("error captured");
+    assert!(error.contains("unavailable"), "{error}");
+    assert!(
+        error.contains("process exited") || error.contains("write failed"),
+        "unavailable must carry the death cause: {error}"
+    );
 }
 
 #[then("握手失败且错误含 protocol mismatch")]

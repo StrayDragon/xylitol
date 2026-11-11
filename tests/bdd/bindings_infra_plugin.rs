@@ -37,3 +37,9 @@ async fn test_infra_plugin_protocol_mismatch(ws: Workspace, infra_plugin_bdd: In
     name = "失败插件不阻断装配"
 )]
 async fn test_infra_plugin_failure_isolation(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-plugin/infra-plugin.feature",
+    name = "进程消亡后工具调用不可用"
+)]
+async fn test_infra_plugin_process_death(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}

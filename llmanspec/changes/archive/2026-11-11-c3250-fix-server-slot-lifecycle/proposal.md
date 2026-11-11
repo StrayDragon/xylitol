@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix serve session slot lifecycle flags"
+branch: sdd/c3250-fix-server-slot-lifecycle
+base_branch: main
+base_sha: 2e2a8031b79f25612c5b5b4032d7a8a0305a68f9
 ---
 
 # Host 会话槽生命周期标志修复
