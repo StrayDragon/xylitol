@@ -603,7 +603,7 @@ fn g_hook_timeout_100ms(agent: &AgentState) {
         command: "echo '{\"action\":\"allow\"}'".into(),
         phase: String::new(),
         timeout_secs: Some(1),
-        requires_approval: false,
+        fail_open: None,
         env: HashMap::new(),
     });
     if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
@@ -630,8 +630,8 @@ fn t_hook_killed_block(agent: &AgentState) {
     match agent.hook_result.borrow().as_ref() {
         Some(DispatchResult::Blocked { reason }) => {
             assert!(
-                reason.contains("timed out"),
-                "expected timeout reason, got {reason}"
+                reason.contains("timeout"),
+                "expected timeout failure kind, got {reason}"
             );
         }
         Some(other) => panic!("expected Blocked, got {other:?}"),

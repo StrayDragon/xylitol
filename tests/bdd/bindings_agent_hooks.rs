@@ -101,3 +101,21 @@ async fn test_hk9_tree_switch_before_block(agent: AgentState) {}
     name = "用户bash块运行"
 )]
 async fn test_hk10_user_bash_block(agent: AgentState) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "钩子失败拦截"
+)]
+async fn test_hk11_hook_failure_block(agent: AgentState) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "树切换钩子失败拦截"
+)]
+async fn test_hk12_tree_hook_failure_block(agent: AgentState) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "用户bash钩子失败拦截"
+)]
+async fn test_hk13_user_bash_hook_failure_block(agent: AgentState) {}

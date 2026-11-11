@@ -10,7 +10,7 @@ fn _g_hook_registered(agent: &AgentState, pat: String) {
         command: "echo '{\"action\":\"allow\"}'".into(),
         phase: String::new(),
         timeout_secs: Some(5),
-        requires_approval: false,
+        fail_open: None,
         env: HashMap::new(),
     });
 }
@@ -52,6 +52,32 @@ fn _g_hook_none(agent: &AgentState) {
     agent.hook_entries.borrow_mut().clear();
 }
 
+fn _g_hook_failing(agent: &AgentState, pat: &str) {
+    _g_hook_registered(agent, pat.into());
+    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
+        e.command = "exit 1".into();
+        e.timeout_secs = Some(5);
+    }
+    if pat.contains("session_before") || pat.contains("user_bash") {
+        agent.real_hooks.set(true);
+    }
+}
+
+#[given("注册了匹配 pre.tool_call 的 hook 且命令失败")]
+fn _g_hook_failing_pre_tool_call(agent: &AgentState) {
+    _g_hook_failing(agent, "pre.tool_call");
+}
+
+#[given("注册了匹配 session_before_tree 的 hook 且命令失败")]
+fn _g_hook_failing_session_before_tree(agent: &AgentState) {
+    _g_hook_failing(agent, "session_before_tree");
+}
+
+#[given("注册了匹配 user_bash 的 hook 且命令失败")]
+fn _g_hook_failing_user_bash(agent: &AgentState) {
+    _g_hook_failing(agent, "user_bash");
+}
+
 #[given("注册了匹配 pre.tool_call 的 hook 且返回 block 不允许")]
 fn _g_hook_block_combo(agent: &AgentState) {
     _g_hook_registered(agent, "pre.tool_call".into());
@@ -81,8 +107,8 @@ fn _g_hook_merge_combo(agent: &AgentState) {
     };
     let config = xylitol_kernel::config::types::HooksConfig {
         global: vec![global],
-        project: vec![],
         user: vec![user.clone()],
+        ..Default::default()
     };
     let dispatcher = xylitol_official_plugin_hooks::HookDispatcher::new(&config);
     assert_eq!(
@@ -197,8 +223,7 @@ async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
 fn _w_hook_loaded(agent: &AgentState) {
     let config = xylitol_kernel::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
-        project: vec![],
-        user: vec![],
+        ..Default::default()
     };
     let dispatcher = xylitol_official_plugin_hooks::HookDispatcher::new(&config);
     assert!(
@@ -312,6 +337,32 @@ fn _t_op_error_contains(agent: &AgentState, msg: String) {
         .expect("expected operation error");
     assert!(err.contains(&msg), "error {err:?} does not contain {msg:?}");
 }
+#[then("操作被阻止且原因含失败分类 {kind:string}")]
+fn _t_hook_blocked_failure_kind(agent: &AgentState, kind: String) {
+    let kind = strip_quotes(&kind);
+    match agent.hook_result.borrow().as_ref() {
+        Some(DispatchResult::Blocked { reason }) => {
+            assert!(
+                reason.contains(&kind),
+                "blocked reason {reason:?} does not contain failure kind {kind:?}"
+            );
+        }
+        other => panic!("expected Blocked with failure kind, got {other:?}"),
+    }
+}
+
+#[then("操作未被阻止")]
+fn _t_hook_not_blocked(agent: &AgentState) {
+    assert!(
+        !matches!(
+            agent.hook_result.borrow().as_ref(),
+            Some(DispatchResult::Blocked { .. })
+        ),
+        "expected allowed (fail-open), got {:?}",
+        agent.hook_result.borrow()
+    );
+}
+
 #[then("操作被阻止")]
 fn _t_hook_blocked(agent: &AgentState) {
     assert!(matches!(

@@ -140,6 +140,7 @@ mod tests {
             }],
             project: vec![],
             user: vec![],
+            ..Default::default()
         };
         let dispatcher = Arc::new(HookDispatcher::new(&config));
         let hooks = Some(dispatcher);
@@ -171,6 +172,7 @@ mod tests {
             }],
             project: vec![],
             user: vec![],
+            ..Default::default()
         };
         let dispatcher = Arc::new(HookDispatcher::new(&config));
         let hooks = Some(dispatcher);

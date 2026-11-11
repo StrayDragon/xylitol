@@ -45,11 +45,19 @@ pub(crate) fn make_agent_with_store(
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr.clone());
     let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         Arc::new(xylitol_kernel::event::EventBus::new());
-    let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = agent
-        .wiring_hook_log
-        .borrow()
-        .clone()
-        .map(|log| log as Arc<dyn xylitol::XyHookBus>);
+    let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = if agent.real_hooks.get() {
+        let config = xylitol_kernel::config::types::HooksConfig {
+            global: agent.hook_entries.borrow().clone(),
+            ..Default::default()
+        };
+        Some(Arc::new(HookDispatcher::new(&config)))
+    } else {
+        agent
+            .wiring_hook_log
+            .borrow()
+            .clone()
+            .map(|log| log as Arc<dyn xylitol::XyHookBus>)
+    };
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone());
     let mut tools = xylitol_official_plugin_tools::core_tools();
     tools.extend(xylitol_official_plugin_todo::todo_tools(todo));
@@ -215,8 +223,7 @@ pub(crate) async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: H
         .replace(Some(event.to_json_context(phase)));
     let dispatcher = HookDispatcher::new(&xylitol_kernel::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
-        project: vec![],
-        user: vec![],
+        ..Default::default()
     });
     agent
         .hook_result

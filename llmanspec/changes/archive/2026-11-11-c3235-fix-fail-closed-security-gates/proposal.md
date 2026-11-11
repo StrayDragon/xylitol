@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix fail-open security gates"
+branch: sdd/c3235-fix-fail-closed-security-gates
+base_branch: main
+base_sha: e300827176ed487546ece5b08c383776651cccb6
 ---
 
 # 安全门禁 fail-open 修复

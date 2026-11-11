@@ -6,6 +6,7 @@ use xylitol_official_plugin_tools::{default_tools, default_tools_with_ask};
 use xylitol_plugin_sdk::ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_runtime::agent::tools::ToolSet;
+use xylitol_runtime::trust::TrustOption;
 use xylitol_tui::{ChoiceAnswer, ChoiceResult, ChoiceStatus};
 
 thread_local! {
@@ -13,6 +14,7 @@ thread_local! {
     static TOOLSET: RefCell<Option<ToolSet>> = const { RefCell::new(None) };
     static ASK_RESULT_JSON: RefCell<Option<String>> = const { RefCell::new(None) };
     static ASK_SUMMARY: RefCell<Option<String>> = const { RefCell::new(None) };
+    static TRUST_RESOLVED: RefCell<Option<Option<usize>>> = const { RefCell::new(None) };
 }
 
 struct MockAskGateway {
@@ -183,6 +185,42 @@ fn then_human_rail() {
         let summary = s.borrow().clone().expect("summary");
         assert!(summary.starts_with("Ask ·"), "{summary}");
         assert!(!summary.contains('{'), "no raw JSON: {summary}");
+    });
+}
+
+#[given("trust 选择器返回垃圾答案")]
+fn given_trust_garbage_answer() {}
+
+#[when("解析 trust 答案")]
+fn when_resolve_trust_answer() {
+    let options = vec![
+        TrustOption {
+            key: "trust".into(),
+            label: "Trust".into(),
+            trusted: true,
+            updates: vec![],
+            saved_path: None,
+        },
+        TrustOption {
+            key: "deny".into(),
+            label: "Do not trust".into(),
+            trusted: false,
+            updates: vec![],
+            saved_path: None,
+        },
+    ];
+    let resolved = xylitol_runtime::trust::resolve_trust_answer(&options, Some("garbage"));
+    TRUST_RESOLVED.with(|r| *r.borrow_mut() = Some(resolved));
+}
+
+#[then("结果为取消且不加载项目资源")]
+fn then_trust_cancelled() {
+    TRUST_RESOLVED.with(|r| {
+        let resolved = r.borrow().expect("trust resolution");
+        assert!(
+            resolved.is_none(),
+            "garbage answer must cancel, got {resolved:?}"
+        );
     });
 }
 

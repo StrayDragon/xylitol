@@ -39,6 +39,15 @@
       当 读取 trust slash 的缝接线
       那么 经 Driver 缝持久化且本会话不自动重载
 
+  @req:r3307
+  规则: 信任门禁答案 fail-closed
+    trust 门禁 须按稳定 key 解析 ChoicePrompt 答案；解析失败、key 未命中或下标越界 须视为取消（不信任）并拒绝项目资源加载；不得默认放行。
+
+    场景: 信任门禁垃圾答案取消
+      假如 trust 选择器返回垃圾答案
+      当 解析 trust 答案
+      那么 结果为取消且不加载项目资源
+
   @req:r3223
   规则: trust-human-confirm-only
     产品 TUI 的 trust 决策 只由人类确认产生；不得经 agent 工具或 elicitation 触发；提交 须带 tui 审计来源。

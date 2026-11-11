@@ -22,12 +22,17 @@
       那么 使用用户配置的 hook 命令
   @req:r3
   规则: 脚本执行
-    System 须经 stdin JSON 上下文执行 hook 脚本，并解析 stdout 的 block/allow 控制。
+    System 须经 stdin JSON 上下文执行 hook 脚本，并解析 stdout 的 block/allow 控制。脚本执行失败（spawn 失败 / 非零退出 / 非法 JSON / IO 错误 / 超时）时 须按 Block 处理（默认），reason 含失败分类；仅当该钩子显式 fail_open: true 时 可放行并告警。
 
     场景: 钩子块
       假如 注册了匹配 pre.tool_call 的 hook 且返回 block 不允许
       当 任何工具即将执行
       那么 操作被阻止
+
+    场景: 钩子失败拦截
+      假如 注册了匹配 pre.tool_call 的 hook 且命令失败
+      当 任何工具即将执行
+      那么 操作被阻止且原因含失败分类 "nonzero_exit"
   @req:r1000
   规则: hook 事件
     Hook 系统 须支持约定事件名，含：tool_call、tool_result、context、before_provider_headers、before_provider_request、after_provider_response、run_start、run_end、run_settled、step_start、step_end、message_start、message_end、session_start、session_shutdown，及 HookEvent 中已有 xylitol 专属事件。
@@ -138,17 +143,27 @@
 
   @req:r1006
   规则: 会话树切换 hooks
-    附加 XyHookBus 时，SessionTree / TravelSessionTree 执行器 须分发 session_before_tree（Blocked 可取消）与成功时 session_tree；SwitchSession 执行器 须分发 session_before_switch（Blocked 可取消）与成功时对 prior session 的 session_shutdown；process-quit shutdown MAY 直至库拆卸缝存在。
+    附加 XyHookBus 时，SessionTree / TravelSessionTree 执行器 须分发 session_before_tree（Blocked 可取消）与成功时 session_tree；SwitchSession 执行器 须分发 session_before_switch（Blocked 可取消）与成功时对 prior session 的 session_shutdown；process-quit shutdown MAY 直至库拆卸缝存在。脚本执行失败时 须按 Block 处理（默认），reason 含失败分类；显式 fail_open: true 的钩子 可放行并告警。
     场景: 树与切换之前块
       假如 注册了匹配 session_before_tree 的 hook 且返回 block 树被拒绝
       当 执行操作 "打开会话树"
       那么 hook 被调用且上下文含键 kind
       并且 操作失败原因包含 "树被拒绝"
 
+    场景: 树切换钩子失败拦截
+      假如 注册了匹配 session_before_tree 的 hook 且命令失败
+      当 执行操作 "打开会话树"
+      那么 操作失败原因包含 "nonzero_exit"
+
   @req:r1007
   规则: user_bash 于 execute_bash
-    附加 XyHookBus 时，Command::Bash 执行器 须在运行命令前分发 user_bash；Blocked 须阻止执行并 surfaced 错误。
+    附加 XyHookBus 时，Command::Bash 执行器 须在运行命令前分发 user_bash；Blocked 须阻止执行并 surfaced 错误。脚本执行失败时 须按 Block 处理（默认），reason 含失败分类。
     场景: 用户bash块运行
       假如 注册了匹配 user_bash 的 hook 且返回 block bash被拒绝
       当 执行操作 "执行 bash"
       那么 操作失败原因包含 "bash被拒绝"
+
+    场景: 用户bash钩子失败拦截
+      假如 注册了匹配 user_bash 的 hook 且命令失败
+      当 执行操作 "执行 bash"
+      那么 操作失败原因包含 "nonzero_exit"

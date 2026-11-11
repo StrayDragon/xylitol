@@ -26,10 +26,16 @@ const DEFAULT_AUDIT_RETENTION_DAYS: u64 = 90;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustOption {
+    pub key: String,
     pub label: String,
     pub trusted: bool,
     pub updates: Vec<TrustUpdate>,
     pub saved_path: Option<String>,
+}
+
+pub fn resolve_trust_answer(options: &[TrustOption], answer: Option<&str>) -> Option<usize> {
+    let key = answer?;
+    options.iter().position(|option| option.key == key)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -475,6 +481,7 @@ impl TrustManager {
         let parent_path = parent_dir(&trust_path);
 
         let mut options = vec![TrustOption {
+            key: "trust".into(),
             label: "Trust".into(),
             trusted: true,
             updates: vec![TrustUpdate {
@@ -488,6 +495,7 @@ impl TrustManager {
             && *parent != trust_path
         {
             options.push(TrustOption {
+                key: "trust_parent".into(),
                 label: format!("Trust parent folder ({parent})"),
                 trusted: true,
                 updates: vec![
@@ -506,6 +514,7 @@ impl TrustManager {
 
         if include_session_only {
             options.push(TrustOption {
+                key: "trust_session".into(),
                 label: "Trust (this session only)".into(),
                 trusted: true,
                 updates: vec![],
@@ -514,6 +523,7 @@ impl TrustManager {
         }
 
         options.push(TrustOption {
+            key: "deny".into(),
             label: "Do not trust".into(),
             trusted: false,
             updates: vec![TrustUpdate {
@@ -525,6 +535,7 @@ impl TrustManager {
 
         if include_session_only {
             options.push(TrustOption {
+                key: "deny_session".into(),
                 label: "Do not trust (this session only)".into(),
                 trusted: false,
                 updates: vec![],

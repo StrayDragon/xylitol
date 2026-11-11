@@ -7,5 +7,5 @@ pub use resolve::TrustResolution;
 pub use resolve::{DefaultProjectTrust, TrustReason, format_trust_prompt, resolve_project_trusted};
 pub use store::{
     TrustActor, TrustAuditConfig, TrustAuditContext, TrustManager, TrustOption, TrustSource,
-    TrustUpdate,
+    TrustUpdate, resolve_trust_answer,
 };

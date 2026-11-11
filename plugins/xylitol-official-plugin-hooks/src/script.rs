@@ -8,13 +8,54 @@ use xylitol_plugin_sdk::host_env;
 
 use super::{HookAction, HookEvent, HookPhase};
 
+#[derive(Debug, Clone)]
+pub enum HookScriptFailure {
+    SpawnFailed(String),
+    NonZeroExit { code: Option<i32>, stderr: String },
+    BadJson(String),
+    IoError(String),
+    Timeout(Duration),
+}
+
+impl HookScriptFailure {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::SpawnFailed(_) => "spawn_failed",
+            Self::NonZeroExit { .. } => "nonzero_exit",
+            Self::BadJson(_) => "bad_json",
+            Self::IoError(_) => "io_error",
+            Self::Timeout(_) => "timeout",
+        }
+    }
+
+    pub fn reason(&self) -> String {
+        match self {
+            Self::SpawnFailed(error) => format!("hook failed (spawn_failed): {error}"),
+            Self::NonZeroExit { code, stderr } => {
+                format!("hook failed (nonzero_exit, code {code:?}): {stderr}")
+            }
+            Self::BadJson(error) => format!("hook failed (bad_json): {error}"),
+            Self::IoError(error) => format!("hook failed (io_error): {error}"),
+            Self::Timeout(duration) => {
+                format!("hook failed (timeout after {}ms)", duration.as_millis())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum HookScriptResult {
+    Action(HookAction),
+    Failed(HookScriptFailure),
+}
+
 pub async fn run_hook_script(
     command: &str,
     event: &HookEvent,
     phase: HookPhase,
     timeout: Option<Duration>,
     env: &HashMap<String, String>,
-) -> HookAction {
+) -> HookScriptResult {
     let ctx = event.to_json_context(phase);
     run_hook_script_with_context(command, &ctx, timeout, env).await
 }
@@ -24,7 +65,7 @@ pub async fn run_hook_script_with_context(
     context: &serde_json::Value,
     timeout: Option<Duration>,
     env: &HashMap<String, String>,
-) -> HookAction {
+) -> HookScriptResult {
     let ctx_bytes = serde_json::to_vec(context).unwrap_or_default();
 
     let mut spawn = Command::new("sh");
@@ -44,7 +85,7 @@ pub async fn run_hook_script_with_context(
                 "Failed to spawn hook script command={} error={}",
                 command, e
             );
-            return HookAction::Allow;
+            return HookScriptResult::Failed(HookScriptFailure::SpawnFailed(e.to_string()));
         }
     };
 
@@ -57,7 +98,7 @@ pub async fn run_hook_script_with_context(
     let result = match timeout {
         Some(d) => match tokio::time::timeout(d, wait).await {
             Ok(inner) => Ok(inner),
-            Err(_elapsed) => Err(()),
+            Err(_elapsed) => Err(d),
         },
         None => Ok(wait.await),
     };
@@ -68,41 +109,41 @@ pub async fn run_hook_script_with_context(
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let trimmed = stdout.trim();
                 if trimmed.is_empty() {
-                    return HookAction::Allow;
+                    return HookScriptResult::Action(HookAction::Allow);
                 }
                 match serde_json::from_str::<serde_json::Value>(trimmed) {
-                    Ok(val) => HookAction::from_json(&val),
+                    Ok(val) => HookScriptResult::Action(HookAction::from_json(&val)),
                     Err(e) => {
                         debug!(
-                            "Hook stdout is not valid JSON, treating as allow command={} error={} stdout={}",
+                            "Hook stdout is not valid JSON command={} error={} stdout={}",
                             command, e, trimmed
                         );
-                        HookAction::Allow
+                        HookScriptResult::Failed(HookScriptFailure::BadJson(e.to_string()))
                     }
                 }
             } else {
-                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                 warn!(
-                    "Hook script exited with non-zero status command={command} exit_code={:?} stderr={}",
-                    output.status.code(),
-                    stderr.as_ref()
+                    "Hook script exited with non-zero status command={command} exit_code={:?} stderr={stderr}",
+                    output.status.code()
                 );
-                HookAction::Allow
+                HookScriptResult::Failed(HookScriptFailure::NonZeroExit {
+                    code: output.status.code(),
+                    stderr,
+                })
             }
         }
         Ok(Err(e)) => {
             warn!("Hook script I/O error command={} error={}", command, e);
-            HookAction::Allow
+            HookScriptResult::Failed(HookScriptFailure::IoError(e.to_string()))
         }
-        Err(()) => {
-            let ms = timeout.map(|d| d.as_millis()).unwrap_or(0);
+        Err(duration) => {
+            let ms = duration.as_millis();
             warn!(
-                "Hook script timed out, blocking (fail-closed) command={} timeout_ms={}",
+                "Hook script timed out command={} timeout_ms={}",
                 command, ms
             );
-            HookAction::Block {
-                reason: format!("hook timed out after {ms}ms"),
-            }
+            HookScriptResult::Failed(HookScriptFailure::Timeout(duration))
         }
     }
 }
@@ -115,124 +156,153 @@ mod tests {
         HashMap::new()
     }
 
+    fn tool_call_event() -> HookEvent {
+        HookEvent::ToolCall {
+            tool: "bash".into(),
+            args: serde_json::json!({}),
+        }
+    }
+
     #[tokio::test]
     async fn test_echo_allow() {
-        let action = run_hook_script(
+        let result = run_hook_script(
             "echo '{\"action\":\"allow\"}'",
-            &HookEvent::ToolCall {
-                tool: "bash".into(),
-                args: serde_json::json!({}),
-            },
+            &tool_call_event(),
             HookPhase::Pre,
             Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
-        assert!(matches!(action, HookAction::Allow));
+        assert!(matches!(
+            result,
+            HookScriptResult::Action(HookAction::Allow)
+        ));
     }
 
     #[tokio::test]
     async fn test_echo_block() {
-        let action = run_hook_script(
+        let result = run_hook_script(
             "echo '{\"action\":\"block\",\"reason\":\"no\"}'",
-            &HookEvent::ToolCall {
-                tool: "bash".into(),
-                args: serde_json::json!({}),
-            },
+            &tool_call_event(),
             HookPhase::Pre,
             Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
-        match action {
-            HookAction::Block { reason } => assert_eq!(reason, "no"),
-            other => panic!("expected Block, got {other:?}"),
+        match result {
+            HookScriptResult::Action(HookAction::Block { reason }) => assert_eq!(reason, "no"),
+            other => panic!("expected Block action, got {other:?}"),
         }
     }
 
     #[tokio::test]
     async fn test_empty_stdout_is_allow() {
-        let action = run_hook_script(
+        let result = run_hook_script(
             "echo ''",
-            &HookEvent::ToolCall {
-                tool: "bash".into(),
-                args: serde_json::json!({}),
-            },
+            &tool_call_event(),
             HookPhase::Pre,
             Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
-        assert!(matches!(action, HookAction::Allow));
+        assert!(matches!(
+            result,
+            HookScriptResult::Action(HookAction::Allow)
+        ));
     }
 
     #[tokio::test]
     async fn test_no_output_is_allow() {
-        let action = run_hook_script(
+        let result = run_hook_script(
             "true",
-            &HookEvent::ToolCall {
-                tool: "bash".into(),
-                args: serde_json::json!({}),
-            },
+            &tool_call_event(),
             HookPhase::Pre,
             Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
-        assert!(matches!(action, HookAction::Allow));
+        assert!(matches!(
+            result,
+            HookScriptResult::Action(HookAction::Allow)
+        ));
     }
 
     #[tokio::test]
-    async fn test_nonzero_exit_is_allow() {
-        let action = run_hook_script(
+    async fn test_nonzero_exit_is_failure() {
+        let result = run_hook_script(
             "exit 1",
-            &HookEvent::ToolCall {
-                tool: "bash".into(),
-                args: serde_json::json!({}),
-            },
+            &tool_call_event(),
             HookPhase::Pre,
             Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
         assert!(
-            matches!(action, HookAction::Allow),
-            "non-zero exit should be allow, got {action:?}"
+            matches!(
+                result,
+                HookScriptResult::Failed(HookScriptFailure::NonZeroExit { code: Some(1), .. })
+            ),
+            "non-zero exit should classify as nonzero_exit, got {result:?}"
         );
     }
 
     #[tokio::test]
-    async fn test_timeout_is_block() {
-        let action = run_hook_script(
+    async fn test_timeout_is_failure() {
+        let result = run_hook_script(
             "sleep 10",
-            &HookEvent::ToolCall {
-                tool: "bash".into(),
-                args: serde_json::json!({}),
-            },
+            &tool_call_event(),
             HookPhase::Pre,
             Some(Duration::from_millis(50)),
             &make_env(),
         )
         .await;
         assert!(
-            matches!(action, HookAction::Block { .. }),
-            "timeout should be block (fail-closed), got {action:?}"
+            matches!(
+                result,
+                HookScriptResult::Failed(HookScriptFailure::Timeout(_))
+            ),
+            "timeout should classify as timeout, got {result:?}"
         );
     }
 
     #[tokio::test]
-    async fn test_bogus_stdout_is_allow() {
-        let action = run_hook_script(
+    async fn test_bogus_stdout_is_failure() {
+        let result = run_hook_script(
             "echo 'not json'",
-            &HookEvent::ToolCall {
-                tool: "bash".into(),
-                args: serde_json::json!({}),
-            },
+            &tool_call_event(),
             HookPhase::Pre,
             Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
-        assert!(matches!(action, HookAction::Allow));
+        assert!(
+            matches!(
+                result,
+                HookScriptResult::Failed(HookScriptFailure::BadJson(_))
+            ),
+            "invalid stdout should classify as bad_json, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn failure_kinds_are_stable() {
+        assert_eq!(
+            HookScriptFailure::SpawnFailed("x".into()).kind(),
+            "spawn_failed"
+        );
+        assert_eq!(
+            HookScriptFailure::NonZeroExit {
+                code: Some(2),
+                stderr: "e".into(),
+            }
+            .kind(),
+            "nonzero_exit"
+        );
+        assert_eq!(HookScriptFailure::BadJson("x".into()).kind(), "bad_json");
+        assert_eq!(HookScriptFailure::IoError("x".into()).kind(), "io_error");
+        assert_eq!(
+            HookScriptFailure::Timeout(Duration::from_millis(5)).kind(),
+            "timeout"
+        );
     }
 }

@@ -9,7 +9,9 @@ use xylitol_tui::{
 };
 
 use xylitol_app_tui::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
-use xylitol_runtime::trust::{TrustManager, TrustOption, format_trust_prompt};
+use xylitol_runtime::trust::{
+    TrustManager, TrustOption, format_trust_prompt, resolve_trust_answer,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrustGateResult {
@@ -79,7 +81,7 @@ pub fn run_trust_gate_if_needed(trust_override: Option<bool>) -> Result<(), Trus
     match result {
         TrustGateResult::Selected(idx) => {
             let Some(opt) = options.get(idx) else {
-                return Ok(());
+                return Err(TrustGateError::Cancelled);
             };
             let audit = xylitol_runtime::TrustAuditContext::new(
                 xylitol_runtime::TrustActor::Cli,
@@ -117,8 +119,7 @@ fn run_choice_ui(cwd: &str, options: &[TrustOption]) -> Result<TrustGateResult, 
 
     let choice_options: Vec<ChoiceOption> = options
         .iter()
-        .enumerate()
-        .map(|(i, o)| ChoiceOption::new(i.to_string(), o.label.clone()))
+        .map(|o| ChoiceOption::new(o.key.clone(), o.label.clone()))
         .collect();
 
     let question = ChoiceQuestion {
@@ -152,17 +153,7 @@ fn run_choice_ui(cwd: &str, options: &[TrustOption]) -> Result<TrustGateResult, 
             break TrustGateResult::Cancelled;
         }
         if let Some(result) = done.borrow_mut().take() {
-            break if result.cancelled {
-                TrustGateResult::Cancelled
-            } else {
-                let idx = result
-                    .answers
-                    .first()
-                    .and_then(|a| a.values.first())
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(0);
-                TrustGateResult::Selected(idx)
-            };
+            break trust_result_from_answer(options, &result);
         }
 
         if crossterm::event::poll(Duration::from_millis(33)).unwrap_or(false) {
@@ -198,6 +189,22 @@ fn run_choice_ui(cwd: &str, options: &[TrustOption]) -> Result<TrustGateResult, 
 
     tui.finish_inline();
     Ok(outcome)
+}
+
+fn trust_result_from_answer(options: &[TrustOption], result: &ChoiceResult) -> TrustGateResult {
+    if result.cancelled {
+        return TrustGateResult::Cancelled;
+    }
+    let Some(answer) = result.answers.first() else {
+        return TrustGateResult::Cancelled;
+    };
+    let Some(key) = answer.values.first() else {
+        return TrustGateResult::Cancelled;
+    };
+    match resolve_trust_answer(options, Some(key)) {
+        Some(idx) => TrustGateResult::Selected(idx),
+        None => TrustGateResult::Cancelled,
+    }
 }
 
 struct TrustGateView {
@@ -245,6 +252,90 @@ mod tests {
         let dir = tempdir().unwrap();
         let mgr = TrustManager::new(dir.path().to_path_buf());
         assert!(pending_trust_options(&mgr, "/tmp", Some(true)).is_none());
+    }
+
+    fn sample_options() -> Vec<TrustOption> {
+        vec![
+            TrustOption {
+                key: "trust".into(),
+                label: "Trust".into(),
+                trusted: true,
+                updates: vec![],
+                saved_path: None,
+            },
+            TrustOption {
+                key: "deny".into(),
+                label: "Do not trust".into(),
+                trusted: false,
+                updates: vec![],
+                saved_path: None,
+            },
+        ]
+    }
+
+    fn answered(key: &str) -> ChoiceResult {
+        ChoiceResult {
+            answers: vec![xylitol_tui::ChoiceAnswer {
+                question_id: "trust".into(),
+                values: vec![key.into()],
+                labels: vec!["label".into()],
+                was_custom: false,
+            }],
+            cancelled: false,
+            status: xylitol_tui::ChoiceStatus::Answered,
+        }
+    }
+
+    #[test]
+    fn garbage_answer_is_cancelled() {
+        let options = sample_options();
+        assert_eq!(
+            trust_result_from_answer(&options, &answered("garbage")),
+            TrustGateResult::Cancelled
+        );
+    }
+
+    #[test]
+    fn unknown_key_is_cancelled() {
+        let options = sample_options();
+        assert_eq!(
+            trust_result_from_answer(&options, &answered("unknown")),
+            TrustGateResult::Cancelled
+        );
+    }
+
+    #[test]
+    fn valid_key_selects_option() {
+        let options = sample_options();
+        assert_eq!(
+            trust_result_from_answer(&options, &answered("deny")),
+            TrustGateResult::Selected(1)
+        );
+    }
+
+    #[test]
+    fn cancelled_result_is_cancelled() {
+        let options = sample_options();
+        let mut result = answered("trust");
+        result.cancelled = true;
+        assert_eq!(
+            trust_result_from_answer(&options, &result),
+            TrustGateResult::Cancelled
+        );
+    }
+
+    #[test]
+    fn missing_answer_is_cancelled() {
+        let options = sample_options();
+        let result = ChoiceResult {
+            answers: vec![],
+            cancelled: false,
+            status: xylitol_tui::ChoiceStatus::Answered,
+        };
+        assert_eq!(
+            trust_result_from_answer(&options, &result),
+            TrustGateResult::Cancelled
+        );
     }
 
     #[test]

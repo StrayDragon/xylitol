@@ -1,66 +1,66 @@
 use std::time::Duration;
 
-use log::warn;
+use log::{debug, warn};
 
-use super::script::{run_hook_script, run_hook_script_with_context};
-use super::{DispatchResult, HookAction, HookEvent, HookPhase, entry_matches_raw, event_matches};
+use super::script::{HookScriptResult, run_hook_script, run_hook_script_with_context};
+use super::{
+    DispatchResult, HookAction, HookCategory, HookEvent, HookPhase, entry_matches_raw,
+    event_matches, event_type_category,
+};
 use crate::config::{HookEntry, HooksConfig};
 use xylitol_plugin_sdk::{XyHookBus, XyHookOutcome};
-
-pub const DEFAULT_HOOK_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Debug, Default)]
 pub struct HookDispatcher {
     hooks: Vec<HookEntry>,
+    default_timeout: Option<Duration>,
 }
 
 impl HookDispatcher {
     pub fn new(config: &HooksConfig) -> Self {
         let hooks = merge_hooks(config);
-        Self { hooks }
+        let default_timeout = config.default_timeout_secs.map(Duration::from_secs);
+        Self {
+            hooks,
+            default_timeout,
+        }
     }
 
-    pub(crate) fn entry_timeout(hook: &HookEntry) -> Option<Duration> {
-        Some(Duration::from_secs(
-            hook.timeout_secs.unwrap_or(DEFAULT_HOOK_TIMEOUT_SECS),
-        ))
+    pub(crate) fn entry_timeout(&self, hook: &HookEntry) -> Option<Duration> {
+        hook.timeout_secs
+            .map(Duration::from_secs)
+            .or(self.default_timeout)
     }
 
     pub async fn dispatch(&self, event: &HookEvent, phase: HookPhase) -> DispatchResult {
+        let category = event.category();
         let mut modified_args: Option<serde_json::Value> = None;
 
         for hook in &self.hooks {
             if !event_matches(hook, event, phase) {
                 continue;
             }
-
-            let timeout = Self::entry_timeout(hook);
-
-            let result = run_hook_script(&hook.command, event, phase, timeout, &hook.env).await;
-
-            match result {
-                HookAction::Allow => {}
-                HookAction::Block { reason } => {
-                    warn!(
-                        "Hook blocked operation event={} phase={} hook={} reason={}",
-                        event.event_type(),
-                        phase.as_str(),
-                        hook.command,
-                        reason
-                    );
-                    return DispatchResult::Blocked { reason };
-                }
-                HookAction::Modify { args } => {
-                    modified_args = Some(args);
-                }
+            let result = run_hook_script(
+                &hook.command,
+                event,
+                phase,
+                self.entry_timeout(hook),
+                &hook.env,
+            )
+            .await;
+            if let Some(blocked) = self.handle_result(
+                hook,
+                category,
+                event.event_type(),
+                phase.as_str(),
+                result,
+                &mut modified_args,
+            ) {
+                return blocked;
             }
         }
 
-        if let Some(args) = modified_args {
-            DispatchResult::Modified { args }
-        } else {
-            DispatchResult::Allowed
-        }
+        finish(modified_args)
     }
 
     #[allow(dead_code)]
@@ -82,38 +82,103 @@ impl HookDispatcher {
             return DispatchResult::Allowed;
         }
 
+        let category = event_type_category(event_type);
         let mut modified_args: Option<serde_json::Value> = None;
 
         for hook in &self.hooks {
             if !entry_matches_raw(hook, event_type, phase, &context) {
                 continue;
             }
-
-            let timeout = Self::entry_timeout(hook);
-
-            let result =
-                run_hook_script_with_context(&hook.command, &context, timeout, &hook.env).await;
-
-            match result {
-                HookAction::Allow => {}
-                HookAction::Block { reason } => {
-                    warn!(
-                        "Hook blocked operation event={} phase={} hook={} reason={}",
-                        event_type, phase, hook.command, reason
-                    );
-                    return DispatchResult::Blocked { reason };
-                }
-                HookAction::Modify { args } => {
-                    modified_args = Some(args);
-                }
+            let result = run_hook_script_with_context(
+                &hook.command,
+                &context,
+                self.entry_timeout(hook),
+                &hook.env,
+            )
+            .await;
+            if let Some(blocked) = self.handle_result(
+                hook,
+                category,
+                event_type,
+                phase,
+                result,
+                &mut modified_args,
+            ) {
+                return blocked;
             }
         }
 
-        if let Some(args) = modified_args {
-            DispatchResult::Modified { args }
-        } else {
-            DispatchResult::Allowed
+        finish(modified_args)
+    }
+
+    fn handle_result(
+        &self,
+        hook: &HookEntry,
+        category: HookCategory,
+        event_label: &str,
+        phase_label: &str,
+        result: HookScriptResult,
+        modified_args: &mut Option<serde_json::Value>,
+    ) -> Option<DispatchResult> {
+        match result {
+            HookScriptResult::Action(HookAction::Allow) => {
+                debug!(
+                    "hook action allow event={event_label} phase={phase_label} hook={}",
+                    hook.command
+                );
+                None
+            }
+            HookScriptResult::Action(HookAction::Block { reason }) => {
+                warn!(
+                    "Hook blocked operation event={event_label} phase={phase_label} hook={} reason={reason}",
+                    hook.command
+                );
+                Some(DispatchResult::Blocked { reason })
+            }
+            HookScriptResult::Action(HookAction::Modify { args }) => {
+                debug!(
+                    "hook action modify event={event_label} phase={phase_label} hook={}",
+                    hook.command
+                );
+                *modified_args = Some(args);
+                None
+            }
+            HookScriptResult::Failed(failure) => {
+                let allow = hook
+                    .fail_open
+                    .unwrap_or(category == HookCategory::Observation);
+                let kind = failure.kind();
+                if allow {
+                    warn!(
+                        target: "xylitol::hooks",
+                        "Hook script failed, allowing (fail-open) event={event_label} phase={phase_label} hook={} error.kind={kind} reason={}",
+                        hook.command,
+                        failure.reason()
+                    );
+                    None
+                } else {
+                    warn!(
+                        target: "xylitol::hooks",
+                        "Hook script failed, blocking (fail-closed) event={event_label} phase={phase_label} hook={} error.kind={kind} reason={}",
+                        hook.command,
+                        failure.reason()
+                    );
+                    Some(DispatchResult::Blocked {
+                        reason: format!(
+                            "{}; migration hint: set fail_open: true on this hook to allow failures",
+                            failure.reason()
+                        ),
+                    })
+                }
+            }
         }
+    }
+}
+
+fn finish(modified_args: Option<serde_json::Value>) -> DispatchResult {
+    match modified_args {
+        Some(args) => DispatchResult::Modified { args },
+        None => DispatchResult::Allowed,
     }
 }
 
@@ -186,6 +251,23 @@ mod tests {
             global,
             project,
             user,
+            default_timeout_secs: None,
+        }
+    }
+
+    fn tool_call_event() -> HookEvent {
+        HookEvent::ToolCall {
+            tool: "bash".into(),
+            args: serde_json::json!({}),
+        }
+    }
+
+    fn failing_entry(fail_open: Option<bool>) -> HookEntry {
+        HookEntry {
+            events: vec!["pre.tool_call".into()],
+            command: "exit 1".into(),
+            fail_open,
+            ..Default::default()
         }
     }
 
@@ -263,12 +345,105 @@ mod tests {
         assert_eq!(dispatcher.hook_count(), 1);
         assert!(!dispatcher.is_empty());
     }
+
+    #[tokio::test]
+    async fn enforcement_failure_blocks_by_default() {
+        let config = make_config(vec![failing_entry(None)], vec![], vec![]);
+        let dispatcher = HookDispatcher::new(&config);
+        match dispatcher
+            .dispatch(&tool_call_event(), HookPhase::Pre)
+            .await
+        {
+            DispatchResult::Blocked { reason } => {
+                assert!(reason.contains("nonzero_exit"), "reason={reason}");
+            }
+            other => panic!("expected blocked, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn enforcement_failure_fail_open_escape_hatch() {
+        let config = make_config(vec![failing_entry(Some(true))], vec![], vec![]);
+        let dispatcher = HookDispatcher::new(&config);
+        assert!(matches!(
+            dispatcher
+                .dispatch(&tool_call_event(), HookPhase::Pre)
+                .await,
+            DispatchResult::Allowed
+        ));
+    }
+
+    #[tokio::test]
+    async fn enforcement_failure_explicit_fail_closed() {
+        let config = make_config(vec![failing_entry(Some(false))], vec![], vec![]);
+        let dispatcher = HookDispatcher::new(&config);
+        assert!(matches!(
+            dispatcher
+                .dispatch(&tool_call_event(), HookPhase::Pre)
+                .await,
+            DispatchResult::Blocked { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn observation_failure_is_fail_open() {
+        let mut hook = failing_entry(None);
+        hook.events = vec!["step_end".into()];
+        let config = make_config(vec![hook], vec![], vec![]);
+        let dispatcher = HookDispatcher::new(&config);
+        let event = HookEvent::StepEnd { step_index: 1 };
+        assert!(matches!(
+            dispatcher.dispatch(&event, HookPhase::Post).await,
+            DispatchResult::Allowed
+        ));
+    }
+
+    #[tokio::test]
+    async fn observation_failure_can_fail_closed_via_entry() {
+        let mut hook = failing_entry(Some(false));
+        hook.events = vec!["step_end".into()];
+        let config = make_config(vec![hook], vec![], vec![]);
+        let dispatcher = HookDispatcher::new(&config);
+        let event = HookEvent::StepEnd { step_index: 1 };
+        assert!(matches!(
+            dispatcher.dispatch(&event, HookPhase::Post).await,
+            DispatchResult::Blocked { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn raw_enforcement_failure_blocks() {
+        let config = make_config(vec![failing_entry(None)], vec![], vec![]);
+        let dispatcher = HookDispatcher::new(&config);
+        match dispatcher
+            .dispatch_raw("tool_call", "pre", serde_json::json!({}))
+            .await
+        {
+            DispatchResult::Blocked { reason } => {
+                assert!(reason.contains("nonzero_exit"), "reason={reason}");
+            }
+            other => panic!("expected blocked, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn raw_observation_failure_is_fail_open() {
+        let mut hook = failing_entry(None);
+        hook.events = vec!["step_end".into()];
+        let config = make_config(vec![hook], vec![], vec![]);
+        let dispatcher = HookDispatcher::new(&config);
+        assert!(matches!(
+            dispatcher
+                .dispatch_raw("step_end", "post", serde_json::json!({}))
+                .await,
+            DispatchResult::Allowed
+        ));
+    }
 }
 
 #[cfg(test)]
-mod default_timeout_tests {
+mod timeout_tests {
     use super::*;
-    use crate::config::HookEntry;
 
     fn hook_without_timeout() -> HookEntry {
         serde_json::from_value(serde_json::json!({
@@ -279,16 +454,38 @@ mod default_timeout_tests {
     }
 
     #[test]
-    fn omitted_timeout_secs_gets_30s_default() {
-        let mut hook = hook_without_timeout();
+    fn omitted_timeout_secs_is_unlimited() {
+        let hook = hook_without_timeout();
         assert!(hook.timeout_secs.is_none());
+        let dispatcher = HookDispatcher::new(&HooksConfig::default());
+        assert_eq!(dispatcher.entry_timeout(&hook), None);
+    }
+
+    #[test]
+    fn global_default_timeout_applies() {
+        let hook = hook_without_timeout();
+        let config = HooksConfig {
+            default_timeout_secs: Some(12),
+            ..Default::default()
+        };
+        let dispatcher = HookDispatcher::new(&config);
         assert_eq!(
-            HookDispatcher::entry_timeout(&hook),
-            Some(Duration::from_secs(DEFAULT_HOOK_TIMEOUT_SECS))
+            dispatcher.entry_timeout(&hook),
+            Some(Duration::from_secs(12))
         );
+    }
+
+    #[test]
+    fn per_hook_timeout_overrides_global_default() {
+        let mut hook = hook_without_timeout();
         hook.timeout_secs = Some(5);
+        let config = HooksConfig {
+            default_timeout_secs: Some(12),
+            ..Default::default()
+        };
+        let dispatcher = HookDispatcher::new(&config);
         assert_eq!(
-            HookDispatcher::entry_timeout(&hook),
+            dispatcher.entry_timeout(&hook),
             Some(Duration::from_secs(5))
         );
     }

@@ -81,3 +81,12 @@ spec delta 清单（landing 时在分支上改 .feature）：
 requires_approval 处置：字段删除（schema + 两处测试夹具）。它是「声明未接线」的半截审批机制；现状真实防线是项目级 trust 门禁（项目层 hooks 随项目 config 加载，未信任项目不加载）。逐项审批已判定为需要的能力：后置为 delayed draft c3330-add-hook-approval-gate（分层信任原则 + 防篡改要求，见 llmanspec/delayed-changes/c3330-add-hook-approval-gate/proposal.md）；本期不做、只删死字段。
 
 trust UX：解析失败 / 未命中 / 越界一律 Cancelled 直接退出（与用户按 Esc 同权），不做重弹；文案沿用 TrustGateError Display。
+
+## 9. Release note 草稿（安全默认变更）
+
+- hooks 脚本执行失败（spawn 失败 / 非零退出 / 非法 JSON / IO 错误 / 超时）默认按拦截处理（fail-closed）；Block reason 含失败分类，日志带 `error.kind`。
+- 仅观察类分发点（生命周期事件、`model_select`、`thinking_level_select`）维持 fail-open（既有 spec r1004/r1005 合约）。
+- 需要保留旧「钩子失败照常跑」行为的配置：在该 hook 上显式设 `fail_open: true`；无全局开关。
+- `timeout_secs` 未设 = 不限时（此前默认 30s 已移除）；可用全局 `hooks.default_timeout_secs` 设默认。
+- `requires_approval` 字段移除（从未接线）；逐项审批能力后置到 delayed draft c3330-add-hook-approval-gate。
+- trust 门禁答案解析失败 / 未知 key / 越界一律按取消（不信任）处理，不再默认首项放行。

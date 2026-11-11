@@ -278,13 +278,16 @@
           },
           "type": "array"
         },
+        "fail_open": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "phase": {
           "default": "",
           "type": "string"
-        },
-        "requires_approval": {
-          "default": false,
-          "type": "boolean"
         },
         "timeout_secs": {
           "default": null,
@@ -1191,6 +1194,15 @@
     },
     "hooks": {
       "properties": {
+        "default_timeout_secs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "global": {
           "default": [],
           "items": {

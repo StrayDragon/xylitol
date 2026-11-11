@@ -1,3 +1,4 @@
+use log::warn;
 use strum::{EnumString, IntoStaticStr};
 
 pub mod config;
@@ -18,16 +19,29 @@ pub enum HookPhase {
 
 impl HookPhase {
     pub fn matches(&self, pattern: &str) -> bool {
-        match pattern {
-            "pre" => matches!(self, HookPhase::Pre),
-            "post" => matches!(self, HookPhase::Post),
-            "" => true,
-            _ => false,
-        }
+        phase_matches(self.as_str(), pattern)
     }
 
     pub fn as_str(&self) -> &'static str {
         self.into()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookCategory {
+    Observation,
+    Enforcement,
+}
+
+pub fn phase_matches(actual: &str, filter: &str) -> bool {
+    match filter {
+        "" => true,
+        "pre" => actual == "pre",
+        "post" => actual == "post",
+        other => {
+            warn!("unknown hook phase filter {other:?} (expected pre/post/empty)");
+            false
+        }
     }
 }
 
@@ -203,6 +217,18 @@ impl HookEvent {
             HookEvent::ModelSelect { .. } => "model_select",
             HookEvent::ThinkingLevelSelect { .. } => "thinking_level_select",
             HookEvent::UserBash { .. } => "user_bash",
+        }
+    }
+
+    pub fn category(&self) -> HookCategory {
+        match self {
+            HookEvent::ToolCall { .. }
+            | HookEvent::UserBash { .. }
+            | HookEvent::SessionBeforeCompact
+            | HookEvent::SessionBeforeFork { .. }
+            | HookEvent::SessionBeforeSwitch { .. }
+            | HookEvent::SessionBeforeTree { .. } => HookCategory::Enforcement,
+            _ => HookCategory::Observation,
         }
     }
 
@@ -427,7 +453,7 @@ pub fn entry_matches_raw(
     phase: &str,
     context: &serde_json::Value,
 ) -> bool {
-    if !entry.phase.is_empty() && !phase_str_matches(phase, &entry.phase) {
+    if !entry.phase.is_empty() && !phase_matches(phase, &entry.phase) {
         return false;
     }
 
@@ -440,12 +466,15 @@ pub fn entry_matches_raw(
     false
 }
 
-fn phase_str_matches(actual: &str, filter: &str) -> bool {
-    match filter {
-        "pre" => actual == "pre",
-        "post" => actual == "post",
-        "" => true,
-        _ => false,
+pub fn event_type_category(event_type: &str) -> HookCategory {
+    match event_type {
+        "tool_call"
+        | "user_bash"
+        | "session_before_compact"
+        | "session_before_fork"
+        | "session_before_switch"
+        | "session_before_tree" => HookCategory::Enforcement,
+        _ => HookCategory::Observation,
     }
 }
 

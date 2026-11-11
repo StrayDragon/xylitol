@@ -7,6 +7,7 @@ pub struct HooksConfig {
     pub global: Vec<HookEntry>,
     pub project: Vec<HookEntry>,
     pub user: Vec<HookEntry>,
+    pub default_timeout_secs: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -19,7 +20,7 @@ pub struct HookEntry {
     #[serde(default)]
     pub phase: String,
     #[serde(default)]
-    pub requires_approval: bool,
+    pub fail_open: Option<bool>,
     #[serde(default)]
     pub env: std::collections::HashMap<String, String>,
 }
