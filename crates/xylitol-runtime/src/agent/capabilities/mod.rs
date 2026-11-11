@@ -17,6 +17,7 @@ pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueSt
 pub(crate) use self::session_ops::load_conversation_history_from_store;
 pub use self::stats::SessionStats;
 pub use self::stats::{ContextUsage, get_context_usage};
+pub use self::tools_ops::ToolsWriteOutcome;
 
 use crate::agent::compaction::{
     CompactionSettings, XyCompaction, XyCompactionFactory, noop_compaction_factory,
@@ -411,7 +412,9 @@ mod tests {
         assert!(!before.is_empty());
 
         let tools = fixture_tools();
-        let opts = session.set_tools_defer_prompt(tools);
+        let outcome = session.set_tools_defer_prompt(tools);
+        assert_eq!(outcome, ToolsWriteOutcome::Applied);
+        let opts = session.prompt_opts();
         assert!(
             session.tools().iter().any(|t| t.name() == "read"),
             "tools must be installed immediately"
@@ -443,7 +446,10 @@ mod tests {
         });
         session.set_midturn_active_for_test(true);
 
-        session.set_tools(ToolSet::empty());
+        assert_eq!(
+            session.set_tools(ToolSet::empty()),
+            ToolsWriteOutcome::RejectedMidTurn
+        );
         assert_eq!(
             session.tools().iter().count(),
             before_n,
@@ -451,7 +457,10 @@ mod tests {
         );
 
         session.set_midturn_active_for_test(false);
-        session.set_tools(ToolSet::empty());
+        assert_eq!(
+            session.set_tools(ToolSet::empty()),
+            ToolsWriteOutcome::Applied
+        );
         assert_eq!(session.tools().iter().count(), 0);
     }
 
@@ -469,12 +478,46 @@ mod tests {
                 fp.names
             );
         }
-        session.set_tools(fixture_tools());
+        assert_eq!(
+            session.set_tools(fixture_tools()),
+            ToolsWriteOutcome::RejectedFrozen
+        );
         assert_eq!(
             session.tools().iter().count(),
             fp.names.len(),
             "frozen set size must stay put"
         );
+    }
+
+    #[test]
+    fn freeze_phase_transition_matrix() {
+        let mut session = make_session();
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Unfrozen);
+
+        session.begin_tool_gating();
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Gating);
+
+        session.freeze_tools(fixture_tools());
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Frozen);
+
+        session.begin_tool_gating();
+        assert_eq!(
+            session.tool_freeze_phase(),
+            ToolFreezePhase::Frozen,
+            "begin must not reopen a Frozen table"
+        );
+
+        session.reopen_tools_for_regate();
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Gating);
+
+        session.freeze_tools(fixture_tools());
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Frozen);
+
+        session.clear_tool_freeze();
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Unfrozen);
+
+        session.freeze_tools(fixture_tools());
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Frozen);
     }
 
     #[test]
@@ -493,8 +536,14 @@ mod tests {
         assert!(session.frozen_fingerprint_matches_set(session.tools()));
 
         let before = session.tools().iter().count();
-        session.set_tools(ToolSet::empty());
-        session.set_tools_defer_prompt(ToolSet::empty());
+        assert_eq!(
+            session.set_tools(ToolSet::empty()),
+            ToolsWriteOutcome::RejectedFrozen
+        );
+        assert_eq!(
+            session.set_tools_defer_prompt(ToolSet::empty()),
+            ToolsWriteOutcome::RejectedFrozen
+        );
         assert_eq!(session.tools().iter().count(), before);
         assert!(session.is_tools_frozen());
 

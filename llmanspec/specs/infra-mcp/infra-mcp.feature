@@ -69,7 +69,7 @@
       那么 每笔请求有调用期超时且可分类
   @req:r1453
   规则: first-turn-tool-freeze
-    轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 须立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）必须等待会话准备事件 settle 或 code-first 门闸超时后再定稿；单 server 连接 须有 code-first 墙钟超时（挂死不得让准备永 Running）。门闸超时 须以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），不得自动重试连接。TUI 不得在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 须冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿。idle `/reload` 与 resume/切会话 必须清冻、开火准备事件且 unary 不得 wait；下一次 generate 才 wait 并按 tool name upsert 重定稿（有则替换、无则追加），不得留下同名多行。正确性优先于供应商 KV cache：准备结果有变时须在下一用户提问前追加 Env 行（见 agent-prompt），不得改写既有 turn；无变不得追加。重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
+    轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 须立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）必须等待会话准备事件 settle 或 code-first 门闸超时后再定稿；单 server 连接 须有 code-first 墙钟超时（挂死不得让准备永 Running）。门闸超时 须以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），不得自动重试连接。TUI 不得在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 须冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿。idle `/reload` 与 resume/切会话 必须清冻、开火准备事件且 unary 不得 wait；下一次 generate 才 wait 并按 tool name upsert 重定稿（有则替换、无则追加），不得留下同名多行。正确性优先于供应商 KV cache：准备结果有变时须在下一用户提问前追加 Env 行（见 agent-prompt），不得改写既有 turn；无变不得追加。重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。能力覆盖（`/capabilities`）重定稿 须以冻结收口，不得停留在未定稿相位。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
 
     场景: 首次回合工具冻结门禁
       当 读取首回合工具定稿门禁

@@ -5,36 +5,48 @@ use xylitol_plugin_sdk::XyPermission;
 
 use super::AgentCapabilities;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolsWriteOutcome {
+    Applied,
+    RejectedFrozen,
+    RejectedMidTurn,
+}
+
 impl AgentCapabilities {
-    pub fn set_tools(&mut self, tools: ToolSet) {
+    pub fn set_tools(&mut self, tools: ToolSet) -> ToolsWriteOutcome {
         if self.tool_freeze == ToolFreezePhase::Frozen {
             log::warn!(
                 target: "xylitol::agent",
-                "set_tools ignored: tool table FROZEN (use freeze_tools / reopen_tools_for_regate)"
+                "set_tools rejected: tool table FROZEN (use freeze_tools / reopen_tools_for_regate)"
             );
-            return;
+            return ToolsWriteOutcome::RejectedFrozen;
         }
         if !self.allow_tools_rewrite_now("set_tools") {
-            return;
+            return ToolsWriteOutcome::RejectedMidTurn;
         }
         self.apply_tools_metadata(&tools);
         self.tools = tools;
         self.rebuild_system_prompt();
+        ToolsWriteOutcome::Applied
     }
 
-    pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts {
+    pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> ToolsWriteOutcome {
         if self.tool_freeze == ToolFreezePhase::Frozen {
             log::warn!(
                 target: "xylitol::agent",
-                "set_tools_defer_prompt ignored: tool table FROZEN"
+                "set_tools_defer_prompt rejected: tool table FROZEN"
             );
-            return self.prompt_opts.clone();
+            return ToolsWriteOutcome::RejectedFrozen;
         }
         if !self.allow_tools_rewrite_now("set_tools_defer_prompt") {
-            return self.prompt_opts.clone();
+            return ToolsWriteOutcome::RejectedMidTurn;
         }
         self.apply_tools_metadata(&tools);
         self.tools = tools;
+        ToolsWriteOutcome::Applied
+    }
+
+    pub fn prompt_opts(&self) -> SystemPromptOpts {
         self.prompt_opts.clone()
     }
 

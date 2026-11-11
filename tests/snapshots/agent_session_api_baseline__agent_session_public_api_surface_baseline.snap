@@ -16,6 +16,7 @@ pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
 pub async fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
 pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError>
 pub enum QueueMode
+pub enum ToolsWriteOutcome
 pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
 pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>)
@@ -51,6 +52,7 @@ pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dy
 pub fn new(mode: QueueMode) -> Self
 pub fn new(steering_mode: QueueMode, follow_up_mode: QueueMode) -> Self
 pub fn notify_queue_update(&self)
+pub fn prompt_opts(&self) -> SystemPromptOpts
 pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn reopen_tools_for_regate(&mut self)
@@ -64,8 +66,8 @@ pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
 pub fn set_thinking_budgets( &mut self, budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>, )
-pub fn set_tools(&mut self, tools: ToolSet)
-pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
+pub fn set_tools(&mut self, tools: ToolSet) -> ToolsWriteOutcome
+pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> ToolsWriteOutcome
 pub fn set_workspaces(&mut self, workspaces: Vec<String>)
 pub fn stats(&self) -> QueueStats
 pub fn steer(&self, message: impl Into<String>)
@@ -93,3 +95,4 @@ pub use self::hook_bus::HookBlockedError
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats}
 pub use self::stats::SessionStats
 pub use self::stats::{ContextUsage, get_context_usage}
+pub use self::tools_ops::ToolsWriteOutcome

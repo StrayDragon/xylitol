@@ -139,14 +139,14 @@ impl AgentRuntime {
         self.inner.session_store()
     }
 
-    pub fn set_tools(&mut self, tools: ToolSet) {
-        self.inner.set_tools(tools);
+    pub fn set_tools(&mut self, tools: ToolSet) -> crate::agent::capabilities::ToolsWriteOutcome {
+        self.inner.set_tools(tools)
     }
 
     pub fn set_tools_defer_prompt(
         &mut self,
         tools: ToolSet,
-    ) -> crate::agent::prompt::SystemPromptOpts {
+    ) -> crate::agent::capabilities::ToolsWriteOutcome {
         self.inner.set_tools_defer_prompt(tools)
     }
 

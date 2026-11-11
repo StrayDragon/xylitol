@@ -1,5 +1,6 @@
 use super::*;
 use crate::mcp_spec::{McpServerSpec, McpTransportSpec};
+use xylitol_runtime::agent::capabilities::ToolsWriteOutcome;
 
 fn attach_mcp(driver: &mut XyInProcessDriver, specs: Vec<McpServerSpec>) {
     let servers = McpServerSpec::to_infra_list(&specs);
@@ -303,7 +304,10 @@ async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
     assert!(names.iter().any(|n| n == "read"));
     let n = names.len();
 
-    driver.set_tools(ToolSet::empty());
+    assert_eq!(
+        driver.set_tools(ToolSet::empty()),
+        ToolsWriteOutcome::RejectedFrozen
+    );
     assert_eq!(driver.tool_names_for_test().len(), n);
     assert!(driver.is_tools_frozen());
 }

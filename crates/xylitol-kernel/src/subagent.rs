@@ -9,6 +9,7 @@ use xylitol_plugin_sdk::{XyEvent, XyTool, XyToolCtx};
 use crate::boot::BootOptions;
 use crate::bootstrap::{BootstrapInput, bootstrap_with};
 use crate::driver::XyDriver;
+use xylitol_runtime::agent::capabilities::ToolsWriteOutcome;
 use xylitol_runtime::agent::tools::ToolSet;
 
 type EnvFn = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -95,7 +96,10 @@ impl XyTool for SubagentTool {
                 .into_runtime();
         let read_only =
             read_only_tools(&runtime.driver.agent.tools_snapshot(), &self.factory.tools);
-        runtime.driver.agent.set_tools(read_only);
+        debug_assert!(matches!(
+            runtime.driver.agent.set_tools(read_only),
+            ToolsWriteOutcome::Applied
+        ));
         let mut stream = runtime.driver.run(prompt).await;
         let mut text = String::new();
         loop {

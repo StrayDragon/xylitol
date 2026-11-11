@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix tool table freeze phase transitions"
+branch: sdd/c3245-fix-tool-freeze-phase
+base_branch: main
+base_sha: d9795892db5bd1d33a87f2af0dc019081c44f2c7
 ---
 
 # 工具表冻结相位转移修复

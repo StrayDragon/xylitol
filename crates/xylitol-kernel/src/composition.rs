@@ -179,6 +179,7 @@ impl McpSession {
 mod tests {
     use super::*;
     use xylitol_official_plugin_mcp::mcp_enabled;
+    use xylitol_runtime::agent::capabilities::ToolsWriteOutcome;
 
     #[tokio::test]
     async fn reload_empty_is_zero_cost_no_manager() {
@@ -388,17 +389,20 @@ mod tests {
 
         let n = after_add.len();
         let builtins = driver.builtins_for_reload();
-        driver.set_tools(ToolSet::rebuild_agent_tools(
-            builtins,
-            vec![
-                Arc::new(StubMcpTool {
-                    name: "mcp__demo__beta",
-                }) as Arc<dyn XyTool>,
-                Arc::new(StubMcpTool {
-                    name: "mcp__demo__gamma",
-                }) as Arc<dyn XyTool>,
-            ],
-        ));
+        assert_eq!(
+            driver.set_tools(ToolSet::rebuild_agent_tools(
+                builtins,
+                vec![
+                    Arc::new(StubMcpTool {
+                        name: "mcp__demo__beta",
+                    }) as Arc<dyn XyTool>,
+                    Arc::new(StubMcpTool {
+                        name: "mcp__demo__gamma",
+                    }) as Arc<dyn XyTool>,
+                ],
+            )),
+            ToolsWriteOutcome::RejectedFrozen
+        );
         assert_eq!(
             driver.tool_names_for_test().len(),
             n,

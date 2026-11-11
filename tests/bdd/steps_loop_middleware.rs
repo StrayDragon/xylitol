@@ -14,6 +14,7 @@ use xylitol_plugin_sdk::{
     AfterStepCtx, BeforeLlmRequestCtx, BeforeStepCtx, BeforeToolCtx, DecideContinueCtx,
     LoopControl, LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep,
 };
+use xylitol_runtime::agent::capabilities::ToolsWriteOutcome;
 use xylitol_runtime::agent::runtime::XyEvent;
 
 thread_local! {
@@ -1644,9 +1645,12 @@ pub(crate) fn g_image_parts(agent: &AgentState, ws: &Workspace) {
         .register(Arc::new(AddDetails))
         .expect("register add-details");
     let mut runner = ar_make_runner(agent, ws);
-    runner.set_tools(ToolSet::from_iter(vec![
-        Arc::new(ImagePartsTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
-    ]));
+    assert_eq!(
+        runner.set_tools(ToolSet::from_iter(vec![
+            Arc::new(ImagePartsTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
+        ])),
+        ToolsWriteOutcome::Applied
+    );
     runner.set_loop_middleware(Some(registry));
     set_fake_text("ack");
     xylitol_kernel::provider::factory::set_fake_tool_call("img_tool", r#"{}"#);

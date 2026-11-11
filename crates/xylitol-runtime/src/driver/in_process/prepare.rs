@@ -14,8 +14,9 @@ use super::reload::ReloadRegistry;
 use super::types::{
     LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot, RuntimeReloadReport,
 };
-use super::{XyDriverError, XyInProcessDriver};
+use super::{OverlayPhase, XyDriverError, XyInProcessDriver};
 use crate::agent::MCP_FIRST_TURN_GATE_TIMEOUT;
+use crate::agent::capabilities::ToolsWriteOutcome;
 use crate::agent::tools::ToolSet;
 
 #[async_trait]
@@ -230,8 +231,17 @@ impl XyInProcessDriver {
         self.base_tools = Some(set.clone());
         let filtered =
             crate::agent::tools::filter_tools_by_capability_overlay(set, &self.capability_disabled);
-        self.agent.set_tools(filtered);
+        match self.agent.set_tools(filtered) {
+            ToolsWriteOutcome::Applied => {}
+            ToolsWriteOutcome::RejectedMidTurn | ToolsWriteOutcome::RejectedFrozen => {
+                log::warn!(
+                    target: "xylitol::agent",
+                    "prepare tools overlay not applied (mid-turn or frozen)"
+                );
+            }
+        }
         self.capability_applied = self.capability_disabled.clone();
+        self.overlay_phase = OverlayPhase::Idle;
     }
 
     pub(super) async fn prepare_loaded_resources(&self) -> LoadedResourcesSnapshot {

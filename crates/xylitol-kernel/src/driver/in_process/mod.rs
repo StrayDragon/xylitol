@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_runtime::agent::AgentRuntime;
+use xylitol_runtime::agent::capabilities::ToolsWriteOutcome;
 use xylitol_runtime::{BangExecHandler, SessionExporter, XyInProcessDriver as RuntimeDriver};
 
 use super::CommandInfo;
@@ -151,7 +152,7 @@ pub fn assemble_driver_with_ops_and_features_and_context(
     inner.set_workflow_gateway(workflow.clone());
     let tools = compose_tools(features, &context, todo, workflow, automation, None);
     inner.set_base_tools(tools.clone());
-    inner.set_tools(tools);
+    debug_assert!(matches!(inner.set_tools(tools), ToolsWriteOutcome::Applied));
     inner.set_slash_commands(
         crate::product_commands::product_slash_commands()
             .into_iter()
@@ -190,7 +191,10 @@ pub fn install_product_ask_tool(
         Some(gateway),
     );
     driver.set_base_tools(tools.clone());
-    driver.set_tools(tools);
+    debug_assert!(matches!(
+        driver.set_tools(tools),
+        ToolsWriteOutcome::Applied
+    ));
 }
 
 fn static_tool_base(context: &DriverContext) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::AgentRuntime;
+use crate::agent::capabilities::ToolsWriteOutcome;
 use crate::agent::runtime::RunPolicy;
 use crate::driver::bang_exec::BangExecHandler;
 use crate::driver::session_export::SessionExporter;
@@ -27,6 +28,13 @@ mod session;
 
 pub use prepare::InProcessReloadHook;
 pub use reload::{ReloadContext, ReloadParticipant, ReloadRegistry};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum OverlayPhase {
+    #[default]
+    Idle,
+    Pending,
+}
 
 struct NoopTodo;
 
@@ -78,6 +86,7 @@ pub struct XyInProcessDriver {
     base_tools: Option<crate::agent::tools::ToolSet>,
     capability_disabled: BTreeSet<String>,
     capability_applied: BTreeSet<String>,
+    overlay_phase: OverlayPhase,
     mcp_server_ids: Vec<String>,
     plugin_commands: Vec<(String, Arc<dyn xylitol_plugin_sdk::XyPluginCommand>)>,
 }
@@ -124,6 +133,7 @@ impl XyInProcessDriver {
             base_tools: None,
             capability_disabled: BTreeSet::new(),
             capability_applied: BTreeSet::new(),
+            overlay_phase: OverlayPhase::Idle,
             mcp_server_ids: Vec::new(),
             plugin_commands: Vec::new(),
             reload_registry: Arc::new(ReloadRegistry::new()),
@@ -245,8 +255,8 @@ impl XyInProcessDriver {
         self.agent.cancel_token()
     }
 
-    pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) {
-        self.agent.set_tools(tools);
+    pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) -> ToolsWriteOutcome {
+        self.agent.set_tools(tools)
     }
 
     pub fn set_base_tools(&mut self, tools: crate::agent::tools::ToolSet) {
@@ -271,7 +281,12 @@ impl XyInProcessDriver {
     }
 
     pub fn capability_pending(&self) -> bool {
-        self.capability_disabled != self.capability_applied
+        debug_assert!(
+            self.overlay_phase != OverlayPhase::Idle
+                || self.capability_disabled == self.capability_applied,
+            "capability overlay phase out of sync with applied set"
+        );
+        self.overlay_phase == OverlayPhase::Pending
     }
 
     pub fn set_capability(
@@ -290,6 +305,7 @@ impl XyInProcessDriver {
         } else {
             self.capability_disabled.insert(id.to_string());
         }
+        self.overlay_phase = OverlayPhase::Pending;
         Ok(self.capability_snapshot())
     }
 
@@ -297,6 +313,7 @@ impl XyInProcessDriver {
         &mut self,
     ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
         self.capability_disabled.clear();
+        self.overlay_phase = OverlayPhase::Pending;
         Ok(self.capability_snapshot())
     }
 
@@ -309,9 +326,14 @@ impl XyInProcessDriver {
         self.agent.reopen_tools_for_regate();
         self.agent.freeze_tools(filtered);
         self.capability_applied = self.capability_disabled.clone();
+        self.overlay_phase = OverlayPhase::Idle;
+        debug_assert!(
+            self.agent.is_tools_frozen(),
+            "install_base_tools must end Frozen"
+        );
     }
 
-    fn apply_pending_capability_overlay(&mut self) {
+    pub fn apply_pending_capability_overlay(&mut self) {
         if !self.capability_pending() {
             return;
         }
@@ -324,8 +346,19 @@ impl XyInProcessDriver {
             &self.capability_disabled,
         );
         self.agent.reopen_tools_for_regate();
-        self.agent.set_tools(filtered);
+        match self.agent.set_tools(filtered.clone()) {
+            ToolsWriteOutcome::Applied => self.agent.freeze_tools(filtered),
+            ToolsWriteOutcome::RejectedMidTurn | ToolsWriteOutcome::RejectedFrozen => {
+                let current = self.agent.clone_tools();
+                self.agent.freeze_tools(current);
+            }
+        }
         self.capability_applied = self.capability_disabled.clone();
+        self.overlay_phase = OverlayPhase::Idle;
+        debug_assert!(
+            self.agent.is_tools_frozen(),
+            "capability overlay must end Frozen"
+        );
     }
 
     pub fn freeze_tools(&mut self, tools: crate::agent::tools::ToolSet) {
@@ -344,6 +377,10 @@ impl XyInProcessDriver {
         if self.agent.is_tools_frozen() {
             return;
         }
+        debug_assert!(
+            self.agent.tool_freeze_phase() != crate::agent::tools::ToolFreezePhase::Gating,
+            "tool table left in Gating outside an assembly line"
+        );
         self.agent.begin_tool_gating();
         let _ = self.join_session_prepare().await;
         let tools = self.agent.clone_tools();
