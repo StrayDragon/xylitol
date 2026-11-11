@@ -2,6 +2,9 @@
 depends_on:
   - c3240-fix-react-loop-run-state
 title: "Add context injection framework with drift reminders"
+branch: sdd/c3248-add-context-refresh-reminders
+base_branch: main
+base_sha: 10627a55fb833c35cf60b20e9f381b8cb48b704d
 ---
 
 # 上下文注入框架（官方插件）与首个漂移提醒注入器

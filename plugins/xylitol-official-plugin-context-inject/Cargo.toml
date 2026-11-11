@@ -1,0 +1,22 @@
+[package]
+name = "xylitol-official-plugin-context-inject"
+version.workspace = true
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Official context injection framework with drift reminders"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]
+xylitol-plugin-sdk = { workspace = true }
+async-trait = { workspace = true }
+log = { workspace = true }
+schemars = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

@@ -667,3 +667,7 @@
   @req:r3257
   规则: codemode-nested-dispatch
     嵌套工具调用 须复用 prepare_call/run_one 的 before_tool/after_tool/权限/hooks；递归 run_code 须拒绝；嵌套结果不得写入模型上下文或 session；取消须传播。由 runtime 单测覆盖，不扩 BDD step。
+
+  @req:r3313
+  规则: before-step-resource-snapshot
+    BeforeStepCtx 必须 暴露只读资源快照：skills / tools_fingerprint / prepare_fingerprint 与 session_id；运行时 必须 在每次 BeforeStep 供数，不得 暴露可变句柄。由运行时单测覆盖。

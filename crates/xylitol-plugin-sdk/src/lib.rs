@@ -72,7 +72,7 @@ pub use llm_project::project_for_llm;
 pub use loop_middleware::{
     AfterLlmResponseCtx, AfterStepCtx, AfterToolCtx, BeforeLlmRequestCtx, BeforeStepCtx,
     BeforeToolCtx, CompactRequest, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware,
-    LoopMiddlewareHandle, LoopMiddlewareRegistry, LoopScope, LoopStage, LoopStep,
+    LoopMiddlewareHandle, LoopMiddlewareRegistry, LoopScope, LoopStage, LoopStep, ToolFingerprint,
 };
 pub use mcp::{
     McpCatalog, McpCatalogEntry, McpElicitationAction, McpElicitationGateway,

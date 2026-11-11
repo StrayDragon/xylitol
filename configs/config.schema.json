@@ -214,6 +214,77 @@
       ],
       "type": "string"
     },
+    "context_inject_ContextInjectDedup": {
+      "enum": [
+        "none",
+        "latest_wins",
+        "suppress_if_unchanged"
+      ],
+      "type": "string"
+    },
+    "context_inject_ContextInjectPlacement": {
+      "enum": [
+        "history_row",
+        "ephemeral"
+      ],
+      "type": "string"
+    },
+    "context_inject_ContextInjectPoint": {
+      "enum": [
+        "session_start",
+        "session_shutdown",
+        "run_start",
+        "run_end",
+        "turn_pre",
+        "step_start",
+        "step_end"
+      ],
+      "type": "string"
+    },
+    "context_inject_ContextInjectorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "dedup": {
+          "$ref": "#/$defs/context_inject_ContextInjectDedup",
+          "default": "none"
+        },
+        "group": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "placement": {
+          "$ref": "#/$defs/context_inject_ContextInjectPlacement",
+          "default": "history_row"
+        },
+        "point": {
+          "$ref": "#/$defs/context_inject_ContextInjectPoint"
+        },
+        "timeout_secs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "point",
+        "command"
+      ],
+      "type": "object"
+    },
     "external_plugins_ExternalPluginConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1141,6 +1212,34 @@
         }
       },
       "title": "XyCompactionSettingsConfig",
+      "type": "object"
+    },
+    "context_inject": {
+      "additionalProperties": false,
+      "properties": {
+        "global": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/context_inject_ContextInjectorConfig"
+          },
+          "type": "array"
+        },
+        "project": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/context_inject_ContextInjectorConfig"
+          },
+          "type": "array"
+        },
+        "user": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/context_inject_ContextInjectorConfig"
+          },
+          "type": "array"
+        }
+      },
+      "title": "ContextInjectConfig",
       "type": "object"
     },
     "dap": {

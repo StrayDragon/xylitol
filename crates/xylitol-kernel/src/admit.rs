@@ -31,6 +31,7 @@ pub const RESERVED_PLUGIN_NAMES: &[&str] = &[
     "mcp",
     "hooks",
     "loop-policies",
+    "context-inject",
     "todo",
     "workflow",
     "plan",

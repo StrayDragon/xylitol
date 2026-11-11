@@ -406,3 +406,7 @@
   @req:r3215
   规则: compaction 作为 epoch
     compaction 条目 须作为上下文 epoch 边界；投影 须只保留该条目及其后节点，firstKeptEntryId 之前已被摘要的消息 不得再进入上下文。seal 成功后 cold 段 不得再被改写。
+
+  @req:r3315
+  规则: compact-preserve-context-fingerprint
+    压缩后 必须 保留 context-fingerprint-snapshot 自定义条目；缺失时 必须 从压缩前条目补写。由插件单测覆盖。

@@ -22,3 +22,7 @@
   @req:r2968
   规则: no-raw-workflow-block
     发往 provider 的 assistant 文本 不得包含原始 `<plan>{json}</plan>` workflow 控制块；workflow 状态 只经工具调用与 `WorkflowUpdated` 事件传递。由 workflow 插件单测覆盖。
+
+  @req:r3312
+  规则: context-reminder-history-row
+    HistoryRow 放置的注入提醒 必须 以 custom_message 条目持久化（custom_type = context_reminder），并 必须 在 LLM 投影中作为 system-reminder 行呈现；Ephemeral 放置 不得 持久化。由投影单测覆盖。

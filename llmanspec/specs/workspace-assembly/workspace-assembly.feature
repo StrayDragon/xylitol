@@ -54,3 +54,7 @@
   @req:r3260
   规则: codemode-plugin-assembly
     codemode 为官方可替换插件；未配置或 enabled=false 时 不得注册 run_code/中间件/catalog；配置启用时 须经 kernel 装配并注入 catalog/dispatch。由装配单测覆盖，不扩 BDD step。
+
+  @req:r3314
+  规则: context-inject-default-assembly
+    context-inject 插件 必须 默认装配（未配置也装配，内置 drift 注入器）；不得 因未配置而跳过。

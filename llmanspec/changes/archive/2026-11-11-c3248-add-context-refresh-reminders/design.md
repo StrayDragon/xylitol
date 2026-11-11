@@ -53,7 +53,7 @@ step 之间不评估不注入（工具表冻结无漂移、skills 顺延下一 t
 
 ~~~yaml
 context_inject:
-  injectors:
+  global:
     - id: git-status
       point: turn_pre                  # session_start|session_shutdown|run_start|run_end|turn_pre|step_start|step_end
       command: "git status --short --branch"
@@ -61,6 +61,8 @@ context_inject:
       dedup: suppress_if_unchanged      # none | latest_wins | suppress_if_unchanged
       timeout_secs: 2
       group: null
+  project: []
+  user: []
 ~~~
 
 规则：三层同 id 后层覆盖（hooks 同款）；两阶段校验（未知 point / 重复 id 报错）；命令物化 stdout 截断 4KB、默认超时 2s、失败跳过 + warn（advisory fail-open）；project 层随 trust 门禁，command 关联 c3330 审批门（未来）。

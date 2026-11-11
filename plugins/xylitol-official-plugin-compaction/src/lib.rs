@@ -429,12 +429,26 @@ async fn ensure_state_entries_after_compact(
     {
         snapshots.push(checkpoint.to_custom_entry_shell());
     }
+    const CUSTOM_TYPE_CONTEXT_FINGERPRINT: &str = "context-fingerprint-snapshot";
+    if !has_custom(CUSTOM_TYPE_CONTEXT_FINGERPRINT)
+        && let Some(snapshot) = latest_custom_entry(entries_before, CUSTOM_TYPE_CONTEXT_FINGERPRINT)
+    {
+        snapshots.push(snapshot);
+    }
 
     for snapshot in snapshots {
         if let Err(e) = store.append_session_entry(session_id, &snapshot).await {
             log::warn!("post-compact state persist failed: {e}");
         }
     }
+}
+
+fn latest_custom_entry(entries: &[SessionEntry], custom_type: &str) -> Option<SessionEntry> {
+    entries
+        .iter()
+        .rev()
+        .find(|entry| matches!(entry, SessionEntry::Custom(custom) if custom.custom_type == custom_type))
+        .cloned()
 }
 
 async fn ensure_session_env_after_compact(

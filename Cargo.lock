@@ -7919,6 +7919,7 @@ dependencies = [
  "xylitol-official-plugin-codemode",
  "xylitol-official-plugin-compaction",
  "xylitol-official-plugin-config",
+ "xylitol-official-plugin-context-inject",
  "xylitol-official-plugin-hooks",
  "xylitol-official-plugin-loop-policies",
  "xylitol-official-plugin-mcp",
@@ -8016,6 +8017,7 @@ dependencies = [
  "xylitol-official-plugin-codemode",
  "xylitol-official-plugin-compaction",
  "xylitol-official-plugin-config",
+ "xylitol-official-plugin-context-inject",
  "xylitol-official-plugin-dap",
  "xylitol-official-plugin-hooks",
  "xylitol-official-plugin-loop-policies",
@@ -8096,6 +8098,20 @@ dependencies = [
  "xylitol-plugin-sdk",
  "xylitol-runtime",
  "yaml_serde",
+]
+
+[[package]]
+name = "xylitol-official-plugin-context-inject"
+version = "0.0.0-pre"
+dependencies = [
+ "async-trait",
+ "log",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "xylitol-plugin-sdk",
 ]
 
 [[package]]

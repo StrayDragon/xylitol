@@ -32,6 +32,7 @@ members = [
     "plugins/xylitol-official-plugin-mcp",
     "plugins/xylitol-official-plugin-hooks",
     "plugins/xylitol-official-plugin-loop-policies",
+    "plugins/xylitol-official-plugin-context-inject",
     "plugins/xylitol-official-plugin-todo",
     "plugins/xylitol-official-plugin-workflow",
     "plugins/xylitol-official-plugin-codemode",
@@ -65,6 +66,7 @@ xylitol-official-plugin-tools-fff = { path = "plugins/xylitol-official-plugin-to
 xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp" }
 xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
 xylitol-official-plugin-loop-policies = { path = "plugins/xylitol-official-plugin-loop-policies" }
+xylitol-official-plugin-context-inject = { path = "plugins/xylitol-official-plugin-context-inject" }
 xylitol-official-plugin-todo = { path = "plugins/xylitol-official-plugin-todo" }
 xylitol-official-plugin-workflow = { path = "plugins/xylitol-official-plugin-workflow" }
 xylitol-official-plugin-codemode = { path = "plugins/xylitol-official-plugin-codemode" }
@@ -238,6 +240,7 @@ incremental = false
 
 [dev-dependencies]
 tempfile = { workspace = true }
+xylitol-official-plugin-context-inject = { workspace = true }
 xylitol-official-plugin-codemode = { workspace = true }
 xylitol-official-plugin-tools-fff = { workspace = true }
 xylitol-wire = { workspace = true }

@@ -103,6 +103,7 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
             "xylitol-official-plugin-mcp",
             "xylitol-official-plugin-hooks",
             "xylitol-official-plugin-loop-policies",
+            "xylitol-official-plugin-context-inject",
             "xylitol-official-plugin-config",
             "xylitol-official-plugin-obs",
             "xylitol-official-plugin-todo",

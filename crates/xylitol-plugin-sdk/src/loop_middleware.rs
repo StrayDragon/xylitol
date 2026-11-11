@@ -99,12 +99,22 @@ impl<C> LoopStep<C> {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ToolFingerprint {
+    pub names: Vec<String>,
+    pub content_digest: String,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct BeforeStepCtx {
     pub step_index: u32,
     pub has_new_user_messages: bool,
     pub system_prompt: Option<String>,
     pub system_fragments: Vec<String>,
+    pub skills: Vec<crate::resource::SkillInfo>,
+    pub tools_fingerprint: Option<ToolFingerprint>,
+    pub prepare_fingerprint: Option<String>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]

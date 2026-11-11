@@ -227,3 +227,7 @@
   @req:r3258
   规则: codemode-exec-permission
     run_code 须映射 check_process(workspace)；嵌套调用须逐次走权限；凭据不得进入 guest；文档须明示 permission 非安全边界。由单测覆盖，不扩 BDD step。
+
+  @req:r3316
+  规则: context-inject-project-trust
+    context_inject 的 project 层 必须 随 trust 门禁：未信任项目 不得 加载其注入器配置。

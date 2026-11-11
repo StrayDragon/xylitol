@@ -56,3 +56,7 @@
   @req:r3074
   规则: external-plugin-config-section
     外进程插件 须 可在 initialize 中声明 `config_key` 与 `config_schema`；配置中对应顶层节 须 在插件装配后由插件按 rutis 依赖顺序校验；未声明 `config_key` 的插件 不得 认领任何顶层节；多个插件声明同一 `config_key` 须 可观察失败。由内核单测覆盖。
+
+  @req:r3317
+  规则: plugin-sdk-command-capture
+    plugin-sdk 必须 提供 run_command_capture 助手：以 sh -c 执行命令、捕获 stdout、按字节上限截断、超时中止、消毒凭据环境变量；非零退出 必须 报错。由单测覆盖。

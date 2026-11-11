@@ -1053,6 +1053,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let decide_active = !loop_chain.decide_continue.is_empty();
         let mut stall_count: u32 = 0;
         let mut settle_count: u32 = 0;
+        let frozen_tools = crate::agent::tools::ToolTableFingerprint::from_toolset(&tools);
+        let tools_fingerprint = xylitol_plugin_sdk::ToolFingerprint {
+            names: frozen_tools.names,
+            content_digest: frozen_tools.content_digest,
+        };
 
         yield XyEvent::AgentStart {
             session_id: session_id.clone(),
@@ -1076,6 +1081,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         has_new_user_messages: step_consumes_new_user || !pending.is_empty(),
                         system_prompt: system_prompt.clone(),
                         system_fragments: Vec::new(),
+                        skills: skills.clone(),
+                        tools_fingerprint: Some(tools_fingerprint.clone()),
+                        prepare_fingerprint: pending_prepare
+                            .as_ref()
+                            .map(|prepare| prepare.fingerprint.clone()),
+                        session_id: Some(session_id.clone()),
                     };
                     match run_before_step(&loop_chain, &cancel, turn_obs_parent, &obs_session, ctx).await {
                         Ok(out) => {

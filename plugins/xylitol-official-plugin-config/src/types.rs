@@ -807,6 +807,105 @@ pub use xylitol_official_plugin_mcp::{
     McpOAuthConfig, McpOAuthKeychain, McpScope, McpServerConfig, McpTransportKind,
 };
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ContextInjectConfig {
+    pub global: Vec<ContextInjectorConfig>,
+    pub project: Vec<ContextInjectorConfig>,
+    pub user: Vec<ContextInjectorConfig>,
+}
+
+impl ContextInjectConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        for tier in [&self.global, &self.project, &self.user] {
+            let mut ids = std::collections::HashSet::new();
+            for injector in tier {
+                if injector.id.trim().is_empty() {
+                    return Err("context_inject injector id must not be empty".into());
+                }
+                if !ids.insert(injector.id.clone()) {
+                    return Err(format!(
+                        "duplicate context_inject injector id: {}",
+                        injector.id
+                    ));
+                }
+                if injector.command.trim().is_empty() {
+                    return Err(format!(
+                        "context_inject injector {} command must not be empty",
+                        injector.id
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn merged(&self) -> Vec<ContextInjectorConfig> {
+        let mut merged: Vec<ContextInjectorConfig> = Vec::new();
+        for tier in [&self.global, &self.project, &self.user] {
+            for injector in tier {
+                match merged
+                    .iter()
+                    .position(|existing| existing.id == injector.id)
+                {
+                    Some(index) => merged[index] = injector.clone(),
+                    None => merged.push(injector.clone()),
+                }
+            }
+        }
+        merged
+    }
+
+    pub fn is_active(&self) -> bool {
+        !self.global.is_empty() || !self.project.is_empty() || !self.user.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ContextInjectorConfig {
+    pub id: String,
+    pub point: ContextInjectPoint,
+    pub command: String,
+    #[serde(default)]
+    pub placement: ContextInjectPlacement,
+    #[serde(default)]
+    pub dedup: ContextInjectDedup,
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub group: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextInjectPoint {
+    SessionStart,
+    SessionShutdown,
+    RunStart,
+    RunEnd,
+    TurnPre,
+    StepStart,
+    StepEnd,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextInjectPlacement {
+    #[default]
+    HistoryRow,
+    Ephemeral,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextInjectDedup {
+    #[default]
+    None,
+    LatestWins,
+    SuppressIfUnchanged,
+}
+
 #[cfg(test)]
 mod agent_profile_tests {
     use super::*;

@@ -11,6 +11,7 @@ pub struct RcSnap {
     pub(crate) compaction: RefCell<Option<xylitol_official_plugin_compaction::CompactionSettings>>,
     pub(crate) meta: RefCell<Option<XyModelMeta>>,
     pub(crate) mm: RefCell<Option<xylitol_runtime::agent::model::ModelManager>>,
+    pub(crate) validate_error: RefCell<Option<String>>,
 }
 impl RcSnap {
     fn new() -> Self {
@@ -22,6 +23,7 @@ impl RcSnap {
             compaction: RefCell::new(None),
             meta: RefCell::new(None),
             mm: RefCell::new(None),
+            validate_error: RefCell::new(None),
         }
     }
 
@@ -706,5 +708,36 @@ fn t_rc_legacy_preset(tokenizer_bdd: &TokenizerBdd) {
     assert!(
         err.contains("xylitol config schema"),
         "error must point at config schema: {err}"
+    );
+}
+
+#[given("配置含两条同 id 的 context_inject 注入器")]
+fn g_duplicate_context_inject(rc_snap: &RcSnap) {
+    *rc_snap.local_yaml.borrow_mut() = Some(
+        r#"
+context_inject:
+  global:
+    - { id: same, point: turn_pre, command: "true" }
+    - { id: same, point: step_start, command: "true" }
+"#
+        .to_string(),
+    );
+}
+
+#[when("校验配置")]
+fn w_validate_context_inject(rc_snap: &RcSnap) {
+    let yaml = rc_snap.local_yaml.borrow().clone().unwrap_or_default();
+    let config = crate::bdd::steps_tokenizer::parse_app_config_yaml(&yaml).expect("parse config");
+    let section: xylitol_kernel::config::types::ContextInjectConfig = config
+        .section_or_default("context_inject")
+        .expect("context_inject section");
+    *rc_snap.validate_error.borrow_mut() = section.validate().err();
+}
+
+#[then("校验报错")]
+fn t_validate_error(rc_snap: &RcSnap) {
+    assert!(
+        rc_snap.validate_error.borrow().is_some(),
+        "duplicate context_inject ids must be rejected"
     );
 }

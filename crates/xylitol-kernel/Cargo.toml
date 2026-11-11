@@ -24,6 +24,7 @@ xylitol-official-plugin-tools-fff = { workspace = true, optional = true }
 xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 xylitol-official-plugin-hooks = { workspace = true }
 xylitol-official-plugin-loop-policies = { workspace = true }
+xylitol-official-plugin-context-inject = { workspace = true }
 xylitol-official-plugin-todo = { workspace = true }
 xylitol-official-plugin-workflow = { workspace = true }
 xylitol-official-plugin-codemode = { workspace = true }

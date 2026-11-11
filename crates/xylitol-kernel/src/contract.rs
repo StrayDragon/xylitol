@@ -240,8 +240,8 @@ mod tests {
             .expect("loop middleware registry service");
         assert_eq!(
             registry.ids(),
-            Vec::<String>::new(),
-            "default boot registers no loop middleware"
+            vec!["context-inject".to_string()],
+            "default boot registers the context injection coordinator"
         );
         let _ = ctx.shutdown().await;
     }
@@ -266,8 +266,8 @@ mod tests {
             .expect("loop middleware registry service");
         assert_eq!(
             registry.ids(),
-            Vec::<String>::new(),
-            "unconfigured loop example must not add middleware"
+            vec!["context-inject".to_string()],
+            "unconfigured loop example must not add middleware beyond context-inject"
         );
         let fiber = ctx.plugin(
             xylitol_official_plugin_loop_policies::LoopPoliciesPlugin::new(
@@ -283,16 +283,19 @@ mod tests {
             .expect("loop policies plugin"),
         );
         for _ in 0..64 {
-            if registry.ids().len() == 1 {
+            if registry.ids().len() == 2 {
                 break;
             }
             tokio::task::yield_now().await;
         }
-        assert_eq!(registry.ids(), vec!["loop-policies".to_string()]);
+        assert_eq!(
+            registry.ids(),
+            vec!["context-inject".to_string(), "loop-policies".to_string()]
+        );
         fiber.dispose().await.expect("dispose");
         assert_eq!(
             registry.ids(),
-            Vec::<String>::new(),
+            vec!["context-inject".to_string()],
             "unload must leave no loop-policies middleware behind"
         );
         let _ = ctx.shutdown().await;

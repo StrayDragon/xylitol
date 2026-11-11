@@ -2,9 +2,9 @@ use schemars::schema_for;
 use xylitol_plugin_sdk::CodemodeConfig;
 
 use super::types::{
-    AgentsConfig, DapPluginConfig, ExecutionConfig, ExternalPluginConfig, HooksConfig,
-    LspPluginConfig, McpServerConfig, ModelsConfig, OtelConfig, SecurityConfig, ServeConfig,
-    SessionConfig, SubagentConfig, ToolBatchConfig, TrustConfig, TuiConfig,
+    AgentsConfig, ContextInjectConfig, DapPluginConfig, ExecutionConfig, ExternalPluginConfig,
+    HooksConfig, LspPluginConfig, McpServerConfig, ModelsConfig, OtelConfig, SecurityConfig,
+    ServeConfig, SessionConfig, SubagentConfig, ToolBatchConfig, TrustConfig, TuiConfig,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,6 +105,12 @@ const SECTIONS: &[ConfigSection] = &[
         default: default_loop_policies,
     },
     ConfigSection {
+        key: "context_inject",
+        domain: ConfigDomain::Agent,
+        schema: schema_context_inject,
+        default: default_context_inject,
+    },
+    ConfigSection {
         key: "todo",
         domain: ConfigDomain::Agent,
         schema: schema_todo,
@@ -198,6 +204,12 @@ fn schema_tool_batch() -> serde_json::Value {
 }
 fn schema_tools() -> serde_json::Value {
     serde_json::to_value(schema_for!(Vec<String>)).expect("tools schema")
+}
+fn schema_context_inject() -> serde_json::Value {
+    serde_json::to_value(schemars::schema_for!(ContextInjectConfig)).expect("context_inject schema")
+}
+fn default_context_inject() -> serde_json::Value {
+    serde_json::to_value(ContextInjectConfig::default()).expect("context_inject default")
 }
 fn schema_loop_policies() -> serde_json::Value {
     serde_json::to_value(schema_for!(super::types::LoopPoliciesConfig))

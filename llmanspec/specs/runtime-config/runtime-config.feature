@@ -308,3 +308,12 @@
   @req:r3259
   规则: codemode-config
     config.yaml 须支持 codemode 节：enabled（缺省 false）、runtime=wasmtime、mode=on、timeout_ms、max_output_tokens、max_result_bytes、max_nested_calls、fuel、max_memory_bytes、module_cache、inline_budget、exposure。未配置零装配；非法 runtime/mode 须加载失败。由配置单测覆盖，不扩 BDD step。
+
+  @req:r3311
+  规则: context-inject-section
+    配置 必须 支持 context_inject 节：injectors 数组，每项含 id / point / command / placement / dedup / timeout_secs / group；point 必须 限于七个注入点。三层（global → project → user）同 id 必须 后层覆盖；重复 id 与未知 point 必须 报错。project 层 必须 随 trust 门禁。由配置单测覆盖。
+
+    场景: context_inject 重复 id 报错
+      假如 配置含两条同 id 的 context_inject 注入器
+      当 校验配置
+      那么 校验报错

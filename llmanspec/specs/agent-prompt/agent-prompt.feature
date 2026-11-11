@@ -110,3 +110,21 @@
       假如 Responses 组装且 system_prompt 非空且 thinking_level 为 medium
       当 转换为 input items
       那么 首项 role 为 developer 且 content 为 system_prompt
+
+  @req:r3309
+  规则: context-injection-framework
+    上下文注入框架 必须 由官方插件提供并默认装配：七个注入点 必须 复用统一生命周期名（session_start / session_shutdown / run_start / run_end / turn_pre / step_start / step_end），编译到既有缝，不得新增内核钩子。turn_pre 必须 以「有新用户消息」为谓词；step 之间不得评估。注册 必须 支持内置、插件服务与用户配置三来源；调度 必须 按 priority 升序、同优先级 id 字典序，注册序不得参与。空注册 必须 零开销。放置 必须 支持 HistoryRow 与 Ephemeral；同 group 的提醒 必须 聚合为单条 system-reminder 块。命令注入器 必须 以 4KB 截断、默认 2s 超时执行，失败或超时 必须 跳过并告警（advisory fail-open）。由插件单测覆盖。
+
+  @req:r3310
+  规则: context-reminder-drift
+    drift 注入器 必须 在 turn_pre 比对三源指纹（skills 内容哈希 / 工具表指纹 / 会话准备指纹）与会话快照；首评 必须 建立基线而不注入；指纹变化 必须 注入一条 system-reminder 提醒并更新快照（latest-wins），无变化 不得 注入。快照 必须 以 CustomEntry 持久化，压缩后 必须 保留。skills 变更提醒 必须 指明技能名与新旧指纹前缀；工具表变更 必须 指明被禁用的工具名。由插件单测与 BDD 覆盖。
+
+    场景: 技能变更在下一 turn_pre 注入提醒
+      假如 会话快照记录技能 B 的内容指纹
+      当 技能 B 内容变为 B1 且进入下一 turn_pre
+      那么 模型上下文含技能 B 变更提醒
+
+    场景: resume 离开期间变更注入
+      假如 会话快照记录技能 B 的内容指纹
+      当 会话离开期间技能 B 内容变更后 resume
+      那么 下一 turn_pre 注入技能 B 变更提醒
