@@ -62,6 +62,7 @@ pub struct AutomationEngine {
     branch_id: String,
     pending: Option<PendingTrigger>,
     started_at: Option<i64>,
+    exhausted_factored: std::collections::HashSet<String>,
 }
 
 impl AutomationEngine {
@@ -81,6 +82,7 @@ impl AutomationEngine {
             session_id,
             pending: None,
             started_at: Some(started_at.timestamp()),
+            exhausted_factored: std::collections::HashSet::new(),
         }
     }
 
@@ -125,6 +127,18 @@ impl AutomationEngine {
                 })
                 .await?;
                 self.pending = None;
+                if state == Some(ScheduleState::Exhausted)
+                    && self.exhausted_factored.insert(pending.schedule_id.clone())
+                {
+                    self.append(&AutomationFact::ScheduleStateChanged {
+                        schedule_id: pending.schedule_id.clone(),
+                        state: ScheduleState::Exhausted,
+                        reason: Some("max_ticks exhausted".into()),
+                        actor: "engine".into(),
+                        at: now.timestamp(),
+                    })
+                    .await?;
+                }
                 actions.push(AutomationAction::Skipped {
                     schedule_id: pending.schedule_id,
                     reason,

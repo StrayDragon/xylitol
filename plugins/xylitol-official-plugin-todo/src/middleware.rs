@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -88,9 +88,12 @@ impl TodoProgressMiddleware {
         let mut next = WorkflowProgress::default();
         for item in items {
             next.total += 1;
-            match item.get("status").and_then(Value::as_str) {
-                Some("completed") => next.completed += 1,
-                Some("in_progress") => next.in_progress += 1,
+            match item
+                .get("status")
+                .and_then(|value| serde_json::from_value::<TodoStatus>(value.clone()).ok())
+            {
+                Some(TodoStatus::Completed) => next.completed += 1,
+                Some(TodoStatus::InProgress) => next.in_progress += 1,
                 _ => next.pending += 1,
             }
         }
@@ -260,19 +263,19 @@ impl TodoCheckpointMiddleware {
         }
     }
 
-    async fn restore(&self, session_id: &str) {
+    async fn restore(&self, session_id: &str) -> bool {
         let Some(store) = self.resolve_store() else {
-            return;
+            return true;
         };
         let Ok(branch) = store.load_leaf_branch(session_id).await else {
-            return;
+            return false;
         };
         let Some(checkpoint) = latest_todo_checkpoint(&branch) else {
-            return;
+            return true;
         };
         let mut state = self.lock_state();
         if !state.steps.is_empty() {
-            return;
+            return true;
         }
         state.steps = checkpoint.steps;
         state.last_verified_artifact = checkpoint.last_verified_artifact;
@@ -282,6 +285,7 @@ impl TodoCheckpointMiddleware {
                 .attempts
                 .insert(cursor.step_id, cursor.attempt.saturating_sub(1));
         }
+        true
     }
 
     fn inject_summary(&self, ctx: &mut BeforeLlmRequestCtx) {
@@ -400,11 +404,7 @@ fn todo_items_from_parts(parts: &[AgentPart]) -> Option<Vec<(String, String, Tod
     for item in items {
         let id = item.get("id")?.as_str()?.to_string();
         let content = item.get("content")?.as_str()?.to_string();
-        let status = match item.get("status")?.as_str()? {
-            "completed" => TodoStatus::Completed,
-            "in_progress" => TodoStatus::InProgress,
-            _ => TodoStatus::Pending,
-        };
+        let status: TodoStatus = serde_json::from_value(item.get("status")?.clone()).ok()?;
         out.push((id, content, status));
     }
     Some(out)
@@ -429,9 +429,12 @@ impl LoopMiddleware for TodoCheckpointMiddleware {
         mut ctx: BeforeLlmRequestCtx,
     ) -> LoopStep<BeforeLlmRequestCtx> {
         let restored =
-            !self.restored.swap(true, Ordering::SeqCst) && ctx.session_id.as_deref().is_some();
-        if restored && let Some(session_id) = ctx.session_id.as_deref() {
-            self.restore(session_id).await;
+            ctx.session_id.as_deref().is_some() && !self.restored.swap(true, Ordering::SeqCst);
+        if restored
+            && let Some(session_id) = ctx.session_id.as_deref()
+            && !self.restore(session_id).await
+        {
+            self.restored.store(false, Ordering::SeqCst);
         }
         let injected = !self.injected.swap(true, Ordering::SeqCst);
         if injected {
@@ -467,21 +470,33 @@ pub fn todo_checkpoint_middleware(
     Arc::new(TodoCheckpointMiddleware::new(store, ctx))
 }
 
+struct ReminderSnapshot {
+    stale_tool_calls: usize,
+    last_error: bool,
+    last_reminder_turn: u32,
+}
+
 pub struct TodoReminderMiddleware {
     stale_after: usize,
-    stale_tool_calls: AtomicUsize,
-    last_error: AtomicBool,
-    last_reminder_turn: AtomicU32,
+    reminder: Mutex<ReminderSnapshot>,
 }
 
 impl TodoReminderMiddleware {
     pub fn new(stale_after: u32) -> Self {
         Self {
             stale_after: stale_after.max(1) as usize,
-            stale_tool_calls: AtomicUsize::new(0),
-            last_error: AtomicBool::new(false),
-            last_reminder_turn: AtomicU32::new(u32::MAX),
+            reminder: Mutex::new(ReminderSnapshot {
+                stale_tool_calls: 0,
+                last_error: false,
+                last_reminder_turn: u32::MAX,
+            }),
         }
+    }
+
+    fn lock_reminder(&self) -> std::sync::MutexGuard<'_, ReminderSnapshot> {
+        self.reminder
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn claims_completion(message: Option<&AgentMessage>) -> bool {
@@ -520,12 +535,13 @@ impl LoopMiddleware for TodoReminderMiddleware {
     }
 
     async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        let mut snapshot = self.lock_reminder();
         if matches!(ctx.tool_name.as_str(), "todo_rewrite" | "todo_update") && !ctx.is_error {
-            self.stale_tool_calls.store(0, Ordering::SeqCst);
+            snapshot.stale_tool_calls = 0;
         } else {
-            self.stale_tool_calls.fetch_add(1, Ordering::SeqCst);
+            snapshot.stale_tool_calls += 1;
         }
-        self.last_error.store(ctx.is_error, Ordering::SeqCst);
+        snapshot.last_error = ctx.is_error;
         LoopStep::continued(ctx)
     }
 
@@ -541,16 +557,17 @@ impl LoopMiddleware for TodoReminderMiddleware {
             return LoopStep::continued(ctx);
         }
         let turn = ctx.step_index;
-        if self.last_reminder_turn.load(Ordering::SeqCst) == turn {
+        let mut snapshot = self.lock_reminder();
+        if snapshot.last_reminder_turn == turn {
             return LoopStep::continued(ctx);
         }
-        let stale = self.stale_tool_calls.load(Ordering::SeqCst) >= self.stale_after;
+        let stale = snapshot.stale_tool_calls >= self.stale_after;
         let completion_claim = Self::claims_completion(ctx.messages.last());
-        let error = self.last_error.load(Ordering::SeqCst);
+        let error = snapshot.last_error;
         if !(stale || completion_claim || error) {
             return LoopStep::continued(ctx);
         }
-        self.last_reminder_turn.store(turn, Ordering::SeqCst);
+        snapshot.last_reminder_turn = turn;
         ctx.messages
             .push(AgentMessage::Llm(XyLlmMessage::user(format!(
                 "<todo_reminder>\n{unfinished} todo item(s) are still unfinished. \

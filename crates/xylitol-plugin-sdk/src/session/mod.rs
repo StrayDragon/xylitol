@@ -13,8 +13,8 @@ mod workflow;
 pub use automation::{
     AutomationError, AutomationFact, CUSTOM_TYPE_AUTOMATION, Cadence, DEFAULT_MAX_ITERATIONS,
     DEFAULT_MAX_TICKS, GoalProjection, GoalState, GoalVerdict, RunOutcome, ScheduleProjection,
-    ScheduleState, SkipReason, TriggerSource, has_active_goal, parse_automation_fact,
-    project_goals, project_schedules,
+    ScheduleState, SkipReason, TriggerSource, goal_transition, has_active_goal,
+    parse_automation_fact, project_goals, project_schedules, schedule_transition,
 };
 pub use capability::{CapabilityEntry, CapabilityKind, CapabilitySnapshot};
 pub use checkpoint::{

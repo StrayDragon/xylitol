@@ -671,3 +671,7 @@
   @req:r3313
   规则: before-step-resource-snapshot
     BeforeStepCtx 必须 暴露只读资源快照：skills / tools_fingerprint / prepare_fingerprint 与 session_id；运行时 必须 在每次 BeforeStep 供数，不得 暴露可变句柄。由运行时单测覆盖。
+
+  @req:r3320
+  规则: middleware-turn-boundary-reset
+    有状态的 loop 中间件（如 generator-critic）必须在 turn 边界（BeforeStep 且 has_new_user_messages）复位其阶段与计数，不得跨问答轮泄漏终态；复位 必须 经单一入口。由单测覆盖（第二问含 follow-up 续问变体）。

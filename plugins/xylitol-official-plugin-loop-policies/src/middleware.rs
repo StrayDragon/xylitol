@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::{
-    AfterLlmResponseCtx, AfterToolCtx, BeforeLlmRequestCtx, BeforeToolCtx, DecideContinueCtx,
-    LoopMiddleware, LoopStage, LoopStep,
+    AfterLlmResponseCtx, AfterToolCtx, BeforeLlmRequestCtx, BeforeStepCtx, BeforeToolCtx,
+    DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep,
 };
 
 use crate::config::{
@@ -17,6 +17,7 @@ const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue]
 const TOOL_EXPOSURE_STAGES: &[LoopStage] = &[LoopStage::BeforeLlmRequest];
 const SELF_HEAL_STAGES: &[LoopStage] = &[LoopStage::AfterTool, LoopStage::DecideContinue];
 const CRITIC_STAGES: &[LoopStage] = &[
+    LoopStage::BeforeStep,
     LoopStage::BeforeLlmRequest,
     LoopStage::AfterLlmResponse,
     LoopStage::DecideContinue,
@@ -138,6 +139,16 @@ struct CriticState {
     instruction_injected: bool,
 }
 
+impl CriticState {
+    fn reset(&mut self) {
+        self.phase = CriticPhase::Idle;
+        self.rounds = 0;
+        self.revision = None;
+        self.unparsed = 0;
+        self.instruction_injected = false;
+    }
+}
+
 impl Default for CriticState {
     fn default() -> Self {
         Self {
@@ -250,6 +261,13 @@ impl LoopMiddleware for GeneratorCriticMiddleware {
 
     fn stages(&self) -> &'static [LoopStage] {
         CRITIC_STAGES
+    }
+
+    async fn before_step(&self, ctx: BeforeStepCtx) -> LoopStep<BeforeStepCtx> {
+        if ctx.has_new_user_messages {
+            self.lock_state().reset();
+        }
+        LoopStep::continued(ctx)
     }
 
     async fn before_llm_request(

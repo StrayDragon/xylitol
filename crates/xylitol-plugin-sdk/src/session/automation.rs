@@ -72,6 +72,38 @@ pub enum ScheduleState {
     Failed,
 }
 
+pub fn goal_transition(from: GoalState, to: GoalState) -> Result<GoalState, String> {
+    use GoalState::*;
+    let allowed = matches!(
+        (from, to),
+        (Open, Running | Paused | Cancelled)
+            | (Running, Done | Failed | Blocked | Paused | Cancelled)
+            | (Blocked, Running | Done | Failed | Paused | Cancelled)
+            | (Paused, Running | Cancelled)
+    );
+    if allowed {
+        Ok(to)
+    } else {
+        Err(format!("illegal goal transition: {from:?} -> {to:?}"))
+    }
+}
+
+pub fn schedule_transition(
+    from: ScheduleState,
+    to: ScheduleState,
+) -> Result<ScheduleState, String> {
+    use ScheduleState::*;
+    let allowed = matches!(
+        (from, to),
+        (Active, Paused | Exhausted | Cancelled | Failed) | (Paused, Active | Cancelled)
+    );
+    if allowed {
+        Ok(to)
+    } else {
+        Err(format!("illegal schedule transition: {from:?} -> {to:?}"))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TriggerSource {

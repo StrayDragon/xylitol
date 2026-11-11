@@ -18,3 +18,7 @@
   @req:r3302
   规则: goal-loop-interaction
     active goal 存在时，同 branch 的 loop tick 须记 RunSkipped(goal_active) 且不得启动 run；goal done 后 c3207 engine 须追加 ScheduleStateChanged(paused, reason=goal_done)，不得删除 schedule 事实；goal 续跑与 loop tick 不得并行驱动同一 session。
+
+  @req:r3318
+  规则: goal-state-transitions
+    goal 状态写入 必须 经合法转移表：Open→{Running, Paused, Cancelled}；Running→{Done, Failed, Blocked, Paused, Cancelled}；Blocked→{Running, Done, Failed, Paused, Cancelled}；Paused→{Running, Cancelled}；Done / Failed / Cancelled 为终态 必须 锁定。非法转移 必须 拒绝并回 LLM 可见错误；存量事实流 必须 按同表容忍投影（保留最后合法态）。由单测覆盖。

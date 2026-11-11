@@ -3,6 +3,9 @@ depends_on:
   - c3240-fix-react-loop-run-state
   - c3250-fix-server-slot-lifecycle
 title: "Fix loop middleware lifecycle resets and automation transitions"
+branch: sdd/c3260-fix-middleware-lifecycle-resets
+base_branch: main
+base_sha: 9049aca88fd32b5d708567edc117ba7df83b9a25
 ---
 
 # Loop 中间件生命周期复位与自动化状态转移修复

@@ -133,3 +133,7 @@
     场景: 待办更新发出类型化事件
       当 以触发 todo_update 工具的回合收集事件
       那么 回合事件流含 TodoUpdated 全量快照
+
+  @req:r3321
+  规则: todo-checkpoint-gate-retry
+    todo checkpoint 闸门 必须 先判 session_id 再置位；restore 失败 必须 回滚 restored 以便下轮重试。reminder 的 stale 计数 / 最近错误 / 最近提醒轮次 必须 以单 Mutex 快照一致读取；进度解析 必须 使用 SDK TodoStatus 枚举，未知值 必须 显式失败。由单测覆盖。

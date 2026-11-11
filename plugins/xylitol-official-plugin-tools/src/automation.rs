@@ -10,7 +10,8 @@ use xylitol_plugin_sdk::TypedTool;
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::session::{
     AutomationFact, Cadence, DEFAULT_MAX_ITERATIONS, DEFAULT_MAX_TICKS, GoalProjection, GoalState,
-    ScheduleProjection, ScheduleState, project_goals, project_schedules,
+    ScheduleProjection, ScheduleState, goal_transition, project_goals, project_schedules,
+    schedule_transition,
 };
 use xylitol_plugin_sdk::{AutomationGateway, XySessionStore, XyToolCtx};
 
@@ -179,21 +180,24 @@ impl SessionAutomationGateway {
     ) -> Result<String, XyToolError> {
         let session_id = self.active_session_id().await?;
         let goals = self.load_goals(&session_id).await?;
-        if !goals.iter().any(|goal| goal.goal_id == goal_id) {
-            return Err(XyToolError::InvalidArgs(format!("unknown goal: {goal_id}")));
-        }
+        let current = goals
+            .iter()
+            .find(|goal| goal.goal_id == goal_id)
+            .map(|goal| goal.state)
+            .ok_or_else(|| XyToolError::InvalidArgs(format!("unknown goal: {goal_id}")))?;
+        let next = goal_transition(current, state).map_err(XyToolError::InvalidArgs)?;
         self.append(
             &session_id,
             &AutomationFact::GoalStateChanged {
                 goal_id: goal_id.to_string(),
-                state,
+                state: next,
                 reason: Some(reason.to_string()),
                 actor: "llm".into(),
                 at: Local::now().timestamp(),
             },
         )
         .await?;
-        Ok(json!({ "goal_id": goal_id, "state": state }).to_string())
+        Ok(json!({ "goal_id": goal_id, "state": next }).to_string())
     }
 
     async fn set_state(
@@ -204,23 +208,24 @@ impl SessionAutomationGateway {
     ) -> Result<String, XyToolError> {
         let session_id = self.active_session_id().await?;
         let schedules = self.load_schedules(&session_id).await?;
-        if !schedules.iter().any(|s| s.schedule_id == schedule_id) {
-            return Err(XyToolError::InvalidArgs(format!(
-                "unknown schedule: {schedule_id}"
-            )));
-        }
+        let current = schedules
+            .iter()
+            .find(|schedule| schedule.schedule_id == schedule_id)
+            .map(|schedule| schedule.state)
+            .ok_or_else(|| XyToolError::InvalidArgs(format!("unknown schedule: {schedule_id}")))?;
+        let next = schedule_transition(current, state).map_err(XyToolError::InvalidArgs)?;
         self.append(
             &session_id,
             &AutomationFact::ScheduleStateChanged {
                 schedule_id: schedule_id.to_string(),
-                state,
+                state: next,
                 reason: Some(reason.to_string()),
                 actor: "llm".into(),
                 at: Local::now().timestamp(),
             },
         )
         .await?;
-        Ok(json!({ "schedule_id": schedule_id, "state": state }).to_string())
+        Ok(json!({ "schedule_id": schedule_id, "state": next }).to_string())
     }
 }
 

@@ -22,3 +22,7 @@
   @req:r3292
   规则: automation-tools
     模型工具 schedule_create / schedule_list / schedule_pause / schedule_resume / schedule_cancel 须只追加事实并投影当前 branch 状态，不得直接启动 run；非法 cadence 须返回可分类错误；schedule_* 工具 不得扩大核心 7 工具闭集。
+
+  @req:r3319
+  规则: schedule-state-transitions
+    schedule 状态写入 必须 经合法转移表：Active→{Paused, Exhausted, Cancelled, Failed}；Paused→{Active, Cancelled}；Exhausted / Cancelled / Failed 为终态 必须 锁定。非法转移 必须 拒绝并回 LLM 可见错误。ticks 耗尽时 tick 引擎 必须 写入 ScheduleStateChanged(Exhausted) 事实，派生与持久 必须 合一。由单测覆盖。
