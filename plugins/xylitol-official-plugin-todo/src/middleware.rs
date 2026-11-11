@@ -249,13 +249,13 @@ impl TodoCheckpointMiddleware {
                 ctx.tool_name,
                 preview_text(&ctx.parts, 160)
             ));
-            if let Some(step_id) = state
+            if let Some(task_id) = state
                 .steps
                 .iter()
                 .find(|step| step.status == TodoStatus::InProgress)
                 .map(|step| step.id.clone())
             {
-                *state.attempts.entry(step_id).or_insert(0) += 1;
+                *state.attempts.entry(task_id).or_insert(0) += 1;
             }
             state.dirty = true;
         } else if !matches!(ctx.tool_name.as_str(), "todo_rewrite" | "todo_update") {
@@ -283,7 +283,7 @@ impl TodoCheckpointMiddleware {
         if let Some(cursor) = checkpoint.resume_cursor {
             state
                 .attempts
-                .insert(cursor.step_id, cursor.attempt.saturating_sub(1));
+                .insert(cursor.task_id, cursor.attempt.saturating_sub(1));
         }
         true
     }
@@ -349,7 +349,7 @@ impl TodoCheckpointMiddleware {
                     .iter()
                     .find(|step| step.status != TodoStatus::Completed)
                     .map(|step| TodoResumeCursor {
-                        step_id: step.id.clone(),
+                        task_id: step.id.clone(),
                         attempt: state.attempts.get(&step.id).copied().unwrap_or(0) + 1,
                     }),
                 updated_at: now_ms(),
@@ -868,7 +868,7 @@ mod tests {
             last_verified_artifact: None,
             last_failure: Some("read: missing".into()),
             resume_cursor: Some(TodoResumeCursor {
-                step_id: "s1".into(),
+                task_id: "s1".into(),
                 attempt: 2,
             }),
             updated_at: 1,

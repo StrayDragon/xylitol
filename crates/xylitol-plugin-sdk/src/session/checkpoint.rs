@@ -20,7 +20,7 @@ pub struct TodoCheckpointStep {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TodoResumeCursor {
-    pub step_id: String,
+    pub task_id: String,
     #[serde(default)]
     pub attempt: u32,
 }
@@ -106,7 +106,7 @@ mod tests {
             last_verified_artifact: Some("bash:call-1".into()),
             last_failure: Some("bash: tests failed".into()),
             resume_cursor: Some(TodoResumeCursor {
-                step_id: "s2".into(),
+                task_id: "s2".into(),
                 attempt: 2,
             }),
             updated_at: 1_700_000_000_000,
