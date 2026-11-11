@@ -10,8 +10,9 @@ use tokio::sync::RwLock;
 use xylitol_plugin_sdk::TypedTool;
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::session::{
-    Workflow, WorkflowStep, WorkflowStepStatus, latest_workflow, runnable_workflow_step,
-    validate_workflow_replan, validate_workflow_with_limits,
+    Workflow, WorkflowTask, WorkflowTaskEvent, WorkflowTaskStatus, latest_workflow,
+    runnable_workflow_task, task_transition, validate_workflow_replan,
+    validate_workflow_with_limits,
 };
 use xylitol_plugin_sdk::{WorkflowGateway, XySessionStore, XyToolCtx, XyToolExecutionMode};
 
@@ -92,7 +93,7 @@ impl WorkflowWriteTool {
 #[derive(Debug, Deserialize)]
 pub struct WorkflowWriteArgs {
     pub goal: String,
-    pub steps: Vec<WorkflowStep>,
+    pub tasks: Vec<WorkflowTask>,
     #[serde(default)]
     pub resume_cursor: Option<String>,
 }
@@ -116,17 +117,17 @@ impl TypedTool for WorkflowWriteTool {
                 "workflow": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["goal", "steps"],
+                    "required": ["goal", "tasks"],
                     "properties": {
                         "goal": { "type": "string" },
-                        "steps": {
+                        "tasks": {
                             "type": "array",
                             "minItems": 1,
                             "items": { "$ref": "#/$defs/workflow_step" }
                         },
                         "resume_cursor": {
                             "type": "string",
-                            "description": "Slash-separated step path, e.g. s2/s2.1"
+                            "description": "Slash-separated task path, e.g. s2/s2.1"
                         }
                     }
                 },
@@ -168,7 +169,7 @@ impl TypedTool for WorkflowWriteTool {
         }
         let workflow = Workflow {
             goal: args.goal,
-            steps: args.steps,
+            tasks: args.tasks,
             resume_cursor: args.resume_cursor,
             updated_at: now_ms(),
         };
@@ -181,12 +182,12 @@ impl TypedTool for WorkflowWriteTool {
         ctx.publish_state(xylitol_plugin_sdk::lifecycle::XyEvent::WorkflowUpdated {
             workflow: workflow.clone(),
         });
-        let runnable = runnable_workflow_step(&workflow, &HashSet::new())
-            .map(|step| step.id.clone())
+        let runnable = runnable_workflow_task(&workflow, &HashSet::new())
+            .map(|task| task.id.clone())
             .unwrap_or_default();
         Ok(json!({
             "goal": workflow.goal,
-            "steps": workflow.steps.len(),
+            "tasks": workflow.tasks.len(),
             "completed": workflow.completed_count(),
             "runnable": runnable,
         })
@@ -248,7 +249,7 @@ impl WorkflowFailTool {
 #[derive(Debug, Deserialize)]
 pub struct WorkflowFailArgs {
     #[serde(default)]
-    pub step_id: Option<String>,
+    pub task_id: Option<String>,
     pub reason: String,
 }
 
@@ -261,7 +262,7 @@ impl TypedTool for WorkflowFailTool {
     }
 
     fn description(&self) -> &str {
-        "Mark a workflow step failed with a reason. Defaults to the current in_progress step."
+        "Mark a workflow task failed with a reason. Defaults to the current in_progress task."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -270,9 +271,9 @@ impl TypedTool for WorkflowFailTool {
             "additionalProperties": false,
             "required": ["reason"],
             "properties": {
-                "step_id": {
+                "task_id": {
                     "type": "string",
-                    "description": "Defaults to the current in_progress step"
+                    "description": "Defaults to the current in_progress task"
                 },
                 "reason": {
                     "type": "string",
@@ -302,28 +303,23 @@ impl TypedTool for WorkflowFailTool {
         let Some(mut workflow) = previous.clone() else {
             return Err(XyToolError::InvalidArgs("workflow not found".into()));
         };
-        let target = match args.step_id.as_deref() {
-            Some(id) => workflow.steps.iter_mut().find(|step| step.id == id),
+        let target = match args.task_id.as_deref() {
+            Some(id) => workflow.tasks.iter_mut().find(|task| task.id == id),
             None => workflow
-                .steps
+                .tasks
                 .iter_mut()
-                .find(|step| step.status == WorkflowStepStatus::InProgress),
+                .find(|task| task.status == WorkflowTaskStatus::InProgress),
         };
-        let Some(step) = target else {
-            return Err(XyToolError::InvalidArgs(match args.step_id.as_deref() {
-                Some(id) => format!("step not found: {id}"),
-                None => "no in_progress step".into(),
+        let Some(task) = target else {
+            return Err(XyToolError::InvalidArgs(match args.task_id.as_deref() {
+                Some(id) => format!("task not found: {id}"),
+                None => "no in_progress task".into(),
             }));
         };
-        if step.status == WorkflowStepStatus::Completed {
-            return Err(XyToolError::InvalidArgs(format!(
-                "step {} is completed",
-                step.id
-            )));
-        }
-        let step_id = step.id.clone();
-        step.status = WorkflowStepStatus::Failed;
-        step.output_ref = Some(format!("failure:{reason}"));
+        let task_id = task.id.clone();
+        task.status = task_transition(task.status, WorkflowTaskEvent::Fail)
+            .map_err(|error| XyToolError::InvalidArgs(error.0))?;
+        task.output_ref = Some(format!("failure:{reason}"));
         workflow.updated_at = now_ms();
         validate_workflow_replan(previous.as_ref(), &workflow)
             .map_err(|e| XyToolError::InvalidArgs(e.0))?;
@@ -332,7 +328,7 @@ impl TypedTool for WorkflowFailTool {
             workflow: workflow.clone(),
         });
         Ok(json!({
-            "step_id": step_id,
+            "task_id": task_id,
             "status": "failed",
             "reason": reason,
         })
@@ -378,8 +374,8 @@ mod tests {
         (gateway, store)
     }
 
-    fn step(id: &str, status: xylitol_plugin_sdk::session::WorkflowStepStatus) -> WorkflowStep {
-        WorkflowStep {
+    fn task(id: &str, status: xylitol_plugin_sdk::session::WorkflowTaskStatus) -> WorkflowTask {
+        WorkflowTask {
             id: id.into(),
             description: format!("do {id}"),
             depends_on: Vec::new(),
@@ -411,7 +407,7 @@ mod tests {
                 &ctx,
                 serde_json::json!({
                     "goal": "ship",
-                    "steps": [{"id": "s1", "description": "do it"}]
+                    "tasks": [{"id": "s1", "description": "do it"}]
                 }),
             )
             .await
@@ -447,7 +443,7 @@ mod tests {
                 &ctx,
                 serde_json::json!({
                     "goal": "bad",
-                    "steps": [
+                    "tasks": [
                         {"id": "s1", "description": "one", "depends_on": ["missing"]}
                     ]
                 }),
@@ -468,9 +464,9 @@ mod tests {
         let (gateway, store) = gateway().await;
         let first = Workflow {
             goal: "ship".into(),
-            steps: vec![step(
+            tasks: vec![task(
                 "s1",
-                xylitol_plugin_sdk::session::WorkflowStepStatus::Completed,
+                xylitol_plugin_sdk::session::WorkflowTaskStatus::Completed,
             )],
             resume_cursor: None,
             updated_at: 1,
@@ -489,7 +485,7 @@ mod tests {
                 &XyToolCtx::new("c1"),
                 serde_json::json!({
                     "goal": "ship",
-                    "steps": [{"id": "s1", "description": "rewritten"}]
+                    "tasks": [{"id": "s1", "description": "rewritten"}]
                 }),
             )
             .await
@@ -508,9 +504,9 @@ mod tests {
         assert!(matches!(err, XyToolError::InvalidArgs(_)));
         let workflow = Workflow {
             goal: "ship".into(),
-            steps: vec![step(
+            tasks: vec![task(
                 "s1",
-                xylitol_plugin_sdk::session::WorkflowStepStatus::Pending,
+                xylitol_plugin_sdk::session::WorkflowTaskStatus::Pending,
             )],
             resume_cursor: None,
             updated_at: 2,
@@ -533,10 +529,10 @@ mod tests {
             .expect("seed workflow");
     }
 
-    fn workflow_with(status: xylitol_plugin_sdk::session::WorkflowStepStatus) -> Workflow {
+    fn workflow_with(status: xylitol_plugin_sdk::session::WorkflowTaskStatus) -> Workflow {
         Workflow {
             goal: "ship".into(),
-            steps: vec![step("s1", status)],
+            tasks: vec![task("s1", status)],
             resume_cursor: None,
             updated_at: 3,
         }
@@ -544,10 +540,10 @@ mod tests {
 
     #[tokio::test]
     async fn fail_marks_in_progress_step_and_publishes() {
-        use xylitol_plugin_sdk::session::WorkflowStepStatus;
+        use xylitol_plugin_sdk::session::WorkflowTaskStatus;
 
         let (gateway, store) = gateway().await;
-        seed(&store, &workflow_with(WorkflowStepStatus::InProgress)).await;
+        seed(&store, &workflow_with(WorkflowTaskStatus::InProgress)).await;
         let tool = WorkflowFailTool::new(gateway);
         let (tx, mut rx) = mpsc::unbounded_channel();
         let ctx = XyToolCtx::new("c1").with_state_event_tx(tx);
@@ -555,40 +551,57 @@ mod tests {
             .execute(&ctx, serde_json::json!({"reason": "tests failed"}))
             .await
             .expect("fail");
-        assert!(out.contains("\"step_id\":\"s1\""), "{out}");
+        assert!(out.contains("\"task_id\":\"s1\""), "{out}");
         assert!(matches!(
             rx.recv().await.expect("event"),
             xylitol_plugin_sdk::lifecycle::XyEvent::WorkflowUpdated { .. }
         ));
         let latest = latest_workflow(&store.load_leaf_branch("s1").await.expect("branch"))
             .expect("latest workflow");
-        assert_eq!(latest.steps[0].status, WorkflowStepStatus::Failed);
+        assert_eq!(latest.tasks[0].status, WorkflowTaskStatus::Failed);
         assert_eq!(
-            latest.steps[0].output_ref.as_deref(),
+            latest.tasks[0].output_ref.as_deref(),
             Some("failure:tests failed")
         );
     }
 
     #[tokio::test]
-    async fn fail_accepts_explicit_step_id() {
-        use xylitol_plugin_sdk::session::WorkflowStepStatus;
+    async fn fail_accepts_explicit_task_id() {
+        use xylitol_plugin_sdk::session::WorkflowTaskStatus;
 
         let (gateway, store) = gateway().await;
-        seed(&store, &workflow_with(WorkflowStepStatus::Pending)).await;
+        seed(&store, &workflow_with(WorkflowTaskStatus::InProgress)).await;
         let tool = WorkflowFailTool::new(gateway);
         let out = tool
             .execute(
                 &XyToolCtx::new("c1"),
-                serde_json::json!({"step_id": "s1", "reason": "blocked"}),
+                serde_json::json!({"task_id": "s1", "reason": "blocked"}),
             )
             .await
-            .expect("explicit step");
+            .expect("explicit task");
         assert!(out.contains("\"status\":\"failed\""), "{out}");
     }
 
     #[tokio::test]
+    async fn fail_rejects_pending_target() {
+        use xylitol_plugin_sdk::session::WorkflowTaskStatus;
+
+        let (gateway, store) = gateway().await;
+        seed(&store, &workflow_with(WorkflowTaskStatus::Pending)).await;
+        let tool = WorkflowFailTool::new(gateway);
+        let err = tool
+            .execute(
+                &XyToolCtx::new("c1"),
+                serde_json::json!({"task_id": "s1", "reason": "blocked"}),
+            )
+            .await
+            .expect_err("pending cannot fail directly");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+    }
+
+    #[tokio::test]
     async fn fail_rejects_completed_and_missing_targets() {
-        use xylitol_plugin_sdk::session::WorkflowStepStatus;
+        use xylitol_plugin_sdk::session::WorkflowTaskStatus;
 
         let (gateway, store) = gateway().await;
         let tool = WorkflowFailTool::new(gateway.clone());
@@ -598,29 +611,29 @@ mod tests {
             .expect_err("missing workflow");
         assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
 
-        seed(&store, &workflow_with(WorkflowStepStatus::Completed)).await;
+        seed(&store, &workflow_with(WorkflowTaskStatus::Completed)).await;
         let err = tool
             .execute(&XyToolCtx::new("c1"), serde_json::json!({"reason": "x"}))
             .await
-            .expect_err("completed step");
+            .expect_err("completed task");
         assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
 
         let err = tool
             .execute(
                 &XyToolCtx::new("c1"),
-                serde_json::json!({"step_id": "missing", "reason": "x"}),
+                serde_json::json!({"task_id": "missing", "reason": "x"}),
             )
             .await
-            .expect_err("missing step");
+            .expect_err("missing task");
         assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
     }
 
     #[tokio::test]
     async fn fail_rejects_empty_reason_and_missing_in_progress() {
-        use xylitol_plugin_sdk::session::WorkflowStepStatus;
+        use xylitol_plugin_sdk::session::WorkflowTaskStatus;
 
         let (gateway, store) = gateway().await;
-        seed(&store, &workflow_with(WorkflowStepStatus::Pending)).await;
+        seed(&store, &workflow_with(WorkflowTaskStatus::Pending)).await;
         let tool = WorkflowFailTool::new(gateway);
         let err = tool
             .execute(&XyToolCtx::new("c1"), serde_json::json!({"reason": "   "}))

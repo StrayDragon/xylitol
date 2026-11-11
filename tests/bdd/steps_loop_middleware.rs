@@ -2109,7 +2109,7 @@ thread_local! {
     static WORKFLOW_TOOL_OUT: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
 }
 
-#[given("workflow 插件启用且写入含一个 pending 步骤的 workflow")]
+#[given("workflow 插件启用且写入含一个 pending 任务的 workflow")]
 pub(crate) fn g_workflow_tool_write() {
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
@@ -2130,7 +2130,7 @@ pub(crate) fn g_workflow_tool_write() {
         &xylitol_plugin_sdk::XyToolCtx::new("bdd-workflow"),
         serde_json::json!({
             "goal": "ship",
-            "steps": [{"id": "s1", "description": "do it", "verification": "tests pass"}]
+            "tasks": [{"id": "s1", "description": "do it", "verification": "tests pass"}]
         }),
     ))
     .expect("workflow_write");
@@ -2160,7 +2160,7 @@ pub(crate) fn g_workflow_tool_write() {
     });
 }
 
-#[then("注入当前步骤指令")]
+#[then("注入当前任务指令")]
 pub(crate) fn t_workflow_tool_step() {
     let messages = WORKFLOW_TOOL_OUT
         .with(|slot| slot.borrow().clone())
@@ -2179,10 +2179,10 @@ thread_local! {
 
 fn nested_leaf(
     id: &str,
-    status: xylitol_plugin_sdk::session::WorkflowStepStatus,
-) -> xylitol_plugin_sdk::session::WorkflowStep {
-    use xylitol_plugin_sdk::session::{WorkflowRisk, WorkflowStep};
-    WorkflowStep {
+    status: xylitol_plugin_sdk::session::WorkflowTaskStatus,
+) -> xylitol_plugin_sdk::session::WorkflowTask {
+    use xylitol_plugin_sdk::session::{WorkflowRisk, WorkflowTask};
+    WorkflowTask {
         id: id.into(),
         description: format!("do {id}"),
         depends_on: Vec::new(),
@@ -2199,24 +2199,24 @@ fn nested_leaf(
     }
 }
 
-#[given("嵌套 workflow 的子步骤已完成")]
+#[given("嵌套 workflow 的子任务已完成")]
 pub(crate) fn g_nested_workflow_child_completed() {
-    use xylitol_plugin_sdk::session::{Workflow, WorkflowStepStatus};
+    use xylitol_plugin_sdk::session::{Workflow, WorkflowTaskStatus};
 
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
     futures::executor::block_on(store.create("s-nested", Some("."), None)).expect("create");
     let child = Workflow {
         goal: "child".into(),
-        steps: vec![nested_leaf("c1", WorkflowStepStatus::Completed)],
+        tasks: vec![nested_leaf("c1", WorkflowTaskStatus::Completed)],
         resume_cursor: None,
         updated_at: 1,
     };
     let root = Workflow {
         goal: "root".into(),
-        steps: vec![xylitol_plugin_sdk::session::WorkflowStep {
+        tasks: vec![xylitol_plugin_sdk::session::WorkflowTask {
             sub_workflow: Some(Box::new(child)),
-            ..nested_leaf("s1", WorkflowStepStatus::Pending)
+            ..nested_leaf("s1", WorkflowTaskStatus::Pending)
         }],
         resume_cursor: None,
         updated_at: 1,
@@ -2264,16 +2264,16 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
-#[given("workflow 插件启用且 workflow 含一个 in_progress 步骤")]
+#[given("workflow 插件启用且 workflow 含一个 in_progress 任务")]
 pub(crate) fn g_workflow_fail_ready() {
-    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowStep, WorkflowStepStatus};
+    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowTask, WorkflowTaskStatus};
 
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
     futures::executor::block_on(store.create("s-workflow-fail", Some("."), None)).expect("create");
     let workflow = Workflow {
         goal: "ship".into(),
-        steps: vec![WorkflowStep {
+        tasks: vec![WorkflowTask {
             id: "s1".into(),
             description: "do it".into(),
             depends_on: Vec::new(),
@@ -2284,7 +2284,7 @@ pub(crate) fn g_workflow_fail_ready() {
             verification: Some("tests pass".into()),
             rollback: None,
             requires_human: false,
-            status: WorkflowStepStatus::InProgress,
+            status: WorkflowTaskStatus::InProgress,
             output_ref: None,
             sub_workflow: None,
         }],
@@ -2322,7 +2322,7 @@ pub(crate) fn w_workflow_fail() {
     .expect("workflow_fail");
 }
 
-#[then("该步骤状态为 failed 且下一轮 before_llm_request 注入局部重规划指令")]
+#[then("该任务状态为 failed 且下一轮 before_llm_request 注入局部重规划指令")]
 pub(crate) fn t_workflow_fail_replans() {
     let store = WORKFLOW_FAIL_STORE
         .with(|slot| slot.borrow().clone())
@@ -2331,11 +2331,11 @@ pub(crate) fn t_workflow_fail_replans() {
         futures::executor::block_on(store.load_leaf_branch("s-workflow-fail")).expect("branch");
     let latest = xylitol_plugin_sdk::session::latest_workflow(&branch).expect("latest workflow");
     assert_eq!(
-        latest.steps[0].status,
-        xylitol_plugin_sdk::session::WorkflowStepStatus::Failed
+        latest.tasks[0].status,
+        xylitol_plugin_sdk::session::WorkflowTaskStatus::Failed
     );
     assert_eq!(
-        latest.steps[0].output_ref.as_deref(),
+        latest.tasks[0].output_ref.as_deref(),
         Some("failure:verification failed")
     );
     let mw = xylitol_official_plugin_workflow::workflow_middleware(

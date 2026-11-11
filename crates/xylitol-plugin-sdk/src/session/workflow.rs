@@ -19,7 +19,7 @@ pub enum WorkflowRisk {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum WorkflowStepStatus {
+pub enum WorkflowTaskStatus {
     #[default]
     Pending,
     InProgress,
@@ -28,9 +28,52 @@ pub enum WorkflowStepStatus {
     Blocked,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowPhase {
+    Contract,
+    Executing,
+    AwaitingApproval,
+    Replanning,
+    SubWorkflow,
+    Summarizing,
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowTaskEvent {
+    Start,
+    Finish,
+    Fail,
+    Block,
+    Approve,
+    Replan,
+}
+
+pub fn task_transition(
+    from: WorkflowTaskStatus,
+    event: WorkflowTaskEvent,
+) -> Result<WorkflowTaskStatus, WorkflowValidationError> {
+    let next = match (from, event) {
+        (WorkflowTaskStatus::Pending, WorkflowTaskEvent::Start) => WorkflowTaskStatus::InProgress,
+        (WorkflowTaskStatus::InProgress, WorkflowTaskEvent::Finish) => {
+            WorkflowTaskStatus::Completed
+        }
+        (WorkflowTaskStatus::InProgress, WorkflowTaskEvent::Fail) => WorkflowTaskStatus::Failed,
+        (WorkflowTaskStatus::InProgress, WorkflowTaskEvent::Block) => WorkflowTaskStatus::Blocked,
+        (WorkflowTaskStatus::Blocked, WorkflowTaskEvent::Approve) => WorkflowTaskStatus::InProgress,
+        (WorkflowTaskStatus::Failed, WorkflowTaskEvent::Replan) => WorkflowTaskStatus::InProgress,
+        _ => {
+            return Err(WorkflowValidationError(format!(
+                "illegal workflow task transition: {from:?} --{event:?}-->"
+            )));
+        }
+    };
+    Ok(next)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct WorkflowStep {
+pub struct WorkflowTask {
     pub id: String,
     pub description: String,
     #[serde(default)]
@@ -50,7 +93,7 @@ pub struct WorkflowStep {
     #[serde(default)]
     pub requires_human: bool,
     #[serde(default)]
-    pub status: WorkflowStepStatus,
+    pub status: WorkflowTaskStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -63,7 +106,7 @@ pub struct Workflow {
     #[serde(default)]
     pub goal: String,
     #[serde(default)]
-    pub steps: Vec<WorkflowStep>,
+    pub tasks: Vec<WorkflowTask>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_cursor: Option<String>,
     #[serde(default)]
@@ -83,26 +126,26 @@ impl std::error::Error for WorkflowValidationError {}
 
 impl Workflow {
     pub fn is_empty(&self) -> bool {
-        self.steps.is_empty()
+        self.tasks.is_empty()
     }
 
     pub fn all_completed(&self) -> bool {
-        !self.steps.is_empty()
+        !self.tasks.is_empty()
             && self
-                .steps
+                .tasks
                 .iter()
-                .all(|step| step.status == WorkflowStepStatus::Completed)
+                .all(|task| task.status == WorkflowTaskStatus::Completed)
     }
 
     pub fn completed_count(&self) -> usize {
-        self.steps
+        self.tasks
             .iter()
-            .filter(|step| step.status == WorkflowStepStatus::Completed)
+            .filter(|task| task.status == WorkflowTaskStatus::Completed)
             .count()
     }
 
-    pub fn step(&self, id: &str) -> Option<&WorkflowStep> {
-        self.steps.iter().find(|step| step.id == id)
+    pub fn task(&self, id: &str) -> Option<&WorkflowTask> {
+        self.tasks.iter().find(|task| task.id == id)
     }
 
     pub fn to_data_value(&self) -> Value {
@@ -167,50 +210,50 @@ fn validate_workflow_level(
             "workflow nesting depth {depth} exceeds max_depth {max_depth}"
         )));
     }
-    if plan.steps.is_empty() {
+    if plan.tasks.is_empty() {
         return Err(WorkflowValidationError(
-            "workflow must have at least one step".into(),
+            "workflow must have at least one task".into(),
         ));
     }
-    *total += plan.steps.len();
+    *total += plan.tasks.len();
     if *total > max_total_steps {
         return Err(WorkflowValidationError(format!(
-            "workflow has {total} total steps, exceeds max_total_steps {max_total_steps}"
+            "workflow has {total} total tasks, exceeds max_total_steps {max_total_steps}"
         )));
     }
     let mut ids = HashSet::new();
-    for step in &plan.steps {
-        if step.id.trim().is_empty() {
+    for task in &plan.tasks {
+        if task.id.trim().is_empty() {
             return Err(WorkflowValidationError(
-                "workflow step id must be non-empty".into(),
+                "workflow task id must be non-empty".into(),
             ));
         }
-        if !ids.insert(step.id.clone()) {
+        if !ids.insert(task.id.clone()) {
             return Err(WorkflowValidationError(format!(
-                "duplicate workflow step id: {}",
-                step.id
+                "duplicate workflow task id: {}",
+                task.id
             )));
         }
     }
-    for step in &plan.steps {
-        for dependency in &step.depends_on {
-            if dependency == &step.id {
+    for task in &plan.tasks {
+        for dependency in &task.depends_on {
+            if dependency == &task.id {
                 return Err(WorkflowValidationError(format!(
-                    "workflow step {} depends on itself",
-                    step.id
+                    "workflow task {} depends on itself",
+                    task.id
                 )));
             }
             if !ids.contains(dependency) {
                 return Err(WorkflowValidationError(format!(
-                    "workflow step {} depends on unknown step {}",
-                    step.id, dependency
+                    "workflow task {} depends on unknown task {}",
+                    task.id, dependency
                 )));
             }
         }
     }
     detect_cycle(plan)?;
-    for step in &plan.steps {
-        if let Some(sub) = step.sub_workflow.as_deref() {
+    for task in &plan.tasks {
+        if let Some(sub) = task.sub_workflow.as_deref() {
             validate_workflow_level(sub, depth + 1, max_depth, max_total_steps, total)?;
         }
     }
@@ -232,8 +275,8 @@ fn detect_cycle(plan: &Workflow) -> Result<(), WorkflowValidationError> {
                 "workflow has a dependency cycle at {id}"
             )));
         }
-        if let Some(step) = plan.step(id) {
-            for dependency in &step.depends_on {
+        if let Some(task) = plan.task(id) {
+            for dependency in &task.depends_on {
                 visit(dependency, plan, visiting, visited)?;
             }
         }
@@ -244,62 +287,62 @@ fn detect_cycle(plan: &Workflow) -> Result<(), WorkflowValidationError> {
 
     let mut visiting = HashSet::new();
     let mut visited = HashSet::new();
-    for step in &plan.steps {
-        visit(&step.id, plan, &mut visiting, &mut visited)?;
+    for task in &plan.tasks {
+        visit(&task.id, plan, &mut visiting, &mut visited)?;
     }
     Ok(())
 }
 
-pub fn runnable_workflow_step<'a>(
+pub fn runnable_workflow_task<'a>(
     plan: &'a Workflow,
     approved: &HashSet<String>,
-) -> Option<&'a WorkflowStep> {
+) -> Option<&'a WorkflowTask> {
     let completed: HashSet<&str> = plan
-        .steps
+        .tasks
         .iter()
-        .filter(|step| step.status == WorkflowStepStatus::Completed)
-        .map(|step| step.id.as_str())
+        .filter(|task| task.status == WorkflowTaskStatus::Completed)
+        .map(|task| task.id.as_str())
         .collect();
-    plan.steps.iter().find(|step| {
-        step.status == WorkflowStepStatus::Pending
-            && step
+    plan.tasks.iter().find(|task| {
+        task.status == WorkflowTaskStatus::Pending
+            && task
                 .depends_on
                 .iter()
                 .all(|dependency| completed.contains(dependency.as_str()))
-            && (!step.requires_human || approved.contains(&step.id))
+            && (!task.requires_human || approved.contains(&task.id))
     })
 }
 
-pub fn blocked_workflow_step<'a>(
+pub fn blocked_workflow_task<'a>(
     plan: &'a Workflow,
     approved: &HashSet<String>,
-) -> Option<&'a WorkflowStep> {
+) -> Option<&'a WorkflowTask> {
     let completed: HashSet<&str> = plan
-        .steps
+        .tasks
         .iter()
-        .filter(|step| step.status == WorkflowStepStatus::Completed)
-        .map(|step| step.id.as_str())
+        .filter(|task| task.status == WorkflowTaskStatus::Completed)
+        .map(|task| task.id.as_str())
         .collect();
-    plan.steps.iter().find(|step| {
-        step.status == WorkflowStepStatus::Pending
-            && step
+    plan.tasks.iter().find(|task| {
+        task.status == WorkflowTaskStatus::Pending
+            && task
                 .depends_on
                 .iter()
                 .all(|dependency| completed.contains(dependency.as_str()))
-            && step.requires_human
-            && !approved.contains(&step.id)
+            && task.requires_human
+            && !approved.contains(&task.id)
     })
 }
 
-pub fn workflow_downstream_ids(plan: &Workflow, step_id: &str) -> HashSet<String> {
+pub fn workflow_downstream_ids(plan: &Workflow, task_id: &str) -> HashSet<String> {
     let mut out = HashSet::new();
-    let mut queue = vec![step_id.to_string()];
+    let mut queue = vec![task_id.to_string()];
     while let Some(id) = queue.pop() {
-        for step in &plan.steps {
-            if step.depends_on.iter().any(|dependency| dependency == &id)
-                && out.insert(step.id.clone())
+        for task in &plan.tasks {
+            if task.depends_on.iter().any(|dependency| dependency == &id)
+                && out.insert(task.id.clone())
             {
-                queue.push(step.id.clone());
+                queue.push(task.id.clone());
             }
         }
     }
@@ -314,70 +357,70 @@ pub fn validate_workflow_replan(
     let Some(previous) = previous else {
         return Ok(());
     };
-    let previous_by_id: HashMap<&str, &WorkflowStep> = previous
-        .steps
+    let previous_by_id: HashMap<&str, &WorkflowTask> = previous
+        .tasks
         .iter()
-        .map(|step| (step.id.as_str(), step))
+        .map(|task| (task.id.as_str(), task))
         .collect();
-    let next_by_id: HashMap<&str, &WorkflowStep> = next
-        .steps
+    let next_by_id: HashMap<&str, &WorkflowTask> = next
+        .tasks
         .iter()
-        .map(|step| (step.id.as_str(), step))
+        .map(|task| (task.id.as_str(), task))
         .collect();
 
-    for step in &previous.steps {
-        if step.status != WorkflowStepStatus::Completed {
+    for task in &previous.tasks {
+        if task.status != WorkflowTaskStatus::Completed {
             continue;
         }
-        let Some(next_step) = next_by_id.get(step.id.as_str()) else {
+        let Some(next_step) = next_by_id.get(task.id.as_str()) else {
             return Err(WorkflowValidationError(format!(
-                "completed step {} must not be removed",
-                step.id
+                "completed task {} must not be removed",
+                task.id
             )));
         };
-        if next_step.status != WorkflowStepStatus::Completed {
+        if next_step.status != WorkflowTaskStatus::Completed {
             return Err(WorkflowValidationError(format!(
-                "completed step {} must stay completed",
-                step.id
+                "completed task {} must stay completed",
+                task.id
             )));
         }
-        if !same_structure(step, next_step) {
+        if !same_structure(task, next_step) {
             return Err(WorkflowValidationError(format!(
-                "completed step {} must not be rewritten",
-                step.id
+                "completed task {} must not be rewritten",
+                task.id
             )));
         }
     }
 
     let mut allowed = HashSet::new();
     for failed in previous
-        .steps
+        .tasks
         .iter()
-        .filter(|step| step.status == WorkflowStepStatus::Failed)
+        .filter(|task| task.status == WorkflowTaskStatus::Failed)
     {
         allowed.insert(failed.id.clone());
         allowed.extend(workflow_downstream_ids(previous, &failed.id));
     }
 
-    for step in &previous.steps {
-        if step.status == WorkflowStepStatus::Completed || allowed.contains(&step.id) {
+    for task in &previous.tasks {
+        if task.status == WorkflowTaskStatus::Completed || allowed.contains(&task.id) {
             continue;
         }
-        let Some(next_step) = next_by_id.get(step.id.as_str()) else {
+        let Some(next_step) = next_by_id.get(task.id.as_str()) else {
             return Err(WorkflowValidationError(format!(
-                "step {} may only be removed after it fails",
-                step.id
+                "task {} may only be removed after it fails",
+                task.id
             )));
         };
-        if !same_structure(step, next_step) {
+        if !same_structure(task, next_step) {
             return Err(WorkflowValidationError(format!(
-                "step {} is not downstream of a failure and must not be rewritten",
-                step.id
+                "task {} is not downstream of a failure and must not be rewritten",
+                task.id
             )));
         }
     }
 
-    for next_step in &next.steps {
+    for next_step in &next.tasks {
         if previous_by_id.contains_key(next_step.id.as_str()) || allowed.contains(&next_step.id) {
             continue;
         }
@@ -385,11 +428,11 @@ pub fn validate_workflow_replan(
             allowed.contains(dependency)
                 || previous_by_id
                     .get(dependency.as_str())
-                    .is_some_and(|step| step.status == WorkflowStepStatus::Completed)
+                    .is_some_and(|task| task.status == WorkflowTaskStatus::Completed)
         });
         if !dependencies_ok {
             return Err(WorkflowValidationError(format!(
-                "new step {} must depend on completed or replanned steps",
+                "new task {} must depend on completed or replanned tasks",
                 next_step.id
             )));
         }
@@ -398,7 +441,7 @@ pub fn validate_workflow_replan(
     Ok(())
 }
 
-fn same_structure(left: &WorkflowStep, right: &WorkflowStep) -> bool {
+fn same_structure(left: &WorkflowTask, right: &WorkflowTask) -> bool {
     left.description == right.description
         && left.depends_on == right.depends_on
         && left.inputs == right.inputs
@@ -415,14 +458,72 @@ fn same_workflow_structure(left: Option<&Workflow>, right: Option<&Workflow>) ->
         (None, None) => true,
         (Some(left), Some(right)) => {
             left.goal == right.goal
-                && left.steps.len() == right.steps.len()
+                && left.tasks.len() == right.tasks.len()
                 && left
-                    .steps
+                    .tasks
                     .iter()
-                    .zip(right.steps.iter())
+                    .zip(right.tasks.iter())
                     .all(|(left, right)| same_structure(left, right))
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod transition_tests {
+    use super::*;
+
+    #[test]
+    fn legal_transitions() {
+        use WorkflowTaskEvent as E;
+        use WorkflowTaskStatus as S;
+        assert_eq!(
+            task_transition(S::Pending, E::Start).unwrap(),
+            S::InProgress
+        );
+        assert_eq!(
+            task_transition(S::InProgress, E::Finish).unwrap(),
+            S::Completed
+        );
+        assert_eq!(task_transition(S::InProgress, E::Fail).unwrap(), S::Failed);
+        assert_eq!(
+            task_transition(S::InProgress, E::Block).unwrap(),
+            S::Blocked
+        );
+        assert_eq!(
+            task_transition(S::Blocked, E::Approve).unwrap(),
+            S::InProgress
+        );
+        assert_eq!(
+            task_transition(S::Failed, E::Replan).unwrap(),
+            S::InProgress
+        );
+    }
+
+    #[test]
+    fn completed_is_locked() {
+        use WorkflowTaskEvent as E;
+        use WorkflowTaskStatus as S;
+        for event in [
+            E::Start,
+            E::Finish,
+            E::Fail,
+            E::Block,
+            E::Approve,
+            E::Replan,
+        ] {
+            assert!(task_transition(S::Completed, event).is_err());
+        }
+    }
+
+    #[test]
+    fn pending_cannot_fail_directly() {
+        assert!(task_transition(WorkflowTaskStatus::Pending, WorkflowTaskEvent::Fail).is_err());
+    }
+
+    #[test]
+    fn blocked_requires_approval() {
+        assert!(task_transition(WorkflowTaskStatus::Blocked, WorkflowTaskEvent::Start).is_err());
     }
 }
 
@@ -431,8 +532,8 @@ mod tests {
     use super::*;
     use crate::session::{EntryBase, MessageEntry, fixture_message_json};
 
-    fn step(id: &str, status: WorkflowStepStatus, depends_on: &[&str]) -> WorkflowStep {
-        WorkflowStep {
+    fn task(id: &str, status: WorkflowTaskStatus, depends_on: &[&str]) -> WorkflowTask {
+        WorkflowTask {
             id: id.into(),
             description: format!("do {id}"),
             depends_on: depends_on.iter().map(|dep| dep.to_string()).collect(),
@@ -449,10 +550,10 @@ mod tests {
         }
     }
 
-    fn plan(steps: Vec<WorkflowStep>) -> Workflow {
+    fn plan(tasks: Vec<WorkflowTask>) -> Workflow {
         Workflow {
             goal: "ship".into(),
-            steps,
+            tasks,
             resume_cursor: None,
             updated_at: 1,
         }
@@ -460,32 +561,32 @@ mod tests {
 
     #[test]
     fn step_tools_round_trip_and_default_to_empty() {
-        let mut declared = step("s1", WorkflowStepStatus::Pending, &[]);
+        let mut declared = task("s1", WorkflowTaskStatus::Pending, &[]);
         declared.tools = vec!["write".into(), "edit".into()];
         let wf = plan(vec![declared]);
         let back = Workflow::from_data_value(&wf.to_data_value()).expect("round trip");
-        assert_eq!(back.steps[0].tools, vec!["write", "edit"]);
+        assert_eq!(back.tasks[0].tools, vec!["write", "edit"]);
 
         let legacy = serde_json::json!({
             "goal": "ship",
-            "steps": [{"id": "s1", "description": "do it"}]
+            "tasks": [{"id": "s1", "description": "do it"}]
         });
         let parsed = Workflow::from_data_value(&legacy).expect("legacy workflow");
         assert!(
-            parsed.steps[0].tools.is_empty(),
+            parsed.tasks[0].tools.is_empty(),
             "legacy workflows without tools must keep the coarse attribution path"
         );
     }
 
     #[test]
     fn same_workflow_structure_ignores_status_and_outputs() {
-        let mut left = plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]);
+        let mut left = plan(vec![task("s1", WorkflowTaskStatus::Pending, &[])]);
         let mut right = left.clone();
-        right.steps[0].status = WorkflowStepStatus::Completed;
-        right.steps[0].output_ref = Some("artifact".into());
+        right.tasks[0].status = WorkflowTaskStatus::Completed;
+        right.tasks[0].output_ref = Some("artifact".into());
         assert!(same_workflow_structure(Some(&left), Some(&right)));
 
-        left.steps[0].description = "changed".into();
+        left.tasks[0].description = "changed".into();
         assert!(!same_workflow_structure(Some(&left), Some(&right)));
         assert!(!same_workflow_structure(None, Some(&right)));
         assert!(same_workflow_structure(None, None));
@@ -493,8 +594,8 @@ mod tests {
 
     #[test]
     fn plan_round_trips_and_latest_wins() {
-        let first = plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]);
-        let second = plan(vec![step("s1", WorkflowStepStatus::Completed, &[])]);
+        let first = plan(vec![task("s1", WorkflowTaskStatus::Pending, &[])]);
+        let second = plan(vec![task("s1", WorkflowTaskStatus::Completed, &[])]);
         let entries = vec![
             first.to_custom_entry_shell(),
             SessionEntry::Message(MessageEntry {
@@ -515,7 +616,7 @@ mod tests {
     #[test]
     fn legacy_plan_entry_is_read_as_workflow() {
         let mut entry =
-            plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]).to_custom_entry_shell();
+            plan(vec![task("s1", WorkflowTaskStatus::Pending, &[])]).to_custom_entry_shell();
         if let SessionEntry::Custom(custom) = &mut entry {
             custom.custom_type = "plan".into();
         }
@@ -526,7 +627,7 @@ mod tests {
     #[test]
     fn new_workflow_writes_new_custom_type() {
         let entry =
-            plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]).to_custom_entry_shell();
+            plan(vec![task("s1", WorkflowTaskStatus::Pending, &[])]).to_custom_entry_shell();
         let SessionEntry::Custom(custom) = entry else {
             panic!("workflow must persist as a custom entry");
         };
@@ -537,23 +638,23 @@ mod tests {
     fn validate_rejects_duplicate_missing_and_cycles() {
         assert!(
             validate_workflow(&plan(vec![
-                step("s1", WorkflowStepStatus::Pending, &[]),
-                step("s1", WorkflowStepStatus::Pending, &[]),
+                task("s1", WorkflowTaskStatus::Pending, &[]),
+                task("s1", WorkflowTaskStatus::Pending, &[]),
             ]))
             .is_err()
         );
         assert!(
-            validate_workflow(&plan(vec![step(
+            validate_workflow(&plan(vec![task(
                 "s1",
-                WorkflowStepStatus::Pending,
+                WorkflowTaskStatus::Pending,
                 &["nope"]
             )]))
             .is_err()
         );
         assert!(
             validate_workflow(&plan(vec![
-                step("s1", WorkflowStepStatus::Pending, &["s2"]),
-                step("s2", WorkflowStepStatus::Pending, &["s1"]),
+                task("s1", WorkflowTaskStatus::Pending, &["s2"]),
+                task("s2", WorkflowTaskStatus::Pending, &["s1"]),
             ]))
             .is_err()
         );
@@ -561,35 +662,35 @@ mod tests {
 
     #[test]
     fn runnable_respects_dependencies_and_approval() {
-        let mut human = step("s3", WorkflowStepStatus::Pending, &["s1"]);
+        let mut human = task("s3", WorkflowTaskStatus::Pending, &["s1"]);
         human.requires_human = true;
         let sample = plan(vec![
-            step("s1", WorkflowStepStatus::Completed, &[]),
-            step("s2", WorkflowStepStatus::Pending, &["s1"]),
+            task("s1", WorkflowTaskStatus::Completed, &[]),
+            task("s2", WorkflowTaskStatus::Pending, &["s1"]),
             human,
         ]);
         let approved = HashSet::new();
         assert_eq!(
-            runnable_workflow_step(&sample, &approved).map(|step| step.id.as_str()),
+            runnable_workflow_task(&sample, &approved).map(|task| task.id.as_str()),
             Some("s2")
         );
         assert_eq!(
-            blocked_workflow_step(&sample, &approved).map(|step| step.id.as_str()),
+            blocked_workflow_task(&sample, &approved).map(|task| task.id.as_str()),
             Some("s3")
         );
         let mut approved = HashSet::new();
         approved.insert("s3".into());
         assert_eq!(
-            runnable_workflow_step(&sample, &approved).map(|step| step.id.as_str()),
+            runnable_workflow_task(&sample, &approved).map(|task| task.id.as_str()),
             Some("s2")
         );
         let sample = plan(vec![
-            step("s1", WorkflowStepStatus::Completed, &[]),
-            step("s2", WorkflowStepStatus::Completed, &["s1"]),
-            step("s3", WorkflowStepStatus::Pending, &["s2"]),
+            task("s1", WorkflowTaskStatus::Completed, &[]),
+            task("s2", WorkflowTaskStatus::Completed, &["s1"]),
+            task("s3", WorkflowTaskStatus::Pending, &["s2"]),
         ]);
         assert_eq!(
-            runnable_workflow_step(&sample, &HashSet::new()).map(|step| step.id.as_str()),
+            runnable_workflow_task(&sample, &HashSet::new()).map(|task| task.id.as_str()),
             Some("s3")
         );
     }
@@ -597,10 +698,10 @@ mod tests {
     #[test]
     fn downstream_closure_is_transitive() {
         let plan = plan(vec![
-            step("s1", WorkflowStepStatus::Failed, &[]),
-            step("s2", WorkflowStepStatus::Pending, &["s1"]),
-            step("s3", WorkflowStepStatus::Pending, &["s2"]),
-            step("s4", WorkflowStepStatus::Pending, &[]),
+            task("s1", WorkflowTaskStatus::Failed, &[]),
+            task("s2", WorkflowTaskStatus::Pending, &["s1"]),
+            task("s3", WorkflowTaskStatus::Pending, &["s2"]),
+            task("s4", WorkflowTaskStatus::Pending, &[]),
         ]);
         let downstream = workflow_downstream_ids(&plan, "s1");
         assert!(downstream.contains("s2"));
@@ -611,36 +712,36 @@ mod tests {
     #[test]
     fn replan_locks_completed_and_unrelated_steps() {
         let previous = plan(vec![
-            step("s1", WorkflowStepStatus::Completed, &[]),
-            step("s2", WorkflowStepStatus::Failed, &["s1"]),
-            step("s3", WorkflowStepStatus::Pending, &["s2"]),
-            step("s4", WorkflowStepStatus::Pending, &[]),
+            task("s1", WorkflowTaskStatus::Completed, &[]),
+            task("s2", WorkflowTaskStatus::Failed, &["s1"]),
+            task("s3", WorkflowTaskStatus::Pending, &["s2"]),
+            task("s4", WorkflowTaskStatus::Pending, &[]),
         ]);
 
         let mut rewritten_completed = previous.clone();
-        rewritten_completed.steps[0].description = "changed".into();
+        rewritten_completed.tasks[0].description = "changed".into();
         assert!(validate_workflow_replan(Some(&previous), &rewritten_completed).is_err());
 
         let mut rewritten_unrelated = previous.clone();
-        rewritten_unrelated.steps[3].description = "changed".into();
+        rewritten_unrelated.tasks[3].description = "changed".into();
         assert!(validate_workflow_replan(Some(&previous), &rewritten_unrelated).is_err());
 
         let mut replanned = previous.clone();
-        replanned.steps[1].description = "do s2 differently".into();
-        replanned.steps[1].status = WorkflowStepStatus::Pending;
-        replanned.steps[2].description = "do s3 after the fix".into();
+        replanned.tasks[1].description = "do s2 differently".into();
+        replanned.tasks[1].status = WorkflowTaskStatus::Pending;
+        replanned.tasks[2].description = "do s3 after the fix".into();
         assert!(validate_workflow_replan(Some(&previous), &replanned).is_ok());
     }
 
     #[test]
     fn status_changes_are_allowed_without_failure() {
         let previous = plan(vec![
-            step("s1", WorkflowStepStatus::Completed, &[]),
-            step("s2", WorkflowStepStatus::Pending, &["s1"]),
+            task("s1", WorkflowTaskStatus::Completed, &[]),
+            task("s2", WorkflowTaskStatus::Pending, &["s1"]),
         ]);
         let mut next = previous.clone();
-        next.steps[1].status = WorkflowStepStatus::InProgress;
-        next.steps[1].output_ref = Some("artifact:1".into());
+        next.tasks[1].status = WorkflowTaskStatus::InProgress;
+        next.tasks[1].output_ref = Some("artifact:1".into());
         assert!(validate_workflow_replan(Some(&previous), &next).is_ok());
     }
 }
@@ -649,8 +750,8 @@ mod tests {
 mod nested_tests {
     use super::*;
 
-    fn leaf(id: &str) -> WorkflowStep {
-        WorkflowStep {
+    fn leaf(id: &str) -> WorkflowTask {
+        WorkflowTask {
             id: id.into(),
             description: format!("do {id}"),
             depends_on: Vec::new(),
@@ -661,23 +762,23 @@ mod nested_tests {
             verification: None,
             rollback: None,
             requires_human: false,
-            status: WorkflowStepStatus::Pending,
+            status: WorkflowTaskStatus::Pending,
             output_ref: None,
             sub_workflow: None,
         }
     }
 
-    fn container(id: &str, child: Workflow) -> WorkflowStep {
-        WorkflowStep {
+    fn container(id: &str, child: Workflow) -> WorkflowTask {
+        WorkflowTask {
             sub_workflow: Some(Box::new(child)),
             ..leaf(id)
         }
     }
 
-    fn root(steps: Vec<WorkflowStep>) -> Workflow {
+    fn root(tasks: Vec<WorkflowTask>) -> Workflow {
         Workflow {
             goal: "ship".into(),
-            steps,
+            tasks,
             resume_cursor: None,
             updated_at: 1,
         }

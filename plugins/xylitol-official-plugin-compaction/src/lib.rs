@@ -545,7 +545,7 @@ mod tests {
     use super::*;
     use xylitol_plugin_sdk::session::{
         ForkPosition, SessionContext, SessionEntry, TodoCheckpoint, TodoCheckpointStep, TodoStatus,
-        Workflow, WorkflowStep,
+        Workflow, WorkflowTask,
     };
     use xylitol_plugin_sdk::{XySessionError, XySessionStoreError};
 
@@ -605,7 +605,7 @@ mod tests {
     fn workflow() -> Workflow {
         Workflow {
             goal: "ship".into(),
-            steps: vec![WorkflowStep {
+            tasks: vec![WorkflowTask {
                 id: "s1".into(),
                 description: "do it".into(),
                 depends_on: Vec::new(),

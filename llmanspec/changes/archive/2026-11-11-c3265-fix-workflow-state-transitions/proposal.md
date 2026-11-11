@@ -2,6 +2,9 @@
 depends_on:
   - c3240-fix-react-loop-run-state
 title: "Fix workflow task state transitions"
+branch: sdd/c3265-fix-workflow-state-transitions
+base_branch: main
+base_sha: c9049cfb5fc25fd5417ef4e26f2018755bf4ad37
 ---
 
 # Workflow 任务状态转移修复（含 Step→Task 更名）

@@ -7,8 +7,9 @@ use async_trait::async_trait;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::rt::Ctx;
 use xylitol_plugin_sdk::session::{
-    Workflow, WorkflowStep, WorkflowStepStatus, blocked_workflow_step, latest_workflow,
-    runnable_workflow_step, workflow_downstream_ids,
+    Workflow, WorkflowPhase, WorkflowTask, WorkflowTaskEvent, WorkflowTaskStatus,
+    blocked_workflow_task, latest_workflow, runnable_workflow_task, task_transition,
+    workflow_downstream_ids,
 };
 use xylitol_plugin_sdk::{
     AfterToolCtx, BeforeLlmRequestCtx, DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep,
@@ -23,11 +24,11 @@ const WORKFLOW_STAGES: &[LoopStage] = &[
     LoopStage::DecideContinue,
 ];
 const WORKFLOW_CONTRACT: &str = "Workflow: create a workflow before acting. Call workflow_write \
-with the full workflow: {\"goal\":\"...\",\"steps\":[{\"id\":\"s1\",\"description\":\"...\",\
+with the full workflow: {\"goal\":\"...\",\"tasks\":[{\"id\":\"s1\",\"description\":\"...\",\
 \"depends_on\":[],\"inputs\":[],\"outputs\":[],\"tools\":[\"read\",\"write\"],\"risk\":\"low\",\
 \"verification\":\"...\",\"rollback\":\"...\",\"requires_human\":false,\"status\":\"pending\"}]}. \
-Declare the tools each step needs so unrelated tool failures do not fail the step. Do not emit a \
-<plan> block in assistant text. Keep exactly one step in_progress; mark it completed only after \
+Declare the tools each task needs so unrelated tool failures do not fail the task. Do not emit a \
+<plan> block in assistant text. Keep exactly one task in_progress; mark it completed only after \
 verification passes.";
 
 fn resolve_resume_cursor(plan: &Workflow) -> Workflow {
@@ -36,10 +37,10 @@ fn resolve_resume_cursor(plan: &Workflow) -> Workflow {
     };
     let mut current = plan.clone();
     for id in cursor.split('/').filter(|part| !part.is_empty()) {
-        let Some(step) = current.step(id) else {
+        let Some(task) = current.task(id) else {
             return plan.clone();
         };
-        match step.sub_workflow.as_deref() {
+        match task.sub_workflow.as_deref() {
             Some(sub) => current = sub.clone(),
             None => break,
         }
@@ -56,9 +57,9 @@ fn assistant_has_tool_calls(message: &AgentMessage) -> bool {
     }
 }
 
-fn workflow_properties(state: &WorkflowState, step: &str, blocked: bool) -> Vec<(String, String)> {
+fn workflow_properties(state: &WorkflowState, task: &str, blocked: bool) -> Vec<(String, String)> {
     vec![
-        ("loop.middleware.workflow.step".into(), step.to_string()),
+        ("loop.middleware.workflow.task".into(), task.to_string()),
         (
             "loop.middleware.workflow.depth".into(),
             (state.stack.len() + 1).to_string(),
@@ -71,6 +72,10 @@ fn workflow_properties(state: &WorkflowState, step: &str, blocked: bool) -> Vec<
             "loop.middleware.workflow.blocked".into(),
             blocked.to_string(),
         ),
+        (
+            "loop.middleware.workflow.phase".into(),
+            format!("{:?}", state.phase()),
+        ),
     ]
 }
 
@@ -82,24 +87,61 @@ struct WorkflowState {
     approved: HashSet<String>,
     replan_count: u32,
     contract_injected: bool,
-    injected_step: Option<String>,
+    injected_task: Option<String>,
     summary_injected: bool,
     summary_done: bool,
     pending_workflow_error: Option<String>,
 }
 
 impl WorkflowState {
-    fn step_to_fail(&mut self, tool_name: &str) -> Option<&mut WorkflowStep> {
-        let step = self
+    fn phase(&self) -> WorkflowPhase {
+        let Some(plan) = self.plan.as_ref() else {
+            return WorkflowPhase::Contract;
+        };
+        if !self.stack.is_empty() {
+            return WorkflowPhase::SubWorkflow;
+        }
+        if blocked_workflow_task(plan, &self.approved).is_some() {
+            return WorkflowPhase::AwaitingApproval;
+        }
+        if plan
+            .tasks
+            .iter()
+            .any(|task| task.status == WorkflowTaskStatus::Failed)
+        {
+            return WorkflowPhase::Replanning;
+        }
+        if plan.all_completed() {
+            return if self.summary_done {
+                WorkflowPhase::Done
+            } else {
+                WorkflowPhase::Summarizing
+            };
+        }
+        WorkflowPhase::Executing
+    }
+
+    fn mark_failed(&mut self, tool_name: &str) -> Option<String> {
+        let task = self.step_to_fail(tool_name)?;
+        if let Ok(next) = task_transition(task.status, WorkflowTaskEvent::Fail) {
+            task.status = next;
+            Some(task.id.clone())
+        } else {
+            None
+        }
+    }
+
+    fn step_to_fail(&mut self, tool_name: &str) -> Option<&mut WorkflowTask> {
+        let task = self
             .plan
             .as_mut()?
-            .steps
+            .tasks
             .iter_mut()
-            .find(|step| step.status == WorkflowStepStatus::InProgress)?;
-        if !step.tools.is_empty() && !step.tools.iter().any(|tool| tool == tool_name) {
+            .find(|task| task.status == WorkflowTaskStatus::InProgress)?;
+        if !task.tools.is_empty() && !task.tools.iter().any(|tool| tool == tool_name) {
             return None;
         }
-        Some(step)
+        Some(task)
     }
 }
 
@@ -175,14 +217,14 @@ impl WorkflowMiddleware {
         let plan = resolve_resume_cursor(&plan);
         let had_failed = self.lock_state().plan.as_ref().is_some_and(|previous| {
             previous
-                .steps
+                .tasks
                 .iter()
-                .any(|step| step.status == WorkflowStepStatus::Failed)
+                .any(|task| task.status == WorkflowTaskStatus::Failed)
         });
         let mut state = self.lock_state();
         state.stack.clear();
         state.plan = Some(plan);
-        state.injected_step = None;
+        state.injected_task = None;
         state.summary_injected = false;
         state.summary_done = false;
         state.contract_injected = true;
@@ -192,29 +234,29 @@ impl WorkflowMiddleware {
         }
     }
 
-    fn step_instruction(step: &WorkflowStep, plan: &Workflow) -> String {
+    fn step_instruction(task: &WorkflowTask, plan: &Workflow) -> String {
         let mut lines = vec![
             "<plan_step>".to_string(),
             format!(
-                "Workflow {}/{}: current step {} — {}.",
+                "Workflow {}/{}: current task {} — {}.",
                 plan.completed_count(),
-                plan.steps.len(),
-                step.id,
-                step.description
+                plan.tasks.len(),
+                task.id,
+                task.description
             ),
         ];
-        if !step.inputs.is_empty() {
-            lines.push(format!("Inputs: {}.", step.inputs.join(", ")));
+        if !task.inputs.is_empty() {
+            lines.push(format!("Inputs: {}.", task.inputs.join(", ")));
         }
-        if let Some(verification) = &step.verification {
+        if let Some(verification) = &task.verification {
             lines.push(format!("Verification: {verification}."));
         }
-        lines.push("Do not start dependent steps before this one completes.".into());
+        lines.push("Do not start dependent tasks before this one completes.".into());
         lines.push("</plan_step>".into());
         lines.join("\n")
     }
 
-    fn replan_instruction(failed: &WorkflowStep, plan: &Workflow) -> String {
+    fn replan_instruction(failed: &WorkflowTask, plan: &Workflow) -> String {
         let downstream = workflow_downstream_ids(plan, &failed.id);
         let downstream_list = if downstream.is_empty() {
             "none".to_string()
@@ -224,8 +266,8 @@ impl WorkflowMiddleware {
             ids.join(", ")
         };
         format!(
-            "<workflow_replan>\nStep {} failed: {}.\nRewrite only {} and its downstream steps ({downstream_list}). \
-Keep completed steps unchanged. Call workflow_write with the full workflow.\n</workflow_replan>",
+            "<workflow_replan>\nStep {} failed: {}.\nRewrite only {} and its downstream tasks ({downstream_list}). \
+Keep completed tasks unchanged. Call workflow_write with the full workflow.\n</workflow_replan>",
             failed.id,
             failed
                 .output_ref
@@ -235,11 +277,11 @@ Keep completed steps unchanged. Call workflow_write with the full workflow.\n</w
         )
     }
 
-    fn blocked_instruction(step: &WorkflowStep) -> String {
+    fn blocked_instruction(task: &WorkflowTask) -> String {
         format!(
             "<plan_blocked>\nStep {} — {} requires human approval. Stop and ask the user; \
 the next user message approves it once.\n</plan_blocked>",
-            step.id, step.description
+            task.id, task.description
         )
     }
 }
@@ -283,12 +325,12 @@ impl LoopMiddleware for WorkflowMiddleware {
         }
         loop {
             let plan = state.plan.clone().expect("workflow plan");
-            if let Some(blocked) = blocked_workflow_step(&plan, &state.approved) {
-                if state.injected_step.as_deref() != Some(&blocked.id) {
+            if let Some(blocked) = blocked_workflow_task(&plan, &state.approved) {
+                if state.injected_task.as_deref() != Some(&blocked.id) {
                     ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
                         Self::blocked_instruction(blocked),
                     )));
-                    state.injected_step = Some(blocked.id.clone());
+                    state.injected_task = Some(blocked.id.clone());
                 }
                 return LoopStep::continued(ctx).with_properties(workflow_properties(
                     &state,
@@ -297,15 +339,15 @@ impl LoopMiddleware for WorkflowMiddleware {
                 ));
             }
             if let Some(failed) = plan
-                .steps
+                .tasks
                 .iter()
-                .find(|step| step.status == WorkflowStepStatus::Failed)
+                .find(|task| task.status == WorkflowTaskStatus::Failed)
             {
-                if state.injected_step.as_deref() != Some(&failed.id) {
+                if state.injected_task.as_deref() != Some(&failed.id) {
                     ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
                         Self::replan_instruction(failed, &plan),
                     )));
-                    state.injected_step = Some(failed.id.clone());
+                    state.injected_task = Some(failed.id.clone());
                 }
                 return LoopStep::continued(ctx)
                     .with_properties(workflow_properties(&state, &failed.id, false));
@@ -314,55 +356,59 @@ impl LoopMiddleware for WorkflowMiddleware {
                 if let Some((parent, container_id)) = state.stack.pop() {
                     let mut parent = parent;
                     if let Some(container) =
-                        parent.steps.iter_mut().find(|step| step.id == container_id)
+                        parent.tasks.iter_mut().find(|task| task.id == container_id)
+                        && let Ok(next) =
+                            task_transition(container.status, WorkflowTaskEvent::Finish)
                     {
-                        container.status = WorkflowStepStatus::Completed;
+                        container.status = next;
                     }
                     state.plan = Some(parent);
-                    state.injected_step = None;
+                    state.injected_task = None;
                     state.summary_injected = false;
                     state.summary_done = false;
                     continue;
                 }
                 if !state.summary_injected {
                     ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
-                        "<plan_complete>\nAll workflow steps are completed. Summarize what changed and how it was verified.\n</plan_complete>",
+                        "<plan_complete>\nAll workflow tasks are completed. Summarize what changed and how it was verified.\n</plan_complete>",
                     )));
                     state.summary_injected = true;
                 }
                 return LoopStep::continued(ctx)
                     .with_property("loop.middleware.workflow.completed", "true");
             }
-            let Some(step) = runnable_workflow_step(&plan, &state.approved) else {
+            let Some(task) = runnable_workflow_task(&plan, &state.approved) else {
                 return LoopStep::continued(ctx);
             };
-            if let Some(sub) = step.sub_workflow.as_deref() {
-                let container_id = step.id.clone();
+            state.approved.remove(&task.id);
+            if let Some(sub) = task.sub_workflow.as_deref() {
+                let container_id = task.id.clone();
                 let mut parent = plan.clone();
                 if let Some(container) = parent
-                    .steps
+                    .tasks
                     .iter_mut()
                     .find(|candidate| candidate.id == container_id)
+                    && let Ok(next) = task_transition(container.status, WorkflowTaskEvent::Start)
                 {
-                    container.status = WorkflowStepStatus::InProgress;
+                    container.status = next;
                 }
                 let child = sub.clone();
                 state.stack.push((parent, container_id));
                 state.plan = Some(child);
-                state.injected_step = None;
+                state.injected_task = None;
                 state.summary_injected = false;
                 state.summary_done = false;
                 state.contract_injected = true;
                 continue;
             }
-            if state.injected_step.as_deref() != Some(&step.id) {
+            if state.injected_task.as_deref() != Some(&task.id) {
                 ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
-                    Self::step_instruction(step, &plan),
+                    Self::step_instruction(task, &plan),
                 )));
-                state.injected_step = Some(step.id.clone());
+                state.injected_task = Some(task.id.clone());
             }
             return LoopStep::continued(ctx)
-                .with_properties(workflow_properties(&state, &step.id, false));
+                .with_properties(workflow_properties(&state, &task.id, false));
         }
     }
 
@@ -386,16 +432,18 @@ impl LoopMiddleware for WorkflowMiddleware {
         }
         if ctx.is_error {
             let mut state = self.lock_state();
-            let failed_id = {
-                let Some(step) = state.step_to_fail(&ctx.tool_name) else {
-                    return LoopStep::continued(ctx);
-                };
-                step.status = WorkflowStepStatus::Failed;
-                step.output_ref = Some(format!("failure:{}", ctx.tool_call_id));
-                step.id.clone()
+            let Some(failed_id) = state.mark_failed(&ctx.tool_name) else {
+                return LoopStep::continued(ctx);
             };
+            if let Some(task) = state
+                .plan
+                .as_mut()
+                .and_then(|plan| plan.tasks.iter_mut().find(|task| task.id == failed_id))
+            {
+                task.output_ref = Some(format!("failure:{}", ctx.tool_call_id));
+            }
             state.approved.remove(&failed_id);
-            state.injected_step = None;
+            state.injected_task = None;
         }
         LoopStep::continued(ctx)
     }
@@ -412,18 +460,18 @@ impl LoopMiddleware for WorkflowMiddleware {
             }
             return LoopStep::continued(ctx);
         };
-        if let Some(blocked) = blocked_workflow_step(&plan, &state.approved) {
+        if let Some(blocked) = blocked_workflow_task(&plan, &state.approved) {
             if ctx.has_new_user_messages {
                 state.approved.insert(blocked.id.clone());
-                state.injected_step = None;
+                state.injected_task = None;
                 return LoopStep::continued(ctx);
             }
             return LoopStep::stopped(ctx);
         }
         if plan
-            .steps
+            .tasks
             .iter()
-            .any(|step| step.status == WorkflowStepStatus::Failed)
+            .any(|task| task.status == WorkflowTaskStatus::Failed)
         {
             if state.replan_count >= self.max_replans {
                 log::warn!(
@@ -434,12 +482,13 @@ impl LoopMiddleware for WorkflowMiddleware {
                 if let Some((parent, container_id)) = state.stack.pop() {
                     let mut parent = parent;
                     if let Some(container) =
-                        parent.steps.iter_mut().find(|step| step.id == container_id)
+                        parent.tasks.iter_mut().find(|task| task.id == container_id)
+                        && let Ok(next) = task_transition(container.status, WorkflowTaskEvent::Fail)
                     {
-                        container.status = WorkflowStepStatus::Failed;
+                        container.status = next;
                     }
                     state.plan = Some(parent);
-                    state.injected_step = None;
+                    state.injected_task = None;
                     return LoopStep::continued(ctx);
                 }
                 return LoopStep::stopped(ctx);
@@ -464,7 +513,7 @@ impl LoopMiddleware for WorkflowMiddleware {
             }
             return LoopStep::continued(ctx);
         }
-        if runnable_workflow_step(&plan, &state.approved).is_some() {
+        if runnable_workflow_task(&plan, &state.approved).is_some() {
             LoopStep::continued(ctx)
         } else {
             LoopStep::stopped(ctx)
@@ -486,7 +535,7 @@ mod tests {
 
     use super::*;
     use xylitol_plugin_sdk::LoopControl;
-    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowStep, WorkflowStepStatus};
+    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowTask, WorkflowTaskStatus};
 
     fn model_ctx(session_id: Option<&str>) -> BeforeLlmRequestCtx {
         BeforeLlmRequestCtx {
@@ -514,7 +563,7 @@ mod tests {
     fn workflow() -> Workflow {
         Workflow {
             goal: "ship".into(),
-            steps: vec![WorkflowStep {
+            tasks: vec![WorkflowTask {
                 id: "s1".into(),
                 description: "do it".into(),
                 depends_on: Vec::new(),
@@ -525,7 +574,7 @@ mod tests {
                 verification: Some("tests pass".into()),
                 rollback: None,
                 requires_human: false,
-                status: WorkflowStepStatus::Pending,
+                status: WorkflowTaskStatus::Pending,
                 output_ref: None,
                 sub_workflow: None,
             }],
@@ -579,7 +628,7 @@ mod tests {
         mw.before_llm_request(model_ctx(None)).await;
         mw.after_tool(tool_ctx(
             "workflow_write",
-            "duplicate workflow step id: s1",
+            "duplicate workflow task id: s1",
             true,
         ))
         .await;
@@ -592,7 +641,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(text.contains("<workflow_error>"), "{text}");
-        assert!(text.contains("duplicate workflow step id"), "{text}");
+        assert!(text.contains("duplicate workflow task id"), "{text}");
         let out = mw.before_llm_request(model_ctx(None)).await;
         assert!(
             !out.ctx
@@ -676,10 +725,10 @@ mod nested_tests {
 
     use super::*;
     use xylitol_plugin_sdk::LoopControl;
-    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowStep, WorkflowStepStatus};
+    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowTask, WorkflowTaskStatus};
 
-    fn leaf(id: &str, status: WorkflowStepStatus) -> WorkflowStep {
-        WorkflowStep {
+    fn leaf(id: &str, status: WorkflowTaskStatus) -> WorkflowTask {
+        WorkflowTask {
             id: id.into(),
             description: format!("do {id}"),
             depends_on: Vec::new(),
@@ -696,17 +745,17 @@ mod nested_tests {
         }
     }
 
-    fn container(id: &str, child: Workflow, status: WorkflowStepStatus) -> WorkflowStep {
-        WorkflowStep {
+    fn container(id: &str, child: Workflow, status: WorkflowTaskStatus) -> WorkflowTask {
+        WorkflowTask {
             sub_workflow: Some(Box::new(child)),
             ..leaf(id, status)
         }
     }
 
-    fn workflow(steps: Vec<WorkflowStep>, resume_cursor: Option<String>) -> Workflow {
+    fn workflow(tasks: Vec<WorkflowTask>, resume_cursor: Option<String>) -> Workflow {
         Workflow {
             goal: "ship".into(),
-            steps,
+            tasks,
             resume_cursor,
             updated_at: 1,
         }
@@ -765,9 +814,9 @@ mod nested_tests {
 
     #[tokio::test]
     async fn container_expands_to_child_workflow() {
-        let child = workflow(vec![leaf("c1", WorkflowStepStatus::Pending)], None);
+        let child = workflow(vec![leaf("c1", WorkflowTaskStatus::Pending)], None);
         let root = workflow(
-            vec![container("s1", child, WorkflowStepStatus::Pending)],
+            vec![container("s1", child, WorkflowTaskStatus::Pending)],
             None,
         );
         let (_store, mw) = seeded(root).await;
@@ -779,15 +828,15 @@ mod nested_tests {
 
     #[tokio::test]
     async fn completed_child_marks_container_completed() {
-        let child = workflow(vec![leaf("c1", WorkflowStepStatus::Completed)], None);
+        let child = workflow(vec![leaf("c1", WorkflowTaskStatus::Completed)], None);
         let root = workflow(
-            vec![container("s1", child, WorkflowStepStatus::InProgress)],
+            vec![container("s1", child, WorkflowTaskStatus::InProgress)],
             None,
         );
         let (store, mw) = seeded(root.clone()).await;
         mw.before_llm_request(model_ctx("s1")).await;
         let mut completed_root = root;
-        completed_root.steps[0].status = WorkflowStepStatus::Completed;
+        completed_root.tasks[0].status = WorkflowTaskStatus::Completed;
         store
             .append_session_entry("s1", &completed_root.to_custom_entry_shell())
             .await
@@ -808,9 +857,9 @@ mod nested_tests {
 
     #[tokio::test]
     async fn resume_cursor_enters_nested_workflow() {
-        let child = workflow(vec![leaf("c1", WorkflowStepStatus::Pending)], None);
+        let child = workflow(vec![leaf("c1", WorkflowTaskStatus::Pending)], None);
         let root = workflow(
-            vec![container("s1", child, WorkflowStepStatus::InProgress)],
+            vec![container("s1", child, WorkflowTaskStatus::InProgress)],
             Some("s1".into()),
         );
         let (_store, mw) = seeded(root).await;
@@ -845,53 +894,53 @@ mod nested_tests {
 
     #[tokio::test]
     async fn declared_tools_ignore_unrelated_failures() {
-        let mut wf = workflow(vec![leaf("s1", WorkflowStepStatus::InProgress)], None);
-        wf.steps[0].tools = vec!["write".into()];
+        let mut wf = workflow(vec![leaf("s1", WorkflowTaskStatus::InProgress)], None);
+        wf.tasks[0].tools = vec!["write".into()];
         let (_store, mw) = seeded_concrete(wf).await;
         mw.before_llm_request(model_ctx("s1")).await;
         mw.after_tool(tool_ctx("read", "missing file", true)).await;
         let state = mw.lock_state();
         assert_eq!(
-            state.plan.as_ref().expect("plan").steps[0].status,
-            WorkflowStepStatus::InProgress,
-            "a failure outside the declared tools must not fail the step"
+            state.plan.as_ref().expect("plan").tasks[0].status,
+            WorkflowTaskStatus::InProgress,
+            "a failure outside the declared tools must not fail the task"
         );
     }
 
     #[tokio::test]
     async fn declared_tools_mark_matching_failure() {
-        let mut wf = workflow(vec![leaf("s1", WorkflowStepStatus::InProgress)], None);
-        wf.steps[0].tools = vec!["write".into()];
+        let mut wf = workflow(vec![leaf("s1", WorkflowTaskStatus::InProgress)], None);
+        wf.tasks[0].tools = vec!["write".into()];
         let (_store, mw) = seeded_concrete(wf).await;
         mw.before_llm_request(model_ctx("s1")).await;
         mw.after_tool(tool_ctx("write", "permission denied", true))
             .await;
         let state = mw.lock_state();
         assert_eq!(
-            state.plan.as_ref().expect("plan").steps[0].status,
-            WorkflowStepStatus::Failed
+            state.plan.as_ref().expect("plan").tasks[0].status,
+            WorkflowTaskStatus::Failed
         );
     }
 
     #[tokio::test]
     async fn legacy_workflow_without_tools_keeps_coarse_attribution() {
-        let wf = workflow(vec![leaf("s1", WorkflowStepStatus::InProgress)], None);
+        let wf = workflow(vec![leaf("s1", WorkflowTaskStatus::InProgress)], None);
         let (_store, mw) = seeded_concrete(wf).await;
         mw.before_llm_request(model_ctx("s1")).await;
         mw.after_tool(tool_ctx("read", "missing file", true)).await;
         let state = mw.lock_state();
         assert_eq!(
-            state.plan.as_ref().expect("plan").steps[0].status,
-            WorkflowStepStatus::Failed,
+            state.plan.as_ref().expect("plan").tasks[0].status,
+            WorkflowTaskStatus::Failed,
             "legacy workflows without declared tools keep the coarse attribution"
         );
     }
 
     #[tokio::test]
     async fn child_failure_bubbles_to_parent_after_replan_cap() {
-        let child = workflow(vec![leaf("c1", WorkflowStepStatus::Failed)], None);
+        let child = workflow(vec![leaf("c1", WorkflowTaskStatus::Failed)], None);
         let root = workflow(
-            vec![container("s1", child, WorkflowStepStatus::Pending)],
+            vec![container("s1", child, WorkflowTaskStatus::Pending)],
             None,
         );
         let config = WorkflowConfig {
