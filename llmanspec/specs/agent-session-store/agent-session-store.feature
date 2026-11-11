@@ -12,8 +12,8 @@
       那么 按窗口与保留阈值在会话路径触发
 
   @req:r1090
-  规则: JSONL 存储
-    SessionManager 须将会话持久化为 v7 会话目录（位于 ~/.xylitol/sessions/），目录 须由 manifest 提交指针、一个 active JSONL 段与零个或多个 sealed cold JSONL 段组成；每行仍是一个带版本标签的 JSON 对象，manifest 须是恢复时的 SSOT。
+  规则: 追加日志存储
+    SessionManager 须将会话持久化为追加式 JSONL 日志目录（位于 ~/.xylitol/sessions/<id>/log/）：每行一个 JSON entry（含 seq 可选字段），首行 header 内嵌 format=log-v1；manifest 与 index 均为可丢弃缓存，恢复真值只来自 log 行。轮转只在 turn 边界或压缩点发生；不得把 manifest 当作恢复 SSOT。
 
     场景: 创建加载
       假如 会话存储目录已初始化
@@ -73,7 +73,7 @@
     Session JSONL 的 message.content AgentPart 形态以 domain-message dm1 为唯一真源；系统 不得迁移或静默解读 c646 之前的 untagged/裸字符串 content。读到此类旧 content 时 须按 agent-session as46 拒绝/跳过策略处理。文件级其它版本字段若存在 MAY 保留，但 不得借此复活旧 AgentPart 语义。
 
     场景: 旧版无标签内容拒绝
-      假如 目录中植入含旧 untagged content 行的 v7 会话 "legacy-content"
+      假如 目录中植入含旧 untagged content 行的 log-v1 会话 "legacy-content"
       当 加载会话 "legacy-content"
       那么 坏行被跳过且其余条目正常加载
 
@@ -107,17 +107,17 @@
       并且 会话 "child" 不含文本 "message 5"
 
   @req:r1109
-  规则: 写入安全
-    SessionManager 写 v7 会话 须以 manifest 原子切换作为 seal 提交点：进程任意时点终止后，旧 manifest 仍 须指向可恢复的旧段，或新 manifest 须只指向完整的新段；不得将未提交的 orphan/临时段拼入会话。跨进程写入互斥见 r1950；本规则只约束 seal 原子性。
+  规则: 追加写入安全
+    每行 append 须是单行原子写：进程任意时点终止后，已 fsync 的完整行 须可恢复，尾部半行 须在打开快检时截断；不得把未完成的行拼入会话。跨进程写入互斥见 r1950。
 
-    场景: 孤儿临时段排除
+    场景: 孤儿文件排除
       假如 存在会话 "safe" 包含 2 条记录
       当 目录中植入未引用的临时段文件
       那么 会话 "safe" 包含 2 条记录
 
   @req:r1110
   规则: 会话 fork
-    SessionManager 须支持 fork(parent_id, child_id, at_entry_id)，将父当前 leaf 路径（需要时按需读取 cold 段）以 copy-on-write 引用到子会话：fork 时 seal 父 active 快照，子 manifest parent 引用父 sealed 段并 append branch_summary；子会话 不得复制父条目或重写父条目 id。System 须支持 fork_session(at_entry_id)：经 SessionManager::fork() 创建新子会话并返回子 session id。fork 创建子会话时，子会话头 须记录父会话 id，且 须记录切点条目 id（fork 时所选条目，含 Before 切位时未拷入子会话的那条）；非 fork 创建的会话头 不得写入切点字段。加载缺少该切点字段的旧会话文件时 须视为无切点，不得因此失败。
+    SessionManager 须支持 fork(parent_id, child_id, at_entry_id)，将父当前 leaf 路径以 copy-on-write 引用到子会话：子会话头 须记录 parentSession 与 forkAtEntryId，并 append branch_summary；子会话 不得复制父条目或重写父条目 id。加载子会话时 须沿父会话 log 读取祖先条目（树视图穿透），LLM 视图 须沿 parent 链折叠。System 须支持 fork_session(at_entry_id)：经 SessionManager::fork() 创建新子会话并返回子 session id。非 fork 创建的会话头 不得写入切点字段；加载缺少该切点字段的旧会话文件时 须视为无切点，不得因此失败。
 
     场景: 分叉复制裁切点与摘要
       假如 存在会话 "parent" 包含 6 条记录
@@ -139,10 +139,10 @@
       并且 会话 "parent" 头不含切点字段
 
   @req:r1102
-  规则: v7 manifest 提交
-    v7 manifest 须只引用 session 目录内的完整段文件并记录 active 段与 sealed 段的逻辑顺序；compaction seal 成功后已引用的 cold 段 不得再被改写，未被 manifest 引用的临时或 orphan 段 不得影响 load、resume 或 list。
+  规则: manifest 缓存
+    manifest 须只作可丢弃缓存（记录 activeFile、tailBytes、lineCount、nextSeq、leafId、rotation、index）；损坏或缺失 须从 log 重建，不得当作空会话；未被 manifest 引用的临时文件 不得影响 load、resume 或 list。
 
-    场景: 未引用段会不影响列表
+    场景: 未引用文件不影响列表
       假如 存在会话 "m2" 包含 2 条记录
       当 目录中植入未引用的临时段文件
       当 列出所有会话
@@ -150,10 +150,10 @@
       并且 会话 "m2" 包含 2 条记录
 
   @req:r1103
-  规则: 冷段按需恢复
-    resume、load_leaf_branch 与 session context 构造 须先读取 manifest 与 active 段，仅在当前 leaf 的 parentId/分支或会话级配对需要时按需读取命中的 cold 段；不得为普通 resume 无条件解析全部 cold 段。被 manifest 引用且带合法 sidecar 的 sealed 段 须以 sidecar 索引（entryIds / doneBashIds）先筛候选段；sidecar 缺失、损坏或候选未命中时 须回退读取未读 sealed 段，不得因索引漏报（false negative）截断 leaf 分支或误报 interrupted bash。完整导出或 inspect 可显式读取完整逻辑条目流。
+  规则: 投影视图
+    load_leaf_branch 须从 leaf 沿 parent 链折叠，碰 Compaction 截断（摘要作前缀）；树视图 须全量穿透；分页视图 须按 turn 或 entry 粒度返回窗口。不得为普通 resume 无条件解析无关分支。完整导出或 inspect 可显式读取完整逻辑条目流。
 
-    场景: 冷段恢复叶子正确
+    场景: 压缩保留叶子投影
       假如 会话有 50 个轮次
       当 触发压缩保留最近 10 轮
       并且 向会话追加一条消息 "压缩后新消息"
@@ -162,19 +162,19 @@
       并且 会话 "compaction-retain" 包含文本 "压缩后新消息"
 
   @req:r1900
-  规则: sealed-sidecar-index
-    每个被 v7 manifest 引入的 sealed 段 MAY 生成不可变 JSON sidecar index，记录该段全部非空 entryId 与状态为 done 的 bash id（输出稳定排序去重）；manifest 的 sealed segment 描述 须支持可选 camelCase `indexPath` 引用它。若 sidecar 存在，则侧载构建 须与 seal 的同一批 prefix 条目一致，不得改变逻辑 JSONL export/import 输出形状；旧 manifest 无 `indexPath`、sidecar 缺失或损坏时 须回退读取对应 sealed JSONL，不得因索引损坏产生 false negative。
+  规则: 稀疏锚点索引
+    会话目录 index/ 下 MAY 为每个 log 文件生成稀疏锚点（每 64 行一条，记录 entryId 与字节偏移）；index 缺失、损坏或未建时读路径 须回退线性扫描，不得因索引损坏产生 false negative；重建归维护任务，不得改变逻辑 JSONL export/import 输出形状。
 
-    场景: 侧车损坏回落返回至扫描
+    场景: 锚点索引损坏回落扫描
       假如 会话有 50 个轮次
       当 触发压缩保留最近 10 轮
-      当 破坏该会话的 sealed sidecar 索引文件
+      当 破坏该会话的稀疏锚点索引文件
       当 加载会话 "compaction-retain"
       那么 会话 JSONL 包含 CompactionEntry
 
   @req:r1901
   规则: resume-projection-llm-api
-    resume/context 只从可解析 v7 session 的最新 leaf 分支恢复，不得为 legacy 或不可解析存储降级恢复路径；构建的 session context 须继续投影 LLM API 相关信息（thinkingLevel 与 model 选择，来自 leaf 分支上的 modelChange / thinkingLevelChange 条目）且不做钳制、不追加抵消条目；sidecar 与 done-bash 端口只优化 bash 配对数据来源，不得破坏投影的既有可观察语义。
+    resume/context 只从可解析 log-v1 session 的最新 leaf 分支恢复，不得为 legacy 或不可解析存储降级恢复路径；构建的 session context 须继续投影 LLM API 相关信息（thinkingLevel 与 model 选择，来自 leaf 分支上的 modelChange / thinkingLevelChange 条目）且不做钳制、不追加抵消条目；稀疏索引与 done-bash 端口只优化查询数据来源，不得破坏投影的既有可观察语义。
 
     场景: 续跑投影模型API原文
       假如 存在会话 "proj"
@@ -185,7 +185,7 @@
 
   @req:r1104
   规则: 旧格式边界
-    仅存在旧 v6/v5 或未知单文件 `{id}.jsonl` 且无 v7 manifest 时，System 不得自动迁移、不得静默删除、不得创建同 id 的新 v7 session 覆盖旧文件；自动恢复与写入入口 须返回可操作的不支持错误并保留源文件；用户显式 delete 仍可清理；list 须跳过该条目并记录有限诊断，不得把它当作可 resume 的 v7 session。
+    仅存在旧 v6/v5 或未知单文件 `{id}.jsonl` 且无 log 目录时，System 不得自动迁移、不得静默删除、不得创建同 id 的新会话覆盖旧文件；自动恢复与写入入口 须返回可操作的不支持错误并保留源文件；用户显式 delete 仍可清理；list 须跳过该条目并记录有限诊断，不得把它当作可 resume 的会话。
 
     场景: 列表跳过旧版仅会话
       假如 会话存储目录已初始化
@@ -219,10 +219,10 @@
       那么 恢复前完成同一 CWD 校验
 
   @req:r1095
-  规则: session-entry-camelcase-v7
-    Session persisted JSONL 须以 camelCase 为唯一磁盘格式 SSOT（JS/TS favor；非 pi snake entry type）：v7 段外壳字段含 parentId、parentSession、firstKeptEntryId 等；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash 须使用 type=message 且 message.role=bashExecution，不得再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version 须等于 SESSION_VERSION（7），manifest 的 formatVersion 须同为 7。不得再写出 parent_id 或 version≤5 作为新会话真源。旧格式文件 不得被自动迁移为 v7（见 s26 旧格式边界）、不得提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
+  规则: 日志条目驼峰
+    Session persisted JSONL 须以 camelCase 为唯一磁盘格式 SSOT：log-v1 header 行内嵌 format 字段，每行含 seq；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash 须使用 type=message 且 message.role=bashExecution，不得再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version 须等于 SESSION_VERSION（7）。不得再写出 parent_id 或 version≤5 作为新会话真源；旧格式文件 不得被自动迁移为 log-v1（见 s26 旧格式边界）、不得提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
 
-    场景: v7shell驼峰与bash消息
+    场景: 日志壳驼峰与bash消息
       假如 存在会话 "fmt7"
       当 向会话追加 bash 执行记录（命令 "make test" 输出 "all ok"）
       那么 新会话磁盘头 version 为 7 且外壳字段为 camelCase
@@ -240,16 +240,16 @@
 
   @req:r1098
   规则: session-load-skip-warn
-    load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 须跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn 须至多 3 条，超出后 须以单条省略标记（如 ...）收敛，不得刷屏。v7 manifest/header version 不等于 SESSION_VERSION（7）时 须拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），不得静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager 须共用此策略。
+    load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 须跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn 须至多 3 条，超出后 须以单条省略标记（如 ...）收敛，不得刷屏。尾部半行 须截断。log-v1 header 的 version 不等于 SESSION_VERSION（7）或 format 不等于 log-v1 时 须拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），不得静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager 须共用此策略。
 
     场景: 加载跳过无法解析行
-      假如 目录中植入含坏 JSON 行的 v7 会话 "mixed"
+      假如 目录中植入含坏 JSON 行的 log-v1 会话 "mixed"
       当 加载会话 "mixed"
       那么 坏行被跳过且其余条目正常加载
 
   @req:r1099
   规则: list-sessions-resilient
-    list_sessions（或等价枚举）遇到单个 v7 manifest/段不可读、非最新或解析失败时 须直接跳过该 session（不迁移、不修复、不解析展示）并继续枚举其余会话；发现旧格式 `{id}.jsonl`（无 v7 manifest）时 须直接跳过并记录有限诊断，不得尝试识别或迁移；不得因单 session 失败而使整表 list/resume 面板失败。
+    list_sessions（或等价枚举）遇到单个 log 文件不可读、头行非法或解析失败时 须直接跳过该 session（不迁移、不修复、不解析展示）并继续枚举其余会话；发现旧格式 `{id}.jsonl`（无 log 目录）时 须直接跳过并记录有限诊断，不得尝试识别或迁移；不得因单 session 失败而使整表 list/resume 面板失败。
 
     场景: 列表韧性至损坏文件
       假如 存在会话 "good" 包含 2 条记录
@@ -337,13 +337,13 @@
       那么 会话 "ts1" 的 JSONL 时间戳均为 u64 毫秒
 
   @req:r1093
-  规则: 延迟持久化至 assistant
-    Persisted SessionManager（非 in_memory backend）须对齐 pi：首条 assistant 消息写入前，会话条目可仅保留在内存；首条 assistant append 时 须创建磁盘 jsonl（若尚不存在）并刷出此前挂起条目（含 header 与先前 user 等）；其后每次 append 须落盘。InMemory backend 不得写文件。不得在仅有 header、用户又放弃对话时强制留下无消息垃圾文件作为唯一策略（允许 create 仍写 header，但 deferred 刷出路径 须存在并可测）。
+  规则: 写路径与 fsync
+    Persisted SessionManager 须在 create 时写入 header 行，append 时立即追加一行；fsync 粒度须为 turn 边界批量（assistant 最终答复、用户消息、compaction 提交），崩溃最多丢正在进行的 turn，尾部半行须在打开快检时截断。InMemory backend 不得写文件。
 
-    场景: 延迟头刷出时首次追加
+    场景: 创建即写头且首次追加可读
       假如 会话存储目录已初始化
       当 创建一个新会话 "lazy"
-      那么 会话 "lazy" 的磁盘 JSONL 尚不存在
+      那么 会话 "lazy" 的磁盘 JSONL 已存在且包含 "session"
       当 向会话追加用户消息 "hello"
       那么 会话 "lazy" 的磁盘 JSONL 已存在且包含 "hello"
 

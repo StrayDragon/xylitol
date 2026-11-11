@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Refactor session storage to append-only log"
+branch: sdd/c3233-refactor-session-log-storage
+base_branch: main
+base_sha: 09df89fe20bb94d8189d57996584340e108db598
 ---
 
 # 会话存储重整为追加日志（breaking）

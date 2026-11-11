@@ -125,6 +125,14 @@ pub enum ConfigAction {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum SessionsAction {
+    Maintain {
+        #[arg(long)]
+        dir: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum CliCommand {
     Tui {
         #[command(flatten)]
@@ -143,6 +151,10 @@ pub enum CliCommand {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+    Sessions {
+        #[command(subcommand)]
+        action: SessionsAction,
     },
     #[cfg(feature = "server")]
     Serve {

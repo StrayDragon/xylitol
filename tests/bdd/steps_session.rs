@@ -923,13 +923,13 @@ async fn plant_jsonl_with_extra_line(sess: &XySessionStore, id: &str, extra_line
     writeln!(f, "{extra_line}").unwrap();
 }
 
-#[given("目录中植入含坏 JSON 行的 v7 会话 {id:string}")]
+#[given("目录中植入含坏 JSON 行的 log-v1 会话 {id:string}")]
 async fn given_plant_bad_json_line(sess: &XySessionStore, id: String) {
     let id = strip_quotes(&id);
     plant_jsonl_with_extra_line(sess, &id, "not-json{{broken").await;
 }
 
-#[given("目录中植入含旧 untagged content 行的 v7 会话 {id:string}")]
+#[given("目录中植入含旧 untagged content 行的 log-v1 会话 {id:string}")]
 async fn given_plant_legacy_untagged(sess: &XySessionStore, id: String) {
     let id = strip_quotes(&id);
     let line = r#"{"type":"message","id":"legacy-1","timestamp":1,"message":{"role":"user","content":"plain old string"}}"#;
@@ -963,51 +963,52 @@ async fn then_bad_line_skipped(sess: &XySessionStore) {
 #[when("目录中植入未引用的临时段文件")]
 async fn when_plant_orphan_segment(sess: &XySessionStore) {
     let id = sess.current_id.borrow().clone().expect("current session");
-    let dir = sess_dir(sess).join(&id).join("segments");
+    let dir = sess_dir(sess).join(&id);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
-        dir.join("00000000000000000099-sealed.jsonl"),
+        dir.join("orphan.tmp"),
         "{\"type\":\"message\",\"id\":\"orphan\",\"message\":{\"role\":\"user\",\"content\":[]}}\n",
     )
     .unwrap();
 }
 
-#[when("破坏该会话的 sealed sidecar 索引文件")]
+#[when("破坏该会话的稀疏锚点索引文件")]
 async fn when_corrupt_sidecar(sess: &XySessionStore) {
     let id = sess.current_id.borrow().clone().expect("current session");
-    let manifest_path = sess_dir(sess).join(&id).join("manifest.json");
-    let raw = std::fs::read(&manifest_path).expect("manifest exists after seal");
-    let manifest: serde_json::Value = serde_json::from_slice(&raw).unwrap();
-    let index_path = manifest["sealedSegments"]
-        .as_array()
-        .expect("sealed segments recorded")
-        .last()
-        .expect("compaction sealed a cold segment")
-        .get("indexPath")
-        .and_then(|v| v.as_str())
-        .expect("sidecar indexPath recorded")
-        .to_string();
-    let sidecar = sess_dir(sess).join(&id).join(&index_path);
-    std::fs::write(&sidecar, "not-json{corrupt").unwrap();
+    let index_dir = sess_dir(sess).join(&id).join("index");
+    let mut files: Vec<_> = std::fs::read_dir(&index_dir)
+        .expect("sparse index dir after compaction")
+        .flatten()
+        .map(|entry| entry.path())
+        .collect();
+    files.sort();
+    let target = files.last().expect("sparse index file recorded");
+    std::fs::write(target, "not-json{corrupt").unwrap();
 }
 
 fn first_disk_line(sess: &XySessionStore, id: &str) -> serde_json::Value {
     let dir = sess_dir(sess).join(id);
-    let manifest_raw = std::fs::read(dir.join("manifest.json")).expect("manifest readable");
-    let manifest: serde_json::Value = serde_json::from_slice(&manifest_raw).expect("manifest JSON");
-    let mut paths: Vec<String> = Vec::new();
-    if let Some(active) = manifest["activeSegment"]["path"].as_str() {
-        paths.push(active.to_string());
+    let log_dir = dir.join("log");
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(raw) = std::fs::read(dir.join("manifest.json"))
+        && let Ok(manifest) = serde_json::from_slice::<serde_json::Value>(&raw)
+        && let Some(active) = manifest.get("activeFile").and_then(|value| value.as_u64())
+    {
+        paths.push(log_dir.join(format!("{active:06}.jsonl")));
     }
-    if let Some(sealed) = manifest["sealedSegments"].as_array() {
-        for segment in sealed {
-            if let Some(path) = segment["path"].as_str() {
-                paths.push(path.to_string());
-            }
-        }
+    if let Ok(read) = std::fs::read_dir(&log_dir) {
+        let mut files: Vec<_> = read
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "jsonl")
+            })
+            .collect();
+        files.sort();
+        paths.extend(files);
     }
-    for relative in paths {
-        let path = dir.join(relative);
+    for path in paths {
         let Ok(raw) = std::fs::read_to_string(&path) else {
             continue;
         };

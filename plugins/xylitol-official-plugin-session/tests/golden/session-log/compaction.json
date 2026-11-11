@@ -1,0 +1,445 @@
+{
+  "entries": [
+    {
+      "id": "u1",
+      "message": {
+        "content": [
+          {
+            "text": "first",
+            "type": "text"
+          }
+        ],
+        "role": "user",
+        "timestamp": 0
+      },
+      "parentId": null,
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "a1",
+      "message": {
+        "content": [
+          {
+            "text": "answer 1",
+            "type": "text"
+          }
+        ],
+        "role": "assistant",
+        "timestamp": 0
+      },
+      "parentId": "u1",
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "u2",
+      "message": {
+        "content": [
+          {
+            "text": "second",
+            "type": "text"
+          }
+        ],
+        "role": "user",
+        "timestamp": 0
+      },
+      "parentId": "a1",
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "a2",
+      "message": {
+        "content": [
+          {
+            "text": "answer 2",
+            "type": "text"
+          }
+        ],
+        "role": "assistant",
+        "timestamp": 0
+      },
+      "parentId": "u2",
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "firstKeptEntryId": "u2",
+      "id": "gen-1",
+      "parentId": "a2",
+      "summary": "turn1 summary",
+      "timestamp": 0,
+      "tokensBefore": 100,
+      "type": "compaction"
+    },
+    {
+      "id": "u3",
+      "message": {
+        "content": [
+          {
+            "text": "third",
+            "type": "text"
+          }
+        ],
+        "role": "user",
+        "timestamp": 0
+      },
+      "parentId": "gen-1",
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "a3",
+      "message": {
+        "content": [
+          {
+            "text": "answer 3",
+            "type": "text"
+          }
+        ],
+        "role": "assistant",
+        "timestamp": 0
+      },
+      "parentId": "u3",
+      "timestamp": 0,
+      "type": "message"
+    }
+  ],
+  "expected": {
+    "all": [
+      {
+        "cwd": ".",
+        "id": "s_comp",
+        "timestamp": 0,
+        "type": "session",
+        "version": 7
+      },
+      {
+        "id": "u1",
+        "message": {
+          "content": [
+            {
+              "text": "first",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": null,
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a1",
+        "message": {
+          "content": [
+            {
+              "text": "answer 1",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "u2",
+        "message": {
+          "content": [
+            {
+              "text": "second",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "a1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a2",
+        "message": {
+          "content": [
+            {
+              "text": "answer 2",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u2",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "firstKeptEntryId": "u2",
+        "id": "gen-1",
+        "parentId": "a2",
+        "summary": "turn1 summary",
+        "timestamp": 0,
+        "tokensBefore": 100,
+        "type": "compaction"
+      },
+      {
+        "id": "u3",
+        "message": {
+          "content": [
+            {
+              "text": "third",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "gen-1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a3",
+        "message": {
+          "content": [
+            {
+              "text": "answer 3",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u3",
+        "timestamp": 0,
+        "type": "message"
+      }
+    ],
+    "branch": [
+      {
+        "id": "u2",
+        "message": {
+          "content": [
+            {
+              "text": "second",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "a1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a2",
+        "message": {
+          "content": [
+            {
+              "text": "answer 2",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u2",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "firstKeptEntryId": "u2",
+        "id": "gen-1",
+        "parentId": "a2",
+        "summary": "turn1 summary",
+        "timestamp": 0,
+        "tokensBefore": 100,
+        "type": "compaction"
+      },
+      {
+        "id": "u3",
+        "message": {
+          "content": [
+            {
+              "text": "third",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "gen-1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a3",
+        "message": {
+          "content": [
+            {
+              "text": "answer 3",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u3",
+        "timestamp": 0,
+        "type": "message"
+      }
+    ],
+    "context": [
+      {
+        "firstKeptEntryId": "u2",
+        "id": "gen-1",
+        "parentId": "a2",
+        "summary": "turn1 summary",
+        "timestamp": 0,
+        "tokensBefore": 100,
+        "type": "compaction"
+      },
+      {
+        "id": "u3",
+        "message": {
+          "content": [
+            {
+              "text": "third",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "gen-1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a3",
+        "message": {
+          "content": [
+            {
+              "text": "answer 3",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u3",
+        "timestamp": 0,
+        "type": "message"
+      }
+    ],
+    "context_full": {
+      "messages": [
+        {
+          "role": "compactionSummary",
+          "summary": "turn1 summary",
+          "tokensAfter": 0,
+          "tokensBefore": 100
+        },
+        {
+          "content": [
+            {
+              "text": "third",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        {
+          "api": "",
+          "content": [
+            {
+              "text": "answer 3",
+              "type": "text"
+            }
+          ],
+          "model": "",
+          "provider": "",
+          "role": "assistant",
+          "timestamp": 0
+        }
+      ],
+      "model": null,
+      "thinking_level": "off"
+    },
+    "page_before": {
+      "entries": [
+        {
+          "firstKeptEntryId": "u2",
+          "id": "gen-1",
+          "parentId": "a2",
+          "summary": "turn1 summary",
+          "timestamp": 0,
+          "tokensBefore": 100,
+          "type": "compaction"
+        },
+        {
+          "id": "u3",
+          "message": {
+            "content": [
+              {
+                "text": "third",
+                "type": "text"
+              }
+            ],
+            "role": "user",
+            "timestamp": 0
+          },
+          "parentId": "gen-1",
+          "timestamp": 0,
+          "type": "message"
+        }
+      ],
+      "more": true
+    },
+    "page_tail": {
+      "entries": [
+        {
+          "id": "u3",
+          "message": {
+            "content": [
+              {
+                "text": "third",
+                "type": "text"
+              }
+            ],
+            "role": "user",
+            "timestamp": 0
+          },
+          "parentId": "gen-1",
+          "timestamp": 0,
+          "type": "message"
+        },
+        {
+          "id": "a3",
+          "message": {
+            "content": [
+              {
+                "text": "answer 3",
+                "type": "text"
+              }
+            ],
+            "role": "assistant",
+            "timestamp": 0
+          },
+          "parentId": "u3",
+          "timestamp": 0,
+          "type": "message"
+        }
+      ],
+      "more": true
+    }
+  }
+}

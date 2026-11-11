@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
+use xylitol_plugin_sdk::XyEventSink;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::session::SessionEntry;
-use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 
 const WINDOW: u64 = 32_768;
 const RESERVE: u64 = 16_384;

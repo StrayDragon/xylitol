@@ -812,7 +812,6 @@ pub(crate) async fn g_comp_leaf_branch_sibling(sess: &XySessionStore) {
 #[when("执行 prepare 或 force compact")]
 pub(crate) async fn w_comp_prepare_on_leaf(agent: &AgentState, sess: &XySessionStore) {
     use xylitol_official_plugin_compaction::{CompactionSettings, prepare_compaction};
-    use xylitol_plugin_sdk::XySessionStore as _;
 
     let sid = sess.current_id.borrow().clone().expect("sid");
     let mgr = sess.mgr.borrow().as_ref().expect("mgr").clone();

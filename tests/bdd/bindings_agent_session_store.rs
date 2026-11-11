@@ -49,7 +49,7 @@ async fn test_session_label_clear(sess: XySessionStore) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
-    name = "延迟头刷出时首次追加"
+    name = "创建即写头且首次追加可读"
 )]
 async fn test_s12_delayed_flush(sess: XySessionStore) {}
 
@@ -145,7 +145,7 @@ async fn test_s6_empty_boundary(sess: XySessionStore) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
-    name = "v7shell驼峰与bash消息"
+    name = "日志壳驼峰与bash消息"
 )]
 async fn test_c2826_jsonl_shell(sess: XySessionStore) {}
 
@@ -163,13 +163,13 @@ async fn test_c2826_legacy_untagged(sess: XySessionStore) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
-    name = "孤儿临时段排除"
+    name = "孤儿文件排除"
 )]
 async fn test_c2826_orphan_excluded(sess: XySessionStore) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
-    name = "未引用段会不影响列表"
+    name = "未引用文件不影响列表"
 )]
 async fn test_c2826_unref_segment_list(ws: Workspace, sess: XySessionStore) {}
 
@@ -181,13 +181,13 @@ async fn test_c2826_fork_header(sess: XySessionStore) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
-    name = "冷段恢复叶子正确"
+    name = "压缩保留叶子投影"
 )]
 async fn test_c2826_cold_restore(agent: AgentState, sess: XySessionStore) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
-    name = "侧车损坏回落返回至扫描"
+    name = "锚点索引损坏回落扫描"
 )]
 async fn test_c2826_sidecar_corrupt(agent: AgentState, sess: XySessionStore) {}
 

@@ -430,10 +430,10 @@ fn restore_session(
         std::fs::create_dir_all(&sessions_dir).ok();
         SessionManager::new(sessions_dir.clone())
     };
-    let session_file_exists = input
-        .session
-        .as_deref()
-        .is_some_and(|session_id| session_mgr.exists(session_id));
+    let session_file_exists = match input.session.as_deref() {
+        Some(session_id) => session_mgr.exists_sync(session_id),
+        None => false,
+    };
     if let Some(ref session_arg) = input.session
         && session_file_exists
     {

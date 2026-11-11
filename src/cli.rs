@@ -1,6 +1,7 @@
 mod args;
 mod config_cmd;
 mod intent;
+mod sessions_cmd;
 pub use xylitol_official_plugin_obs as logging;
 mod print;
 pub use args::*;
@@ -73,6 +74,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(CliCommand::Config { action }) => {
             crate::cli::config_cmd::run(action)?;
+            return Ok(());
+        }
+        Some(CliCommand::Sessions { action }) => {
+            crate::cli::sessions_cmd::run(action).await?;
             return Ok(());
         }
         Some(CliCommand::Tui { .. } | CliCommand::Print { .. }) | None => {}

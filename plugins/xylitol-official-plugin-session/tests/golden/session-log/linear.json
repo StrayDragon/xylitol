@@ -1,0 +1,401 @@
+{
+  "entries": [
+    {
+      "id": "u1",
+      "message": {
+        "content": [
+          {
+            "text": "first",
+            "type": "text"
+          }
+        ],
+        "role": "user",
+        "timestamp": 0
+      },
+      "parentId": null,
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "a1",
+      "message": {
+        "content": [
+          {
+            "text": "answer 1",
+            "type": "text"
+          }
+        ],
+        "role": "assistant",
+        "timestamp": 0
+      },
+      "parentId": "u1",
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "u2",
+      "message": {
+        "content": [
+          {
+            "text": "second",
+            "type": "text"
+          }
+        ],
+        "role": "user",
+        "timestamp": 0
+      },
+      "parentId": "a1",
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "a2",
+      "message": {
+        "content": [
+          {
+            "text": "answer 2",
+            "type": "text"
+          }
+        ],
+        "role": "assistant",
+        "timestamp": 0
+      },
+      "parentId": "u2",
+      "timestamp": 0,
+      "type": "message"
+    }
+  ],
+  "expected": {
+    "all": [
+      {
+        "cwd": ".",
+        "id": "s_linear",
+        "timestamp": 0,
+        "type": "session",
+        "version": 7
+      },
+      {
+        "id": "u1",
+        "message": {
+          "content": [
+            {
+              "text": "first",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": null,
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a1",
+        "message": {
+          "content": [
+            {
+              "text": "answer 1",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "u2",
+        "message": {
+          "content": [
+            {
+              "text": "second",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "a1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a2",
+        "message": {
+          "content": [
+            {
+              "text": "answer 2",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u2",
+        "timestamp": 0,
+        "type": "message"
+      }
+    ],
+    "branch": [
+      {
+        "id": "u1",
+        "message": {
+          "content": [
+            {
+              "text": "first",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": null,
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a1",
+        "message": {
+          "content": [
+            {
+              "text": "answer 1",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "u2",
+        "message": {
+          "content": [
+            {
+              "text": "second",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "a1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a2",
+        "message": {
+          "content": [
+            {
+              "text": "answer 2",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u2",
+        "timestamp": 0,
+        "type": "message"
+      }
+    ],
+    "context": [
+      {
+        "id": "u1",
+        "message": {
+          "content": [
+            {
+              "text": "first",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": null,
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a1",
+        "message": {
+          "content": [
+            {
+              "text": "answer 1",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "u2",
+        "message": {
+          "content": [
+            {
+              "text": "second",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "a1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a2",
+        "message": {
+          "content": [
+            {
+              "text": "answer 2",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u2",
+        "timestamp": 0,
+        "type": "message"
+      }
+    ],
+    "context_full": {
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "first",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        {
+          "api": "",
+          "content": [
+            {
+              "text": "answer 1",
+              "type": "text"
+            }
+          ],
+          "model": "",
+          "provider": "",
+          "role": "assistant",
+          "timestamp": 0
+        },
+        {
+          "content": [
+            {
+              "text": "second",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        {
+          "api": "",
+          "content": [
+            {
+              "text": "answer 2",
+              "type": "text"
+            }
+          ],
+          "model": "",
+          "provider": "",
+          "role": "assistant",
+          "timestamp": 0
+        }
+      ],
+      "model": null,
+      "thinking_level": "off"
+    },
+    "page_before": {
+      "entries": [
+        {
+          "id": "a1",
+          "message": {
+            "content": [
+              {
+                "text": "answer 1",
+                "type": "text"
+              }
+            ],
+            "role": "assistant",
+            "timestamp": 0
+          },
+          "parentId": "u1",
+          "timestamp": 0,
+          "type": "message"
+        },
+        {
+          "id": "u2",
+          "message": {
+            "content": [
+              {
+                "text": "second",
+                "type": "text"
+              }
+            ],
+            "role": "user",
+            "timestamp": 0
+          },
+          "parentId": "a1",
+          "timestamp": 0,
+          "type": "message"
+        }
+      ],
+      "more": true
+    },
+    "page_tail": {
+      "entries": [
+        {
+          "id": "u2",
+          "message": {
+            "content": [
+              {
+                "text": "second",
+                "type": "text"
+              }
+            ],
+            "role": "user",
+            "timestamp": 0
+          },
+          "parentId": "a1",
+          "timestamp": 0,
+          "type": "message"
+        },
+        {
+          "id": "a2",
+          "message": {
+            "content": [
+              {
+                "text": "answer 2",
+                "type": "text"
+              }
+            ],
+            "role": "assistant",
+            "timestamp": 0
+          },
+          "parentId": "u2",
+          "timestamp": 0,
+          "type": "message"
+        }
+      ],
+      "more": true
+    }
+  }
+}

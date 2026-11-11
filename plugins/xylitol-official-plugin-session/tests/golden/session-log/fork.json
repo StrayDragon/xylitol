@@ -1,0 +1,349 @@
+{
+  "entries": [
+    {
+      "id": "u1",
+      "message": {
+        "content": [
+          {
+            "text": "root user",
+            "type": "text"
+          }
+        ],
+        "role": "user",
+        "timestamp": 0
+      },
+      "parentId": null,
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "a_left",
+      "message": {
+        "content": [
+          {
+            "text": "LEFT sibling",
+            "type": "text"
+          }
+        ],
+        "role": "assistant",
+        "timestamp": 0
+      },
+      "parentId": "u1",
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "a_right",
+      "message": {
+        "content": [
+          {
+            "text": "RIGHT keep",
+            "type": "text"
+          }
+        ],
+        "role": "assistant",
+        "timestamp": 0
+      },
+      "parentId": "u1",
+      "timestamp": 0,
+      "type": "message"
+    },
+    {
+      "id": "u_right",
+      "message": {
+        "content": [
+          {
+            "text": "fork me",
+            "type": "text"
+          }
+        ],
+        "role": "user",
+        "timestamp": 0
+      },
+      "parentId": "a_right",
+      "timestamp": 0,
+      "type": "message"
+    }
+  ],
+  "expected": {
+    "all": [
+      {
+        "cwd": ".",
+        "id": "s_fork_parent",
+        "timestamp": 0,
+        "type": "session",
+        "version": 7
+      },
+      {
+        "id": "u1",
+        "message": {
+          "content": [
+            {
+              "text": "root user",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": null,
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a_left",
+        "message": {
+          "content": [
+            {
+              "text": "LEFT sibling",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a_right",
+        "message": {
+          "content": [
+            {
+              "text": "RIGHT keep",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "u_right",
+        "message": {
+          "content": [
+            {
+              "text": "fork me",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "a_right",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "cwd": ".",
+        "forkAtEntryId": "u_right",
+        "id": "s_fork_child",
+        "parentSession": "s_fork_parent",
+        "timestamp": 0,
+        "type": "session",
+        "version": 7
+      },
+      {
+        "fromId": "u_right",
+        "id": "gen-1",
+        "parentId": "u_right",
+        "summary": "s_fork_child: 分支摘要:\n- 跳过 1 条记录\n- 包含: 0 条用户消息, 1 条助手消息\n",
+        "timestamp": 0,
+        "type": "branchSummary"
+      }
+    ],
+    "branch": [
+      {
+        "id": "u1",
+        "message": {
+          "content": [
+            {
+              "text": "root user",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": null,
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a_right",
+        "message": {
+          "content": [
+            {
+              "text": "RIGHT keep",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "u_right",
+        "message": {
+          "content": [
+            {
+              "text": "fork me",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "a_right",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "fromId": "u_right",
+        "id": "gen-1",
+        "parentId": "u_right",
+        "summary": "s_fork_child: 分支摘要:\n- 跳过 1 条记录\n- 包含: 0 条用户消息, 1 条助手消息\n",
+        "timestamp": 0,
+        "type": "branchSummary"
+      }
+    ],
+    "context": [
+      {
+        "id": "u1",
+        "message": {
+          "content": [
+            {
+              "text": "root user",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": null,
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "a_right",
+        "message": {
+          "content": [
+            {
+              "text": "RIGHT keep",
+              "type": "text"
+            }
+          ],
+          "role": "assistant",
+          "timestamp": 0
+        },
+        "parentId": "u1",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "id": "u_right",
+        "message": {
+          "content": [
+            {
+              "text": "fork me",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        "parentId": "a_right",
+        "timestamp": 0,
+        "type": "message"
+      },
+      {
+        "fromId": "u_right",
+        "id": "gen-1",
+        "parentId": "u_right",
+        "summary": "s_fork_child: 分支摘要:\n- 跳过 1 条记录\n- 包含: 0 条用户消息, 1 条助手消息\n",
+        "timestamp": 0,
+        "type": "branchSummary"
+      }
+    ],
+    "context_full": {
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "root user",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        {
+          "api": "",
+          "content": [
+            {
+              "text": "RIGHT keep",
+              "type": "text"
+            }
+          ],
+          "model": "",
+          "provider": "",
+          "role": "assistant",
+          "timestamp": 0
+        },
+        {
+          "content": [
+            {
+              "text": "fork me",
+              "type": "text"
+            }
+          ],
+          "role": "user",
+          "timestamp": 0
+        },
+        {
+          "fromId": "u_right",
+          "role": "branchSummary",
+          "summary": "s_fork_child: 分支摘要:\n- 跳过 1 条记录\n- 包含: 0 条用户消息, 1 条助手消息\n"
+        }
+      ],
+      "model": null,
+      "thinking_level": "off"
+    },
+    "page_before": null,
+    "page_tail": {
+      "entries": [
+        {
+          "cwd": ".",
+          "forkAtEntryId": "u_right",
+          "id": "s_fork_child",
+          "parentSession": "s_fork_parent",
+          "timestamp": 0,
+          "type": "session",
+          "version": 7
+        },
+        {
+          "fromId": "u_right",
+          "id": "gen-1",
+          "parentId": "u_right",
+          "summary": "s_fork_child: 分支摘要:\n- 跳过 1 条记录\n- 包含: 0 条用户消息, 1 条助手消息\n",
+          "timestamp": 0,
+          "type": "branchSummary"
+        }
+      ],
+      "more": true
+    }
+  },
+  "fork": {
+    "at": "u_right",
+    "child": "s_fork_child",
+    "parent": "s_fork_parent",
+    "position": "at"
+  }
+}

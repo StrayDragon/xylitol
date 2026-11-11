@@ -317,15 +317,15 @@ async fn after_run_session_tree_reflects_persisted_turn() {
 
 #[tokio::test]
 
-async fn fork_rejects_unflushed_session_via_driver() {
+async fn fork_accepts_persisted_session_via_driver() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
     let path = store.get_session_file(&sid).expect("persisted path");
     assert!(
-        !path.exists(),
-        "build_test_driver leaves session pending-only"
+        path.exists(),
+        "create must persist the header immediately (log-v1 write path)"
     );
 
     store
@@ -342,8 +342,7 @@ async fn fork_rejects_unflushed_session_via_driver() {
             }),
         )
         .await
-        .expect("pending user");
-    assert!(!path.exists());
+        .expect("append user");
 
     let uid = store
         .load(&sid)
@@ -354,14 +353,11 @@ async fn fork_rejects_unflushed_session_via_driver() {
         .expect("user id")
         .to_string();
 
-    let err = driver
+    let child = driver
         .fork_session(&uid, xylitol_plugin_sdk::session::ForkPosition::At)
         .await
-        .expect_err("unflushed fork");
-    assert!(
-        err.to_string().contains("not been saved yet"),
-        "pi unflushed guard via XyDriver: {err}"
-    );
+        .expect("persisted session forks");
+    assert!(!child.is_empty(), "fork must return a child session id");
 }
 
 #[tokio::test]
