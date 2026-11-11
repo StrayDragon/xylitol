@@ -138,7 +138,7 @@ fn test_rc_tool_batch_mode() {}
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "会话最大回合已加载"
 )]
-fn test_rc_session_max_turns(agent: AgentState, ws: Workspace) {}
+fn test_rc_session_max_steps_per_turn(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",

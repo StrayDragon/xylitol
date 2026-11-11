@@ -280,11 +280,11 @@ pub(crate) async fn w_turn_events_run(agent: &AgentState) {
     events.extend(local_events);
 }
 
-#[then("事件按序发出：turn_start message_start message_update* message_end turn_end")]
+#[then("事件按序发出：step_start message_start message_update* message_end step_end")]
 pub(crate) fn t_turn_events_ordered(agent: &AgentState) {
     let events = agent.events.borrow();
     let mut idx = 0;
-    let expected_patterns = ["TurnStart", "MessageStart", "TurnEnd"];
+    let expected_patterns = ["StepStart", "MessageStart", "StepEnd"];
     for pat in &expected_patterns {
         while idx < events.len() && !format!("{:?}", events[idx]).contains(pat) {
             idx += 1;

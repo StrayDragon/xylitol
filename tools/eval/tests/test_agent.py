@@ -15,7 +15,7 @@ def test_render_config_uses_env_placeholders():
     assert "low: low" in text
     assert "high: high" in text
     assert "max_output_tokens: 128000" in text
-    assert "max_turns: 80" in text
+    assert "max_steps_per_turn: 80" in text
     assert "MAGPIE_GATEWAY_KEY" in text
     assert "sk-" not in text
 

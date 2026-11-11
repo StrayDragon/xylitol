@@ -14,7 +14,7 @@ def _report():
         dataset={"name": "SWE-bench/SWE-bench_Verified", "revision": "rev"},
         model={"alias": "group/glm-5.3-flash"},
         config={"sha256": "cfg"},
-        limits={"max_turns": 80, "wall_seconds": 1800},
+        limits={"max_steps_per_turn": 80, "wall_seconds": 1800},
         instances=[
             InstanceResult(instance_id="a", graded=True, resolved=True),
             InstanceResult(instance_id="b", empty_patch=True),

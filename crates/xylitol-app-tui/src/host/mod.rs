@@ -1410,8 +1410,8 @@ impl<T: Terminal> HostSession<T> {
             xy,
             XyEvent::AgentStart { .. }
                 | XyEvent::AgentEnd { .. }
-                | XyEvent::TurnStart { .. }
-                | XyEvent::TurnEnd { .. }
+                | XyEvent::StepStart { .. }
+                | XyEvent::StepEnd { .. }
                 | XyEvent::MessageStart { .. }
                 | XyEvent::MessageUpdate { .. }
                 | XyEvent::MessageEnd { .. }
@@ -1486,7 +1486,7 @@ impl<T: Terminal> HostSession<T> {
             XyEvent::CompactionEnd { .. } => {
                 self.request_footer_token_refresh();
             }
-            XyEvent::TurnEnd { .. } => {}
+            XyEvent::StepEnd { .. } => {}
             XyEvent::MessageEnd { role, message } => {
                 let has_usage = message.as_ref().is_some_and(|m| {
                     matches!(

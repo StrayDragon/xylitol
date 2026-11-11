@@ -6,8 +6,8 @@ use fastrace::prelude::{Event, Span, SpanContext};
 use tokio_util::sync::CancellationToken;
 
 use xylitol_plugin_sdk::{
-    AfterLlmResponseCtx, AfterToolCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeToolCtx,
-    BeforeTurnCtx, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware, LoopStage, LoopStep,
+    AfterLlmResponseCtx, AfterStepCtx, AfterToolCtx, BeforeLlmRequestCtx, BeforeStepCtx,
+    BeforeToolCtx, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware, LoopStage, LoopStep,
     ObsSessionContext, langfuse_observation_properties_from, provider_trace_active,
 };
 
@@ -170,7 +170,7 @@ fn messages_fingerprint(messages: &[xylitol_plugin_sdk::AgentMessage]) -> String
     format!("{}:{chars}:{tool_calls}", messages.len())
 }
 
-fn before_turn_fingerprint(ctx: &BeforeTurnCtx) -> String {
+fn before_step_fingerprint(ctx: &BeforeStepCtx) -> String {
     let prompt = ctx.system_prompt.as_deref().map(str::len).unwrap_or(0);
     format!("{prompt}:{}", ctx.system_fragments.len())
 }
@@ -272,23 +272,23 @@ async fn run_stage<C>(
     })
 }
 
-pub(crate) async fn run_before_turn(
+pub(crate) async fn run_before_step(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
     obs: &ObsSessionContext,
-    ctx: BeforeTurnCtx,
-) -> Result<StageOutcome<BeforeTurnCtx>, MiddlewareFault> {
+    ctx: BeforeStepCtx,
+) -> Result<StageOutcome<BeforeStepCtx>, MiddlewareFault> {
     run_stage(
         chain,
-        LoopStage::BeforeTurn,
+        LoopStage::BeforeStep,
         cancel,
         parent,
         obs,
         ctx,
-        before_turn_fingerprint,
+        before_step_fingerprint,
         |_| {},
-        |mw, ctx| Box::pin(mw.before_turn(ctx)),
+        |mw, ctx| Box::pin(mw.before_step(ctx)),
     )
     .await
 }
@@ -406,32 +406,32 @@ pub(crate) async fn run_decide_continue(
     .await
 }
 
-pub(crate) async fn run_after_turn(
+pub(crate) async fn run_after_step(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
     obs: &ObsSessionContext,
-    mut ctx: AfterTurnCtx,
-) -> Result<AfterTurnCtx, MiddlewareFault> {
-    for mw in chain.stage(LoopStage::AfterTurn) {
+    mut ctx: AfterStepCtx,
+) -> Result<AfterStepCtx, MiddlewareFault> {
+    for mw in chain.stage(LoopStage::AfterStep) {
         let step = call(
             StageCall {
                 middleware: mw,
-                stage: LoopStage::AfterTurn,
+                stage: LoopStage::AfterStep,
                 cancel,
                 parent,
                 scope: chain.scope,
                 obs,
             },
             String::new(),
-            mw.after_turn(ctx),
+            mw.after_step(ctx),
             |_ctx| String::new(),
         )
         .await?;
         if step.control != LoopControl::Continue {
             log::warn!(
                 target: "xylitol::react",
-                "after_turn middleware {} returned control={} (ignored; after_turn is observe-only)",
+                "after_step middleware {} returned control={} (ignored; after_step is observe-only)",
                 mw.id(),
                 step.control.as_str()
             );
@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn fingerprints_track_message_and_schema_changes() {
         let ctx = BeforeLlmRequestCtx {
-            turn_index: 0,
+            step_index: 0,
             messages: vec![xylitol_plugin_sdk::AgentMessage::Llm(
                 xylitol_plugin_sdk::XyLlmMessage::user("hi"),
             )],
@@ -506,43 +506,43 @@ mod tests {
         assert_ne!(base, before_llm_request_fingerprint(&schema_changed));
     }
 
-    struct StopAfterTurn;
+    struct StopAfterStep;
 
     #[async_trait::async_trait]
-    impl LoopMiddleware for StopAfterTurn {
+    impl LoopMiddleware for StopAfterStep {
         fn id(&self) -> &str {
             "stop-after-turn"
         }
 
         fn stages(&self) -> &'static [LoopStage] {
-            &[LoopStage::AfterTurn]
+            &[LoopStage::AfterStep]
         }
 
-        async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+        async fn after_step(&self, ctx: AfterStepCtx) -> LoopStep<AfterStepCtx> {
             LoopStep::stopped(ctx)
         }
     }
 
     #[tokio::test]
-    async fn after_turn_control_is_ignored() {
+    async fn after_step_control_is_ignored() {
         let mut chain = LoopChain::default();
-        chain.after_turn.push(Arc::new(StopAfterTurn));
+        chain.after_step.push(Arc::new(StopAfterStep));
         let cancel = CancellationToken::new();
-        let out = run_after_turn(
+        let out = run_after_step(
             &chain,
             &cancel,
             None,
             &ObsSessionContext::default(),
-            AfterTurnCtx {
-                turn_index: 3,
+            AfterStepCtx {
+                step_index: 3,
                 continued_tools: true,
                 history_len: 9,
                 session_id: None,
             },
         )
         .await
-        .expect("after_turn");
-        assert_eq!(out.turn_index, 3);
+        .expect("after_step");
+        assert_eq!(out.step_index, 3);
         assert_eq!(out.history_len, 9);
     }
 
@@ -551,9 +551,9 @@ mod tests {
         let timeout = MiddlewareFault::timed_out("x".into(), LoopStage::BeforeTool);
         assert_eq!(timeout.kind(), "LoopMiddlewareTimeout");
         assert!(timeout.message().contains("2s"));
-        let cancelled = MiddlewareFault::cancelled("y".into(), LoopStage::AfterTurn);
+        let cancelled = MiddlewareFault::cancelled("y".into(), LoopStage::AfterStep);
         assert_eq!(cancelled.kind(), "Aborted");
-        assert!(cancelled.message().contains("after_turn"));
+        assert!(cancelled.message().contains("after_step"));
     }
 
     struct SetDeny {
@@ -627,7 +627,7 @@ mod tests {
 
     fn tool_ctx() -> BeforeToolCtx {
         BeforeToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "call-1".into(),
             tool_name: "write".into(),
             args: serde_json::json!({}),

@@ -441,6 +441,7 @@ fn when_mount_settled_thinking(transcript_bdd: &TranscriptBdd, tui_interaction: 
     sb.message_end();
     let mut fx = InteractionBdd::from_model(sb.into_model());
     fx.push_xy(XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::new(),
     });
     fx.open_hit_viewport(200);
@@ -662,6 +663,7 @@ pub(crate) fn rail_prefix(rgb: xylitol_tui::terminal_colors::RgbColor) -> String
 
 fn seal_and_open_cluster(fx: &mut InteractionBdd) {
     fx.push_xy(XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::new(),
     });
     fx.open_hit_viewport(200);

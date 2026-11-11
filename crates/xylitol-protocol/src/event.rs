@@ -7,6 +7,17 @@ fn default_error_kind() -> String {
     "Message".to_string()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentEndReason {
+    UserCancel,
+    ModelError,
+    MiddlewareStop,
+    MiddlewareFault,
+    ModalityUnsupported,
+    StepLimit,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
@@ -14,12 +25,15 @@ pub enum Event {
         session_id: String,
         model: String,
     },
-    AgentEnd,
-    TurnStart {
-        turn_index: u32,
+    AgentEnd {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<AgentEndReason>,
     },
-    TurnEnd {
-        turn_index: u32,
+    StepStart {
+        step_index: u32,
+    },
+    StepEnd {
+        step_index: u32,
     },
     MessageStart {
         role: String,
@@ -182,9 +196,9 @@ mod tests {
                 session_id: "s".into(),
                 model: "m".into(),
             },
-            Event::AgentEnd,
-            Event::TurnStart { turn_index: 1 },
-            Event::TurnEnd { turn_index: 1 },
+            Event::AgentEnd { reason: None },
+            Event::StepStart { step_index: 1 },
+            Event::StepEnd { step_index: 1 },
             Event::MessageStart {
                 role: "assistant".into(),
                 message: None,

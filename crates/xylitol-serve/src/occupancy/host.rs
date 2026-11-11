@@ -603,7 +603,7 @@ impl SessionSlot {
         note.params
             .get("event")
             .and_then(|v| serde_json::from_value::<xylitol_protocol::Event>(v.clone()).ok())
-            .map(|ev| matches!(ev, xylitol_protocol::Event::AgentEnd))
+            .map(|ev| matches!(ev, xylitol_protocol::Event::AgentEnd { .. }))
             .unwrap_or(true)
     }
 
@@ -2261,8 +2261,8 @@ mod tests {
         XyEvent::TextDelta(text.into())
     }
 
-    fn turn_start(index: u32) -> XyEvent {
-        XyEvent::TurnStart { turn_index: index }
+    fn step_start(index: u32) -> XyEvent {
+        XyEvent::StepStart { step_index: index }
     }
 
     async fn subscribe(slot: &SessionSlot) -> (u64, mpsc::Receiver<Notification>) {
@@ -2322,14 +2322,14 @@ mod tests {
     async fn append_and_push_wraps_the_domain_event_as_session_event() {
         let slot = slot();
         let (_, mut rx) = subscribe(&slot).await;
-        slot.append_and_push(&turn_start(1)).await;
+        slot.append_and_push(&step_start(1)).await;
         let note = rx.recv().await.expect("notification");
         assert_eq!(note.method, SESSION_EVENT);
         assert_eq!(note.params["session_id"], "s0");
         assert_eq!(note.params["seq"], 1);
         assert_eq!(
             note.params["event"],
-            json!({"type": "turn_start", "turn_index": 1})
+            json!({"type": "step_start", "step_index": 1})
         );
     }
 
@@ -2363,11 +2363,11 @@ mod tests {
         let slot = slot();
         let (tx, mut rx) = mpsc::channel(128);
         slot.add_subscriber(tx).await;
-        slot.append_and_push(&turn_start(1)).await;
+        slot.append_and_push(&step_start(1)).await;
         for i in 0..50 {
             slot.append_and_push(&text_delta(&format!("d{i}"))).await;
         }
-        slot.append_and_push(&XyEvent::TurnEnd { turn_index: 1 })
+        slot.append_and_push(&XyEvent::StepEnd { step_index: 1 })
             .await;
         let journal = slot.journal.lock().await;
         assert_eq!(journal.max_seq(), 2, "only the two facts are journaled");
@@ -2395,7 +2395,7 @@ mod tests {
     #[tokio::test]
     async fn non_event_downlinks_do_not_consume_journal_seq() {
         let slot = slot();
-        slot.append_and_push(&turn_start(1)).await;
+        slot.append_and_push(&step_start(1)).await;
         let _rx = slot.request_approval("c1".into()).await;
         assert_eq!(slot.journal.lock().await.current_seq(), 2);
         slot.push_bash_output(BashChunk {
@@ -2467,7 +2467,7 @@ mod tests {
     async fn subscribe_continuation_replays_only_newer_events_then_subscribed() {
         let slot = slot();
         for i in 1..=3 {
-            slot.append_and_push(&turn_start(i)).await;
+            slot.append_and_push(&step_start(i)).await;
         }
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], false, false, 1).await;
@@ -2486,7 +2486,7 @@ mod tests {
     #[tokio::test]
     async fn subscribe_continuation_reports_inflight_in_result_and_notification() {
         let slot = slot();
-        slot.append_and_push(&turn_start(1)).await;
+        slot.append_and_push(&step_start(1)).await;
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], true, true, 0).await;
         let subscribed = rx.recv().await.expect("subscribed");
@@ -2500,7 +2500,7 @@ mod tests {
         let slot = slot();
         *slot.journal.lock().await = EventJournal::new("s0", 2);
         for i in 1..=3 {
-            slot.append_and_push(&turn_start(i)).await;
+            slot.append_and_push(&step_start(i)).await;
         }
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], false, false, 0).await;
@@ -2526,7 +2526,7 @@ mod tests {
             )
         };
         assert!(SessionSlot::observe_passes(&event(
-            xylitol_protocol::Event::AgentEnd
+            xylitol_protocol::Event::AgentEnd { reason: None }
         )));
         assert!(!SessionSlot::observe_passes(&event(
             xylitol_protocol::Event::TextDelta { text: "x".into() }
@@ -2600,8 +2600,11 @@ mod tests {
         let slot = slot();
         slot.append_and_push(&partial_update("abc")).await;
         assert!(slot.latest_tape.lock().unwrap().is_some());
-        slot.append_and_push(&XyEvent::AgentEnd { messages: vec![] })
-            .await;
+        slot.append_and_push(&XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        })
+        .await;
         assert!(
             slot.latest_tape.lock().unwrap().is_none(),
             "a finished turn leaves no partial behind"
@@ -2611,7 +2614,7 @@ mod tests {
     #[tokio::test]
     async fn midturn_reconnect_carries_partial_only_for_positive_last_seq() {
         let slot = slot();
-        slot.append_and_push(&turn_start(1)).await;
+        slot.append_and_push(&step_start(1)).await;
         slot.append_and_push(&partial_update("half done")).await;
         let (id, _rx) = subscribe(&slot).await;
 
@@ -2753,6 +2756,7 @@ mod tests {
                 .map(|mut runs| runs.push(prompt.to_string()))
                 .ok();
             Box::pin(futures::stream::iter(vec![XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             }]))
         }

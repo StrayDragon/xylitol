@@ -1,7 +1,9 @@
 use crate::bdd::fixtures::*;
 use crate::bdd::helpers::*;
 use crate::bdd::prelude::*;
+use crate::bdd::steps_app_tui_bridge::BridgeBdd;
 use rstest_bdd_macros::{given, then, when};
+use xylitol_app_tui::UiEntry;
 
 #[given("mock 模型先 tool 后无 tool")]
 pub(crate) fn _g_ar_react_setup(agent: &AgentState, ws: &Workspace) {
@@ -113,8 +115,8 @@ pub(crate) fn _t_ar_react_terminates(agent: &AgentState) {
         .any(|e| !matches!(e, XyEvent::TextDelta(_)) && format!("{e:?}").contains("Tool"));
     assert!(has_tool, "expected tool execution, got {:?}", events);
     assert!(
-        events.iter().any(|e| matches!(e, XyEvent::TurnEnd { .. })),
-        "expected TurnEnd, got {:?}",
+        events.iter().any(|e| matches!(e, XyEvent::StepEnd { .. })),
+        "expected StepEnd, got {:?}",
         events
     );
 }
@@ -417,45 +419,47 @@ pub(crate) fn _t_ar11_second_run_ok() {
         .any(|ev| matches!(ev, XyEvent::Error(err) if err.is_aborted()));
     let ended = events
         .iter()
-        .any(|ev| matches!(ev, XyEvent::TurnEnd { .. }));
+        .any(|ev| matches!(ev, XyEvent::StepEnd { .. }));
     assert!(!aborted, "second run must not be immediately aborted");
-    assert!(ended, "second run must complete with TurnEnd");
+    assert!(ended, "second run must complete with StepEnd");
 }
 
-#[given("注册 should_stop_after_turn 在首次 TurnEnd 后返回 true")]
+#[given("注册 should_stop_after_step 在首次 StepEnd 后返回 true")]
 pub(crate) async fn _g_ar24_should_stop(agent: &AgentState, ws: &Workspace) {
     set_fake_text("stop-after-turn ack");
     let mut runner = ar_make_runner(agent, ws);
-    runner.set_should_stop_after_turn(Some(std::sync::Arc::new(|_| true)));
+    runner.set_should_stop_after_step(Some(std::sync::Arc::new(|_| true)));
     ar_store_runner(runner);
 }
 
-#[given("入队 follow_up 且 should_stop_after_turn 在首次 TurnEnd 后返回 true")]
+#[given("入队 follow_up 且 should_stop_after_step 在首次 StepEnd 后返回 true")]
 pub(crate) async fn _g_ar24_should_stop_with_followup(agent: &AgentState, ws: &Workspace) {
     set_fake_text("stop-skip-followup ack");
     let mut runner = ar_make_runner(agent, ws);
     runner.follow_up("停闸后不应注入的追问");
-    runner.set_should_stop_after_turn(Some(std::sync::Arc::new(|_| true)));
+    runner.set_should_stop_after_step(Some(std::sync::Arc::new(|_| true)));
     ar_store_runner(runner);
 }
 
-#[given("未注册 should_stop_after_turn 的无工具 agent")]
+#[given("未注册 should_stop_after_step 的无工具 agent")]
 pub(crate) async fn _g_ar24_no_hook_open(agent: &AgentState, ws: &Workspace) {
     set_fake_text("open-end ack");
     let runner = ar_make_runner(agent, ws);
     ar_store_runner(runner);
 }
 
-#[given("按 session.max_turns=2 安装 should_stop_after_turn 且入队 follow_up 以迫使第二轮")]
-pub(crate) async fn _g_ar30_max_turns(agent: &AgentState, ws: &Workspace) {
+#[given(
+    "按 session.max_steps_per_turn=2 安装 should_stop_after_step 且入队 follow_up 以迫使第二轮"
+)]
+pub(crate) async fn _g_ar30_max_steps_per_turn(agent: &AgentState, ws: &Workspace) {
     set_fake_text("max-turns ack");
     let mut runner = ar_make_runner(agent, ws);
     runner.follow_up("第二轮追问");
-    runner.set_should_stop_after_turn(Some(xylitol_runtime::agent::max_turns_stop_hook(2)));
+    runner.set_should_stop_after_step(Some(xylitol_runtime::agent::max_steps_stop_hook(2)));
     ar_store_runner(runner);
 }
 
-#[then("出现 AgentEnd 且其后无新的模型轮 TurnStart")]
+#[then("出现 AgentEnd 且其后无新的模型轮 StepStart")]
 pub(crate) fn _t_ar24_agent_end_no_extra_turn(agent: &AgentState) {
     let events = agent.events.borrow();
     let mut turn_starts = 0usize;
@@ -463,7 +467,7 @@ pub(crate) fn _t_ar24_agent_end_no_extra_turn(agent: &AgentState) {
     let mut turn_start_after_end = false;
     for ev in events.iter() {
         match ev {
-            XyEvent::TurnStart { .. } => {
+            XyEvent::StepStart { .. } => {
                 turn_starts += 1;
                 if saw_agent_end {
                     turn_start_after_end = true;
@@ -476,20 +480,175 @@ pub(crate) fn _t_ar24_agent_end_no_extra_turn(agent: &AgentState) {
     assert!(saw_agent_end, "expected AgentEnd, got {events:?}");
     assert_eq!(
         turn_starts, 1,
-        "expected exactly one TurnStart, got {events:?}"
+        "expected exactly one StepStart, got {events:?}"
     );
     assert!(
         !turn_start_after_end,
-        "no TurnStart after AgentEnd: {events:?}"
+        "no StepStart after AgentEnd: {events:?}"
     );
 }
 
-#[then("至多出现 2 次 TurnStart 后出现 AgentEnd")]
+fn agent_end_reason(events: &[XyEvent]) -> Option<xylitol_plugin_sdk::AgentEndReason> {
+    events.iter().rev().find_map(|e| match e {
+        XyEvent::AgentEnd { reason, .. } => *reason,
+        _ => None,
+    })
+}
+
+fn apply_events_to_bridge(agent: &AgentState, bridge_bdd: &BridgeBdd) {
+    for ev in agent.events.borrow().iter() {
+        crate::bdd::steps_app_tui_bridge::apply(bridge_bdd, ev.clone());
+    }
+}
+
+fn assert_scroll_notice(bridge_bdd: &BridgeBdd, text: &str) {
+    let model = bridge_bdd.model.borrow();
+    assert!(
+        model
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::ScrollNotice { text: t } if t == text)),
+        "expected scroll notice {text:?}, got {:?}",
+        model.entries
+    );
+}
+
+#[given("启动慢速流式 mock 并在首个 TextDelta 后 abort")]
+pub(crate) async fn _g_ar_user_cancel_reason(agent: &AgentState, ws: &Workspace) {
+    reset_fake_state();
+    ws.init();
+    ar_register_fake(agent, "ar-cancel-reason");
+    set_fake_slow_stream(20, 10);
+    let mut runner = make_agent(agent);
+    runner
+        .select_model("ar-cancel-reason")
+        .await
+        .expect("select ar-cancel-reason");
+    let mut stream = agent_submit_root(&mut runner, "取消").await;
+    let mut events = Vec::new();
+    let mut saw_delta = false;
+    while let Some(e) = stream.next().await {
+        if !saw_delta && matches!(e, XyEvent::TextDelta(_)) {
+            saw_delta = true;
+            runner.abort();
+        }
+        events.push(e);
+    }
+    ar_store_runner(runner);
+    let mut stored = agent.events.borrow_mut();
+    stored.clear();
+    stored.extend(events);
+}
+
+#[given("mock 模型 generate 返回不可重试错误")]
+pub(crate) fn _g_ar_model_error_reason(agent: &AgentState, ws: &Workspace) {
+    reset_fake_state();
+    set_fake_error("invalid request", false);
+    ws.init();
+    ar_register_fake(agent, "ar-model-error");
+    let mut runner = make_agent(agent);
+    futures::executor::block_on(runner.select_model("ar-model-error"))
+        .expect("select ar-model-error");
+    ar_store_runner(runner);
+}
+
+#[given("按 session.max_steps_per_turn=1 安装 should_stop_after_step")]
+pub(crate) fn _g_ar_step_limit_reason(agent: &AgentState, ws: &Workspace) {
+    let mut runner = ar_make_runner(agent, ws);
+    runner.set_should_stop_after_step(Some(xylitol_runtime::agent::max_steps_stop_hook(1)));
+    ar_store_runner(runner);
+}
+
+#[when("观察事件流与产品端输出")]
+pub(crate) fn _w_ar_reason_observe_stored() {}
+
+#[when("运行 AgentRuntime 并观察事件流与产品端输出")]
+pub(crate) async fn _w_ar_reason_run_observe(agent: &AgentState) {
+    _w_ar_react_run_collect(agent).await;
+}
+
+#[then("AgentEnd.reason 为 UserCancel 且端侧显示取消归因")]
+pub(crate) fn _t_ar_user_cancel_reason(agent: &AgentState, bridge_bdd: &BridgeBdd) {
+    let events = agent.events.borrow();
+    assert_eq!(
+        agent_end_reason(&events),
+        Some(xylitol_plugin_sdk::AgentEndReason::UserCancel),
+        "{events:?}"
+    );
+    drop(events);
+    apply_events_to_bridge(agent, bridge_bdd);
+    assert_scroll_notice(bridge_bdd, "Operation aborted");
+}
+
+#[then("AgentEnd.reason 为 ModelError 且端侧显示模型错误归因")]
+pub(crate) fn _t_ar_model_error_reason(agent: &AgentState, bridge_bdd: &BridgeBdd) {
+    let events = agent.events.borrow();
+    assert_eq!(
+        agent_end_reason(&events),
+        Some(xylitol_plugin_sdk::AgentEndReason::ModelError),
+        "{events:?}"
+    );
+    drop(events);
+    apply_events_to_bridge(agent, bridge_bdd);
+    assert_scroll_notice(bridge_bdd, "Model error");
+}
+
+#[then("AgentEnd.reason 为 StepLimit 且端侧显示步数上限归因")]
+pub(crate) fn _t_ar_step_limit_reason(agent: &AgentState, bridge_bdd: &BridgeBdd) {
+    let events = agent.events.borrow();
+    assert_eq!(
+        agent_end_reason(&events),
+        Some(xylitol_plugin_sdk::AgentEndReason::StepLimit),
+        "{events:?}"
+    );
+    drop(events);
+    apply_events_to_bridge(agent, bridge_bdd);
+    assert_scroll_notice(bridge_bdd, "Step limit reached");
+}
+
+#[given("mock 模型在首个 step 先报可重试错误后成功、次 step 直接成功")]
+pub(crate) fn _g_ar_retry_once(agent: &AgentState, ws: &Workspace) {
+    reset_fake_state();
+    set_fake_retry_once("rate limit exceeded");
+    set_fake_text("retry ok");
+    ws.init();
+    ar_register_fake(agent, "ar-retry");
+    let mut runtime = make_agent(agent);
+    futures::executor::block_on(runtime.select_model("ar-retry"))
+        .expect("select ar-retry fake model");
+    runtime.follow_up("second step");
+    ar_store_runner(runtime);
+}
+
+#[then("恰出现一次 AutoRetryEnd 且其后再无 AutoRetryEnd")]
+pub(crate) fn _t_ar_retry_once(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let ends: Vec<&XyEvent> = events
+        .iter()
+        .filter(|e| matches!(e, XyEvent::AutoRetryEnd { .. }))
+        .collect();
+    assert_eq!(
+        ends.len(),
+        1,
+        "exactly one AutoRetryEnd expected (second step must not emit one): {events:?}"
+    );
+    match ends[0] {
+        XyEvent::AutoRetryEnd { success, .. } => assert!(*success, "{events:?}"),
+        _ => unreachable!(),
+    }
+    let step_starts = events
+        .iter()
+        .filter(|e| matches!(e, XyEvent::StepStart { .. }))
+        .count();
+    assert_eq!(step_starts, 2, "retry then next step: {events:?}");
+}
+
+#[then("至多出现 2 次 StepStart 后出现 AgentEnd")]
 pub(crate) fn _t_ar30_max_two_turns(agent: &AgentState) {
     let events = agent.events.borrow();
     let turn_starts = events
         .iter()
-        .filter(|ev| matches!(ev, XyEvent::TurnStart { .. }))
+        .filter(|ev| matches!(ev, XyEvent::StepStart { .. }))
         .count();
     let saw_agent_end = events
         .iter()
@@ -497,11 +656,11 @@ pub(crate) fn _t_ar30_max_two_turns(agent: &AgentState) {
     assert!(saw_agent_end, "expected AgentEnd, got {events:?}");
     assert!(
         turn_starts <= 2,
-        "expected at most 2 TurnStart, got {turn_starts}: {events:?}"
+        "expected at most 2 StepStart, got {turn_starts}: {events:?}"
     );
     assert!(
         turn_starts >= 1,
-        "expected at least one TurnStart, got {events:?}"
+        "expected at least one StepStart, got {events:?}"
     );
 }
 
@@ -509,7 +668,7 @@ pub(crate) fn _t_ar30_max_two_turns(agent: &AgentState) {
 pub(crate) fn _t_ar24_followup_not_injected(agent: &AgentState) {
     let events = agent.events.borrow();
     let agent_end = events.iter().rev().find_map(|ev| match ev {
-        XyEvent::AgentEnd { messages } => Some(messages.clone()),
+        XyEvent::AgentEnd { messages, .. } => Some(messages.clone()),
         _ => None,
     });
     let history = agent_end.expect("expected AgentEnd");
@@ -534,12 +693,12 @@ pub(crate) fn _t_ar24_followup_not_injected(agent: &AgentState) {
     });
 }
 
-#[then("正常出现 AgentEnd 且恰好一轮 TurnStart")]
+#[then("正常出现 AgentEnd 且恰好一轮 StepStart")]
 pub(crate) fn _t_ar24_no_hook_open_end(agent: &AgentState) {
     let events = agent.events.borrow();
     let turn_starts = events
         .iter()
-        .filter(|ev| matches!(ev, XyEvent::TurnStart { .. }))
+        .filter(|ev| matches!(ev, XyEvent::StepStart { .. }))
         .count();
     let saw_agent_end = events
         .iter()
@@ -550,7 +709,7 @@ pub(crate) fn _t_ar24_no_hook_open_end(agent: &AgentState) {
     );
     assert_eq!(
         turn_starts, 1,
-        "open end without max_iterations / stop hook: one TurnStart, got {events:?}"
+        "open end without max_iterations / stop hook: one StepStart, got {events:?}"
     );
 }
 
@@ -907,7 +1066,7 @@ pub(crate) fn _t_ar29_history_order(agent: &AgentState) {
         .iter()
         .rev()
         .find_map(|ev| match ev {
-            XyEvent::AgentEnd { messages } => Some(messages.clone()),
+            XyEvent::AgentEnd { messages, .. } => Some(messages.clone()),
             _ => None,
         })
         .expect("AgentEnd");
@@ -1263,16 +1422,16 @@ pub(crate) fn t_c2826_abort_persist(agent: &AgentState) {
     );
 }
 
-#[then("TurnStart 与 TurnEnd 成对出现两次且 ContextTokenSettlement 恰一次")]
+#[then("StepStart 与 StepEnd 成对出现两次且 ContextTokenSettlement 恰一次")]
 pub(crate) fn t_c2826_two_iterations_one_settlement(agent: &AgentState) {
     let events = agent.events.borrow();
     let turn_starts = events
         .iter()
-        .filter(|e| matches!(e, XyEvent::TurnStart { .. }))
+        .filter(|e| matches!(e, XyEvent::StepStart { .. }))
         .count();
     let turn_ends = events
         .iter()
-        .filter(|e| matches!(e, XyEvent::TurnEnd { .. }))
+        .filter(|e| matches!(e, XyEvent::StepEnd { .. }))
         .count();
     let settlements = events
         .iter()

@@ -40,6 +40,36 @@ impl From<&XyError> for XyEventError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentEndReason {
+    UserCancel,
+    ModelError,
+    MiddlewareStop,
+    MiddlewareFault,
+    ModalityUnsupported,
+    StepLimit,
+}
+
+impl AgentEndReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UserCancel => "user_cancel",
+            Self::ModelError => "model_error",
+            Self::MiddlewareStop => "middleware_stop",
+            Self::MiddlewareFault => "middleware_fault",
+            Self::ModalityUnsupported => "modality_unsupported",
+            Self::StepLimit => "step_limit",
+        }
+    }
+}
+
+impl std::fmt::Display for AgentEndReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, IntoStaticStr)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[strum(serialize_all = "snake_case")]
@@ -50,13 +80,15 @@ pub enum XyEvent {
     },
     AgentEnd {
         messages: Vec<AgentMessage>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<AgentEndReason>,
     },
 
-    TurnStart {
-        turn_index: u32,
+    StepStart {
+        step_index: u32,
     },
-    TurnEnd {
-        turn_index: u32,
+    StepEnd {
+        step_index: u32,
     },
 
     MessageStart {

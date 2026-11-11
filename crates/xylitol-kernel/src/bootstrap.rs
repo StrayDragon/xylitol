@@ -240,7 +240,7 @@ pub struct ResolvedAssembly {
     pub default_thinking_level: Option<String>,
     pub thinking_budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>,
     pub batch_mode: xylitol_plugin_sdk::XyBatchMode,
-    pub max_turns: Option<u32>,
+    pub max_steps_per_turn: Option<u32>,
     pub stage_name_config: xylitol_runtime::agent::stage_name::StageNameConfig,
     pub tool_features: crate::driver::ToolFeatures,
     pub project_trusted: bool,
@@ -725,14 +725,14 @@ pub fn resolve_assembly_with(
         })
         .unwrap_or_default();
 
-    let max_turns = app_config
+    let max_steps_per_turn = app_config
         .as_ref()
         .and_then(|c| {
             c.section::<xylitol_official_plugin_config::types::SessionConfig>("session")
                 .ok()
                 .flatten()
         })
-        .and_then(|s| s.max_turns);
+        .and_then(|s| s.max_steps_per_turn);
 
     let stage_name_config = app_config
         .as_ref()
@@ -776,7 +776,7 @@ pub fn resolve_assembly_with(
         default_thinking_level,
         thinking_budgets,
         batch_mode,
-        max_turns,
+        max_steps_per_turn,
         stage_name_config,
         tool_features: resolve_tool_features(app_config.as_ref(), profile_tools),
         project_trusted,
@@ -807,7 +807,7 @@ pub fn bootstrap_with(
     let mcp_servers = assembly.mcp_servers.clone();
     let default_thinking_level = assembly.default_thinking_level.clone();
     let thinking_budgets = assembly.thinking_budgets.clone();
-    let max_turns = assembly.max_turns;
+    let max_steps_per_turn = assembly.max_steps_per_turn;
     let stage_name_config = assembly.stage_name_config.clone();
     let session_file_exists = assembly.session_file_exists;
     let tool_features = assembly.tool_features.clone();
@@ -826,8 +826,8 @@ pub fn bootstrap_with(
         .map_err(|e| BootstrapError::BuildFailed(e.to_string()))?;
     agent.set_stage_name_config(stage_name_config);
 
-    if let Some(n) = max_turns.filter(|&n| n >= 1) {
-        agent.set_should_stop_after_turn(Some(xylitol_runtime::agent::max_turns_stop_hook(n)));
+    if let Some(n) = max_steps_per_turn.filter(|&n| n >= 1) {
+        agent.set_should_stop_after_step(Some(xylitol_runtime::agent::max_steps_stop_hook(n)));
     }
 
     timing::time("session.create");

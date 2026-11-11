@@ -11,7 +11,7 @@ use crate::bdd::steps_agent_runtime::{
 };
 
 use xylitol_plugin_sdk::{
-    AfterTurnCtx, BeforeLlmRequestCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx,
+    AfterStepCtx, BeforeLlmRequestCtx, BeforeStepCtx, BeforeToolCtx, DecideContinueCtx,
     LoopControl, LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep,
 };
 use xylitol_runtime::agent::runtime::XyEvent;
@@ -150,10 +150,10 @@ impl LoopMiddleware for InjectFragment {
     }
 
     fn stages(&self) -> &'static [LoopStage] {
-        &[LoopStage::BeforeTurn]
+        &[LoopStage::BeforeStep]
     }
 
-    async fn before_turn(&self, mut ctx: BeforeTurnCtx) -> LoopStep<BeforeTurnCtx> {
+    async fn before_step(&self, mut ctx: BeforeStepCtx) -> LoopStep<BeforeStepCtx> {
         ctx.system_fragments
             .push("MIDDLEWARE_FRAGMENT_MARKER_0123456789".into());
         LoopStep::continued(ctx)
@@ -183,19 +183,19 @@ impl LoopMiddleware for RewriteAssistant {
     }
 }
 
-struct StopAfterTurn;
+struct StopAfterStep;
 
 #[async_trait::async_trait]
-impl LoopMiddleware for StopAfterTurn {
+impl LoopMiddleware for StopAfterStep {
     fn id(&self) -> &str {
         "stop-after-turn"
     }
 
     fn stages(&self) -> &'static [LoopStage] {
-        &[LoopStage::AfterTurn]
+        &[LoopStage::AfterStep]
     }
 
-    async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+    async fn after_step(&self, ctx: AfterStepCtx) -> LoopStep<AfterStepCtx> {
         LOOP_AFTER_TURN_CALLS.with(|c| *c.borrow_mut() += 1);
         LoopStep::stopped(ctx)
     }
@@ -354,38 +354,38 @@ pub(crate) fn g_decide_handoff(agent: &AgentState, ws: &Workspace) {
     ar_store_runner(runner);
 }
 
-#[given("注册 after_turn 中间件返回 stop 且入队 follow_up")]
-pub(crate) fn g_after_turn_stop_with_followup(agent: &AgentState, ws: &Workspace) {
+#[given("注册 after_step 中间件返回 stop 且入队 follow_up")]
+pub(crate) fn g_after_step_stop_with_followup(agent: &AgentState, ws: &Workspace) {
     LOOP_AFTER_TURN_CALLS.with(|c| *c.borrow_mut() = 0);
     let registry = fresh_registry();
     registry
-        .register(Arc::new(StopAfterTurn))
+        .register(Arc::new(StopAfterStep))
         .expect("register stop-after-turn");
     let mut runner = ar_make_runner(agent, ws);
     runner.set_loop_middleware(Some(registry));
-    runner.follow_up("after_turn 不得吞掉的追问");
+    runner.follow_up("after_step 不得吞掉的追问");
     set_fake_text("after turn ignored");
     ar_store_runner(runner);
 }
 
-#[then("after_turn 中间件已被调用且 run 继续到下一轮")]
-pub(crate) fn t_after_turn_stop_ignored() {
+#[then("after_step 中间件已被调用且 run 继续到下一轮")]
+pub(crate) fn t_after_step_stop_ignored() {
     let calls = LOOP_AFTER_TURN_CALLS.with(|c| *c.borrow());
-    assert!(calls >= 1, "after_turn must run after a turn");
+    assert!(calls >= 1, "after_step must run after a turn");
     let events = crate::bdd::steps_agent_runtime::ar_events();
     let turns = events
         .iter()
-        .filter(|e| matches!(e, XyEvent::TurnStart { .. }))
+        .filter(|e| matches!(e, XyEvent::StepStart { .. }))
         .count();
     assert_eq!(
         turns, 2,
-        "a stop from after_turn must be ignored, so the follow_up turn still runs: {events:?}"
+        "a stop from after_step must be ignored, so the follow_up turn still runs: {events:?}"
     );
     assert!(
         !events
             .iter()
             .any(|e| matches!(e, XyEvent::Error(err) if err.kind.starts_with("LoopMiddleware"))),
-        "ignoring after_turn control must not surface as a middleware error: {events:?}"
+        "ignoring after_step control must not surface as a middleware error: {events:?}"
     );
 }
 
@@ -969,7 +969,7 @@ pub(crate) fn t_baseline_no_middleware_errors() {
     );
 }
 
-#[then("出现 AgentEnd 且其后无新的 TurnStart")]
+#[then("出现 AgentEnd 且其后无新的 StepStart")]
 pub(crate) fn t_stop_no_further_turn() {
     let events = crate::bdd::steps_agent_runtime::ar_events();
     let end = events
@@ -979,7 +979,7 @@ pub(crate) fn t_stop_no_further_turn() {
     assert!(
         !events[end..]
             .iter()
-            .any(|e| matches!(e, XyEvent::TurnStart { .. })),
+            .any(|e| matches!(e, XyEvent::StepStart { .. })),
         "stop must not start another turn: {events:?}"
     );
 }
@@ -1114,7 +1114,7 @@ pub(crate) fn t_message_end_is_rewritten() {
     );
 }
 
-#[given("注册 before_turn 中间件注入长系统碎片")]
+#[given("注册 before_step 中间件注入长系统碎片")]
 pub(crate) async fn g_inject_fragment(agent: &AgentState, ws: &Workspace) {
     let registry = fresh_registry();
     registry
@@ -1670,7 +1670,7 @@ pub(crate) fn t_history_keeps_image() {
         .iter()
         .rev()
         .find_map(|e| match e {
-            XyEvent::AgentEnd { messages } => Some(messages.clone()),
+            XyEvent::AgentEnd { messages, .. } => Some(messages.clone()),
             _ => None,
         })
         .expect("AgentEnd");
@@ -1707,7 +1707,7 @@ pub(crate) fn t_history_details_marker() {
         .iter()
         .rev()
         .find_map(|e| match e {
-            XyEvent::AgentEnd { messages } => Some(messages.clone()),
+            XyEvent::AgentEnd { messages, .. } => Some(messages.clone()),
             _ => None,
         })
         .expect("AgentEnd");
@@ -2037,7 +2037,7 @@ pub(crate) fn g_mcp_oversized() {
     use xylitol_plugin_sdk::{AfterToolCtx, AgentPart, LoopMiddleware};
     let big = "x".repeat(MCP_RESULT_MAX_BYTES + 100);
     let ctx = AfterToolCtx {
-        turn_index: 0,
+        step_index: 0,
         tool_call_id: "call-1".into(),
         tool_name: "mcp__srv__tool".into(),
         parts: vec![AgentPart::text(big.clone())],
@@ -2066,7 +2066,7 @@ pub(crate) fn g_mcp_multi_part() {
     use xylitol_official_plugin_mcp::McpResultTruncate;
     use xylitol_plugin_sdk::{AfterToolCtx, AgentPart, ImageContent, LoopMiddleware};
     let ctx = AfterToolCtx {
-        turn_index: 0,
+        step_index: 0,
         tool_call_id: "call-2".into(),
         tool_name: "mcp__srv__tool".into(),
         parts: vec![
@@ -2137,7 +2137,7 @@ pub(crate) fn g_workflow_tool_write() {
         &xylitol_official_plugin_workflow::WorkflowConfig::default(),
     );
     let out = futures::executor::block_on(mw.before_llm_request(BeforeLlmRequestCtx {
-        turn_index: 0,
+        step_index: 0,
         messages: Vec::new(),
         tool_schemas: Vec::new(),
         tool_catalog: Default::default(),
@@ -2227,7 +2227,7 @@ pub(crate) fn g_nested_workflow_child_completed() {
         &xylitol_official_plugin_workflow::WorkflowConfig::default(),
     );
     let out = futures::executor::block_on(mw.before_llm_request(BeforeLlmRequestCtx {
-        turn_index: 0,
+        step_index: 0,
         messages: Vec::new(),
         tool_schemas: Vec::new(),
         tool_catalog: Default::default(),
@@ -2340,7 +2340,7 @@ pub(crate) fn t_workflow_fail_replans() {
         &xylitol_official_plugin_workflow::WorkflowConfig::default(),
     );
     let out = futures::executor::block_on(mw.before_llm_request(BeforeLlmRequestCtx {
-        turn_index: 0,
+        step_index: 0,
         messages: Vec::new(),
         tool_schemas: Vec::new(),
         tool_catalog: Default::default(),

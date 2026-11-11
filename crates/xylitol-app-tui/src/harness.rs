@@ -131,6 +131,7 @@ impl ScriptedDriver {
                 },
                 XyEvent::TextDelta("hello".into()),
                 XyEvent::AgentEnd {
+                    reason: None,
                     messages: Vec::new(),
                 },
             ],
@@ -1874,6 +1875,7 @@ mod slice_tests {
             },
             XyEvent::TextDelta("hello".into()),
             XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             },
         ]);
@@ -1884,6 +1886,7 @@ mod slice_tests {
             },
             XyEvent::TextDelta("hello".into()),
             XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             },
         ]);
@@ -1913,6 +1916,7 @@ mod slice_tests {
             .unwrap();
         session
             .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             })))
             .unwrap();
@@ -2759,6 +2763,7 @@ mod slice_tests {
             XyEvent::ThinkingDelta("plan…".into()),
             XyEvent::TextDelta("SHOULD_NOT_APPEAR".into()),
             XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             },
         ]);
@@ -4591,6 +4596,7 @@ mod slice_tests {
         let mut stream = None;
 
         session.apply_xy_unfenced(Box::new(XyEvent::AgentEnd {
+            reason: None,
             messages: Vec::new(),
         }));
         drain_pending(&mut session, &mut driver, &mut stream)
@@ -4600,6 +4606,7 @@ mod slice_tests {
         assert_eq!(session.ui_model().stage_name.as_deref(), Some("生成阶段名"));
 
         session.apply_xy_unfenced(Box::new(XyEvent::AgentEnd {
+            reason: None,
             messages: Vec::new(),
         }));
         drain_pending(&mut session, &mut driver, &mut stream)
@@ -5263,7 +5270,7 @@ mod slice_tests {
             })))
             .unwrap();
         session
-            .step(HostEvent::Xy(Box::new(XyEvent::TurnEnd { turn_index: 0 })))
+            .step(HostEvent::Xy(Box::new(XyEvent::StepEnd { step_index: 0 })))
             .unwrap();
         let mut stream = None;
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -5309,6 +5316,7 @@ mod slice_tests {
         }));
         session
             .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             })))
             .unwrap();
@@ -7788,6 +7796,7 @@ mod slice_tests {
                 message: None,
             });
             evs.push(XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             });
             evs
@@ -7858,6 +7867,7 @@ mod slice_tests {
             .unwrap();
         session
             .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             })))
             .unwrap();
@@ -7918,6 +7928,7 @@ mod slice_tests {
                 message: None,
             },
             XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             },
         ] {

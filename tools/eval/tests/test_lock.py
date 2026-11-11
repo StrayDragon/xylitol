@@ -28,7 +28,7 @@ def test_lock_rejects_mismatch(tmp_path):
     config = load_config(ROOT / "examples" / "eval-terminal-bench.yaml")
     object.__setattr__(config, "agent", config.agent.__class__(
         binary=config.agent.binary,
-        max_turns=1,
+        max_steps_per_turn=1,
         wall_seconds=config.agent.wall_seconds,
         trust=config.agent.trust,
     ))

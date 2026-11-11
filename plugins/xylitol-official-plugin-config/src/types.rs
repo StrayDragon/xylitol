@@ -481,12 +481,12 @@ impl AppConfig {
         Ok(())
     }
 
-    pub fn validate_session_max_turns(&self) -> Result<(), LoadError> {
+    pub fn validate_session_max_steps_per_turn(&self) -> Result<(), LoadError> {
         let session: Option<SessionConfig> = self.section("session")?;
-        match session.as_ref().and_then(|s| s.max_turns) {
+        match session.as_ref().and_then(|s| s.max_steps_per_turn) {
             None => Ok(()),
             Some(0) => Err(LoadError::validation(
-                "session.max_turns must be a positive integer (got 0)",
+                "session.max_steps_per_turn must be a positive integer (got 0)",
             )),
             Some(_) => Ok(()),
         }
@@ -793,9 +793,10 @@ impl Default for StageNameConfig {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SessionConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_turns: Option<u32>,
+    pub max_steps_per_turn: Option<u32>,
     #[serde(default)]
     pub stage_name: StageNameConfig,
 }
@@ -872,45 +873,63 @@ mod test_support {
 }
 
 #[cfg(test)]
-mod session_max_turns_tests {
+mod session_max_steps_per_turn_tests {
     use super::test_support::*;
     use super::*;
 
     #[test]
-    fn session_max_turns_deserializes() {
+    fn session_max_steps_per_turn_deserializes() {
         let cfg: AppConfig = yaml_serde::from_str(
             r#"
 session:
-  max_turns: 12
+  max_steps_per_turn: 12
 "#,
         )
-        .expect("valid session.max_turns");
+        .expect("valid session.max_steps_per_turn");
         assert_eq!(
-            get::<Option<SessionConfig>>(&cfg, "session").and_then(|s| s.max_turns),
+            get::<Option<SessionConfig>>(&cfg, "session").and_then(|s| s.max_steps_per_turn),
             Some(12)
         );
-        cfg.validate_session_max_turns().expect("12 is valid");
+        cfg.validate_session_max_steps_per_turn()
+            .expect("12 is valid");
     }
 
     #[test]
-    fn session_max_turns_zero_fails_validation() {
+    fn session_max_steps_per_turn_zero_fails_validation() {
         let cfg: AppConfig = yaml_serde::from_str(
             r#"
 session:
-  max_turns: 0
+  max_steps_per_turn: 0
 "#,
         )
         .expect("0 deserializes as u32");
         let err = cfg
-            .validate_session_max_turns()
+            .validate_session_max_steps_per_turn()
             .expect_err("0 must fail validation");
-        assert!(err.to_string().contains("max_turns"), "{err}");
+        assert!(err.to_string().contains("max_steps_per_turn"), "{err}");
     }
 
     #[test]
-    fn session_max_turns_absent_is_ok() {
+    fn removed_session_step_cap_key_is_rejected() {
+        let removed_key = concat!("max_", "turns");
+        let yaml = format!("session:\n  {removed_key}: 7\n");
+        let cfg: AppConfig =
+            yaml_serde::from_str(&yaml).expect("top-level config keeps sections lazily");
+        let err = cfg
+            .section::<SessionConfig>("session")
+            .expect_err("the removed key must be rejected");
+        let msg = err.to_string();
+        assert!(
+            msg.contains(removed_key) && msg.contains("max_steps_per_turn"),
+            "old key must fail and point to the new key: {msg}"
+        );
+    }
+
+    #[test]
+    fn session_max_steps_per_turn_absent_is_ok() {
         let cfg = AppConfig::default();
-        cfg.validate_session_max_turns().expect("absent is ok");
+        cfg.validate_session_max_steps_per_turn()
+            .expect("absent is ok");
         assert!(get::<Option<SessionConfig>>(&cfg, "session").is_none());
     }
 }

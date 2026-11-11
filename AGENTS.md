@@ -19,6 +19,13 @@ Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成�
 
 术语与写作：黑话首现时附标准词或英文；`规则:` 标题用标准词（细则 `llmanspec/AGENTS.md`「语言」）。内部编号（`c####` / `ath##`）单独引用时带 ≤12 字语义尾。
 
+## 术语：三层词汇
+
+共享概念词汇（文档叙事主语）：**session（会话）⊃ turn（问答轮：一条用户输入到最终答复）⊃ step（一次模型调用周期 + 工具批）**。事件 / 字段载体：`StepStart` / `StepEnd` / `step_index`；Settle 是 turn 的收尾动作（发生在末个 step）。
+
+**run 是宿主实现术语**（一次提交 / 一个事件流：`RunCoordinator`、`AgentStart…AgentEnd`、`run_start` / `run_end` hook），不进共享概念词汇。文档与代码注释不得把 run 当概念层使用；旧稿若把「run 边界」「同 run」当概念，按本三层版修订。
+
+
 ## 产品定调
 
 个人**开箱即用**的 coding harness。第三方外进程插件最小切片已交付（配置驱动、trust 门禁、JSON-RPC stdio 工具桥）；市场 / 签名 / dylib / 同进程静态链入仍是方向、未交付。现行扩展入口 = 官方插件 + 配置 + MCP / shell hook + `external_plugins`。不得为未交付市场堆清单 / 注册中心 / dylib。`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。分层与开闭：`src/AGENTS.md`；可验证行为：`llmanspec/specs/`。

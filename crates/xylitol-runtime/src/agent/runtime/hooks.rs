@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde_json::Value;
 use xylitol_plugin_sdk::message::AgentMessage;
@@ -10,21 +9,20 @@ pub type AfterToolHook =
     Arc<dyn Fn(&str, &str, Value, bool) -> Option<(Value, bool)> + Send + Sync>;
 
 #[derive(Debug, Clone)]
-pub struct ShouldStopAfterTurnCtx {
-    pub turn_index: u32,
+pub struct ShouldStopAfterStepCtx {
+    pub step_index: u32,
+    pub is_settle: bool,
     pub assistant: Option<AgentMessage>,
     pub tool_results: Vec<AgentMessage>,
     pub history: Vec<AgentMessage>,
     pub new_messages: Vec<AgentMessage>,
 }
 
-pub type ShouldStopAfterTurnHook = Arc<dyn Fn(&ShouldStopAfterTurnCtx) -> bool + Send + Sync>;
+pub type ShouldStopAfterStepHook = Arc<dyn Fn(&ShouldStopAfterStepCtx) -> bool + Send + Sync>;
 
-pub fn max_turns_stop_hook(max_turns: u32) -> ShouldStopAfterTurnHook {
-    let settles = AtomicU32::new(0);
-    Arc::new(move |_ctx: &ShouldStopAfterTurnCtx| {
-        let completed = settles.fetch_add(1, Ordering::Relaxed) + 1;
-        completed >= max_turns
+pub fn max_steps_stop_hook(max_steps_per_turn: u32) -> ShouldStopAfterStepHook {
+    Arc::new(move |ctx: &ShouldStopAfterStepCtx| {
+        ctx.step_index.saturating_add(1) >= max_steps_per_turn
     })
 }
 
@@ -32,7 +30,7 @@ pub fn max_turns_stop_hook(max_turns: u32) -> ShouldStopAfterTurnHook {
 pub struct AgentHooks {
     pub before_tool_call: Vec<BeforeToolHook>,
     pub after_tool_call: Vec<AfterToolHook>,
-    pub should_stop_after_turn: Option<ShouldStopAfterTurnHook>,
+    pub should_stop_after_step: Option<ShouldStopAfterStepHook>,
 }
 
 impl AgentHooks {
@@ -48,18 +46,19 @@ impl AgentHooks {
         self.after_tool_call.push(hook);
     }
 
-    pub fn set_should_stop_after_turn(&mut self, hook: Option<ShouldStopAfterTurnHook>) {
-        self.should_stop_after_turn = hook;
+    pub fn set_should_stop_after_step(&mut self, hook: Option<ShouldStopAfterStepHook>) {
+        self.should_stop_after_step = hook;
     }
 }
 
 #[cfg(test)]
-mod max_turns_hook_tests {
+mod max_steps_hook_tests {
     use super::*;
 
-    fn ctx(turn_index: u32) -> ShouldStopAfterTurnCtx {
-        ShouldStopAfterTurnCtx {
-            turn_index,
+    fn ctx(step_index: u32, is_settle: bool) -> ShouldStopAfterStepCtx {
+        ShouldStopAfterStepCtx {
+            step_index,
+            is_settle,
             assistant: None,
             tool_results: vec![],
             history: vec![],
@@ -68,17 +67,27 @@ mod max_turns_hook_tests {
     }
 
     #[test]
-    fn stops_when_completed_turns_reach_cap() {
-        let hook = max_turns_stop_hook(2);
-        assert!(!hook(&ctx(0)));
-        assert!(hook(&ctx(1)));
-        assert!(hook(&ctx(2)));
+    fn stops_when_step_index_reaches_cap() {
+        let hook = max_steps_stop_hook(2);
+        assert!(!hook(&ctx(0, false)));
+        assert!(hook(&ctx(1, true)));
+        assert!(hook(&ctx(2, true)));
     }
 
     #[test]
-    fn first_settle_does_not_use_iteration_index() {
-        let hook = max_turns_stop_hook(2);
-        assert!(!hook(&ctx(5)));
-        assert!(hook(&ctx(0)));
+    fn single_step_cap_stops_on_first_step() {
+        let hook = max_steps_stop_hook(1);
+        assert!(hook(&ctx(0, false)));
+    }
+
+    #[test]
+    fn continue_tools_step_counts_against_cap() {
+        let hook = max_steps_stop_hook(2);
+        assert!(hook(&ctx(1, false)));
+    }
+
+    #[test]
+    fn unconfigured_hooks_never_stop() {
+        assert!(AgentHooks::default().should_stop_after_step.is_none());
     }
 }

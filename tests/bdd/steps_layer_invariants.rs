@@ -158,7 +158,7 @@ pub(crate) fn t_template_vars_home_only() {
 }
 
 #[then("工具批缺省并行且回合上限须为正整数")]
-pub(crate) fn t_tool_batch_and_max_turns_defaults() {
+pub(crate) fn t_tool_batch_and_max_steps_per_turn_defaults() {
     assert_layer_invariants();
 }
 

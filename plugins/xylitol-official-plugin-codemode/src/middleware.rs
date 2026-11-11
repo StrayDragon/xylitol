@@ -104,7 +104,7 @@ mod tests {
 
     fn ctx(catalog: Vec<XyToolDescriptor>) -> BeforeLlmRequestCtx {
         BeforeLlmRequestCtx {
-            turn_index: 0,
+            step_index: 0,
             messages: Vec::new(),
             tool_schemas: Vec::new(),
             tool_catalog: Arc::from(catalog),

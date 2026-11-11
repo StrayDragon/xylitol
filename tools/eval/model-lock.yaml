@@ -13,10 +13,10 @@ model:
 
 profiles:
   smoke:
-    max_turns: 8
+    max_steps_per_turn: 8
     wall_seconds: 600
   compare:
-    max_turns: 80
+    max_steps_per_turn: 80
     wall_seconds: 1800
 
 benchmarks:

@@ -109,7 +109,7 @@
       那么 帧内不出现 Ready 文案
   @req:r1219
   规则: footer-token-refresh
-    产品 host 须在 session tree travel 换叶、CompactionEnd、turn 收尾 settlement（经 TurnEnd 携带或独立 ContextTokenSettlement 事件或 Driver 缓存）、以及 turn 进行中有可用 Api usage 更新时（节流）刷新 footer token 字段；刷新 须经 settlement snapshot 或 Driver 只读 estimate_context_tokens（或等价 seam）且异步不阻塞输入；同一轮 agent run 在已应用 TurnSettled settlement 后，stream close / AgentEnd 不得再触发第二次 estimate；不得在每个 TextDelta 上全量重算上下文估计。
+    产品 host 须在 session tree travel 换叶、CompactionEnd、turn 收尾 settlement（经 StepEnd 携带或独立 ContextTokenSettlement 事件或 Driver 缓存）、以及 turn 进行中有可用 Api usage 更新时（节流）刷新 footer token 字段；刷新 须经 settlement snapshot 或 Driver 只读 estimate_context_tokens（或等价 seam）且异步不阻塞输入；同一轮 agent run 在已应用 TurnSettled settlement 后，stream close / AgentEnd 不得再触发第二次 estimate；不得在每个 TextDelta 上全量重算上下文估计。
 
     场景: 页脚词元刷新单一估算
       当 以固定估计驱动一次 footer token 刷新

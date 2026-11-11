@@ -461,7 +461,7 @@ async fn resubscribe_same_mux_replays_journal_events() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
     let id = host.register_unbound_mux(tx.clone()).await;
     let slot = host.slot("s-resub").await;
-    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
+    slot.append_and_push(&XyEvent::StepStart { step_index: 1 })
         .await;
 
     let _ = host.bind_mux_to_session(&slot, 0, Some(id)).await;
@@ -476,7 +476,7 @@ async fn resubscribe_same_mux_replays_journal_events() {
                 .get("event")
                 .and_then(|v| v.get("type"))
                 .and_then(|v| v.as_str())
-                == Some("turn_start")
+                == Some("step_start")
         {
             saw_replay = true;
         }
@@ -1231,6 +1231,7 @@ async fn attach_mux_survives_after_idle_and_receives_later_events() {
         "first downlink event missing: {first:?}"
     );
     slot.append_and_push(&xylitol_plugin_sdk::XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::new(),
     })
     .await;

@@ -87,8 +87,8 @@ fn t_local_surface_rejected(protocol_bdd: &ProtocolBdd) {
 #[when("对 Agent 流族事件做线协议序列化与反序列化往返")]
 fn w_stream_events_roundtrip(protocol_bdd: &ProtocolBdd) {
     let originals = vec![
-        Event::TurnStart { turn_index: 1 },
-        Event::TurnEnd { turn_index: 1 },
+        Event::StepStart { step_index: 1 },
+        Event::StepEnd { step_index: 1 },
         Event::MessageStart {
             role: "user".into(),
             message: None,

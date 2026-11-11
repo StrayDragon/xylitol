@@ -1145,7 +1145,7 @@ fn t_w4(server_test: &ServerTest) {
 fn g_w5(server_test: &ServerTest) {
     let mut j = EventJournal::new("s0", 1024);
     for i in 0..1025 {
-        j.append(Event::TurnStart { turn_index: i });
+        j.append(Event::StepStart { step_index: i });
     }
     server_test.journal.replace(Some(j));
 }
@@ -1158,7 +1158,7 @@ async fn w_w5_subscribe(server_test: &ServerTest) {
     {
         let mut j = slot.journal.lock().await;
         for i in 0..1025 {
-            j.append(Event::TurnStart { turn_index: i });
+            j.append(Event::StepStart { step_index: i });
         }
     }
     let client = HttpWsClient::new(server_test.base_url());
@@ -1932,6 +1932,7 @@ async fn w_agent_end_then_more(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot("s-sub").await;
     slot.append_and_push(&XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::new(),
     })
     .await;
@@ -2539,11 +2540,11 @@ async fn g_real_attach(server_test: &ServerTest) {
 async fn w_real_drop_mux(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot("s-real-attach").await;
-    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
+    slot.append_and_push(&XyEvent::StepStart { step_index: 1 })
         .await;
     tokio::time::sleep(Duration::from_millis(120)).await;
     slot.subscribers.lock().await.clear();
-    slot.append_and_push(&XyEvent::TurnStart { turn_index: 2 })
+    slot.append_and_push(&XyEvent::StepStart { step_index: 2 })
         .await;
     tokio::time::sleep(Duration::from_millis(30)).await;
 }
@@ -2594,8 +2595,8 @@ async fn t_real_replay_offline(server_test: &ServerTest) {
             let driver = driver_slot.as_mut().expect("attach driver");
             for ev in driver.drain_idle_events() {
                 match ev {
-                    XyEvent::TurnStart { turn_index } => {
-                        if turn_index == 2 {
+                    XyEvent::StepStart { step_index } => {
+                        if step_index == 2 {
                             replayed = true;
                         }
                     }
@@ -3333,7 +3334,7 @@ fn observe_texts(frames: &[(String, Option<Event>)]) -> Vec<String> {
 fn observe_agent_ends(frames: &[(String, Option<Event>)]) -> usize {
     frames
         .iter()
-        .filter(|(_, ev)| matches!(ev, Some(Event::AgentEnd)))
+        .filter(|(_, ev)| matches!(ev, Some(Event::AgentEnd { .. })))
         .count()
 }
 
@@ -3386,6 +3387,7 @@ async fn w_observe_inject(server_test: &ServerTest) {
     slot.append_and_push(&XyEvent::TextDelta("live-tail".into()))
         .await;
     slot.append_and_push(&XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::new(),
     })
     .await;
@@ -3684,9 +3686,9 @@ async fn w_seq_text_deltas(server_test: &ServerTest) {
     )
     .await;
     let slot = host.slot("s-seq").await;
-    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
+    slot.append_and_push(&XyEvent::StepStart { step_index: 1 })
         .await;
-    slot.append_and_push(&XyEvent::TurnStart { turn_index: 2 })
+    slot.append_and_push(&XyEvent::StepStart { step_index: 2 })
         .await;
     let mut got: Vec<Notification> = Vec::new();
     while got.iter().filter(|f| f.method == "session/event").count() < 2 && got.len() < 8 {
@@ -4015,7 +4017,7 @@ async fn g_tape_and_fact(server_test: &ServerTest) {
     start_host(server_test).await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot("s-tape").await;
-    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
+    slot.append_and_push(&XyEvent::StepStart { step_index: 1 })
         .await;
     slot.append_and_push(&XyEvent::TextDelta("a".into())).await;
     slot.append_and_push(&XyEvent::ThinkingDelta("b".into()))
@@ -4055,7 +4057,7 @@ async fn g_midturn_subscribe(server_test: &ServerTest) {
     start_host(server_test).await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot("s-mid").await;
-    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
+    slot.append_and_push(&XyEvent::StepStart { step_index: 1 })
         .await;
     slot.mark_run_inflight_for_test(true);
     slot.append_and_push(&XyEvent::MessageUpdate {

@@ -14,13 +14,13 @@ persistence; a plugin only returns `{ ctx, control }`.
 
 | Stage | Granularity | Purpose |
 |---|---|---|
-| `before_turn` | turn | system prompt / fragments |
+| `before_step` | turn | system prompt / fragments |
 | `before_llm_request` | each LLM request | messages, tool schemas, generation options |
 | `after_llm_response` | each LLM response | assistant parts / tool calls |
 | `before_tool` | each tool call | args / tool routing |
 | `after_tool` | each tool result | structured parts / details / error flag |
 | `decide_continue` | settle | continue / stop / compact / handoff |
-| `after_turn` | turn | observe only; illegal control is ignored |
+| `after_step` | turn | observe only; illegal control is ignored |
 
 `before_llm_request` runs after skills expansion and before `project_outbound`.
 `after_llm_response` runs after the stream ends and before persistence.

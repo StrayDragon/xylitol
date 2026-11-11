@@ -462,7 +462,7 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
 }
 
 #[test]
-fn resolve_assembly_reads_session_max_turns() {
+fn resolve_assembly_reads_session_max_steps_per_turn() {
     let home = tempfile::tempdir().unwrap();
     let project = home.path().join("proj");
     let proj_xy = project.join(".xylitol");
@@ -488,15 +488,14 @@ fn resolve_assembly_reads_session_max_turns() {
       provider: openai
       model: m
 session:
-  storage: {}
-  max_turns: 7
+  max_steps_per_turn: 7
 "#,
     )
     .unwrap();
 
     let assembly = resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None)
         .expect("assembly");
-    assert_eq!(assembly.max_turns, Some(7));
+    assert_eq!(assembly.max_steps_per_turn, Some(7));
 }
 
 #[test]

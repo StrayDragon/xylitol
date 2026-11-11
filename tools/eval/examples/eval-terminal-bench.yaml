@@ -20,7 +20,7 @@ model:
 
 agent:
   binary: target/eval-bin/xylitol-linux-x86_64-musl
-  max_turns: 80
+  max_steps_per_turn: 80
   wall_seconds: 1800
   trust: false
 

@@ -31,7 +31,7 @@ pub(crate) struct ToolExecEnv<'a> {
     pub workspaces: &'a [String],
     pub obs_session: &'a xylitol_plugin_sdk::ObsSessionContext,
     pub loop_chain: &'a LoopChain,
-    pub turn_index: u32,
+    pub step_index: u32,
 }
 
 pub(crate) struct PreparedCall {
@@ -143,7 +143,7 @@ pub(crate) async fn prepare_call(
 
     if denied_reason.is_none() && !env.loop_chain.before_tool.is_empty() {
         let ctx = BeforeToolCtx {
-            turn_index: env.turn_index,
+            step_index: env.step_index,
             tool_call_id: id.to_string(),
             tool_name: tool_name.clone(),
             args: tool_args.clone(),
@@ -409,7 +409,7 @@ pub(crate) async fn run_one(
         .or_else(|| details_from_parts(&result.0));
     if !env.loop_chain.after_tool.is_empty() {
         let ctx = AfterToolCtx {
-            turn_index: env.turn_index,
+            step_index: env.step_index,
             tool_call_id: id.to_string(),
             tool_name: name.to_string(),
             parts: result.0.clone(),
@@ -557,7 +557,7 @@ mod tests {
             workspaces: &[],
             obs_session: &obs,
             loop_chain: &chain,
-            turn_index: 0,
+            step_index: 0,
         };
 
         let call = prepare_call(&env, "c1", "write", &serde_json::json!({}), None).await;
@@ -613,7 +613,7 @@ mod tests {
             workspaces: &[],
             obs_session: &obs,
             loop_chain: &chain,
-            turn_index: 0,
+            step_index: 0,
         };
         let call = prepare_call(&env, "c-details", "details", &serde_json::json!({}), None).await;
         let (tx, mut rx) = mpsc::unbounded_channel();

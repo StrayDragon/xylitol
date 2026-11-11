@@ -1,20 +1,20 @@
 mod assistant;
+mod step_end;
 pub(crate) mod support;
-mod turn_end;
 
 use crate::utils::{StreamNode, StreamNodeClock};
 use assistant::{
     build_assistant_message, current_provider_model, streaming_assistant_parts,
     streaming_message_update, upsert_streaming_tool,
 };
+use step_end::{
+    FinishTurnOutcome, IterationClose, close_iteration, drain_queue, queue_counts,
+    try_turn_end_compaction,
+};
 use support::{
     ClearActiveTurn, attempt_model_stream, current_model_modality_support, observe_script_hook,
     outbound_has_image, persist_agent_message, persist_agent_message_with_thought_elapsed,
     prepare_turn_binding,
-};
-use turn_end::{
-    FinishTurnOutcome, IterationClose, close_iteration, drain_queue, queue_counts,
-    try_turn_end_compaction,
 };
 
 use std::pin::Pin;
@@ -27,7 +27,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::middleware::{
     LOOP_MIDDLEWARE_CONTINUE_LIMIT, MiddlewareFault, fragments_into_prompt, run_after_llm_response,
-    run_after_turn, run_before_llm_request, run_before_turn, run_decide_continue,
+    run_after_step, run_before_llm_request, run_before_step, run_decide_continue,
 };
 use super::retry::{RetryState, is_retryable_xy_error};
 use super::state::{
@@ -44,9 +44,9 @@ use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::model::{XyChunk, XyModality, XyToolSchema};
 use xylitol_plugin_sdk::resource::SkillInfo;
 use xylitol_plugin_sdk::{
-    AfterLlmResponseCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeTurnCtx, DecideContinueCtx,
-    LoopChain, LoopControl, XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore,
-    XyStream,
+    AfterLlmResponseCtx, AfterStepCtx, AgentEndReason, BeforeLlmRequestCtx, BeforeStepCtx,
+    DecideContinueCtx, LoopChain, LoopControl, XyBatchMode, XyHookBus, XyHookOutcome, XyModel,
+    XySessionStore, XyStream,
 };
 
 pub struct AgentRuntime {
@@ -230,11 +230,11 @@ impl AgentRuntime {
         self.inner.hooks_mut().add_before(hook);
     }
 
-    pub fn set_should_stop_after_turn(
+    pub fn set_should_stop_after_step(
         &mut self,
-        hook: Option<super::hooks::ShouldStopAfterTurnHook>,
+        hook: Option<super::hooks::ShouldStopAfterStepHook>,
     ) {
-        self.inner.hooks_mut().set_should_stop_after_turn(hook);
+        self.inner.hooks_mut().set_should_stop_after_step(hook);
     }
 
     pub fn set_permission(&mut self, permission: Arc<dyn xylitol_plugin_sdk::XyPermission>) {
@@ -888,7 +888,7 @@ struct ReActConfig {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn after_turn_or_fault(
+async fn after_step_or_fault(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<fastrace::prelude::SpanContext>,
@@ -898,16 +898,16 @@ async fn after_turn_or_fault(
     continued_tools: bool,
     history_len: usize,
 ) -> Option<MiddlewareFault> {
-    if chain.after_turn.is_empty() {
+    if chain.after_step.is_empty() {
         return None;
     }
-    run_after_turn(
+    run_after_step(
         chain,
         cancel,
         parent,
         obs,
-        AfterTurnCtx {
-            turn_index: turn as u32,
+        AfterStepCtx {
+            step_index: turn as u32,
             continued_tools,
             history_len,
             session_id: Some(session_id.to_string()),
@@ -925,6 +925,12 @@ fn middleware_limit_event(decision: &str) -> XyEvent {
              non-progressing {decision} decisions"
         ),
     ))
+}
+
+fn note_abort(reason: AgentEndReason, slot: &mut Option<AgentEndReason>) {
+    if slot.is_none() {
+        *slot = Some(reason);
+    }
 }
 
 fn middleware_fault_event(fault: &MiddlewareFault) -> XyEvent {
@@ -979,7 +985,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         };
 
         if let Some(bus) = &hook_bus {
-            let (ty, phase, ctx) = super::script_hook_ctx::agent_start();
+            let (ty, phase, ctx) = super::script_hook_ctx::run_start();
             observe_script_hook(bus, ty, phase, ctx).await;
         }
 
@@ -1004,7 +1010,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         history.push(AgentMessage::user_parts(user_parts.clone()));
         persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
 
-        let retry_state = RetryState::new(3, 1000);
         let mut pending: Vec<AgentMessage> = drain_queue(&steer_queue);
         let mut turn: usize = 0;
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
@@ -1042,7 +1047,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let turn_obs_parent = super::tool_exec::capture_iteration_parent(
             agent_turn_span.as_ref().map(|s| s.span()),
         );
-        let mut turn_aborted = false;
+        let mut abort_reason: Option<AgentEndReason> = None;
+        let mut step_consumes_new_user = true;
         let chain_active = !loop_chain.is_empty();
         let decide_active = !loop_chain.decide_continue.is_empty();
         let mut stall_count: u32 = 0;
@@ -1058,19 +1064,20 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
             while continue_after_tools || !pending.is_empty() {
                 if cancel.is_cancelled() {
-                    turn_aborted = true;
+                    note_abort(AgentEndReason::UserCancel, &mut abort_reason);
                     yield XyEvent::aborted();
                     break 'outer;
                 }
 
                 let mut turn_system_prompt = system_prompt.clone();
                 if chain_active {
-                    let ctx = BeforeTurnCtx {
-                        turn_index: turn as u32,
+                    let ctx = BeforeStepCtx {
+                        step_index: turn as u32,
+                        has_new_user_messages: step_consumes_new_user || !pending.is_empty(),
                         system_prompt: system_prompt.clone(),
                         system_fragments: Vec::new(),
                     };
-                    match run_before_turn(&loop_chain, &cancel, turn_obs_parent, &obs_session, ctx).await {
+                    match run_before_step(&loop_chain, &cancel, turn_obs_parent, &obs_session, ctx).await {
                         Ok(out) => {
                             turn_system_prompt = fragments_into_prompt(
                                 system_prompt.clone(),
@@ -1078,22 +1085,24 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             );
                             fixed_context.system_prompt = turn_system_prompt.clone();
                             if out.control != LoopControl::Continue {
+                                note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                                 break 'outer;
                             }
                         }
                         Err(fault) => {
-                            turn_aborted = true;
+                            note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                             yield middleware_fault_event(&fault);
                             break 'outer;
                         }
                     }
                 }
 
+                step_consumes_new_user = false;
                 stream_clock.begin_turn();
-                stream_clock.stamp(StreamNode::TurnStart);
-                yield XyEvent::TurnStart { turn_index: turn as u32 };
+                stream_clock.stamp(StreamNode::StepStart);
+                yield XyEvent::StepStart { step_index: turn as u32 };
                 if let Some(bus) = &hook_bus {
-                    let (ty, phase, ctx) = super::script_hook_ctx::turn_start(turn as u32);
+                    let (ty, phase, ctx) = super::script_hook_ctx::step_start(turn as u32);
                     observe_script_hook(bus, ty, phase, ctx).await;
                 }
                 let iteration_span =
@@ -1143,6 +1152,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     && let XyHookOutcome::Blocked { reason } =
                         bus.dispatch(ty, phase, ctx).await
                 {
+                    note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                     yield XyEvent::error_msg(format!("context hook blocked: {reason}"));
                     break 'outer;
                 }
@@ -1156,6 +1166,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 ) {
                     Ok(v) => v,
                     Err(e) => {
+                        note_abort(AgentEndReason::ModelError, &mut abort_reason);
                         yield XyEvent::error_msg(format!("model build error: {e}"));
                         break 'outer;
                     }
@@ -1170,7 +1181,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut turn_tool_schemas = tool_schemas.clone();
                 if chain_active {
                     let ctx = BeforeLlmRequestCtx {
-                        turn_index: turn as u32,
+                        step_index: turn as u32,
                         messages: messages.clone(),
                         tool_schemas: turn_tool_schemas.clone(),
                         tool_catalog: tool_catalog.clone(),
@@ -1188,10 +1199,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             fixed_context.system_prompt = generate_options.system_prompt.clone();
                             fixed_context.tool_schemas = turn_tool_schemas.clone();
                             if out.control != LoopControl::Continue {
-                                yield XyEvent::TurnEnd {
-                                    turn_index: turn as u32,
+                                yield XyEvent::StepEnd {
+                                    step_index: turn as u32,
                                 };
-                                if let Some(fault) = after_turn_or_fault(
+                                if let Some(fault) = after_step_or_fault(
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
@@ -1203,14 +1214,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 )
                                 .await
                                 {
-                                    turn_aborted = true;
+                                    note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                     yield middleware_fault_event(&fault);
                                 }
+                                note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                                 break 'outer;
                             }
                         }
                         Err(fault) => {
-                            turn_aborted = true;
+                            note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                             yield middleware_fault_event(&fault);
                             break 'outer;
                         }
@@ -1223,12 +1235,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         current_model_modality_support(&model_manager, XyModality::Image)
                     && !supported
                 {
+                    note_abort(AgentEndReason::ModalityUnsupported, &mut abort_reason);
                     yield XyEvent::error_msg(format!(
                         "model {model_id} does not declare image input; set models.{model_id}.input_modalities to include image"
                     ));
                     break 'outer;
                 }
                 let mut stream_result: Option<Result<XyStream, XyError>> = None;
+                let retry_state = RetryState::new(3, 1000);
                 loop {
                     let result = tokio::select! {
                         biased;
@@ -1291,7 +1305,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut chunk_stream: Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
                 match stream_result {
                     None => {
-                        turn_aborted = true;
+                        note_abort(AgentEndReason::UserCancel, &mut abort_reason);
                         yield XyEvent::aborted();
                         break 'outer;
                     }
@@ -1333,6 +1347,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         if will_continue {
                             continue 'outer;
                         }
+                        note_abort(AgentEndReason::ModelError, &mut abort_reason);
                         break 'outer;
                     }
                 }
@@ -1388,7 +1403,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 };
                                 history.push(assistant_msg);
                             }
-                            turn_aborted = true;
+                            note_abort(AgentEndReason::UserCancel, &mut abort_reason);
                             yield XyEvent::aborted();
                             break 'outer;
                         }
@@ -1537,7 +1552,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     && let Some(msg) = assistant_msg.take()
                 {
                     let ctx = AfterLlmResponseCtx {
-                        turn_index: turn as u32,
+                        step_index: turn as u32,
                         assistant: msg,
                         session_id: Some(session_id.clone()),
                     };
@@ -1572,10 +1587,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     message: Some(msg.clone()),
                                 };
                                 history.push(msg);
-                                yield XyEvent::TurnEnd {
-                                    turn_index: turn as u32,
+                                yield XyEvent::StepEnd {
+                                    step_index: turn as u32,
                                 };
-                                if let Some(fault) = after_turn_or_fault(
+                                if let Some(fault) = after_step_or_fault(
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
@@ -1587,14 +1602,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 )
                                 .await
                                 {
-                                    turn_aborted = true;
+                                    note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                     yield middleware_fault_event(&fault);
                                 }
+                                note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                                 break 'outer;
                             }
                         }
                         Err(fault) => {
-                            turn_aborted = true;
+                            note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                             yield middleware_fault_event(&fault);
                             break 'outer;
                         }
@@ -1662,17 +1678,20 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                     let settle_outcome = finished.outcome;
                     if let Some(fault) =
-                        after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &obs_session, &session_id, turn, false, history.len())
+                        after_step_or_fault(&loop_chain, &cancel, turn_obs_parent, &obs_session, &session_id, turn, false, history.len())
                             .await
                     {
-                        turn_aborted = true;
+                        note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                         yield middleware_fault_event(&fault);
                         break 'outer;
                     }
                     if !matches!(settle_outcome, FinishTurnOutcome::Advanced { .. }) {
                         match settle_outcome {
                             FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
-                            FinishTurnOutcome::StopRun => break 'outer,
+                            FinishTurnOutcome::StopRun => {
+                                note_abort(AgentEndReason::StepLimit, &mut abort_reason);
+                                break 'outer;
+                            }
                             FinishTurnOutcome::Advanced { .. } => unreachable!(),
                         }
                     }
@@ -1695,7 +1714,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     {
                         Ok(control) => control,
                         Err(error) => {
-                            turn_aborted = true;
+                            note_abort(AgentEndReason::ModelError, &mut abort_reason);
                             yield XyEvent::error_msg(format!("goal evaluator failed: {error}"));
                             break 'outer;
                         }
@@ -1706,12 +1725,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             goal_handled = true;
                             continue_after_tools = true;
                         }
-                        Some(LoopControl::Stop) => break 'outer,
+                        Some(LoopControl::Stop) => {
+                            note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
+                            break 'outer;
+                        }
                         Some(LoopControl::Compact | LoopControl::Handoff) | None => {}
                     }
                     if !goal_handled && decide_active {
                         let ctx = DecideContinueCtx {
-                            turn_index: turn as u32,
+                            step_index: turn as u32,
                             settle_count,
                             has_new_user_messages: has_new_user,
                             assistant: history
@@ -1732,7 +1754,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     }
                                     continue_after_tools = true;
                                 }
-                                LoopControl::Stop => break 'outer,
+                                LoopControl::Stop => {
+                                    note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
+                                    break 'outer;
+                                }
                                 LoopControl::Compact => {
                                     if has_new_user {
                                         stall_count = 0;
@@ -1740,6 +1765,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         stall_count += 1;
                                     }
                                     if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
+                                        note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                                         yield middleware_limit_event("compact");
                                         break 'outer;
                                     }
@@ -1751,7 +1777,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     let reason = request
                                         .reason
                                         .unwrap_or_else(|| format!("loop_middleware:{requested_by}"));
-                                    match super::react::turn_end::force_compact_once(
+                                    match super::react::step_end::force_compact_once(
                                         &store,
                                         &session_id,
                                         &model_manager,
@@ -1771,6 +1797,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                             continue 'outer;
                                         }
                                         Err(e) => {
+                                            note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                             yield XyEvent::error_msg(format!(
                                                 "loop middleware {requested_by} compact failed: {e}"
                                             ));
@@ -1788,16 +1815,18 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                             ),
                                         ),
                                     );
+                                    note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                     break 'outer;
                                 }
                             },
                             Err(fault) => {
-                                turn_aborted = true;
+                                note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                 yield middleware_fault_event(&fault);
                                 break 'outer;
                             }
                         }
                         if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
+                            note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                             yield middleware_limit_event("continue");
                             break 'outer;
                         }
@@ -1829,7 +1858,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     workspaces: &workspaces,
                     obs_session: &obs_session,
                     loop_chain: &loop_chain,
-                    turn_index: turn as u32,
+                    step_index: turn as u32,
                 };
                 let parent_ctx = iteration_parent;
 
@@ -1902,10 +1931,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             .await;
                             turn_tool_results.push(outcome.message);
                             if outcome.stop_run {
-                                yield XyEvent::TurnEnd {
-                                    turn_index: turn as u32,
+                                yield XyEvent::StepEnd {
+                                    step_index: turn as u32,
                                 };
-                                if let Some(fault) = after_turn_or_fault(
+                                if let Some(fault) = after_step_or_fault(
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
@@ -1917,12 +1946,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 )
                                 .await
                                 {
-                                    turn_aborted = true;
+                                    note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                     yield middleware_fault_event(&fault);
                                 } else if let Some(fault) = &outcome.fault {
-                                    turn_aborted = true;
+                                    note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                     yield middleware_fault_event(fault);
                                 }
+                                note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                                 break 'outer;
                             }
                         }
@@ -1973,10 +2003,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 .await;
                                 turn_tool_results.push(outcome.message);
                                 if outcome.stop_run {
-                                    yield XyEvent::TurnEnd {
-                                        turn_index: turn as u32,
+                                    yield XyEvent::StepEnd {
+                                        step_index: turn as u32,
                                     };
-                                    if let Some(fault) = after_turn_or_fault(
+                                    if let Some(fault) = after_step_or_fault(
                                         &loop_chain,
                                         &cancel,
                                         turn_obs_parent,
@@ -1988,10 +2018,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     )
                                     .await
                                     {
-                                        turn_aborted = true;
+                                        note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                         yield middleware_fault_event(&fault);
                                     } else if let Some(fault) = &outcome.fault {
-                                        turn_aborted = true;
+                                        note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                         yield middleware_fault_event(fault);
                                     }
                                     break 'outer;
@@ -2031,17 +2061,20 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     yield event;
                 }
                 if let Some(fault) =
-                    after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &obs_session, &session_id, turn, true, history.len())
+                    after_step_or_fault(&loop_chain, &cancel, turn_obs_parent, &obs_session, &session_id, turn, true, history.len())
                         .await
                 {
-                    turn_aborted = true;
+                    note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                     yield middleware_fault_event(&fault);
                     break 'outer;
                 }
                 stall_count = 0;
                 match finished.outcome {
                     FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
-                    FinishTurnOutcome::StopRun => break 'outer,
+                    FinishTurnOutcome::StopRun => {
+                        note_abort(AgentEndReason::StepLimit, &mut abort_reason);
+                        break 'outer;
+                    }
                     FinishTurnOutcome::Advanced {
                         pending: next_pending,
                         queue_update,
@@ -2071,20 +2104,23 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         }
 
         if let Some(bus) = &hook_bus {
-            let (ty, phase, ctx) = super::script_hook_ctx::agent_settled();
+            let (ty, phase, ctx) = super::script_hook_ctx::run_settled();
             observe_script_hook(bus, ty, phase, ctx).await;
-            let (ty, phase, ctx) = super::script_hook_ctx::agent_end();
+            let (ty, phase, ctx) = super::script_hook_ctx::run_end();
             observe_script_hook(bus, ty, phase, ctx).await;
         }
         if let Some(span) = agent_turn_span {
-            use super::obs::TurnEndReason;
-            span.finish(if turn_aborted {
-                TurnEndReason::Aborted
+            use super::obs::StepEndReason;
+            span.finish(if abort_reason.is_some() {
+                StepEndReason::Aborted
             } else {
-                TurnEndReason::Ok
+                StepEndReason::Ok
             });
         }
-        yield XyEvent::AgentEnd { messages: history };
+        yield XyEvent::AgentEnd {
+            messages: history,
+            reason: abort_reason,
+        };
     }
 }
 
@@ -2094,8 +2130,8 @@ mod loop_middleware_tests {
 
     use futures::StreamExt;
     use xylitol_plugin_sdk::{
-        BeforeToolCtx, DecideContinueCtx, LoopMiddleware, LoopMiddlewareRegistry, LoopStage,
-        LoopStep,
+        BeforeStepCtx, BeforeToolCtx, DecideContinueCtx, LoopMiddleware, LoopMiddlewareRegistry,
+        LoopStage, LoopStep,
     };
 
     use crate::agent::capabilities::QueueMode;
@@ -2105,6 +2141,8 @@ mod loop_middleware_tests {
     use crate::agent::tools::ToolSet;
     use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder};
     use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind, XyModelMeta};
+
+    use super::{AgentEndReason, note_abort};
 
     struct DenyBash;
 
@@ -2197,6 +2235,230 @@ mod loop_middleware_tests {
         }
     }
 
+    #[test]
+    fn abort_reason_first_non_ok_wins() {
+        let mut slot = None;
+        note_abort(AgentEndReason::MiddlewareFault, &mut slot);
+        note_abort(AgentEndReason::UserCancel, &mut slot);
+        assert_eq!(slot, Some(AgentEndReason::MiddlewareFault));
+    }
+
+    struct OneShotText;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for OneShotText {
+        fn name(&self) -> &str {
+            "one-shot-text"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(xylitol_plugin_sdk::model::XyChunk::TextDelta("done".into())),
+                Ok(xylitol_plugin_sdk::model::XyChunk::Done {
+                    finish_reason: xylitol_plugin_sdk::message::XyStopReason::Stop,
+                    usage: None,
+                }),
+            ])))
+        }
+    }
+
+    struct RetryOnceText {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for RetryOnceText {
+        fn name(&self) -> &str {
+            "retry-once-text"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            use std::sync::atomic::Ordering;
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Err(xylitol_plugin_sdk::error::XyError::provider(
+                    xylitol_plugin_sdk::error::XyProviderError {
+                        message: "rate limit exceeded".into(),
+                        ..Default::default()
+                    },
+                ));
+            }
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(xylitol_plugin_sdk::model::XyChunk::TextDelta("ok".into())),
+                Ok(xylitol_plugin_sdk::model::XyChunk::Done {
+                    finish_reason: xylitol_plugin_sdk::message::XyStopReason::Stop,
+                    usage: None,
+                }),
+            ])))
+        }
+    }
+
+    #[tokio::test]
+    async fn auto_retry_end_only_after_real_retry_in_the_same_step() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let calls_for_builder = calls.clone();
+        let mut base = baseline();
+        base.model_builder = Arc::new(move |_| {
+            Arc::new(RetryOnceText {
+                calls: calls_for_builder.clone(),
+            }) as Arc<dyn xylitol_plugin_sdk::XyModel>
+        });
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-retry").expect("bind");
+        runtime.follow_up("second step");
+
+        let mut events = Vec::new();
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+
+        let starts = events
+            .iter()
+            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::AutoRetryStart { .. }))
+            .count();
+        let ends: Vec<(bool, u32)> = events
+            .iter()
+            .filter_map(|e| match e {
+                crate::agent::runtime::XyEvent::AutoRetryEnd { success, attempt } => {
+                    Some((*success, *attempt))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(starts, 1, "one retry expected: {events:?}");
+        assert_eq!(
+            ends,
+            vec![(true, 1)],
+            "only the retried step may emit AutoRetryEnd: {events:?}"
+        );
+        let steps = events
+            .iter()
+            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::StepStart { .. }))
+            .count();
+        assert_eq!(
+            steps, 2,
+            "the second step must run without a retry: {events:?}"
+        );
+    }
+
+    struct CaptureBeforeStep {
+        seen: Arc<std::sync::Mutex<Vec<(u32, bool)>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for CaptureBeforeStep {
+        fn id(&self) -> &str {
+            "capture-before-step"
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::BeforeStep]
+        }
+
+        async fn before_step(&self, ctx: BeforeStepCtx) -> LoopStep<BeforeStepCtx> {
+            self.seen
+                .lock()
+                .expect("seen")
+                .push((ctx.step_index, ctx.has_new_user_messages));
+            LoopStep::continued(ctx)
+        }
+    }
+
+    #[tokio::test]
+    async fn before_step_flags_new_user_input_at_turn_boundaries() {
+        let reg = registry();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        reg.register(Arc::new(CaptureBeforeStep { seen: seen.clone() }))
+            .expect("register");
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-before-step").expect("bind");
+        runtime.set_loop_middleware(Some(reg));
+        runtime.follow_up("second turn");
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        while stream.next().await.is_some() {}
+        let seen = seen.lock().expect("seen");
+        assert_eq!(
+            *seen,
+            vec![(0, true), (1, true)],
+            "initial prompt and follow-up both open a turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn step_limit_stops_after_completed_step_without_abort() {
+        use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage, XyStopReason};
+
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let store = base.store.clone();
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-step-limit").expect("bind");
+        runtime.set_should_stop_after_step(Some(crate::agent::max_steps_stop_hook(1)));
+
+        let mut events = Vec::new();
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+
+        let step_starts = events
+            .iter()
+            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::StepStart { .. }))
+            .count();
+        assert_eq!(
+            step_starts, 1,
+            "step limit must stop the first step: {events:?}"
+        );
+        let messages = events
+            .iter()
+            .find_map(|e| match e {
+                crate::agent::runtime::XyEvent::AgentEnd { messages, .. } => Some(messages),
+                _ => None,
+            })
+            .expect("AgentEnd must be emitted");
+        let assistant = messages
+            .iter()
+            .rev()
+            .find(|m| m.role_name() == "assistant")
+            .expect("completed assistant message must not be aborted");
+        match assistant {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage { stop_reason, .. }) => {
+                assert_eq!(*stop_reason, Some(XyStopReason::Stop));
+            }
+            other => panic!("unexpected assistant shape: {other:?}"),
+        }
+        let entries = store
+            .load_entries("sess-step-limit")
+            .await
+            .expect("persisted session");
+        assert!(
+            entries.iter().any(|e| matches!(
+                e.as_agent_message(),
+                Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage { .. }))
+            )),
+            "completed step must stay persisted"
+        );
+    }
+
     #[tokio::test]
     async fn before_tool_stop_blocks_execution_and_ends_run() {
         let reg = registry();
@@ -2235,7 +2497,7 @@ mod loop_middleware_tests {
         }
         let turns = events
             .iter()
-            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::TurnStart { .. }))
+            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::StepStart { .. }))
             .count();
         assert_eq!(turns, 1, "stop must not start another turn: {events:?}");
         assert!(

@@ -3,9 +3,10 @@ use serde_json::Value;
 
 use xylitol_plugin_sdk::session::TodoList as DomainTodoList;
 use xylitol_plugin_sdk::{
-    AgentMessage, ContextTokenEstimate, PromptCacheRead, TokenProvenance, XyEvent, XyEventError,
+    AgentEndReason, AgentMessage, ContextTokenEstimate, PromptCacheRead, TokenProvenance, XyEvent,
+    XyEventError,
 };
-use xylitol_protocol::{Event, TodoList as WireTodoList};
+use xylitol_protocol::{AgentEndReason as WireAgentEndReason, Event, TodoList as WireTodoList};
 
 #[derive(Debug, thiserror::Error)]
 pub enum WireEventError {
@@ -21,12 +22,14 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             session_id: session_id.clone(),
             model: model.clone(),
         }),
-        XyEvent::AgentEnd { .. } => Ok(Event::AgentEnd),
-        XyEvent::TurnStart { turn_index } => Ok(Event::TurnStart {
-            turn_index: *turn_index,
+        XyEvent::AgentEnd { reason, .. } => Ok(Event::AgentEnd {
+            reason: reason.map(agent_end_reason_to_wire),
         }),
-        XyEvent::TurnEnd { turn_index } => Ok(Event::TurnEnd {
-            turn_index: *turn_index,
+        XyEvent::StepStart { step_index } => Ok(Event::StepStart {
+            step_index: *step_index,
+        }),
+        XyEvent::StepEnd { step_index } => Ok(Event::StepEnd {
+            step_index: *step_index,
         }),
         XyEvent::MessageStart { role, message } => message_start_to_wire(role, message),
         XyEvent::MessageUpdate { message } => message_update_to_wire(message),
@@ -140,14 +143,15 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             session_id: session_id.clone(),
             model: model.clone(),
         }),
-        Event::AgentEnd => Ok(XyEvent::AgentEnd {
+        Event::AgentEnd { reason } => Ok(XyEvent::AgentEnd {
             messages: Vec::new(),
+            reason: reason.map(agent_end_reason_from_wire),
         }),
-        Event::TurnStart { turn_index } => Ok(XyEvent::TurnStart {
-            turn_index: *turn_index,
+        Event::StepStart { step_index } => Ok(XyEvent::StepStart {
+            step_index: *step_index,
         }),
-        Event::TurnEnd { turn_index } => Ok(XyEvent::TurnEnd {
-            turn_index: *turn_index,
+        Event::StepEnd { step_index } => Ok(XyEvent::StepEnd {
+            step_index: *step_index,
         }),
         Event::MessageStart { role, message } => message_start_from_wire(role, message),
         Event::MessageUpdate { message } => message_update_from_wire(message),
@@ -260,6 +264,28 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
     }
 }
 
+fn agent_end_reason_to_wire(reason: AgentEndReason) -> WireAgentEndReason {
+    match reason {
+        AgentEndReason::UserCancel => WireAgentEndReason::UserCancel,
+        AgentEndReason::ModelError => WireAgentEndReason::ModelError,
+        AgentEndReason::MiddlewareStop => WireAgentEndReason::MiddlewareStop,
+        AgentEndReason::MiddlewareFault => WireAgentEndReason::MiddlewareFault,
+        AgentEndReason::ModalityUnsupported => WireAgentEndReason::ModalityUnsupported,
+        AgentEndReason::StepLimit => WireAgentEndReason::StepLimit,
+    }
+}
+
+fn agent_end_reason_from_wire(reason: WireAgentEndReason) -> AgentEndReason {
+    match reason {
+        WireAgentEndReason::UserCancel => AgentEndReason::UserCancel,
+        WireAgentEndReason::ModelError => AgentEndReason::ModelError,
+        WireAgentEndReason::MiddlewareStop => AgentEndReason::MiddlewareStop,
+        WireAgentEndReason::MiddlewareFault => AgentEndReason::MiddlewareFault,
+        WireAgentEndReason::ModalityUnsupported => AgentEndReason::ModalityUnsupported,
+        WireAgentEndReason::StepLimit => AgentEndReason::StepLimit,
+    }
+}
+
 fn to_value_opt(message: &Option<AgentMessage>) -> Result<Option<Value>, WireEventError> {
     message
         .as_ref()
@@ -342,9 +368,10 @@ mod tests {
             },
             XyEvent::AgentEnd {
                 messages: Vec::new(),
+                reason: Some(AgentEndReason::StepLimit),
             },
-            XyEvent::TurnStart { turn_index: 1 },
-            XyEvent::TurnEnd { turn_index: 1 },
+            XyEvent::StepStart { step_index: 1 },
+            XyEvent::StepEnd { step_index: 1 },
             XyEvent::MessageStart {
                 role: "assistant".into(),
                 message: Some(AgentMessage::assistant("start")),
@@ -501,12 +528,18 @@ mod tests {
     fn agent_end_drops_nonempty_messages_on_the_wire_by_design() {
         let event = XyEvent::AgentEnd {
             messages: vec![AgentMessage::user("kept face-locally only")],
+            reason: Some(AgentEndReason::UserCancel),
         };
         let wire = event_to_wire(&event).expect("to wire");
-        assert_eq!(wire, Event::AgentEnd);
+        assert_eq!(
+            wire,
+            Event::AgentEnd {
+                reason: Some(WireAgentEndReason::UserCancel)
+            }
+        );
         let back = event_from_wire(&wire).expect("from wire");
         assert!(
-            matches!(back, XyEvent::AgentEnd { ref messages } if messages.is_empty()),
+            matches!(back, XyEvent::AgentEnd { ref messages, .. } if messages.is_empty()),
             "wire AgentEnd must rebuild with empty messages, got {back:?}"
         );
     }

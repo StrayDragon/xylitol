@@ -107,7 +107,7 @@ impl XyTool for SubagentTool {
                 event = stream.next() => {
                     match event {
                         Some(XyEvent::TextDelta(delta)) => text.push_str(&delta),
-                        Some(XyEvent::AgentEnd { messages }) => {
+                        Some(XyEvent::AgentEnd { messages, .. }) => {
                             if let Some(last) = messages
                                 .iter()
                                 .rev()

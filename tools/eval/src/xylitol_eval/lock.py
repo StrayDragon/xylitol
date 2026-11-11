@@ -16,7 +16,7 @@ from .errors import ConfigError
 
 @dataclass(frozen=True)
 class LockProfile:
-    max_turns: int
+    max_steps_per_turn: int
     wall_seconds: int
 
 
@@ -49,7 +49,7 @@ class ModelLock:
                 "thinking_level": self.thinking_level,
             },
             "profiles": {
-                name: {"max_turns": p.max_turns, "wall_seconds": p.wall_seconds}
+                name: {"max_steps_per_turn": p.max_steps_per_turn, "wall_seconds": p.wall_seconds}
                 for name, p in self.profiles.items()
             },
             "benchmarks": self.benchmarks,
@@ -95,7 +95,7 @@ def load_lock(path: Path) -> ModelLock:
             raise ConfigError(f"model lock profiles.{name} must be a mapping")
         try:
             profiles[name] = LockProfile(
-                max_turns=int(item["max_turns"]),
+                max_steps_per_turn=int(item["max_steps_per_turn"]),
                 wall_seconds=int(item["wall_seconds"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
@@ -118,7 +118,7 @@ def load_lock(path: Path) -> ModelLock:
             "thinking_level": model["thinking_level"],
         },
         "profiles": {
-            name: {"max_turns": p.max_turns, "wall_seconds": p.wall_seconds}
+            name: {"max_steps_per_turn": p.max_steps_per_turn, "wall_seconds": p.wall_seconds}
             for name, p in profiles.items()
         },
         "benchmarks": benchmarks,
@@ -155,7 +155,7 @@ def validate_eval_config(config: EvalConfig, lock: ModelLock, profile: str = "co
         ("model.thinking_level", config.model.thinking_level, lock.thinking_level),
         ("model.base_url_env", config.model.base_url_env, lock.base_url_env),
         ("model.api_key_env", config.model.api_key_env, lock.api_key_env),
-        ("agent.max_turns", config.agent.max_turns, lock.profiles[profile].max_turns),
+        ("agent.max_steps_per_turn", config.agent.max_steps_per_turn, lock.profiles[profile].max_steps_per_turn),
         ("agent.wall_seconds", config.agent.wall_seconds, lock.profiles[profile].wall_seconds),
     ]
     for field, actual, expected in checks:

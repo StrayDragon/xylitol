@@ -7,7 +7,7 @@ use xylitol_plugin_sdk::{
 use xylitol_plugin_sdk::error::{XyError, XyToolError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TurnEndReason {
+pub(crate) enum StepEndReason {
     Ok,
     Aborted,
 }
@@ -77,20 +77,20 @@ impl AgentTurnSpan {
         &self.root
     }
 
-    pub(crate) fn finish(self, reason: TurnEndReason) {
+    pub(crate) fn finish(self, reason: StepEndReason) {
         match reason {
-            TurnEndReason::Aborted => {
+            StepEndReason::Aborted => {
                 self.root
                     .add_property(|| ("langfuse.observation.level", "ERROR".to_string()));
                 self.root.add_property(|| {
                     ("langfuse.observation.status_message", "aborted".to_string())
                 });
             }
-            TurnEndReason::Ok => {}
+            StepEndReason::Ok => {}
         }
         let end = match reason {
-            TurnEndReason::Ok => "ok",
-            TurnEndReason::Aborted => "aborted",
+            StepEndReason::Ok => "ok",
+            StepEndReason::Aborted => "aborted",
         };
         self.root
             .add_event(Event::new("lifecycle").with_properties(|| {
@@ -111,7 +111,7 @@ pub(crate) struct AgentIterationSpan {
 }
 
 impl AgentIterationSpan {
-    pub(crate) fn start(turn: Option<&AgentTurnSpan>, turn_index: usize) -> Option<Self> {
+    pub(crate) fn start(turn: Option<&AgentTurnSpan>, step_index: usize) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
@@ -126,7 +126,7 @@ impl AgentIterationSpan {
             None => Span::root("agent.iteration", SpanContext::random()),
         }
         .with_properties(move || {
-            let mut props = vec![("turn_index".to_string(), turn_index.to_string())];
+            let mut props = vec![("step_index".to_string(), step_index.to_string())];
             props.extend(langfuse_observation_properties_from("agent", &obs));
             props
         });
@@ -363,7 +363,7 @@ mod tests {
 
         {
             let turn = AgentTurnSpan::start(Some("hello"), None).expect("turn");
-            turn.finish(TurnEndReason::Ok);
+            turn.finish(StepEndReason::Ok);
         }
         fastrace::flush();
 
@@ -394,7 +394,7 @@ mod tests {
 
         {
             let turn = AgentTurnSpan::start(Some("hello"), None).expect("turn");
-            turn.finish(TurnEndReason::Aborted);
+            turn.finish(StepEndReason::Aborted);
         }
         fastrace::flush();
 
@@ -430,7 +430,7 @@ mod tests {
             drop(llm);
             drop(tool);
             drop(iter);
-            turn.finish(TurnEndReason::Ok);
+            turn.finish(StepEndReason::Ok);
         }
         fastrace::flush();
 
@@ -469,7 +469,7 @@ mod tests {
                 .any(|k| *k == "model" || *k == "gen_ai.request.model")
         );
         let iter_keys: Vec<&str> = iter.properties.iter().map(|(k, _)| k.as_ref()).collect();
-        assert!(iter_keys.contains(&"turn_index"), "{iter_keys:?}");
+        assert!(iter_keys.contains(&"step_index"), "{iter_keys:?}");
         assert!(
             !iter_keys.contains(&"turn_id"),
             "iteration must not copy turn_id: {iter_keys:?}"
@@ -489,7 +489,7 @@ mod tests {
             let collect = SpanCollectScope::enter();
             {
                 let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
-                turn.finish(TurnEndReason::Ok);
+                turn.finish(StepEndReason::Ok);
             }
             fastrace::flush();
             let spans = collect.records();
@@ -507,7 +507,7 @@ mod tests {
             let collect = SpanCollectScope::enter();
             {
                 let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
-                turn.finish(TurnEndReason::Ok);
+                turn.finish(StepEndReason::Ok);
             }
             fastrace::flush();
             let spans = collect.records();
@@ -599,7 +599,7 @@ mod tests {
             drop(t1);
             drop(t2);
             drop(iter);
-            turn.finish(TurnEndReason::Ok);
+            turn.finish(StepEndReason::Ok);
         }
         fastrace::flush();
 
@@ -660,8 +660,8 @@ mod tests {
             let ta = AgentTurnSpan::start_with_session(None, None, &a).expect("turn a");
             set_obs_session("hijacked", None);
             let tb = AgentTurnSpan::start_with_session(None, None, &b).expect("turn b");
-            ta.finish(TurnEndReason::Ok);
-            tb.finish(TurnEndReason::Ok);
+            ta.finish(StepEndReason::Ok);
+            tb.finish(StepEndReason::Ok);
         }
         fastrace::flush();
 
@@ -720,7 +720,7 @@ mod tests {
             .expect("tool");
             drop(tool);
             drop(iter);
-            turn.finish(TurnEndReason::Ok);
+            turn.finish(StepEndReason::Ok);
         }
         fastrace::flush();
 
@@ -755,7 +755,7 @@ mod tests {
         };
         {
             let turn = AgentTurnSpan::start_with_session(None, None, &snap).expect("turn");
-            turn.finish(TurnEndReason::Ok);
+            turn.finish(StepEndReason::Ok);
         }
         fastrace::flush();
         let turn = collect

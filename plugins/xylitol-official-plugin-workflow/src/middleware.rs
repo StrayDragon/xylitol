@@ -490,7 +490,7 @@ mod tests {
 
     fn model_ctx(session_id: Option<&str>) -> BeforeLlmRequestCtx {
         BeforeLlmRequestCtx {
-            turn_index: 0,
+            step_index: 0,
             messages: Vec::new(),
             tool_schemas: Vec::new(),
             tool_catalog: Default::default(),
@@ -502,7 +502,7 @@ mod tests {
 
     fn tool_ctx(name: &str, text: &str, is_error: bool) -> AfterToolCtx {
         AfterToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "call-1".into(),
             tool_name: name.into(),
             parts: vec![AgentPart::text(text)],
@@ -620,7 +620,7 @@ mod tests {
 
     fn decide_ctx_with(assistant: Option<AgentMessage>) -> DecideContinueCtx {
         DecideContinueCtx {
-            turn_index: 0,
+            step_index: 0,
             settle_count: 0,
             has_new_user_messages: false,
             assistant,
@@ -714,7 +714,7 @@ mod nested_tests {
 
     fn model_ctx(session_id: &str) -> BeforeLlmRequestCtx {
         BeforeLlmRequestCtx {
-            turn_index: 0,
+            step_index: 0,
             messages: Vec::new(),
             tool_schemas: Vec::new(),
             tool_catalog: Default::default(),
@@ -726,7 +726,7 @@ mod nested_tests {
 
     fn decide_ctx() -> DecideContinueCtx {
         DecideContinueCtx {
-            turn_index: 0,
+            step_index: 0,
             settle_count: 0,
             has_new_user_messages: false,
             assistant: None,
@@ -793,7 +793,7 @@ mod nested_tests {
             .await
             .expect("append completed");
         mw.after_tool(AfterToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "c1".into(),
             tool_name: "workflow_write".into(),
             parts: vec![AgentPart::text("{}")],
@@ -822,7 +822,7 @@ mod nested_tests {
 
     fn tool_ctx(name: &str, text: &str, is_error: bool) -> AfterToolCtx {
         AfterToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "call-1".into(),
             tool_name: name.into(),
             parts: vec![AgentPart::text(text)],
@@ -901,7 +901,7 @@ mod nested_tests {
         let (_store, mw) = seeded_with(root, config).await;
         mw.before_llm_request(model_ctx("s1")).await;
         mw.after_tool(AfterToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "c1".into(),
             tool_name: "workflow_write".into(),
             parts: vec![AgentPart::text("{}")],

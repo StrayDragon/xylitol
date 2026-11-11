@@ -17,23 +17,23 @@
       那么 system prompt 含 AGENTS.md 内容且 loader 有值时 不回退硬编码占位符
   @req:r1062
   规则: 回合事件
-    System 须每轮发出：turn_start、message_start、message_update（流式）、message_end。
+    System 须每轮发出：step_start、message_start、message_update（流式）、message_end。
 
     场景: 文本应答
       假如 mock 模型返回文本 "你好，我是一个AI助手"
       当 启动 agent 会话并发送提示 "打个招呼"
       那么 响应事件流包含 TextDelta "你好"
-      并且 turn_end 事件触发
+      并且 step_end 事件触发
 
     场景: 回合顺序
       假如 mock 模型返回文本 "分析完成"
       当 启动 agent 会话
-      那么 事件按顺序为: turn_start, message_start, message_update, message_end, turn_end
+      那么 事件按顺序为: step_start, message_start, message_update, message_end, step_end
 
     场景: 回合事件
       假如 agent 处理含工具调用的回合
       当 回合开始
-      那么 事件按序发出：turn_start message_start message_update* message_end turn_end
+      那么 事件按序发出：step_start message_start message_update* message_end step_end
   @req:r1066
   规则: 工具事件
     System 须每次工具调用在 MessageEnd 之后发出 tool_execution_start，执行期发出至少一次 tool_execution_update（长输出工具宜多段），再 tool_execution_end；不得在助手消息流式阶段（MessageEnd 前）发出 tool_execution_start。
@@ -44,7 +44,7 @@
       当 启动 agent 会话并发送提示 "读取文件"
       那么 tool_execution_start 事件触发
       并且 tool_execution_end 事件包含结果 "hello world"
-      并且 turn_end 事件包含 toolResult
+      并且 step_end 事件包含 toolResult
 
     场景: 工具流
       假如 bash 工具流式输出
@@ -147,7 +147,7 @@
       那么 以 AGENTS.md 内容为首项返回
   @req:r1074
   规则: 事件总线生命周期
-    AgentCapabilities 须在 turn 生命周期内发出 turn_start 与 turn_end（或等价 XyEvent）；并 须在消息完成时 auto-persist 到 session store（与 a8 一致），不得只依赖无人订阅的旁路。
+    AgentCapabilities 须在 turn 生命周期内发出 step_start 与 step_end（或等价 XyEvent）；并 须在消息完成时 auto-persist 到 session store（与 a8 一致），不得只依赖无人订阅的旁路。
 
     场景: 自动持久化
       假如 一个 turn 完成

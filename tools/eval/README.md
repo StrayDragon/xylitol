@@ -114,7 +114,7 @@ PYTHONPATH=tools/eval/harbor harbor run \
   -a xylitol_agent:XylitolAgent \
   -m openai/group/glm-5.3-flash \
   --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
-  --ak max_turns=8 --ak wall_seconds=600 \
+  --ak max_steps_per_turn=8 --ak wall_seconds=600 \
   --base-url "$MAGPIE_GATEWAY_URL/v1" \
   --api-key-name MAGPIE_GATEWAY_KEY \
   --api-format openai_responses \
@@ -149,7 +149,7 @@ PYTHONPATH=tools/eval/harbor harbor run \
   -p /tmp/deep-swe-agents/<task> \
   -a preinstalled_agents:PiPreinstalled \
   -m openai/group/glm-5.3-flash --effort high \
-  --ak model_api=openai-responses --ak max_turns=80 \
+  --ak model_api=openai-responses --ak max_steps_per_turn=80 \
   --ak disable_web_search=true --agent-timeout-multiplier 0.1666666667 \
   --ae GIT_AUTHOR_NAME=eval --ae GIT_AUTHOR_EMAIL=eval@example.com \
   --ae GIT_COMMITTER_NAME=eval --ae GIT_COMMITTER_EMAIL=eval@example.com \
@@ -191,7 +191,7 @@ cd tools/eval
 uv run xylitol-eval doctor --config examples/eval-terminal-bench.yaml --lock model-lock.yaml
 ```
 
-Harbor runs should use the same model id and `--ak max_turns/wall_seconds` from
+Harbor runs should use the same model id and `--ak max_steps_per_turn/wall_seconds` from
 the selected profile.
 
 ## Config

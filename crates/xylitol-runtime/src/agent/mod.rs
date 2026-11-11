@@ -18,6 +18,6 @@ pub use crate::agent::capabilities::{
 pub use crate::agent::runtime::AgentRuntime;
 pub use crate::agent::runtime::RuntimeBaseline;
 pub use crate::agent::runtime::XyEventStream;
-pub use crate::agent::runtime::hooks::max_turns_stop_hook;
+pub use crate::agent::runtime::hooks::max_steps_stop_hook;
 pub use crate::agent::tools::MCP_FIRST_TURN_GATE_TIMEOUT;
 pub use xylitol_plugin_sdk::lifecycle::XyEvent;

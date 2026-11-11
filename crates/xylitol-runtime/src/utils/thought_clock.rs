@@ -95,7 +95,7 @@ const STREAM_NODE_COUNT: usize = 8;
 #[repr(u8)]
 pub enum StreamNode {
     AgentStart = 0,
-    TurnStart = 1,
+    StepStart = 1,
     ThinkingStart = 2,
     ThinkingEnd = 3,
     TextStart = 4,
@@ -112,7 +112,7 @@ impl StreamNode {
     fn json_key(self) -> &'static str {
         match self {
             Self::AgentStart => "agentStartedAtMs",
-            Self::TurnStart => "turnStartedAtMs",
+            Self::StepStart => "turnStartedAtMs",
             Self::ThinkingStart => "thinkingStartedAtMs",
             Self::ThinkingEnd => "thinkingEndedAtMs",
             Self::TextStart => "textStartedAtMs",
@@ -124,7 +124,7 @@ impl StreamNode {
 
     const ALL: [Self; STREAM_NODE_COUNT] = [
         Self::AgentStart,
-        Self::TurnStart,
+        Self::StepStart,
         Self::ThinkingStart,
         Self::ThinkingEnd,
         Self::TextStart,
@@ -300,7 +300,7 @@ mod tests {
         let a = t0();
         c.stamp_at(StreamNode::AgentStart, a, 10);
         c.begin_turn();
-        c.stamp_at(StreamNode::TurnStart, a, 20);
+        c.stamp_at(StreamNode::StepStart, a, 20);
         c.stamp_at(StreamNode::ThinkingStart, a, 30);
         c.stamp_at(StreamNode::ThinkingEnd, a + Duration::from_secs(2), 2_030);
         c.stamp_at(StreamNode::TextStart, a + Duration::from_secs(2), 2_031);

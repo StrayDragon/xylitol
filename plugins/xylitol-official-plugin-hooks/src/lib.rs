@@ -110,11 +110,11 @@ pub enum HookEvent {
     AgentStart,
     AgentEnd,
     AgentSettled,
-    TurnStart {
-        turn_index: u32,
+    StepStart {
+        step_index: u32,
     },
-    TurnEnd {
-        turn_index: u32,
+    StepEnd {
+        step_index: u32,
     },
     MessageStart {
         role: String,
@@ -185,11 +185,11 @@ impl HookEvent {
             HookEvent::AfterProviderResponse { .. } => "after_provider_response",
             HookEvent::ToolResult { .. } => "tool_result",
             HookEvent::Context { .. } => "context",
-            HookEvent::AgentStart => "agent_start",
-            HookEvent::AgentEnd => "agent_end",
-            HookEvent::AgentSettled => "agent_settled",
-            HookEvent::TurnStart { .. } => "turn_start",
-            HookEvent::TurnEnd { .. } => "turn_end",
+            HookEvent::AgentStart => "run_start",
+            HookEvent::AgentEnd => "run_end",
+            HookEvent::AgentSettled => "run_settled",
+            HookEvent::StepStart { .. } => "step_start",
+            HookEvent::StepEnd { .. } => "step_end",
             HookEvent::MessageStart { .. } => "message_start",
             HookEvent::MessageEnd { .. } => "message_end",
             HookEvent::SessionStart { .. } => "session_start",
@@ -337,8 +337,8 @@ impl HookEvent {
                     map.insert("entry_id".into(), serde_json::json!(entry_id));
                     map.insert("position".into(), serde_json::json!(position));
                 }
-                HookEvent::TurnStart { turn_index } | HookEvent::TurnEnd { turn_index } => {
-                    map.insert("turn_index".into(), serde_json::json!(turn_index));
+                HookEvent::StepStart { step_index } | HookEvent::StepEnd { step_index } => {
+                    map.insert("step_index".into(), serde_json::json!(step_index));
                 }
                 HookEvent::MessageStart { role } | HookEvent::MessageEnd { role } => {
                     map.insert("role".into(), serde_json::json!(role));
@@ -684,11 +684,11 @@ mod tests {
 
     #[test]
     fn test_payload_context_omits_event_phase() {
-        let event = HookEvent::TurnStart { turn_index: 2 };
+        let event = HookEvent::StepStart { step_index: 2 };
         let payload = event.payload_context();
         assert!(payload.get("event").is_none());
         assert!(payload.get("phase").is_none());
-        assert_eq!(payload["turn_index"], 2);
+        assert_eq!(payload["step_index"], 2);
     }
 
     #[test]

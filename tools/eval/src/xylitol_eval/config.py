@@ -42,7 +42,7 @@ class ModelConfig:
 @dataclass(frozen=True)
 class AgentConfig:
     binary: str
-    max_turns: int = 80
+    max_steps_per_turn: int = 80
     wall_seconds: int = 1800
     trust: bool = False
 
@@ -107,7 +107,7 @@ class EvalConfig:
             },
             "agent": {
                 "binary": self.agent.binary,
-                "max_turns": self.agent.max_turns,
+                "max_steps_per_turn": self.agent.max_steps_per_turn,
                 "wall_seconds": self.agent.wall_seconds,
                 "trust": self.agent.trust,
             },
@@ -217,7 +217,7 @@ def load_config(path: Path) -> EvalConfig:
         raise ConfigError("agent must be a mapping")
     agent = AgentConfig(
         binary=str(_require(agent_raw, "binary", "agent")),
-        max_turns=_positive_int(agent_raw.get("max_turns", 80), "agent.max_turns"),
+        max_steps_per_turn=_positive_int(agent_raw.get("max_steps_per_turn", 80), "agent.max_steps_per_turn"),
         wall_seconds=_positive_int(agent_raw.get("wall_seconds", 1800), "agent.wall_seconds"),
         trust=bool(agent_raw.get("trust", False)),
     )
@@ -278,7 +278,7 @@ def load_config(path: Path) -> EvalConfig:
         },
         "agent": {
             "binary": agent.binary,
-            "max_turns": agent.max_turns,
+            "max_steps_per_turn": agent.max_steps_per_turn,
             "wall_seconds": agent.wall_seconds,
             "trust": agent.trust,
         },

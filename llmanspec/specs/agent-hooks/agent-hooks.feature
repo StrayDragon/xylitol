@@ -30,7 +30,7 @@
       那么 操作被阻止
   @req:r1000
   规则: hook 事件
-    Hook 系统 须支持约定事件名，含：tool_call、tool_result、context、before_provider_headers、before_provider_request、after_provider_response、agent_start、agent_end、agent_settled、turn_start、turn_end、message_start、message_end、session_start、session_shutdown，及 HookEvent 中已有 xylitol 专属事件。
+    Hook 系统 须支持约定事件名，含：tool_call、tool_result、context、before_provider_headers、before_provider_request、after_provider_response、run_start、run_end、run_settled、step_start、step_end、message_start、message_end、session_start、session_shutdown，及 HookEvent 中已有 xylitol 专属事件。
     场景: 约定事件名称分发
       假如 注册了匹配 "pre.tool_call" 的 hook
       当 任何工具即将执行
@@ -118,9 +118,9 @@
 
   @req:r1004
   规则: 生命周期脚本 hooks
-    附加 HookDispatcher 时，agent_start/agent_end/turn_start/turn_end/message_start/message_end 须与对应 XyEvent 发射一并分发（仅观察；fail-open）。
+    附加 HookDispatcher 时，run_start/run_end/step_start/step_end/message_start/message_end 须与对应 XyEvent 发射一并分发（仅观察；fail-open）。
     场景: 生命周期钩子结算回合
-      假如 注册了匹配 "turn_end" 的 hook
+      假如 注册了匹配 "step_end" 的 hook
       假如 mock 模型先 tool 后无 tool
       当 运行 AgentRuntime 并收集事件
       那么 先执行工具再结束且无 adk 类型

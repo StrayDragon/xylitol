@@ -11,7 +11,7 @@ pub(crate) mod test_support;
 pub use agent::{
     AgentBuilder, AgentRuntime, HookBlockedError, MCP_FIRST_TURN_GATE_TIMEOUT, ModelRegistry,
     QueueMode, QueueStats, RuntimeBaseline, SessionStats, XyEvent, XyEventStream,
-    max_turns_stop_hook,
+    max_steps_stop_hook,
 };
 pub use driver::{
     AttachObserve, BangExecHandler, BashRun, InProcessReloadHook, LinkHealth, SessionExporter,

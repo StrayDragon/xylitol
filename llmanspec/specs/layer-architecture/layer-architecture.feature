@@ -38,9 +38,9 @@
   规则: agent 可无会话跑一轮
     未绑定 session 时，无工具 agent 必须能跑完一轮并出现 AgentEnd。
     场景: agent运行无会话绑定
-      假如 未注册 should_stop_after_turn 的无工具 agent
+      假如 未注册 should_stop_after_step 的无工具 agent
       当 运行 AgentRuntime
-      那么 正常出现 AgentEnd 且恰好一轮 TurnStart
+      那么 正常出现 AgentEnd 且恰好一轮 StepStart
 
   @req:r1521
   规则: 元数据事件不崩模型

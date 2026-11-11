@@ -12,35 +12,35 @@ use crate::session::TodoList;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LoopStage {
-    BeforeTurn,
+    BeforeStep,
     BeforeLlmRequest,
     AfterLlmResponse,
     BeforeTool,
     AfterTool,
     DecideContinue,
-    AfterTurn,
+    AfterStep,
 }
 
 impl LoopStage {
     pub const ALL: [LoopStage; 7] = [
-        LoopStage::BeforeTurn,
+        LoopStage::BeforeStep,
         LoopStage::BeforeLlmRequest,
         LoopStage::AfterLlmResponse,
         LoopStage::BeforeTool,
         LoopStage::AfterTool,
         LoopStage::DecideContinue,
-        LoopStage::AfterTurn,
+        LoopStage::AfterStep,
     ];
 
     pub fn as_str(self) -> &'static str {
         match self {
-            LoopStage::BeforeTurn => "before_turn",
+            LoopStage::BeforeStep => "before_step",
             LoopStage::BeforeLlmRequest => "before_llm_request",
             LoopStage::AfterLlmResponse => "after_llm_response",
             LoopStage::BeforeTool => "before_tool",
             LoopStage::AfterTool => "after_tool",
             LoopStage::DecideContinue => "decide_continue",
-            LoopStage::AfterTurn => "after_turn",
+            LoopStage::AfterStep => "after_step",
         }
     }
 }
@@ -100,15 +100,16 @@ impl<C> LoopStep<C> {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct BeforeTurnCtx {
-    pub turn_index: u32,
+pub struct BeforeStepCtx {
+    pub step_index: u32,
+    pub has_new_user_messages: bool,
     pub system_prompt: Option<String>,
     pub system_fragments: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct BeforeLlmRequestCtx {
-    pub turn_index: u32,
+    pub step_index: u32,
     pub messages: Vec<AgentMessage>,
     pub tool_schemas: Vec<XyToolSchema>,
     pub tool_catalog: Arc<[XyToolDescriptor]>,
@@ -119,14 +120,14 @@ pub struct BeforeLlmRequestCtx {
 
 #[derive(Debug, Clone)]
 pub struct AfterLlmResponseCtx {
-    pub turn_index: u32,
+    pub step_index: u32,
     pub assistant: AgentMessage,
     pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct BeforeToolCtx {
-    pub turn_index: u32,
+    pub step_index: u32,
     pub tool_call_id: String,
     pub tool_name: String,
     pub args: Value,
@@ -135,7 +136,7 @@ pub struct BeforeToolCtx {
 
 #[derive(Debug, Clone)]
 pub struct AfterToolCtx {
-    pub turn_index: u32,
+    pub step_index: u32,
     pub tool_call_id: String,
     pub tool_name: String,
     pub parts: Vec<AgentPart>,
@@ -151,7 +152,7 @@ pub struct CompactRequest {
 
 #[derive(Debug, Clone)]
 pub struct DecideContinueCtx {
-    pub turn_index: u32,
+    pub step_index: u32,
     pub settle_count: u32,
     pub has_new_user_messages: bool,
     pub assistant: Option<AgentMessage>,
@@ -160,8 +161,8 @@ pub struct DecideContinueCtx {
 }
 
 #[derive(Debug, Clone)]
-pub struct AfterTurnCtx {
-    pub turn_index: u32,
+pub struct AfterStepCtx {
+    pub step_index: u32,
     pub continued_tools: bool,
     pub history_len: usize,
     pub session_id: Option<String>,
@@ -177,7 +178,7 @@ pub trait LoopMiddleware: Send + Sync {
 
     fn stages(&self) -> &'static [LoopStage];
 
-    async fn before_turn(&self, ctx: BeforeTurnCtx) -> LoopStep<BeforeTurnCtx> {
+    async fn before_step(&self, ctx: BeforeStepCtx) -> LoopStep<BeforeStepCtx> {
         LoopStep::continued(ctx)
     }
 
@@ -201,7 +202,7 @@ pub trait LoopMiddleware: Send + Sync {
         LoopStep::continued(ctx)
     }
 
-    async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+    async fn after_step(&self, ctx: AfterStepCtx) -> LoopStep<AfterStepCtx> {
         LoopStep::continued(ctx)
     }
 }
@@ -332,13 +333,13 @@ impl LoopMiddlewareRegistry {
 
 #[derive(Clone, Default)]
 pub struct LoopChain {
-    pub before_turn: Vec<Arc<dyn LoopMiddleware>>,
+    pub before_step: Vec<Arc<dyn LoopMiddleware>>,
     pub before_llm_request: Vec<Arc<dyn LoopMiddleware>>,
     pub after_llm_response: Vec<Arc<dyn LoopMiddleware>>,
     pub before_tool: Vec<Arc<dyn LoopMiddleware>>,
     pub after_tool: Vec<Arc<dyn LoopMiddleware>>,
     pub decide_continue: Vec<Arc<dyn LoopMiddleware>>,
-    pub after_turn: Vec<Arc<dyn LoopMiddleware>>,
+    pub after_step: Vec<Arc<dyn LoopMiddleware>>,
     pub scope: LoopScope,
 }
 
@@ -361,25 +362,25 @@ impl LoopScope {
 impl LoopChain {
     fn bucket_mut(&mut self, stage: LoopStage) -> &mut Vec<Arc<dyn LoopMiddleware>> {
         match stage {
-            LoopStage::BeforeTurn => &mut self.before_turn,
+            LoopStage::BeforeStep => &mut self.before_step,
             LoopStage::BeforeLlmRequest => &mut self.before_llm_request,
             LoopStage::AfterLlmResponse => &mut self.after_llm_response,
             LoopStage::BeforeTool => &mut self.before_tool,
             LoopStage::AfterTool => &mut self.after_tool,
             LoopStage::DecideContinue => &mut self.decide_continue,
-            LoopStage::AfterTurn => &mut self.after_turn,
+            LoopStage::AfterStep => &mut self.after_step,
         }
     }
 
     pub fn stage(&self, stage: LoopStage) -> &[Arc<dyn LoopMiddleware>] {
         match stage {
-            LoopStage::BeforeTurn => &self.before_turn,
+            LoopStage::BeforeStep => &self.before_step,
             LoopStage::BeforeLlmRequest => &self.before_llm_request,
             LoopStage::AfterLlmResponse => &self.after_llm_response,
             LoopStage::BeforeTool => &self.before_tool,
             LoopStage::AfterTool => &self.after_tool,
             LoopStage::DecideContinue => &self.decide_continue,
-            LoopStage::AfterTurn => &self.after_turn,
+            LoopStage::AfterStep => &self.after_step,
         }
     }
 
@@ -471,9 +472,9 @@ mod tests {
     fn duplicate_id_is_rejected() {
         let reg = LoopMiddlewareRegistry::new();
         let first = reg
-            .register(probe("dup", 0, &[LoopStage::AfterTurn]))
+            .register(probe("dup", 0, &[LoopStage::AfterStep]))
             .expect("first");
-        let err = match reg.register(probe("dup", 1, &[LoopStage::AfterTurn])) {
+        let err = match reg.register(probe("dup", 1, &[LoopStage::AfterStep])) {
             Ok(_) => panic!("duplicate id must be rejected"),
             Err(err) => err,
         };
@@ -513,12 +514,12 @@ mod tests {
             .register(probe(
                 "a",
                 0,
-                &[LoopStage::BeforeTurn, LoopStage::DecideContinue],
+                &[LoopStage::BeforeStep, LoopStage::DecideContinue],
             ))
             .expect("a");
         let chain = reg.snapshot();
         drop(a);
-        assert_eq!(chain.before_turn.len(), 1);
+        assert_eq!(chain.before_step.len(), 1);
         assert_eq!(chain.decide_continue.len(), 1);
         assert!(chain.before_llm_request.is_empty());
         assert!(!chain.is_empty());
@@ -545,7 +546,7 @@ mod tests {
         }
 
         let ctx = BeforeToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "1".into(),
             tool_name: "bash".into(),
             args: Value::Null,
@@ -561,7 +562,7 @@ mod tests {
     #[test]
     fn after_tool_carries_structured_payload() {
         let ctx = AfterToolCtx {
-            turn_index: 2,
+            step_index: 2,
             tool_call_id: "call-9".into(),
             tool_name: "read".into(),
             parts: vec![AgentPart::Image(crate::dto::ImageContent {
@@ -582,7 +583,7 @@ mod tests {
     #[test]
     fn compact_request_defaults_to_none() {
         let ctx = DecideContinueCtx {
-            turn_index: 0,
+            step_index: 0,
             settle_count: 1,
             has_new_user_messages: false,
             assistant: None,
@@ -618,7 +619,7 @@ mod tests {
             .register(probe("only-a", 0, &[LoopStage::BeforeTool]))
             .expect("register a");
         reg_b
-            .register(probe("only-b", 0, &[LoopStage::BeforeTurn]))
+            .register(probe("only-b", 0, &[LoopStage::BeforeStep]))
             .expect("register b");
 
         let seen_a = session_a

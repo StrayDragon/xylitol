@@ -9,7 +9,7 @@
     场景: 厂商登记驱动回合
       假如 配置了 mock 模型 "test-model"
       当 启动 agent 会话并发送提示 "hi"
-      那么 turn_end 事件触发
+      那么 step_end 事件触发
 
   @req:r1751
   规则: 模型发现

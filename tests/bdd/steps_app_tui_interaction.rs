@@ -22,6 +22,7 @@ pub fn tui_interaction() -> TuiInteraction {
 
 fn mount(fx: &mut InteractionBdd) -> String {
     fx.push_xy(XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::new(),
     });
     fx.open_hit_viewport(200);

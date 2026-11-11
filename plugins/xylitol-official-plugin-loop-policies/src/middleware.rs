@@ -581,7 +581,7 @@ mod tests {
 
     fn ctx(command: &str) -> BeforeToolCtx {
         BeforeToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "call-1".into(),
             tool_name: "bash".into(),
             args: serde_json::json!({ "command": command }),
@@ -625,7 +625,7 @@ mod tests {
         };
         let mw = LoopPoliciesMiddleware::new(config);
         let base = DecideContinueCtx {
-            turn_index: 1,
+            step_index: 1,
             settle_count: 1,
             has_new_user_messages: false,
             assistant: None,
@@ -666,7 +666,7 @@ mod tests {
 
     fn exposure_ctx(names: &[&str]) -> BeforeLlmRequestCtx {
         BeforeLlmRequestCtx {
-            turn_index: 0,
+            step_index: 0,
             messages: Vec::new(),
             tool_schemas: schemas(names),
             tool_catalog: Default::default(),
@@ -783,7 +783,7 @@ mod tests {
 
     fn heal_ctx(name: &str, text: &str, is_error: bool) -> AfterToolCtx {
         AfterToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "call-1".into(),
             tool_name: name.into(),
             parts: vec![AgentPart::text(text)],
@@ -895,7 +895,7 @@ mod tests {
 
     fn model_ctx(todo: Option<TodoList>, last: Option<AgentMessage>) -> BeforeLlmRequestCtx {
         BeforeLlmRequestCtx {
-            turn_index: 0,
+            step_index: 0,
             messages: last.into_iter().collect(),
             tool_schemas: Vec::new(),
             tool_catalog: Default::default(),
@@ -907,7 +907,7 @@ mod tests {
 
     fn decide_ctx(settle_count: u32, has_new_user_messages: bool) -> DecideContinueCtx {
         DecideContinueCtx {
-            turn_index: 0,
+            step_index: 0,
             settle_count,
             has_new_user_messages,
             assistant: None,
@@ -926,7 +926,7 @@ mod tests {
 
     fn model_after(text: &str) -> AfterLlmResponseCtx {
         AfterLlmResponseCtx {
-            turn_index: 0,
+            step_index: 0,
             assistant: AgentMessage::Llm(XyLlmMessage::assistant(text)),
             session_id: None,
         }
@@ -934,7 +934,7 @@ mod tests {
 
     fn model_after_tool_call() -> AfterLlmResponseCtx {
         AfterLlmResponseCtx {
-            turn_index: 0,
+            step_index: 0,
             assistant: AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "call-1".into(),

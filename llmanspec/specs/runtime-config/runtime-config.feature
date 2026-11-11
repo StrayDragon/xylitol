@@ -133,7 +133,7 @@
       那么 该字段不生效（local 被忽略）
   @req:r1733
   规则: no-agent-max-iterations
-    Agent profile / AppConfig 不得暴露或生效 max_iterations（或等价已移除硬闸名）配置字段；schema 与加载路径 不得提供向后兼容 shim。可选 session.max_turns（正整数）须允许且仅经 should_stop_after_turn 装配生效（见 ar30）；缺省 须不限制轮次。残留 max_iterations 键 不得再限制 ReAct 迭代。由配置单测或加载用例覆盖，不得为静态字段缺失单独扩 BDD step。
+    Agent profile / AppConfig 不得暴露或生效 max_iterations（或等价已移除硬闸名）配置字段；schema 与加载路径 不得提供向后兼容 shim。可选 session.max_steps_per_turn（正整数）须允许且仅经 should_stop_after_step 装配生效（见 r1048）；缺省 须不限制步数；旧键 session.max_steps_per_turn 须使加载失败并指路新键。残留 max_iterations 键 不得再限制 ReAct 迭代。由配置单测或加载用例覆盖，不得为静态字段缺失单独扩 BDD step。
     场景: 无最大轮次字段
       假如 加载默认或示例 settings
       当 检查 Settings 类型与合并结果
@@ -169,11 +169,11 @@
 
   @req:r1738
   规则: session-max-turns
-    SessionConfig 须支持可选 max_turns（正整数）；缺省或省略 须为 None（不限制）；值为 0 或非法 须使配置加载失败；该字段 须供组合根安装 should_stop_after_turn（ar30），不得映射为已移除的 max_iterations。由配置单测覆盖，不得为静态字段形状单独扩 BDD step。
+    SessionConfig 须支持可选 max_steps_per_turn（正整数）；缺省或省略 须为 None（不限制）；值为 0 或非法 须使配置加载失败；该字段 须供组合根安装 should_stop_after_step（ar30），不得映射为已移除的 max_iterations。由配置单测覆盖，不得为静态字段形状单独扩 BDD step。
     场景: 会话最大回合已加载
-      假如 按 session.max_turns=2 安装 should_stop_after_turn 且入队 follow_up 以迫使第二轮
+      假如 按 session.max_steps_per_turn=2 安装 should_stop_after_step 且入队 follow_up 以迫使第二轮
       当 运行 AgentRuntime
-      那么 至多出现 2 次 TurnStart 后出现 AgentEnd
+      那么 至多出现 2 次 StepStart 后出现 AgentEnd
 
   @req:r1739
   规则: tui-activity-fold

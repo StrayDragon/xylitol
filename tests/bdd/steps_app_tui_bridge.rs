@@ -15,7 +15,7 @@ pub fn bridge_bdd() -> BridgeBdd {
     }
 }
 
-fn apply(bdd: &BridgeBdd, event: XyEvent) {
+pub(crate) fn apply(bdd: &BridgeBdd, event: XyEvent) {
     apply_xy_event(&mut bdd.model.borrow_mut(), &event);
 }
 
@@ -62,7 +62,7 @@ fn t_atb1_unchanged(bridge_bdd: &BridgeBdd) {
     assert_eq!(model.phase, UiPhase::Idle);
 }
 
-#[when("以桥缝注入 AgentStart 与中间 TurnEnd")]
+#[when("以桥缝注入 AgentStart 与中间 StepEnd")]
 fn w_atb2_busy(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
@@ -71,13 +71,13 @@ fn w_atb2_busy(bridge_bdd: &BridgeBdd) {
             model: "fake".into(),
         },
     );
-    apply(bridge_bdd, XyEvent::TurnEnd { turn_index: 0 });
+    apply(bridge_bdd, XyEvent::StepEnd { step_index: 0 });
 }
 
 #[then("相位保持忙碌且 status 不空")]
 fn t_atb2_still_busy(bridge_bdd: &BridgeBdd) {
     let model = bridge_bdd.model.borrow();
-    assert_eq!(model.phase, UiPhase::Busy, "TurnEnd is intermediate");
+    assert_eq!(model.phase, UiPhase::Busy, "StepEnd is intermediate");
     assert!(model.status.is_some(), "status must not reset mid-turn");
 }
 
@@ -93,6 +93,7 @@ fn w_atb2_end_with_followup(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::AgentEnd {
+            reason: None,
             messages: Vec::new(),
         },
     );
@@ -117,6 +118,7 @@ fn w_atb2_end_idle(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::AgentEnd {
+            reason: None,
             messages: Vec::new(),
         },
     );
@@ -573,6 +575,7 @@ fn t_atb10_no_snapshot_dup(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::AgentEnd {
+            reason: None,
             messages: Vec::new(),
         },
     );

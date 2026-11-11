@@ -410,6 +410,26 @@ impl UiModel {
         }
     }
 
+    pub fn note_agent_end_reason(&mut self, reason: xylitol_plugin_sdk::AgentEndReason) {
+        use xylitol_plugin_sdk::AgentEndReason;
+        let text = match reason {
+            AgentEndReason::UserCancel => "Operation aborted",
+            AgentEndReason::ModelError => "Model error",
+            AgentEndReason::MiddlewareStop => "Stopped by middleware",
+            AgentEndReason::MiddlewareFault => "Middleware fault",
+            AgentEndReason::ModalityUnsupported => "Unsupported input modality",
+            AgentEndReason::StepLimit => "Step limit reached",
+        };
+        let already_last = matches!(
+            self.entries.last(),
+            Some(UiEntry::ScrollNotice { text: existing }) if existing == text
+        );
+        if !already_last {
+            self.entries
+                .push(UiEntry::ScrollNotice { text: text.into() });
+        }
+    }
+
     pub fn clear_streaming_buffers(&mut self) {
         self.streaming_thinking.clear();
         self.streaming_think_id = None;

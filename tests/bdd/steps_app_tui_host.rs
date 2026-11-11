@@ -1419,6 +1419,7 @@ pub(crate) async fn w_c2826_copy_last(host_pump_bdd: &HostPumpBdd, cmd: String) 
                 message: None,
             },
             XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             },
         ]);
@@ -2186,6 +2187,7 @@ pub(crate) async fn w_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
                 message: None,
             },
             XyEvent::AgentEnd {
+                reason: None,
                 messages: Vec::new(),
             },
         ]);
@@ -3726,7 +3728,10 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
             role: "assistant".into(),
             message: None,
         },
-        XyEvent::AgentEnd { messages: vec![] },
+        XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
     ]);
     let mut agent_stream: Option<xylitol_app_tui::driver::EventStream> =
         Some(pump.driver.run("bg").await);
@@ -4350,8 +4355,10 @@ pub(crate) fn t_c2827_diff_capped(host_pump_bdd: &HostPumpBdd) {
 #[when("以同进程驱动完成一轮 print 对话")]
 pub(crate) async fn w_c2827_print_embed_round(host_pump_bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
-    pump.driver
-        .push_script(vec![XyEvent::AgentEnd { messages: vec![] }]);
+    pump.driver.push_script(vec![XyEvent::AgentEnd {
+        reason: None,
+        messages: vec![],
+    }]);
     let root = pump.session.ui_root().expect("ui").clone();
     root.borrow_mut().set_editor_text("hi");
     pump.session

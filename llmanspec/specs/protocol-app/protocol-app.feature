@@ -13,7 +13,7 @@
 
   @req:r1695
   规则: Event 枚举
-    protocol/ 须定义 Event 枚举，至少覆盖 TurnStart、TextDelta、ThinkingDelta、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、TurnEnd；每个 core→client 消息 须反序列化为此枚举。Event 须覆盖全部 XyEvent 变体（见 r1698）；未知 type 须降级为 Unknown 变体。
+    protocol/ 须定义 Event 枚举，至少覆盖 StepStart、TextDelta、ThinkingDelta、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、StepEnd；每个 core→client 消息 须反序列化为此枚举。Event 须覆盖全部 XyEvent 变体（见 r1698）；未知 type 须降级为 Unknown 变体。
 
     场景: 事件枚举覆盖agent流
       当 对 Agent 流族事件做线协议序列化与反序列化往返
@@ -34,7 +34,7 @@
 
   @req:r1698
   规则: Event 变体完整
-    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。MessageUpdate 须只携带 message（完整 AgentMessage 快照），不得另带累积 text 或 thinking：二者是 message 的子集且无生产消费方，重复载荷会放大线协议帧体。ContextTokenSettlement 须携带 prompt cache 三态：`prompt_cache` ∈ {hit, unknown, not_applicable} 与可选 `prompt_cache_tokens`（仅 hit 时出现）；旧载荷缺省字段 须按 not_applicable 处理，未知字符串 须按 unknown，不得 panic。
+    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、StepStart、StepEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。`AgentEnd` 的可选 `reason`（见 agent-runtime r3305）须线上携带，None 时省略字段。MessageUpdate 须只携带 message（完整 AgentMessage 快照），不得另带累积 text 或 thinking：二者是 message 的子集且无生产消费方，重复载荷会放大线协议帧体。ContextTokenSettlement 须携带 prompt cache 三态：`prompt_cache` ∈ {hit, unknown, not_applicable} 与可选 `prompt_cache_tokens`（仅 hit 时出现）；旧载荷缺省字段 须按 not_applicable 处理，未知字符串 须按 unknown，不得 panic。
 
     场景: agent流式事件往返
       当 对 Agent 流族事件做线协议序列化与反序列化往返

@@ -30,6 +30,7 @@ fn mount_pointer_scene(tui_interaction: &TuiInteraction) -> String {
     sb.message_end();
     let mut fx = InteractionBdd::from_model(sb.into_model());
     fx.push_xy(XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::new(),
     });
     fx.open_hit_viewport(200);

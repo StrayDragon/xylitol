@@ -150,7 +150,7 @@ def run_eval(config: EvalConfig) -> RunReport:
         },
         config={"path": str(config.path), "sha256": config.sha256},
         limits={
-            "max_turns": config.agent.max_turns,
+            "max_steps_per_turn": config.agent.max_steps_per_turn,
             "wall_seconds": config.agent.wall_seconds,
             "max_workers": config.grader.max_workers,
         },

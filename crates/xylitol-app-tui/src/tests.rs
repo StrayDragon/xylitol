@@ -1065,6 +1065,7 @@ fn harness_xy_events_update_ui_model_and_transcript() {
 
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            reason: None,
             messages: vec![],
         })))
         .unwrap();
@@ -1088,7 +1089,7 @@ fn harness_middle_turn_end_keeps_busy() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.on_run_started("x");
     session
-        .step(HostEvent::Xy(Box::new(XyEvent::TurnEnd { turn_index: 0 })))
+        .step(HostEvent::Xy(Box::new(XyEvent::StepEnd { step_index: 0 })))
         .unwrap();
     assert_eq!(session.ui_model().phase, UiPhase::Busy);
     assert!(session.run_active());
@@ -1214,6 +1215,7 @@ async fn harness_history_copy_last_copies_assistant() {
         .unwrap();
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            reason: None,
             messages: Vec::new(),
         })))
         .unwrap();
@@ -1290,6 +1292,7 @@ async fn harness_busy_history_copy_last_still_copies() {
         .unwrap();
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            reason: None,
             messages: Vec::new(),
         })))
         .unwrap();
@@ -1329,6 +1332,7 @@ async fn harness_history_copy_emits_pending_osc52_on_terminal() {
         .unwrap();
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            reason: None,
             messages: Vec::new(),
         })))
         .unwrap();
@@ -1950,10 +1954,10 @@ fn apply_xy_event_sequence_snapshot() {
             model: "m".into(),
         },
     );
-    apply_xy_event(&mut model, &XyEvent::TurnStart { turn_index: 0 });
+    apply_xy_event(&mut model, &XyEvent::StepStart { step_index: 0 });
     apply_xy_event(&mut model, &XyEvent::TextDelta("A".into()));
-    apply_xy_event(&mut model, &XyEvent::TurnEnd { turn_index: 0 });
-    apply_xy_event(&mut model, &XyEvent::TurnStart { turn_index: 1 });
+    apply_xy_event(&mut model, &XyEvent::StepEnd { step_index: 0 });
+    apply_xy_event(&mut model, &XyEvent::StepStart { step_index: 1 });
     apply_xy_event(
         &mut model,
         &XyEvent::MessageEnd {
@@ -1968,7 +1972,13 @@ fn apply_xy_event_sequence_snapshot() {
             follow_up_count: 0,
         },
     );
-    apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
+    );
 
     let lines = model.scrollback_lines();
     assert!(lines.iter().any(|l| l.contains("user: prompt")));
@@ -4682,6 +4692,7 @@ fn live_agent_end_sets_worked_for_clock() {
         model: "m".into(),
     }));
     session.apply_xy_unfenced(Box::new(crate::driver::XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::new(),
     }));
     let root = session.ui_root().expect("ui").clone();
@@ -4886,7 +4897,7 @@ fn activity_fold_att26_auto_degrade_keeps_recent_and_streaming() {
     root2.apply_ui_model(&model);
     root2
         .activity_mut()
-        .auto_degrade(&model.entries, AutoTrigger::TurnEnd, true);
+        .auto_degrade(&model.entries, AutoTrigger::TurnCompleted, true);
     assert_eq!(
         root2.activity().level_of("seg-9"),
         SegmentLevel::L0,
@@ -6022,7 +6033,13 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         .expect("stream must stamp start")
         .elapsed()
         .as_secs();
-    apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
+    );
     root.apply_ui_model(&model);
     let flushed = strip_ansi(&root.render(100).join("\n"));
     let expect = format!("Thought {expect_dur}s");
@@ -6128,7 +6145,13 @@ fn activity_fold_live_thinking_stream_keeps_own_bar_in_tool_cluster() {
         "collapsed live thinking keeps its L1 bar: {folded}"
     );
 
-    apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
+    );
     root.apply_ui_model(&model);
     let flushed = strip_ansi(&root.render(100).join("\n"));
     assert!(
@@ -6173,7 +6196,13 @@ fn activity_fold_text_delta_seals_thought_without_waiting_for_body() {
     );
 
     apply_xy_event(&mut model, &XyEvent::TextDelta(" continues".into()));
-    apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
+    );
     root.apply_ui_model(&model);
     let done = strip_ansi(&root.render(100).join("\n"));
     assert!(

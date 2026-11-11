@@ -650,7 +650,7 @@ impl UiRoot {
     pub fn apply_activity_after_turn_end(&mut self) {
         let degraded =
             self.activity
-                .auto_degrade(&self.ui_model.entries, AutoTrigger::TurnEnd, false);
+                .auto_degrade(&self.ui_model.entries, AutoTrigger::TurnCompleted, false);
         let expanded = matches!(
             self.activity.settings.display_level,
             crate::activity_fold::DisplayLevel::Recent

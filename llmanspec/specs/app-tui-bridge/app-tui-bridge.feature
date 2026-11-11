@@ -12,15 +12,23 @@
       那么 模型不 panic 且条目与相位不变
   @req:r1180
   规则: agent-loop-lifecycle
-    用户可见忙碌态 须覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 TurnEnd 不得被当作整轮结束去清空 streaming 尾或复位 idle。
+    用户可见忙碌态 须覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 StepEnd 不得被当作整轮结束去清空 streaming 尾或复位 idle。
 
     场景: 忙碌生命周期直到agent结束无头
-      当 以桥缝注入 AgentStart 与中间 TurnEnd
+      当 以桥缝注入 AgentStart 与中间 StepEnd
       那么 相位保持忙碌且 status 不空
       当 注入带 follow_up 队列的 AgentEnd
       那么 相位仍忙碌且 status 为 Follow-up pending
       当 注入空队列的 AgentEnd
       那么 相位回到 idle
+  @req:r3306
+  规则: agent-end-reason-notice
+    bridge 收到 AgentEnd.reason 为 Some 时 须按 app-tui-fixed-zone 固定词在滚动提示呈现对应归因（UserCancel 取消 / ModelError 模型错误 / MiddlewareStop 中间件停止 / MiddlewareFault 中间件故障 / ModalityUnsupported 模态不支持 / StepLimit 步数上限）；reason 为 None 时 不得新增通知。该行为 须有可执行 BDD 场景。
+
+    场景: 取消归因通知条
+      当 以桥缝注入 AgentEnd 且 reason 为用户取消
+      那么 滚动提示出现取消归因且相位回到 idle
+
   @req:r1952
   规则: prompt-failure-ends-run
     产品 attach 对 prompt 的非成功业务应答 须结束该次 run 并露出错误，不得当作已开跑而继续等待 AgentEnd。Busy 且 follow-up 为空时收到非中止 Error 须进入 Idle 并清忙碌短词；Error 条目仍保留。

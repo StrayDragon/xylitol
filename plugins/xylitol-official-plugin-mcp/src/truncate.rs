@@ -83,7 +83,7 @@ mod tests {
 
     fn ctx(name: &str, text: &str) -> AfterToolCtx {
         AfterToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "call-1".into(),
             tool_name: name.into(),
             parts: vec![AgentPart::text(text)],

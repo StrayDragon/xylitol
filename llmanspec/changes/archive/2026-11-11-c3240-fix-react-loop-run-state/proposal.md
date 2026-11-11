@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix ReAct loop run-state consistency"
+branch: sdd/c3240-fix-react-loop-run-state
+base_branch: main
+base_sha: 5f1c20b6302f590a2a82ef474a0175d1edd8432e
 ---
 
 # ReAct 内环运行状态一致性修复

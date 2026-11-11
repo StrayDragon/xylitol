@@ -12,7 +12,7 @@ use xylitol_plugin_sdk::session::{
     latest_todo_checkpoint,
 };
 use xylitol_plugin_sdk::{
-    AfterToolCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeTurnCtx, DecideContinueCtx,
+    AfterStepCtx, AfterToolCtx, BeforeLlmRequestCtx, BeforeStepCtx, DecideContinueCtx,
     LoopMiddleware, LoopStage, LoopStep, RuntimeSessionStore, XySessionStore,
 };
 
@@ -20,16 +20,16 @@ use crate::config::TodoConfig;
 
 pub const DEFAULT_TODO_PROGRESS_SETTLES: u32 = 8;
 const TODO_PROGRESS_STAGES: &[LoopStage] = &[
-    LoopStage::BeforeTurn,
+    LoopStage::BeforeStep,
     LoopStage::AfterTool,
     LoopStage::DecideContinue,
-    LoopStage::AfterTurn,
+    LoopStage::AfterStep,
 ];
 const PROGRESS_STAGES: &[LoopStage] = &[LoopStage::BeforeLlmRequest, LoopStage::AfterTool];
 const CHECKPOINT_STAGES: &[LoopStage] = &[
     LoopStage::BeforeLlmRequest,
     LoopStage::AfterTool,
-    LoopStage::AfterTurn,
+    LoopStage::AfterStep,
 ];
 const TODO_PROGRESS_CONTRACT: &str = "Todo progress: before acting, write the checklist with todo_rewrite. \
 Keep exactly one item in_progress and mark finished items with todo_update. \
@@ -112,7 +112,7 @@ impl LoopMiddleware for TodoProgressMiddleware {
         TODO_PROGRESS_STAGES
     }
 
-    async fn before_turn(&self, mut ctx: BeforeTurnCtx) -> LoopStep<BeforeTurnCtx> {
+    async fn before_step(&self, mut ctx: BeforeStepCtx) -> LoopStep<BeforeStepCtx> {
         ctx.system_fragments.push(TODO_PROGRESS_CONTRACT.into());
         LoopStep::continued(ctx)
     }
@@ -144,12 +144,12 @@ impl LoopMiddleware for TodoProgressMiddleware {
         ])
     }
 
-    async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+    async fn after_step(&self, ctx: AfterStepCtx) -> LoopStep<AfterStepCtx> {
         let progress = self.progress();
         log::info!(
             target: "xylitol::loop-policies",
             "todo checkpoint turn={} continued_tools={} completed={}/{}",
-            ctx.turn_index,
+            ctx.step_index,
             ctx.continued_tools,
             progress.completed,
             progress.total
@@ -454,7 +454,7 @@ impl LoopMiddleware for TodoCheckpointMiddleware {
         LoopStep::continued(ctx)
     }
 
-    async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+    async fn after_step(&self, ctx: AfterStepCtx) -> LoopStep<AfterStepCtx> {
         self.persist(ctx.session_id.as_deref()).await;
         LoopStep::continued(ctx)
     }
@@ -540,7 +540,7 @@ impl LoopMiddleware for TodoReminderMiddleware {
         if unfinished == 0 {
             return LoopStep::continued(ctx);
         }
-        let turn = ctx.turn_index;
+        let turn = ctx.step_index;
         if self.last_reminder_turn.load(Ordering::SeqCst) == turn {
             return LoopStep::continued(ctx);
         }
@@ -680,7 +680,7 @@ mod tests {
 
     fn after_tool(name: &str, text: &str, is_error: bool) -> AfterToolCtx {
         AfterToolCtx {
-            turn_index: 0,
+            step_index: 0,
             tool_call_id: "call-1".into(),
             tool_name: name.into(),
             parts: vec![AgentPart::text(text)],
@@ -695,7 +695,7 @@ mod tests {
         session_id: Option<&str>,
     ) -> BeforeLlmRequestCtx {
         BeforeLlmRequestCtx {
-            turn_index: 1,
+            step_index: 1,
             messages: last.into_iter().collect(),
             tool_schemas: Vec::new(),
             tool_catalog: Default::default(),
@@ -707,7 +707,7 @@ mod tests {
 
     fn decide_ctx(settle_count: u32, has_new_user_messages: bool) -> DecideContinueCtx {
         DecideContinueCtx {
-            turn_index: 0,
+            step_index: 0,
             settle_count,
             has_new_user_messages,
             assistant: None,
@@ -742,7 +742,7 @@ mod tests {
     #[tokio::test]
     async fn progress_tracks_todo_results_and_decides_continue() {
         let mw = TodoProgressMiddleware::new(8);
-        let out = mw.before_turn(BeforeTurnCtx::default()).await;
+        let out = mw.before_step(BeforeStepCtx::default()).await;
         assert!(
             out.ctx
                 .system_fragments
@@ -899,8 +899,8 @@ mod tests {
         mw.after_tool(after_tool("write", "permission denied", true))
             .await;
         mw.after_tool(after_tool("read", "ok", false)).await;
-        mw.after_turn(AfterTurnCtx {
-            turn_index: 1,
+        mw.after_step(AfterStepCtx {
+            step_index: 1,
             continued_tools: false,
             history_len: 4,
             session_id: Some("s1".into()),

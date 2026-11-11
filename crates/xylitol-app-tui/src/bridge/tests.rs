@@ -4,8 +4,53 @@ use xylitol_wire::{event_from_wire, event_to_wire};
 
 fn assistant_end() -> XyEvent {
     XyEvent::AgentEnd {
+        reason: None,
         messages: Vec::<AgentMessage>::new(),
     }
+}
+
+#[test]
+fn agent_end_reason_adds_scroll_notice() {
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentEnd {
+            messages: Vec::new(),
+            reason: Some(xylitol_plugin_sdk::AgentEndReason::StepLimit),
+        },
+    );
+    assert!(
+        model
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text == "Step limit reached")),
+        "{:?}",
+        model.entries
+    );
+}
+
+#[test]
+fn agent_end_user_cancel_dedupes_with_abort_notice() {
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    apply_xy_event(&mut model, &XyEvent::aborted());
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentEnd {
+            messages: Vec::new(),
+            reason: Some(xylitol_plugin_sdk::AgentEndReason::UserCancel),
+        },
+    );
+    let notices: Vec<&str> = model
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::ScrollNotice { text } if text == "Operation aborted" => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(notices.len(), 1, "{:?}", model.entries);
 }
 
 #[test]
@@ -41,7 +86,7 @@ fn text_deltas_commit_on_message_end() {
 fn turn_end_does_not_idle() {
     let mut model = UiModel::new();
     model.begin_run("x");
-    apply_xy_event(&mut model, &XyEvent::TurnStart { turn_index: 0 });
+    apply_xy_event(&mut model, &XyEvent::StepStart { step_index: 0 });
     apply_xy_event(
         &mut model,
         &XyEvent::ToolExecutionStart {
@@ -60,7 +105,7 @@ fn turn_end_does_not_idle() {
             is_error: false,
         },
     );
-    apply_xy_event(&mut model, &XyEvent::TurnEnd { turn_index: 0 });
+    apply_xy_event(&mut model, &XyEvent::StepEnd { step_index: 0 });
     assert_eq!(model.phase, UiPhase::Busy);
     assert!(model.status.is_some());
 }

@@ -59,7 +59,7 @@ def _plan(config: EvalConfig) -> dict[str, Any]:
         "model": {"alias": config.model.alias, "thinking_level": config.model.thinking_level},
         "agent": {
             "binary": config.agent.binary,
-            "max_turns": config.agent.max_turns,
+            "max_steps_per_turn": config.agent.max_steps_per_turn,
             "wall_seconds": config.agent.wall_seconds,
             "trust": config.agent.trust,
         },
@@ -102,7 +102,7 @@ def _cmd_dry_run(args: argparse.Namespace) -> int:
         for iid in plan["dataset"]["instance_ids"]:
             print(f"  - {iid}")
         print(f"model: {plan['model']['alias']} thinking={plan['model']['thinking_level']}")
-        print(f"agent: {plan['agent']['binary']} max_turns={plan['agent']['max_turns']} wall={plan['agent']['wall_seconds']}s")
+        print(f"agent: {plan['agent']['binary']} max_steps_per_turn={plan['agent']['max_steps_per_turn']} wall={plan['agent']['wall_seconds']}s")
         print(f"sandbox: {plan['sandbox']['backend']} image={plan['sandbox']['image']} network={plan['sandbox']['network']}")
         print(f"grader: {plan['grader']['backend']} {plan['grader']['version']}")
         print(f"agent command: {plan['commands']['agent']}")

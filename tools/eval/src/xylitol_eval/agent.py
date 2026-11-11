@@ -45,7 +45,7 @@ def render_xylitol_config(config: EvalConfig) -> str:
       model: "fake-1"
       thinking: false
 session:
-  max_turns: {config.agent.max_turns}
+  max_steps_per_turn: {config.agent.max_steps_per_turn}
 """
     levels = (
         list(config.model.thinking_levels)
@@ -74,7 +74,7 @@ session:
       context_window: {config.model.context_window}
       max_output_tokens: {config.model.max_output_tokens}
 session:
-  max_turns: {config.agent.max_turns}
+  max_steps_per_turn: {config.agent.max_steps_per_turn}
 """
 
 

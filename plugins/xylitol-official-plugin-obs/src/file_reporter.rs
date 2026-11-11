@@ -90,7 +90,7 @@ impl Reporter for FileTraceReporter {
                     "name",
                     "phase",
                     "turn_id",
-                    "turn_index",
+                    "step_index",
                     "tool_name",
                     "tool_id",
                     "span_role",

@@ -7,21 +7,24 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
             model.set_busy_status("Working");
             true
         }
-        XyEvent::AgentEnd { .. } => {
+        XyEvent::AgentEnd { reason, .. } => {
             model.flush_streaming();
+            if let Some(reason) = reason {
+                model.note_agent_end_reason(*reason);
+            }
             model.maybe_idle_after_agent_end();
             true
         }
-        XyEvent::TurnStart { .. } => {
+        XyEvent::StepStart { .. } => {
             if model.phase == UiPhase::Busy {
                 model.status = Some("Working".into());
             }
             true
         }
-        XyEvent::TurnEnd { .. } => {
+        XyEvent::StepEnd { .. } => {
             log::trace!(
                 target: "xylitol::tui",
-                "TurnEnd (intermediate); UI stays busy"
+                "StepEnd (intermediate); UI stays busy"
             );
             true
         }

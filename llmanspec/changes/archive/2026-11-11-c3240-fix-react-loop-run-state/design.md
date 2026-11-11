@@ -71,6 +71,15 @@
 2. 脚本 hook 事件名 turn_start / turn_end → step_start / step_end；agent_start / agent_end / agent_settled → run_start / run_end / run_settled（用户 hook 配置需改）。
 3. 配置键 session.max_turns → session.max_steps_per_turn（旧键报错指路）。
 
+### Release note 草稿（三项 breaking）
+
+```text
+BREAKING:
+- 协议事件 TurnStart / TurnEnd 更名为 StepStart / StepEnd；旧端不识别新名。
+- 脚本 hook 事件名 turn_start / turn_end → step_start / step_end；agent_start / agent_end / agent_settled → run_start / run_end / run_settled；用户 hook 配置需同步改名。
+- 配置键 session.max_turns → session.max_steps_per_turn（旧键加载失败并指路新键）；语义由「Settle 次数」改为「每 turn 的 step 上限」，未配置不启用。
+```
+
 ## 8. 测试边界（seam）
 
 - BDD：agent-runtime（AutoRetry 语义、StepLimit 停止、各 AbortReason 端可见）、agent-hooks（step_start / step_end 分发）、cli-print。

@@ -18,7 +18,7 @@ baseline；改完再用同一套命令重跑，比较 pass@1 / flip rate / cross
   `actionlint-action-pinning-lint`、`adaptix-name-mapping-aliases`、
   `anko-typed-variable-bindings`、`arcane-drift-detection-baselines`。TB4 10 只作
   hard subset 记录，不跑 Pi；全量 20 task 以后再做。
-- **固定 profile**：compare（`max_turns=80`、`wall_seconds=1800`）；smoke 只做冒烟。
+- **固定 profile**：compare（`max_steps_per_turn=80`、`wall_seconds=1800`）；smoke 只做冒烟。
 - **固定 scaffold**：只保留 xylitol 与 Pi；mini-SWE 已移除。每 task × scaffold × N=3
   （典型值下限；DeepSWE 官方用 N=8，本地预算不足时 N=3，报告均值与离散度）。
 - **固定 verifier**：只认 Harbor task verifier；不自研 judge，不混不同 scaffold/verifier。
@@ -59,7 +59,7 @@ just eval-typical-both
 tools/eval/scripts/harbor_local.sh run -p <task-dir> -k 3 -n 1 \
   -a xylitol_agent:XylitolAgent -m openai/group/glm-5.3-flash \
   --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
-  --ak max_turns=80 --ak wall_seconds=1800 \
+  --ak max_steps_per_turn=80 --ak wall_seconds=1800 \
   --base-url "$MAGPIE_GATEWAY_URL/v1" \
   --api-key-name MAGPIE_GATEWAY_KEY --api-format openai_responses \
   --env-file /tmp/magpie-harbor.env -y
@@ -70,7 +70,7 @@ tools/eval/scripts/harbor_local.sh run -p <task-dir> -k 3 -n 1 \
   `no-network` task 的模型调用会被 egress sidecar 拒绝。
 - Pi：DeepSWE `no-network` task 用预装镜像 + `preinstalled_agents:PiPreinstalled`：
   `-p /tmp/deep-swe-agents/<task> --effort high --ak model_api=openai-responses
-  --ak max_turns=80 --ak disable_web_search=true
+  --ak max_steps_per_turn=80 --ak disable_web_search=true
   --agent-timeout-multiplier 0.1666666667`；同时设 git identity。
 - Pi 预装镜像 tag：`xylitol-eval/agents:<task>`；任务副本只改
   `[environment].docker_image`，verifier 镜像不变。
@@ -88,8 +88,8 @@ tools/eval/scripts/harbor_local.sh run -p <task-dir> -k 3 -n 1 \
 - **主集**：DeepSWE 5 task；这些 task 有 0/1 分布和近失，能区分 harness。
 - **hard subset**：TB4 10 task 只保留 xylitol N=2 记录；不跑 Pi；floor effect
   明显，不并入主分。
-- **同预算**：xylitol `wall_seconds=1800` + `max_turns=80`；Pi
-  `max_turns=80` + `--agent-timeout-multiplier 0.1666666667`（Harbor 基准
+- **同预算**：xylitol `wall_seconds=1800` + `max_steps_per_turn=80`；Pi
+  `max_steps_per_turn=80` + `--agent-timeout-multiplier 0.1666666667`（Harbor 基准
   10800s × 0.1666666667 = 1800s；不要用 0.0625，只有 675s）。
 - **环境对齐**：两个 scaffold 都设 git identity；xylitol 注入 CA；gateway host 进
   `--allow-agent-host`；Pi 关掉 web search（xylitol 无 web 工具）。

@@ -57,13 +57,13 @@ class XylitolAgent(BaseInstalledAgent):
         self,
         *args,
         binary: str | None = None,
-        max_turns: int = 80,
+        max_steps_per_turn: int = 80,
         wall_seconds: int = 3600,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.binary = binary or os.environ.get("XYLITOL_EVAL_BINARY", "")
-        self.max_turns = int(max_turns)
+        self.max_steps_per_turn = int(max_steps_per_turn)
         self.wall_seconds = int(wall_seconds)
 
     @staticmethod
@@ -111,7 +111,7 @@ class XylitolAgent(BaseInstalledAgent):
       context_window: 1000000
       max_output_tokens: 128000
 session:
-  max_turns: {self.max_turns}
+  max_steps_per_turn: {self.max_steps_per_turn}
 """
 
     async def configure(

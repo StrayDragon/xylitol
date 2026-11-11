@@ -31,7 +31,7 @@ pub fn parse_app_config_yaml(
     let cfg: xylitol_kernel::config::types::AppConfig =
         yaml_serde::from_str(yaml).map_err(|e| e.to_string())?;
     cfg.validate_thinking_levels().map_err(|e| e.to_string())?;
-    cfg.validate_session_max_turns()
+    cfg.validate_session_max_steps_per_turn()
         .map_err(|e| e.to_string())?;
     cfg.validate_tools_selection().map_err(|e| e.to_string())?;
     Ok(cfg)

@@ -43,11 +43,11 @@ where
 
     while let Some(event) = stream.next().await {
         match event {
-            XyEvent::TurnStart { turn_index } => {
-                eprintln!("\n[Turn {turn_index}]");
+            XyEvent::StepStart { step_index } => {
+                eprintln!("\n[Turn {step_index}]");
             }
-            XyEvent::TurnEnd { turn_index } => {
-                eprintln!("\n[Turn {turn_index} end]");
+            XyEvent::StepEnd { step_index } => {
+                eprintln!("\n[Turn {step_index} end]");
             }
             XyEvent::MessageStart { .. } => {
                 in_thinking_block = false;
@@ -111,7 +111,12 @@ where
             | XyEvent::ContextTokenSettlement { .. }
             | XyEvent::TodoUpdated { .. }
             | XyEvent::WorkflowUpdated { .. } => {}
-            XyEvent::AgentEnd { .. } => break,
+            XyEvent::AgentEnd { reason, .. } => {
+                if let Some(reason) = reason {
+                    eprintln!("\n[End] {reason}");
+                }
+                break;
+            }
         }
     }
     close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
@@ -163,7 +168,10 @@ mod tests {
             XyEvent::MessageUpdate { message: None },
             XyEvent::TextDelta(" How".into()),
             XyEvent::MessageUpdate { message: None },
-            XyEvent::AgentEnd { messages: vec![] },
+            XyEvent::AgentEnd {
+                reason: None,
+                messages: vec![],
+            },
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
@@ -184,7 +192,10 @@ mod tests {
             XyEvent::ThinkingDelta("I need to ".into()),
             XyEvent::ThinkingDelta("greet.".into()),
             XyEvent::TextDelta("Hi".into()),
-            XyEvent::AgentEnd { messages: vec![] },
+            XyEvent::AgentEnd {
+                reason: None,
+                messages: vec![],
+            },
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
@@ -206,7 +217,10 @@ mod tests {
             XyEvent::ThinkingDelta("reasoning...".into()),
             XyEvent::ThinkingDelta("</think>".into()),
             XyEvent::TextDelta("Hi".into()),
-            XyEvent::AgentEnd { messages: vec![] },
+            XyEvent::AgentEnd {
+                reason: None,
+                messages: vec![],
+            },
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
@@ -222,7 +236,10 @@ mod tests {
         let events = vec![
             XyEvent::TextDelta("partial".into()),
             XyEvent::error_msg("provider blew up"),
-            XyEvent::AgentEnd { messages: vec![] },
+            XyEvent::AgentEnd {
+                reason: None,
+                messages: vec![],
+            },
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
@@ -237,7 +254,10 @@ mod tests {
     async fn agent_end_without_error_returns_ok() {
         let events = vec![
             XyEvent::TextDelta("done".into()),
-            XyEvent::AgentEnd { messages: vec![] },
+            XyEvent::AgentEnd {
+                reason: None,
+                messages: vec![],
+            },
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
@@ -260,7 +280,10 @@ mod tests {
                 details: None,
                 is_error: false,
             },
-            XyEvent::AgentEnd { messages: vec![] },
+            XyEvent::AgentEnd {
+                reason: None,
+                messages: vec![],
+            },
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();

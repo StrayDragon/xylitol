@@ -76,7 +76,7 @@ if ! HARBOR_BIN="${harbor_bin}" tools/eval/scripts/harbor_local.sh run \
   -a xylitol_agent:XylitolAgent \
   -m openai/group/glm-5.3-flash \
   --ak binary="${repo_root}/${binary}" \
-  --ak max_turns=8 \
+  --ak max_steps_per_turn=8 \
   --ak wall_seconds=120 \
   --base-url "${MAGPIE_GATEWAY_URL}/v1" \
   --api-key-name MAGPIE_GATEWAY_KEY \

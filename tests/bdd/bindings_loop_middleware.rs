@@ -28,9 +28,9 @@ async fn test_lm_decide_handoff(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "after_turn 非法控制被忽略"
+    name = "after_step 非法控制被忽略"
 )]
-async fn test_lm_after_turn_stop_ignored(agent: AgentState, ws: Workspace) {}
+async fn test_lm_after_step_stop_ignored(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",

@@ -11,6 +11,8 @@ thread_local! {
     static FAKE_TOOL_CALL: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
     static FAKE_TOOL_RESULT: RefCell<Option<String>> = const { RefCell::new(None) };
         static FAKE_SLOW_STREAM: RefCell<Option<(usize, u64)>> = const { RefCell::new(None) };
+    static FAKE_RETRY_ONCE: RefCell<Option<String>> = const { RefCell::new(None) };
+    static FAKE_ERROR: RefCell<Option<(String, bool)>> = const { RefCell::new(None) };
 }
 
 #[allow(dead_code)]
@@ -19,6 +21,8 @@ pub fn reset_fake_state() {
     FAKE_TOOL_CALL.with(|c| c.replace(None));
     FAKE_TOOL_RESULT.with(|c| c.replace(None));
     FAKE_SLOW_STREAM.with(|c| c.replace(None));
+    FAKE_RETRY_ONCE.with(|c| c.replace(None));
+    FAKE_ERROR.with(|c| c.replace(None));
 }
 
 #[allow(dead_code)]
@@ -29,6 +33,16 @@ pub fn set_fake_text(text: &str) {
 #[allow(dead_code)]
 pub fn set_fake_slow_stream(chunk_count: usize, delay_ms: u64) {
     FAKE_SLOW_STREAM.with(|c| c.replace(Some((chunk_count, delay_ms))));
+}
+
+#[allow(dead_code)]
+pub fn set_fake_error(message: &str, retryable: bool) {
+    FAKE_ERROR.with(|c| c.replace(Some((message.to_string(), retryable))));
+}
+
+#[allow(dead_code)]
+pub fn set_fake_retry_once(message: &str) {
+    FAKE_RETRY_ONCE.with(|c| c.replace(Some(message.to_string())));
 }
 
 #[allow(dead_code)]
@@ -53,6 +67,25 @@ pub fn build_provider_with_hooks(
     match config.kind {
         XyModelKind::OpenAi | XyModelKind::Anthropic => build_adapter(config, hooks),
         XyModelKind::Fake => {
+            if let Some((message, retryable)) = FAKE_ERROR.with(|c| c.borrow_mut().take()) {
+                return fake_xy_model("__fake__", vec![ScenarioStep::error(message, retryable)]);
+            }
+            let retry_once = FAKE_RETRY_ONCE.with(|c| c.borrow_mut().take());
+            if let Some(message) = retry_once {
+                let text = FAKE_TEXT
+                    .with(|c| c.borrow_mut().take())
+                    .or_else(|| std::env::var("XYLITOL_FAKE_TEXT").ok())
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or_else(|| "retry ok".into());
+                return fake_xy_model(
+                    "__fake__",
+                    vec![
+                        ScenarioStep::error(message, true),
+                        ScenarioStep::text(text.clone()),
+                        ScenarioStep::text(text),
+                    ],
+                );
+            }
             let steps = {
                 let mut slow = FAKE_SLOW_STREAM.with(|c| c.borrow_mut().take());
                 let mut tool = FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());

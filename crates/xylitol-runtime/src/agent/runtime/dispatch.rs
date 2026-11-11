@@ -16,6 +16,14 @@ use crate::agent::tools::{ToolCatalog, ToolSet};
 
 type PermissionCheck = dyn Fn(&str, &str) -> Option<String> + Send + Sync;
 
+struct NestedCallGuard<'a>(&'a AtomicUsize);
+
+impl Drop for NestedCallGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 pub(crate) struct DispatchHandle {
     tools: ToolSet,
     hooks: AgentHooks,
@@ -28,7 +36,7 @@ pub(crate) struct DispatchHandle {
     workspaces: Vec<String>,
     obs_session: ObsSessionContext,
     loop_chain: LoopChain,
-    turn_index: u32,
+    step_index: u32,
     parent_call_id: String,
     catalog: Arc<ToolCatalog>,
     max_nested: usize,
@@ -58,7 +66,7 @@ impl DispatchHandle {
             workspaces: env.workspaces.to_vec(),
             obs_session: env.obs_session.clone(),
             loop_chain: env.loop_chain.clone(),
-            turn_index: env.turn_index,
+            step_index: env.step_index,
             parent_call_id: parent_call_id.to_string(),
             catalog,
             max_nested,
@@ -82,7 +90,7 @@ impl DispatchHandle {
             workspaces: &self.workspaces,
             obs_session: &self.obs_session,
             loop_chain: &self.loop_chain,
-            turn_index: self.turn_index,
+            step_index: self.step_index,
         }
     }
 
@@ -122,23 +130,21 @@ impl XyToolDispatch for DispatchHandle {
                 self.max_nested
             )));
         }
+        let _nested_guard = NestedCallGuard(&self.nested);
         let id = self.next_id();
         let env = self.env();
         let call = prepare_call(&env, &id, name, &args, None).await;
         if call.stop_run {
-            self.nested.fetch_sub(1, Ordering::Relaxed);
             return Err(XyToolError::InvalidArgs(
                 "nested call stopped by middleware".into(),
             ));
         }
         if let Some(fault) = call.fault {
-            self.nested.fetch_sub(1, Ordering::Relaxed);
             return Err(XyToolError::ExecutionFailed(anyhow::anyhow!(
                 fault.message()
             )));
         }
         if let Some(reason) = call.denied_reason {
-            self.nested.fetch_sub(1, Ordering::Relaxed);
             return Err(XyToolError::PermissionDenied(reason));
         }
         let (tx, mut rx) = mpsc::unbounded_channel::<XyEvent>();
@@ -152,7 +158,6 @@ impl XyToolDispatch for DispatchHandle {
                 let _ = progress.send(output).await;
             }
         }
-        self.nested.fetch_sub(1, Ordering::Relaxed);
         if outcome.stop_run {
             return Err(XyToolError::InvalidArgs(
                 "nested call stopped by middleware".into(),
@@ -274,7 +279,7 @@ mod tests {
             workspaces: &[],
             obs_session: OBS.get_or_init(ObsSessionContext::default),
             loop_chain: CHAIN.get_or_init(LoopChain::default),
-            turn_index: 0,
+            step_index: 0,
         }
     }
 
@@ -288,6 +293,43 @@ mod tests {
         let handle = DispatchHandle::new(&env(&set), "outer", 4, None);
         assert!(handle.call("outer", "run_code", json!({})).await.is_err());
         assert!(handle.call("outer", "secret", json!({})).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn early_return_releases_nested_quota() {
+        let set = ToolSet::from_iter(vec![
+            Arc::new(Stub("read", XyToolExposure::Direct)) as Arc<dyn XyTool>
+        ]);
+        let mut hooks = AgentHooks::empty();
+        hooks.add_before(Arc::new(|_name, _id, args| {
+            (args.get("deny").and_then(|v| v.as_bool()) == Some(true))
+                .then(|| "denied by fixture".to_string())
+        }));
+        let chain = LoopChain::default();
+        let obs = ObsSessionContext::default();
+        let cancel = CancellationToken::new();
+        let env = ToolExecEnv {
+            tools: &set,
+            hooks: &hooks,
+            hook_bus: &None,
+            permission_check: &None,
+            cancel: &cancel,
+            turn_id: None,
+            batch_mode: XyBatchMode::Sequential,
+            workspace: "/tmp",
+            workspaces: &[],
+            obs_session: &obs,
+            loop_chain: &chain,
+            step_index: 0,
+        };
+        let handle = DispatchHandle::new(&env, "outer", 1, None);
+        let denied = handle.call("outer", "read", json!({"deny": true})).await;
+        assert!(denied.is_err(), "denied call must fail");
+        let ok = handle
+            .call("outer", "read", json!({}))
+            .await
+            .expect("quota must be released after the early return");
+        assert!(!ok.is_error);
     }
 
     #[tokio::test]

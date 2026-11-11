@@ -2,24 +2,24 @@ use serde_json::{Value, json};
 
 pub type ScriptHookCtx = (&'static str, &'static str, Value);
 
-pub fn agent_start() -> ScriptHookCtx {
-    ("agent_start", "", json!({}))
+pub fn run_start() -> ScriptHookCtx {
+    ("run_start", "", json!({}))
 }
 
-pub fn agent_end() -> ScriptHookCtx {
-    ("agent_end", "", json!({}))
+pub fn run_end() -> ScriptHookCtx {
+    ("run_end", "", json!({}))
 }
 
-pub fn agent_settled() -> ScriptHookCtx {
-    ("agent_settled", "", json!({}))
+pub fn run_settled() -> ScriptHookCtx {
+    ("run_settled", "", json!({}))
 }
 
-pub fn turn_start(turn_index: u32) -> ScriptHookCtx {
-    ("turn_start", "", json!({ "turn_index": turn_index }))
+pub fn step_start(step_index: u32) -> ScriptHookCtx {
+    ("step_start", "", json!({ "step_index": step_index }))
 }
 
-pub fn turn_end(turn_index: u32) -> ScriptHookCtx {
-    ("turn_end", "", json!({ "turn_index": turn_index }))
+pub fn step_end(step_index: u32) -> ScriptHookCtx {
+    ("step_end", "", json!({ "step_index": step_index }))
 }
 
 pub fn message_start(role: &str) -> ScriptHookCtx {
@@ -135,11 +135,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn turn_start_payload_shape() {
-        let (ty, phase, ctx) = turn_start(3);
-        assert_eq!(ty, "turn_start");
+    fn step_start_payload_shape() {
+        let (ty, phase, ctx) = step_start(3);
+        assert_eq!(ty, "step_start");
         assert_eq!(phase, "");
-        assert_eq!(ctx["turn_index"], 3);
+        assert_eq!(ctx["step_index"], 3);
     }
 
     #[test]

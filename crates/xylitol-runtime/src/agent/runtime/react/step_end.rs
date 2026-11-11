@@ -1,14 +1,14 @@
 use std::sync::{Arc, Mutex};
 
 use crate::agent::capabilities::{PendingMessageQueue, observe_hook};
-use crate::agent::runtime::hooks::{AgentHooks, ShouldStopAfterTurnCtx};
+use crate::agent::runtime::hooks::{AgentHooks, ShouldStopAfterStepCtx};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage};
 use xylitol_plugin_sdk::{XyHookBus, XySessionStore};
 
-pub(crate) fn should_stop_after_turn(hooks: &AgentHooks, ctx: &ShouldStopAfterTurnCtx) -> bool {
+pub(crate) fn should_stop_after_step(hooks: &AgentHooks, ctx: &ShouldStopAfterStepCtx) -> bool {
     hooks
-        .should_stop_after_turn
+        .should_stop_after_step
         .as_ref()
         .is_some_and(|hook| hook(ctx))
 }
@@ -72,7 +72,7 @@ pub(crate) async fn close_iteration(
     kind: IterationClose,
     pending_prepare: Option<&xylitol_plugin_sdk::SessionPrepareSnapshot>,
 ) -> FinishTurnResult {
-    let turn_index = turn as u32;
+    let step_index = turn as u32;
     let settlement = match kind {
         IterationClose::Settle => {
             settle_turn_context(
@@ -95,55 +95,59 @@ pub(crate) async fn close_iteration(
             generation: s.generation,
         });
     }
-    events.push(XyEvent::TurnEnd { turn_index });
+    events.push(XyEvent::StepEnd { step_index });
     if let Some(bus) = hook_bus {
-        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::turn_end(turn as u32);
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::step_end(turn as u32);
         observe_hook(bus, ty, phase, ctx).await;
     }
-    if kind == IterationClose::ContinueTools {
+    let is_settle = kind == IterationClose::Settle;
+    if is_settle {
+        let will_continue = try_turn_end_compaction(
+            store,
+            session_id,
+            model_manager,
+            event_sink,
+            compaction_settings,
+            compaction,
+            fixed_context,
+            history,
+            overflow_recovery_attempted,
+            floor_notice_emitted,
+            settlement.as_ref().map(|s| &s.estimate),
+            turn_obs_parent,
+            obs_session,
+            cwd,
+            pending_prepare,
+        )
+        .await;
+        if will_continue {
+            return FinishTurnResult {
+                events,
+                outcome: FinishTurnOutcome::ContinueOuterForCompaction,
+            };
+        }
+    }
+    let stop_ctx = ShouldStopAfterStepCtx {
+        step_index,
+        is_settle,
+        assistant,
+        tool_results,
+        history: history.clone(),
+        new_messages: history[run_baseline..].to_vec(),
+    };
+    if should_stop_after_step(hooks, &stop_ctx) {
+        return FinishTurnResult {
+            events,
+            outcome: FinishTurnOutcome::StopRun,
+        };
+    }
+    if !is_settle {
         return FinishTurnResult {
             events,
             outcome: FinishTurnOutcome::Advanced {
                 pending: Vec::new(),
                 queue_update: None,
             },
-        };
-    }
-    let will_continue = try_turn_end_compaction(
-        store,
-        session_id,
-        model_manager,
-        event_sink,
-        compaction_settings,
-        compaction,
-        fixed_context,
-        history,
-        overflow_recovery_attempted,
-        floor_notice_emitted,
-        settlement.as_ref().map(|s| &s.estimate),
-        turn_obs_parent,
-        obs_session,
-        cwd,
-        pending_prepare,
-    )
-    .await;
-    if will_continue {
-        return FinishTurnResult {
-            events,
-            outcome: FinishTurnOutcome::ContinueOuterForCompaction,
-        };
-    }
-    let stop_ctx = ShouldStopAfterTurnCtx {
-        turn_index,
-        assistant,
-        tool_results,
-        history: history.clone(),
-        new_messages: history[run_baseline..].to_vec(),
-    };
-    if should_stop_after_turn(hooks, &stop_ctx) {
-        return FinishTurnResult {
-            events,
-            outcome: FinishTurnOutcome::StopRun,
         };
     }
     let pending = drain_queue(steer_queue);

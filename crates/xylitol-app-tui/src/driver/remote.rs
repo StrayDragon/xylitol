@@ -667,8 +667,8 @@ where
             ev,
             XyEvent::AgentStart { .. }
                 | XyEvent::AgentEnd { .. }
-                | XyEvent::TurnStart { .. }
-                | XyEvent::TurnEnd { .. }
+                | XyEvent::StepStart { .. }
+                | XyEvent::StepEnd { .. }
                 | XyEvent::MessageStart { .. }
                 | XyEvent::MessageUpdate { .. }
                 | XyEvent::MessageEnd { .. }

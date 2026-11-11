@@ -9,7 +9,7 @@ pub mod session_tree;
 pub mod todo;
 
 pub use command::Command;
-pub use event::Event;
+pub use event::{AgentEndReason, Event};
 pub use message::{
     ApprovalRequestedPayload, BashOutputPayload, ErrorObject, HostDescribeValue, JSONRPC_VERSION,
     Message, Notification, Outcome, PROTOCOL_VERSION, QuestionRequestedPayload, Request, RequestId,

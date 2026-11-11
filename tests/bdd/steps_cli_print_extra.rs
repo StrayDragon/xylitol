@@ -48,7 +48,10 @@ pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
                 diagnostics: vec![],
             })),
         },
-        XyEvent::AgentEnd { messages: vec![] },
+        XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
@@ -87,7 +90,10 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
             details: None,
             is_error: false,
         },
-        XyEvent::AgentEnd { messages: vec![] },
+        XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
@@ -153,7 +159,10 @@ pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
             details: None,
             is_error: true,
         },
-        XyEvent::AgentEnd { messages: vec![] },
+        XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();

@@ -78,9 +78,9 @@ async fn test_ar_should_stop_skips_followup(agent: AgentState, ws: Workspace) {}
 async fn test_ar_no_hook_open_end(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "最大回合停止运行"
+    name = "最大步数停止运行"
 )]
-async fn test_ar_max_turns_stops_run(agent: AgentState, ws: Workspace) {}
+async fn test_ar_max_steps_per_turn_stops_run(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
@@ -132,6 +132,26 @@ async fn test_c2826_skills_reload(agent: AgentState, ws: Workspace) {}
 )]
 async fn test_c2826_abort_persist(agent: AgentState, ws: Workspace) {}
 
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "用户取消归因端可见"
+)]
+async fn test_ar_user_cancel_reason(agent: AgentState, ws: Workspace, bridge_bdd: BridgeBdd) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "模型错误归因端可见"
+)]
+async fn test_ar_model_error_reason(agent: AgentState, ws: Workspace, bridge_bdd: BridgeBdd) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "步数上限归因端可见"
+)]
+async fn test_ar_step_limit_reason(agent: AgentState, ws: Workspace, bridge_bdd: BridgeBdd) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "重试后下一step无结束事件"
+)]
+async fn test_ar_retry_once_no_spurious_end(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "工具回合两轮次一结算"

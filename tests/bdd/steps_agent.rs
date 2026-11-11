@@ -63,11 +63,11 @@ pub(crate) fn _t_agent_textdelta(agent: &AgentState, text: String) {
     assert!(!agent.events.borrow().is_empty());
 }
 
-#[then("turn_end 事件触发")]
+#[then("step_end 事件触发")]
 pub(crate) fn _t_agent_turn_end(agent: &AgentState) {
     let events = agent.events.borrow();
     assert!(
-        events.iter().any(|e| matches!(e, XyEvent::TurnEnd { .. }))
+        events.iter().any(|e| matches!(e, XyEvent::StepEnd { .. }))
             || events.iter().any(|e| matches!(e, XyEvent::Error(_)))
     );
 }
@@ -83,20 +83,20 @@ pub(crate) fn _t_agent_tool_end(agent: &AgentState, result: String) {
     assert!(!agent.events.borrow().is_empty());
 }
 
-#[then("turn_end 事件包含 toolResult")]
+#[then("step_end 事件包含 toolResult")]
 pub(crate) fn _t_agent_turn_end_has_tool(agent: &AgentState) {
     let events = agent.events.borrow();
     let has_tool_end = events
         .iter()
         .any(|e| matches!(e, XyEvent::ToolExecutionEnd { .. }));
-    let has_turn_end = events.iter().any(|e| matches!(e, XyEvent::TurnEnd { .. }));
+    let has_turn_end = events.iter().any(|e| matches!(e, XyEvent::StepEnd { .. }));
     assert!(
         has_tool_end && has_turn_end,
         "expected tool execution and turn_end in event stream, got: {events:?}"
     );
 }
 
-#[then("事件按顺序为: turn_start, message_start, message_update, message_end, turn_end")]
+#[then("事件按顺序为: step_start, message_start, message_update, message_end, step_end")]
 pub(crate) fn _t_agent_event_order(agent: &AgentState) {
     assert!(!agent.events.borrow().is_empty());
 }

@@ -40,7 +40,7 @@
       那么 操作失败原因包含 "未知操作"
   @req:r1817
   规则: smoke-already-wired
-    仓库 须至少有一条经库缝触发的观察型例子（如 session_start 或 agent_start），经 InProcessDriver 等库缝注入 XyHookBus 并录制 hook 调用；不得用直接 HookDispatcher::dispatch 冒充接线证明。
+    仓库 须至少有一条经库缝触发的观察型例子（如 session_start 或 run_start），经 InProcessDriver 等库缝注入 XyHookBus 并录制 hook 调用；不得用直接 HookDispatcher::dispatch 冒充接线证明。
 
     场景: 冒烟钩子接线
       当 读取库缝观察接线

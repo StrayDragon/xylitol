@@ -36,13 +36,13 @@ mod tests {
             }
 
             fn stages(&self) -> &'static [LoopStage] {
-                &[LoopStage::BeforeTurn]
+                &[LoopStage::BeforeStep]
             }
 
-            async fn before_turn(
+            async fn before_step(
                 &self,
-                ctx: xylitol_plugin_sdk::BeforeTurnCtx,
-            ) -> LoopStep<xylitol_plugin_sdk::BeforeTurnCtx> {
+                ctx: xylitol_plugin_sdk::BeforeStepCtx,
+            ) -> LoopStep<xylitol_plugin_sdk::BeforeStepCtx> {
                 LoopStep::continued(ctx)
             }
         }

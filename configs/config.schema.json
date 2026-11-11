@@ -1415,8 +1415,9 @@
       "type": "object"
     },
     "session": {
+      "additionalProperties": false,
       "properties": {
-        "max_turns": {
+        "max_steps_per_turn": {
           "format": "uint32",
           "minimum": 0,
           "type": [

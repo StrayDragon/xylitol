@@ -7,7 +7,7 @@ use super::state::ActivityFoldState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoTrigger {
     Rebuild,
-    TurnEnd,
+    TurnCompleted,
 }
 
 pub fn apply_auto_degrade(
@@ -21,7 +21,7 @@ pub fn apply_auto_degrade(
     }
     let enabled = match trigger {
         AutoTrigger::Rebuild => state.settings.auto_on_rebuild,
-        AutoTrigger::TurnEnd => state.settings.auto_on_turn_end,
+        AutoTrigger::TurnCompleted => state.settings.auto_on_turn_end,
     };
     if !enabled {
         return false;
@@ -34,7 +34,7 @@ pub fn apply_auto_degrade(
 
     let keep = match trigger {
         AutoTrigger::Rebuild => 0,
-        AutoTrigger::TurnEnd => state.settings.keep_recent_turns as usize,
+        AutoTrigger::TurnCompleted => state.settings.keep_recent_turns as usize,
     };
     let target = state.settings.collapse_floor;
 

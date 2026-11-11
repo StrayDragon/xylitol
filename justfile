@@ -714,7 +714,7 @@ eval-typical scaffold="xylitol":
           exit 1
         }
         agent="xylitol_agent:XylitolAgent"
-        extra=(--ak binary=target/eval-bin/xylitol-linux-x86_64-musl --ak max_turns=80 --ak wall_seconds=1800)
+        extra=(--ak binary=target/eval-bin/xylitol-linux-x86_64-musl --ak max_steps_per_turn=80 --ak wall_seconds=1800)
       else
         task_dir="/tmp/deep-swe-agents/${t}"
         [[ -d "${task_dir}" ]] || {
@@ -725,7 +725,7 @@ eval-typical scaffold="xylitol":
         extra=(
           --effort high
           --ak model_api=openai-responses
-          --ak max_turns=80
+          --ak max_steps_per_turn=80
           --ak disable_web_search=true
           --agent-timeout-multiplier 0.1666666667
           --ae GIT_AUTHOR_NAME=eval --ae GIT_AUTHOR_EMAIL=eval@example.com

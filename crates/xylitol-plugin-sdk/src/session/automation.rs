@@ -77,7 +77,8 @@ pub enum ScheduleState {
 pub enum TriggerSource {
     Timer,
     Manual,
-    TurnEnd,
+    #[serde(rename = "turn_end")]
+    TurnCompleted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

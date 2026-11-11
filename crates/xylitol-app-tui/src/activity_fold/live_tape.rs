@@ -57,7 +57,10 @@ pub fn live_ask_close_events(result: &str) -> Vec<XyEvent> {
             is_error: false,
         },
         XyEvent::TextDelta(LIVE_ASK_CLOSE_TEXT.into()),
-        XyEvent::AgentEnd { messages: vec![] },
+        XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
     ]
 }
 
