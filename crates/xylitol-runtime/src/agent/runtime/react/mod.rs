@@ -1368,6 +1368,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut done_usage: Option<xylitol_plugin_sdk::message::XyUsage> = None;
                 let mut done_stop_reason: Option<xylitol_plugin_sdk::message::XyStopReason> = None;
                 let mut done_error_message: Option<String> = None;
+                #[cfg(debug_assertions)]
+                let mut debug_chunks: Vec<XyChunk> = Vec::new();
+                #[cfg(debug_assertions)]
+                let mut debug_stream_error = false;
+                #[cfg(debug_assertions)]
+                let mut debug_stream_complete = false;
 
                 loop {
                     let chunk_result = tokio::select! {
@@ -1410,8 +1416,17 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         next = chunk_stream.next() => next,
                     };
                     match chunk_result {
-                        None => break,
-                        Some(Ok(chunk)) => match chunk {
+                        None => {
+                            #[cfg(debug_assertions)]
+                            {
+                                debug_stream_complete = true;
+                            }
+                            break;
+                        }
+                        Some(Ok(chunk)) => {
+                            #[cfg(debug_assertions)]
+                            debug_chunks.push(chunk.clone());
+                            match chunk {
                             XyChunk::TextDelta(text) => {
                                 stream_clock.on_text_delta();
                                 text_acc.push_str(&text);
@@ -1501,8 +1516,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     done_usage = usage;
                                 }
                             }
-                        },
+                            }
+                        }
                         Some(Err(e)) => {
+                            #[cfg(debug_assertions)]
+                            {
+                                debug_stream_error = true;
+                            }
                             super::obs::record_xy_error(
                                 "model.stream",
                                 &e,
@@ -1517,6 +1537,17 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             yield XyEvent::error_msg(err_text);
                             break;
                         }
+                    }
+                }
+
+                #[cfg(debug_assertions)]
+                if debug_stream_complete && !debug_stream_error && !debug_chunks.is_empty() {
+                    let outcome = xylitol_plugin_sdk::StreamOutcome::new(debug_chunks);
+                    if let Err(err) = outcome.validate() {
+                        debug_assert!(
+                            false,
+                            "provider chunk stream violated terminal contract: {err}"
+                        );
                     }
                 }
 

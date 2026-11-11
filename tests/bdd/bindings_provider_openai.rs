@@ -12,3 +12,9 @@ fn test_c2826_thinking_families(provider_bdd: ProviderBdd) {}
     name = "Responses错误内嵌消息表面"
 )]
 fn test_c2826_responses_error(provider_bdd: ProviderBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "终态校验器拒绝终态后产出"
+)]
+fn test_chunk_stream_terminal_contract(provider_bdd: ProviderBdd) {}

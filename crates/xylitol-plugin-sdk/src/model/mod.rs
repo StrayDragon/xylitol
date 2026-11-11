@@ -3,7 +3,7 @@ pub mod config;
 pub mod meta;
 pub mod thinking;
 
-pub use chunk::{XyChunk, XyToolSchema};
+pub use chunk::{StreamOutcome, XyChunk, XyToolSchema, chunk_stream_check};
 pub use config::{
     ResolvedProfile, XyModality, XyModelConfig, XyModelKind, XyPromptCacheConfig,
     XyPromptCacheRetention, XyPromptCacheTtl, default_context_window_for, default_input_modalities,

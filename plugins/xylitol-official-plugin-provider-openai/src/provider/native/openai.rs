@@ -236,6 +236,7 @@ fn completions_sdk_stream(
     Box::pin(async_stream::try_stream! {
         let mut tool_accumulators: HashMap<u32, (String, String, String, bool)> = HashMap::new();
         let mut pending_usage: Option<crate::dto::XyUsage> = None;
+        let mut done_emitted = false;
 
         while let Some(item) = tokio::time::timeout(
                 crate::provider::native::wait_bounds::SSE_IDLE,
@@ -251,6 +252,11 @@ fn completions_sdk_stream(
             let chunk = item.map_err(|e| {
                 XyError::Provider(anyhow::anyhow!("OpenAI Completions stream: {e}"))
             })?;
+            if done_emitted {
+                Err(XyError::Provider(anyhow::anyhow!(
+                    "OpenAI Completions event after terminal Done"
+                )))?;
+            }
 
             if let Some(t) = &trace {
                 let snippet = chunk
@@ -269,6 +275,7 @@ fn completions_sdk_stream(
                 ));
             }
 
+            let mut terminal_reason: Option<XyStopReason> = None;
             for choice in &chunk.choices {
                 if let Some(text) = choice.delta.content.as_ref().filter(|t| !t.is_empty()) {
                     let out = XyChunk::TextDelta(text.clone());
@@ -352,21 +359,44 @@ fn completions_sdk_stream(
                             yield out;
                         }
                     }
-                    let reason = match finish_reason {
-                        FinishReason::Length => XyStopReason::MaxTokens,
-                        FinishReason::ToolCalls => XyStopReason::ToolUse,
-                        _ => XyStopReason::Stop,
-                    };
-                    let out = XyChunk::Done {
-                        finish_reason: reason,
-                        usage: pending_usage.take(),
-                    };
-                    if let Some(t) = &trace {
-                        t.emit_mapped_chunk(&out);
+                    if terminal_reason.is_none() {
+                        terminal_reason = Some(match finish_reason {
+                            FinishReason::Length => XyStopReason::MaxTokens,
+                            FinishReason::ToolCalls => XyStopReason::ToolUse,
+                            _ => XyStopReason::Stop,
+                        });
                     }
-                    yield out;
                 }
             }
+            if let Some(reason) = terminal_reason {
+                let out = XyChunk::Done {
+                    finish_reason: reason,
+                    usage: pending_usage.take(),
+                };
+                if let Some(t) = &trace {
+                    t.emit_mapped_chunk(&out);
+                }
+                yield out;
+                done_emitted = true;
+            }
+        }
+
+        if !done_emitted {
+            let mut open: Vec<_> = tool_accumulators
+                .drain()
+                .filter(|(_, (_, _, _, started))| *started)
+                .collect();
+            open.sort_by_key(|(idx, _)| *idx);
+            for (_, (id, name, _, _)) in open {
+                yield XyChunk::ToolCallEnd {
+                    id,
+                    name,
+                    args: serde_json::json!({}),
+                };
+            }
+            Err(XyError::Provider(anyhow::anyhow!(
+                "OpenAI Completions stream ended without terminal event"
+            )))?;
         }
     })
 }

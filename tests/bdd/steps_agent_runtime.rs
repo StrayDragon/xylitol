@@ -787,6 +787,10 @@ pub(crate) fn bdd_batch_rounds(
     for (i, (name, args_json)) in calls.iter().enumerate() {
         let args: serde_json::Value =
             serde_json::from_str(args_json).unwrap_or(serde_json::json!({}));
+        round1.push(xylitol_plugin_sdk::model::XyChunk::ToolCallStart {
+            id: format!("call-{i}"),
+            name: (*name).into(),
+        });
         round1.push(xylitol_plugin_sdk::model::XyChunk::ToolCallEnd {
             id: format!("call-{i}"),
             name: (*name).into(),

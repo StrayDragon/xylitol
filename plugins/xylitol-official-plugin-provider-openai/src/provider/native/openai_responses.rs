@@ -393,6 +393,19 @@ fn responses_sdk_stream(
         }
 
         if !state.done_emitted {
+            let mut open: Vec<(String, String)> = state
+                .function_calls
+                .drain()
+                .filter_map(|(id, (name, _, started))| started.then_some((id, name)))
+                .collect();
+            open.sort();
+            for (id, name) in open {
+                yield XyChunk::ToolCallEnd {
+                    id,
+                    name,
+                    args: serde_json::json!({}),
+                };
+            }
             Err(XyError::Provider(anyhow::anyhow!(
                 "OpenAI Responses stream ended without terminal event"
             )))?;
@@ -413,6 +426,12 @@ pub struct ResponsesStreamState {
 }
 
 pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Vec<XyChunk> {
+    if state.done_emitted {
+        state.terminal_error = Some(XyError::Provider(anyhow::anyhow!(
+            "OpenAI Responses event after terminal Done"
+        )));
+        return Vec::new();
+    }
     let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
     match event_type {
         "response.reasoning_text.delta" | "response.reasoning_summary_text.delta" => data

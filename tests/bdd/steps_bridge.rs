@@ -7,6 +7,7 @@ pub struct ProviderBdd {
     pub(crate) parse_value: RefCell<Option<serde_json::Value>>,
     pub(crate) input_items: RefCell<Vec<serde_json::Value>>,
     pub(crate) request_body: RefCell<Option<serde_json::Value>>,
+    pub(crate) check_error: RefCell<Option<String>>,
 }
 
 impl ProviderBdd {
@@ -16,6 +17,7 @@ impl ProviderBdd {
             parse_value: RefCell::new(None),
             input_items: RefCell::new(Vec::new()),
             request_body: RefCell::new(None),
+            check_error: RefCell::new(None),
         }
     }
 }
@@ -23,6 +25,32 @@ impl ProviderBdd {
 #[fixture]
 pub fn provider_bdd() -> ProviderBdd {
     ProviderBdd::new()
+}
+
+#[given("一个 Done 之后仍有 chunk 的流")]
+fn g_terminal_then_chunk(provider_bdd: &ProviderBdd) {
+    use xylitol_plugin_sdk::message::XyStopReason;
+    *provider_bdd.chunks.borrow_mut() = vec![
+        xylitol_plugin_sdk::XyChunk::Done {
+            finish_reason: XyStopReason::Stop,
+            usage: None,
+        },
+        xylitol_plugin_sdk::XyChunk::TextDelta("late".into()),
+    ];
+}
+
+#[when("校验 chunk 流终态")]
+fn w_check_chunk_stream(provider_bdd: &ProviderBdd) {
+    let outcome = xylitol_plugin_sdk::StreamOutcome::new(provider_bdd.chunks.borrow().clone());
+    *provider_bdd.check_error.borrow_mut() = outcome.validate().err();
+}
+
+#[then("校验器报错")]
+fn t_checker_rejected(provider_bdd: &ProviderBdd) {
+    assert!(
+        provider_bdd.check_error.borrow().is_some(),
+        "validator must reject a chunk emitted after Done"
+    );
 }
 
 #[given(

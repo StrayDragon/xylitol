@@ -107,3 +107,136 @@ mod tests {
         );
     }
 }
+
+pub struct StreamOutcome {
+    pub chunks: Vec<XyChunk>,
+    pub terminal: bool,
+}
+
+impl StreamOutcome {
+    pub fn new(chunks: Vec<XyChunk>) -> Self {
+        let terminal = matches!(chunks.last(), Some(XyChunk::Done { .. }));
+        Self { chunks, terminal }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.terminal {
+            return Err("stream ended without terminal Done".into());
+        }
+        chunk_stream_check(&self.chunks)
+    }
+}
+
+pub fn chunk_stream_check(chunks: &[XyChunk]) -> Result<(), String> {
+    let mut done = false;
+    let mut open: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for chunk in chunks {
+        if done {
+            return Err("chunk emitted after terminal Done".into());
+        }
+        match chunk {
+            XyChunk::TextDelta(_) | XyChunk::ThinkingDelta(_) | XyChunk::ThinkingEnd { .. } => {}
+            XyChunk::ToolCallStart { id, name } => {
+                if open.insert(id.as_str(), name.as_str()).is_some() {
+                    return Err(format!("duplicate ToolCallStart for {id}"));
+                }
+            }
+            XyChunk::ToolCallDelta { id, .. } => {
+                if !open.contains_key(id.as_str()) {
+                    return Err(format!("ToolCallDelta without ToolCallStart for {id}"));
+                }
+            }
+            XyChunk::ToolCallEnd { id, .. } => {
+                if open.remove(id.as_str()).is_none() {
+                    return Err(format!("ToolCallEnd without ToolCallStart for {id}"));
+                }
+            }
+            XyChunk::Done { .. } => {
+                if !open.is_empty() {
+                    return Err("Done emitted with open tool calls".into());
+                }
+                done = true;
+            }
+        }
+    }
+    if !done {
+        return Err("stream ended without terminal Done".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod chunk_stream_tests {
+    use super::*;
+
+    fn done() -> XyChunk {
+        XyChunk::Done {
+            finish_reason: XyStopReason::Stop,
+            usage: None,
+        }
+    }
+
+    fn start(id: &str) -> XyChunk {
+        XyChunk::ToolCallStart {
+            id: id.into(),
+            name: "bash".into(),
+        }
+    }
+
+    fn delta(id: &str) -> XyChunk {
+        XyChunk::ToolCallDelta {
+            id: id.into(),
+            name: "bash".into(),
+            args_delta: "{}".into(),
+            args: Value::Object(Default::default()),
+        }
+    }
+
+    fn end(id: &str) -> XyChunk {
+        XyChunk::ToolCallEnd {
+            id: id.into(),
+            name: "bash".into(),
+            args: Value::Object(Default::default()),
+        }
+    }
+
+    #[test]
+    fn accepts_text_then_done() {
+        assert!(chunk_stream_check(&[XyChunk::TextDelta("hi".into()), done()]).is_ok());
+    }
+
+    #[test]
+    fn accepts_tool_lifecycle() {
+        assert!(chunk_stream_check(&[start("a"), delta("a"), end("a"), done()]).is_ok());
+    }
+
+    #[test]
+    fn rejects_open_tool_call() {
+        assert!(chunk_stream_check(&[start("a"), done()]).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_done() {
+        assert!(chunk_stream_check(&[done(), done()]).is_err());
+    }
+
+    #[test]
+    fn rejects_chunk_after_done() {
+        assert!(chunk_stream_check(&[done(), XyChunk::TextDelta("late".into())]).is_err());
+    }
+
+    #[test]
+    fn rejects_end_without_start() {
+        assert!(chunk_stream_check(&[end("a"), done()]).is_err());
+    }
+
+    #[test]
+    fn rejects_delta_without_start() {
+        assert!(chunk_stream_check(&[delta("a"), done()]).is_err());
+    }
+
+    #[test]
+    fn rejects_missing_done() {
+        assert!(chunk_stream_check(&[XyChunk::TextDelta("hi".into())]).is_err());
+    }
+}

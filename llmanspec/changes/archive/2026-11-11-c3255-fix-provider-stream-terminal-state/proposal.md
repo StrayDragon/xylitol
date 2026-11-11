@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix provider stream terminal chunk semantics"
+branch: sdd/c3255-fix-provider-stream-terminal-state
+base_branch: main
+base_sha: 9e45a54871c72dbaf0a31f789c2aa01b22eb0db7
 ---
 
 # Provider 流终态语义修复

@@ -80,7 +80,7 @@ impl ProviderRequestTrace {
     }
 
     pub fn emit_raw(&self, event: &str, text: &str) {
-        if !provider_trace_active() {
+        if !provider_trace_active() || self.finalized.load(Ordering::Acquire) {
             return;
         }
         let (text, truncated) = truncate_text(text, PROVIDER_TRACE_TEXT_MAX);
@@ -102,7 +102,7 @@ impl ProviderRequestTrace {
     }
 
     pub fn emit_mapped_chunk(&self, chunk: &XyChunk) {
-        if !provider_trace_active() {
+        if !provider_trace_active() || self.finalized.load(Ordering::Acquire) {
             return;
         }
         let (variant, text) = match chunk {
@@ -477,6 +477,22 @@ mod tests {
         assert_eq!(prop(llm, "langfuse.observation.output"), Some("x"));
         assert!(prop(llm, "langfuse.observation.usage_details").is_none());
         assert!(prop(llm, "langfuse.observation.level").is_none());
+    }
+
+    #[test]
+    fn finalize_blocks_late_output_writes() {
+        let _g = ObsGateScope::enter(ObsGateState {
+            active: true,
+            observation_io: ObservationIoTier::Truncated,
+            tool_observation_io: ObservationIoTier::None,
+        });
+        let _collect = SpanCollectScope::enter();
+        let t = ProviderRequestTrace::start("openai-completions", "m").expect("active");
+        t.emit_mapped_chunk(&XyChunk::TextDelta("before".into()));
+        t.finalize(GenerationFinishKind::Completed);
+        t.emit_mapped_chunk(&XyChunk::TextDelta("after".into()));
+        assert_eq!(t.output_buf.lock().unwrap().as_str(), "before");
+        drop(t);
     }
 
     #[test]

@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use xylitol_plugin_sdk::error::{XyError, XySessionError, XySessionStoreError, XyToolError};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
-use xylitol_plugin_sdk::message::XyLlmMessage;
-use xylitol_plugin_sdk::model::XyToolSchema;
+use xylitol_plugin_sdk::message::{XyLlmMessage, XyStopReason};
+use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
 use xylitol_plugin_sdk::session::{ForkPosition, SessionContext, SessionEntry};
 use xylitol_plugin_sdk::{
     XyEventSink, XyGenerateOptions, XyModel, XyModelBuilder, XySessionStore, XyStream, XyTool,
@@ -179,7 +179,10 @@ impl XyModel for DummyModel {
         _stream: bool,
         _options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
-        Ok(Box::pin(futures::stream::empty()))
+        Ok(Box::pin(futures::stream::iter(vec![Ok(XyChunk::Done {
+            finish_reason: XyStopReason::Stop,
+            usage: None,
+        })])))
     }
 }
 

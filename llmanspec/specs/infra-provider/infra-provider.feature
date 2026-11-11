@@ -124,3 +124,12 @@
   @req:r3067
   规则: http-user-agent-identity
     OpenAI 兼容与 Anthropic Messages 方言发出的 HTTP User-Agent 产品段必须为 XYlitol/<cargo 包版本>（随后可跟 OS、rust、arch 注释），大小写必须与字面量 XYlitol 一致，不得使用 xylitol/ 前缀，不得为旧前缀保留别名。由插件单测覆盖，不得单独扩 BDD step。
+
+  @req:r3308
+  规则: chunk-stream-terminal-contract
+    所有方言的 XyChunk 流 必须 满足终态约束：Done 恰一次且最后；每个 ToolCallStart 恰有一个 ToolCallEnd；EOF 未见 Done 必须 返回错误；Done 之后不得再产出 chunk；中断时已开 ToolCall 必须 补空参 ToolCallEnd 再报错。校验器 chunk_stream_check 必须 覆盖该状态机；三方言共享同一矩阵。由插件单测（SSE 回放）覆盖。
+
+    场景: 终态校验器拒绝终态后产出
+      假如 一个 Done 之后仍有 chunk 的流
+      当 校验 chunk 流终态
+      那么 校验器报错

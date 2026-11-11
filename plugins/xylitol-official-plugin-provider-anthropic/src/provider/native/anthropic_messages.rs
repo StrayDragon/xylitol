@@ -407,9 +407,30 @@ fn anthropic_stream(
                 t.emit_raw(event_type, snippet);
             }
 
+            if done_emitted
+                && matches!(
+                    event_type,
+                    "content_block_start"
+                        | "content_block_delta"
+                        | "content_block_stop"
+                        | "message_delta"
+                )
+            {
+                Err(XyError::Provider(anyhow::anyhow!(
+                    "Anthropic event after terminal Done: {event_type}"
+                )))?;
+            }
+
             match event_type {
                 "content_block_start" => {
                     let index = data.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                    if tool_accumulators.contains_key(&index)
+                        || thinking_accumulators.contains_key(&index)
+                    {
+                        Err(XyError::Provider(anyhow::anyhow!(
+                            "Anthropic duplicate content_block_start (index={index})"
+                        )))?;
+                    }
                     current_block_index = Some(index);
 
                     if let Some(content_block) = data.get("content_block") {
@@ -459,47 +480,55 @@ fn anthropic_stream(
                             }
                             "thinking_delta" | "thinking" => {
                                 if let Some(thinking) = delta.get("thinking").and_then(|v| v.as_str()) {
-                                    match thinking_accumulators.get_mut(&index) {
-                                        Some(acc) => acc.0.push_str(thinking),
-                                        None => {
-                                            thinking_accumulators
-                                                .insert(index, (thinking.to_string(), None));
+                                    if let Some(acc) = thinking_accumulators.get_mut(&index) {
+                                        acc.0.push_str(thinking);
+                                        let chunk = XyChunk::ThinkingDelta(thinking.to_string());
+                                        if let Some(t) = &trace {
+                                            t.emit_mapped_chunk(&chunk);
                                         }
+                                        yield chunk;
+                                    } else {
+                                        Err(XyError::Provider(anyhow::anyhow!(
+                                            "Anthropic thinking delta without start (index={index})"
+                                        )))?;
                                     }
-                                    let chunk = XyChunk::ThinkingDelta(thinking.to_string());
-                                    if let Some(t) = &trace {
-                                        t.emit_mapped_chunk(&chunk);
-                                    }
-                                    yield chunk;
                                 }
                             }
                             "signature_delta" => {
                                 if let Some(signature) = delta.get("signature").and_then(|v| v.as_str()) {
-                                    let acc = thinking_accumulators
-                                        .entry(index)
-                                        .or_insert_with(|| (String::new(), None));
-                                    match &mut acc.1 {
-                                        Some(existing) => existing.push_str(signature),
-                                        None => acc.1 = Some(signature.to_string()),
+                                    if let Some(acc) = thinking_accumulators.get_mut(&index) {
+                                        match &mut acc.1 {
+                                            Some(existing) => existing.push_str(signature),
+                                            None => acc.1 = Some(signature.to_string()),
+                                        }
+                                    } else {
+                                        Err(XyError::Provider(anyhow::anyhow!(
+                                            "Anthropic signature delta without start (index={index})"
+                                        )))?;
                                     }
                                 }
                             }
                             "input_json_delta" => {
-                                if let (Some(partial_json), Some(acc)) = (
-                                    delta.get("partial_json").and_then(|v| v.as_str()),
-                                    tool_accumulators.get_mut(&index),
-                                ) {
-                                    acc.2.push_str(partial_json);
-                                    let chunk = XyChunk::ToolCallDelta {
-                                        id: acc.0.clone(),
-                                        name: acc.1.clone(),
-                                        args_delta: partial_json.to_string(),
-                                        args: crate::dto::parse_streaming_json(&acc.2),
-                                    };
-                                    if let Some(t) = &trace {
-                                        t.emit_mapped_chunk(&chunk);
+                                if let Some(partial_json) =
+                                    delta.get("partial_json").and_then(|v| v.as_str())
+                                {
+                                    if let Some(acc) = tool_accumulators.get_mut(&index) {
+                                        acc.2.push_str(partial_json);
+                                        let chunk = XyChunk::ToolCallDelta {
+                                            id: acc.0.clone(),
+                                            name: acc.1.clone(),
+                                            args_delta: partial_json.to_string(),
+                                            args: crate::dto::parse_streaming_json(&acc.2),
+                                        };
+                                        if let Some(t) = &trace {
+                                            t.emit_mapped_chunk(&chunk);
+                                        }
+                                        yield chunk;
+                                    } else {
+                                        Err(XyError::Provider(anyhow::anyhow!(
+                                            "Anthropic tool delta without start (index={index})"
+                                        )))?;
                                     }
-                                    yield chunk;
                                 }
                             }
                             _ => {}
@@ -635,6 +664,26 @@ fn anthropic_stream(
         }
 
         if !done_emitted {
+            let mut thinking_sorted: Vec<_> = thinking_accumulators.drain().collect();
+            thinking_sorted.sort_by_key(|(idx, _)| *idx);
+            for (_, (thinking, signature)) in thinking_sorted {
+                if thinking.is_empty() && signature.is_none() {
+                    continue;
+                }
+                yield XyChunk::ThinkingEnd {
+                    thinking,
+                    thinking_signature: signature,
+                };
+            }
+            let mut sorted: Vec<_> = tool_accumulators.drain().collect();
+            sorted.sort_by_key(|(idx, _)| *idx);
+            for (_, (id, name, _)) in sorted {
+                yield XyChunk::ToolCallEnd {
+                    id,
+                    name,
+                    args: serde_json::json!({}),
+                };
+            }
             Err(XyError::Provider(anyhow::anyhow!(
                 "Anthropic stream ended without terminal event"
             )))?;

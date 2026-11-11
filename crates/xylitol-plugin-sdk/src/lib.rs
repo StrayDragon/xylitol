@@ -82,10 +82,10 @@ pub use mcp::{
 };
 pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{
-    CANONICAL_THINKING_LEVELS, THINKING_OFF, ThinkingBudgets, ThinkingConfigError,
+    CANONICAL_THINKING_LEVELS, StreamOutcome, THINKING_OFF, ThinkingBudgets, ThinkingConfigError,
     ThinkingLevelMap, XyChunk, XyModality, XyModelConfig, XyModelKind, XyModelMeta, XyToolSchema,
-    default_input_modalities, last_declared_thinking_level, resolve_levels_from_map,
-    thinking_levels_are_adjustable, validate_thinking_level_map,
+    chunk_stream_check, default_input_modalities, last_declared_thinking_level,
+    resolve_levels_from_map, thinking_levels_are_adjustable, validate_thinking_level_map,
 };
 pub use obs_gate::truncate_observation_text;
 pub use obs_gate::{
