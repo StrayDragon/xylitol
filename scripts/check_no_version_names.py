@@ -72,7 +72,7 @@ ALLOWED_IDENTIFIERS = frozenset({"new_v4", "new_v7"})
 ALLOWED_SEGMENTS = frozenset({"v1", "v5", "v6", "v7"})
 EXTERNAL_NAME_MARKERS: tuple[str, ...] = ("deepseek",)
 
-ALLOWED_SPEC_VERSION_TOKENS = frozenset({"v5", "v6", "v7"})
+ALLOWED_SPEC_VERSION_TOKENS = frozenset({"v1", "v5", "v6", "v7"})
 SPEC_VERSION_TOKEN_RE = re.compile(r"\bv\d+\b")
 
 LITERAL_RE = re.compile(
