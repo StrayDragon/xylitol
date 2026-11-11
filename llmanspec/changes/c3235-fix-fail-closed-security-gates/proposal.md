@@ -28,8 +28,9 @@ title: "Fix fail-open security gates"
 - 行为变更：既有依赖「钩子崩了照样跑」的用户会开始被拦——需要在 release note 显式声明，并给配置逃生口（默认时限内）。
 - 验证：hooks 失败矩阵 BDD（spawn 失败 / 非零退出 / 非法 JSON / IO 错误 / 超时 × 默认与配置档）；trust gate 越界 / 解析失败场景。
 
-## Open Questions
+## 决策记录（2026-11-11，全部已决）
 
-1. hooks 默认档位：全 fail-closed（推荐，安全默认）vs 按钩子声明（advisory 默认 open、enforcing 默认 closed）？
-2. 逃生口形态：全局配置项还是逐钩子 frontmatter？迁移期是否保留一版旧默认并 warn？
-3. trust 越界 fail-closed 后，是否需要「重复一次选择」的 UX 而非直接退出？
+1. （已决 2026-11-11）档位按分发点类别推导：仅观察类维持 fail-open（spec r1004/r1005 合约），强制类失败 → Block + 失败分类；逐钩子 fail_open 逃生口，无全局开关。
+2. （已决 2026-11-11）timeout 回归 spec r1010（未设 = 不限时，移除 30s 默认），另设可选全局默认。
+3. （已决 2026-11-11）trust 失败（解析失败 / key 未命中 / 越界）一律 Cancelled 直接退出，不重弹。
+4. （已决 2026-11-11）requires_approval 死字段移除；审批业务评估见 research/requires_approval-followup.md（结论：当前不做，触发条件书面化）。

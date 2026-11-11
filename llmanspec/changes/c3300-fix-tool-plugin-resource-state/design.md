@@ -9,7 +9,7 @@
 
 | 决策 | 内容 | 状态 |
 |---|---|---|
-| codemode 隔离 | 多 Store 共享 Engine；per-run epoch deadline + 超时任务精确 notify 单个 store（wasmtime Store 级 API） | 推荐，待 review |
+| codemode 隔离 | 多 Store 共享 Engine；提交级 epoch deadline + 超时任务精确 notify 单个 store（wasmtime Store 级 API） | 推荐，待 review |
 | 中断归因 | run 结果带 Interrupted { reason: Timeout / Cancelled, run_id } | 定稿方向 |
 | LSP/DAP 相位 | AgentPhase { NotStarted, Running, Dead(reason) }；请求遇 Dead 显式报 unavailable | 定稿方向 |
 | 自动重启 | 不默认；Dead 后下次调用重建并记 restart 观测 | 推荐，待 review |

@@ -16,7 +16,7 @@ title: "Fix tool plugin resource handle states"
 
 ## What Changes
 
-- codemode：每 run 隔离取消（独立 Store/Engine 配置或 per-run epoch deadline 组），中断结果可归因到具体 run。
+- codemode：每次提交隔离取消（独立 Store/Engine 配置或提交级 epoch deadline 组），中断结果可归因到具体提交。
 - LSP/DAP：句柄状态显式（NotStarted/Running/Dead），崩溃后请求显式报不可用 + 可选重启策略；与 c3250 的 ExternalClient 僵尸态修法对齐。
 - fff：partial 位带「后台仍在扫」信号与 ready 事件；abort 全分支生效。
 - bash：结果状态显式枚举（Completed/Killed/Timeout），exit_code 语义单一。
@@ -32,5 +32,5 @@ title: "Fix tool plugin resource handle states"
 
 ## Open Questions
 
-1. codemode per-run 隔离选型：多 Store 共享 Engine + per-run deadline（推荐，wasmtime 支持 epoch deadline per store）还是每次新建 Engine？
+1. codemode 提交级隔离选型：多 Store 共享 Engine + 提交级 deadline（推荐，wasmtime 支持 epoch deadline per store）还是每次新建 Engine？
 2. LSP/DAP 崩溃自动重启是否默认开启？

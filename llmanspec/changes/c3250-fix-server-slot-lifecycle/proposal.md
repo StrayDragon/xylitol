@@ -32,8 +32,9 @@ xylitol-serve 的 SessionSlot 用一组无守卫的原子 / Mutex 字段拼出�
 - 行为变更：无外部契约变化；run_inflight 泄漏修复后 busy 语义恢复正确。
 - 验证：模拟流丢弃 / 任务 panic 的槽回收测试；幂等重放在容量边界的行为测试；外进程插件 kill 后工具调用报 unavailable 的 BDD。
 
-## Open Questions
+## 决策记录（2026-11-11，全部已决）
 
-1. 槽泄漏兜底：仅 RAII 是否足够，还是加 inflight 看门狗（超时强制释放）？
-2. 幂等淘汰语义：进行中条目淘汰时重放应 Conflict 还是等待原结果？
-3. 外进程插件崩溃是否自动重启（当前仅报错）？
+1. （已决）泄漏兜底 = 仅 RAII 守卫（Drop 复位，含 unwind 路径）；不加看门狗——超时阈值属新魔法数。
+2. （已决）幂等淘汰 = 淘汰时对进行中 Reservation 终态化 Conflict；重放拿 Conflict，不重复执行、不等待。
+3. （已决）外进程插件不自动重启：进程消亡显式报 unavailable（含死因）；重启策略另立 change。
+4. （已决）writer 死标志直接删除；automation 放行合并单一 admit() 入口。

@@ -11,7 +11,7 @@
 |---|---|---|
 | 边界单点 | boundary_start(entries) -> Boundary { None, At(usize) } 供 prepare/compact 共用；末条判定先跳过非消息 entry | 定稿方向 |
 | 通知门 | NoticeGate 发送成功后置位；失败保留未置位 + 重试上限 | 定稿方向 |
-| overflow 复位 | runtime 侧复位点随 c3240 run 边界复位一并落，本 change 只收敛 compaction 侧接口 | 推荐，待 review |
+| overflow 复位 | runtime 侧复位点随 c3240 提交边界复位一并落，本 change 只收敛 compaction 侧接口 | 推荐，待 review |
 | 切点哨兵 | CutPointResult { cut: Option<usize>, split_turn: bool }；isize 哨兵删除 | 定稿方向 |
 | 不变量重建 | ensure_state_after_compact 单次加载逐项补齐；失败写待重试标记 + 日志 | 定稿方向 |
 | rider | 角色白名单合一；0 哨兵改 Option | 定稿方向 |

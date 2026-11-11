@@ -31,7 +31,9 @@ ToolFreezePhase（Unfrozen → Gating → Frozen）有枚举但转移分散且�
 - 行为变更：overlay 后工具表真正冻结；MCP 首轮门禁与 freeze 的交互（mcp_gate_notice、prepare_acked）回归验证。
 - 验证：freeze 相位转移单测（全转移矩阵）；capability toggle 后断言 phase == Frozen；MCP 首轮 gate BDD 回归。
 
-## Open Questions
+## 决策记录（2026-11-11，全部已决）
 
-1. Gating 停留是否给超时上限（对齐 MCP_FIRST_TURN_GATE_TIMEOUT 15s）？
-2. set_tools 拒绝时返回错误还是 Outcome（破坏面：现有调用点数量）？
+1. （已决）overlay 收口 = 序列补终步 freeze_tools，对齐 install_base_tools 模式；不用 ensure_tool_table_frozen（其 prepare join 等待面更大）。
+2. （已决）set_tools 族返回 ToolsWriteOutcome { Applied, RejectedFrozen, RejectedMidTurn }，全部调用点显式处理。
+3. （已决）不新增 Gating 超时——infra-mcp 门禁 15s 墙钟已覆盖其唯一合法停留场景；补 debug_assert 与快照一致性回归。
+4. （已决）capability 相位显式 OverlayPhase { Idle, Pending }，集合差降为 debug_assert。
