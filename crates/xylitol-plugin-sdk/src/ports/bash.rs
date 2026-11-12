@@ -10,10 +10,17 @@ use crate::ToolTimeout;
 pub struct XyBashResult {
     pub output: String,
     pub exit_code: Option<i32>,
-    pub cancelled: bool,
-    pub timed_out: bool,
+    pub outcome: BashOutcome,
     pub truncated: bool,
     pub full_output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BashOutcome {
+    #[default]
+    Completed,
+    Killed,
+    TimedOut,
 }
 
 #[derive(Debug, Clone)]

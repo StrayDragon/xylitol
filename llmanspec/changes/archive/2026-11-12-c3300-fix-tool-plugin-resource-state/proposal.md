@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix tool plugin resource handle states"
+branch: sdd/c3300-fix-tool-plugin-resource-state
+base_branch: main
+base_sha: 200148ef993c69d0bb7add46b208d89b5e37cfa1
 ---
 
 # 工具插件资源句柄状态修复

@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use xylitol_plugin_sdk::error::XyError;
 use xylitol_plugin_sdk::session::bash_execution_message_entry;
-use xylitol_plugin_sdk::{BashExecOpts, XyBashExecutor, XyBashResult, XySessionStore};
+use xylitol_plugin_sdk::{BashExecOpts, BashOutcome, XyBashExecutor, XyBashResult, XySessionStore};
 
 struct CancelSlotGuard<'a>(&'a Mutex<Option<CancellationToken>>);
 
@@ -122,7 +122,7 @@ pub(crate) async fn record_bash_result(
         command,
         result.output.clone(),
         result.exit_code,
-        result.cancelled,
+        matches!(result.outcome, BashOutcome::Killed),
         result.truncated,
         result.full_output_path.clone(),
         exclude_from_context,
@@ -148,8 +148,7 @@ mod tests {
             XyBashResult {
                 output: "ok".into(),
                 exit_code: Some(0),
-                cancelled: false,
-                timed_out: false,
+                outcome: BashOutcome::Completed,
                 truncated: false,
                 full_output_path: None,
             }

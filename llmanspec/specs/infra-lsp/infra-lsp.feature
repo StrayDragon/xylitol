@@ -20,3 +20,7 @@
       假如 配置含 lsp backend basedpyright
       当 内核装配 LSP DAP
       那么 工具注册表含 lsp_diagnostics 与 lsp_symbols 与 lsp_hover
+
+  @req:r3348
+  规则: lsp-agent-phase-explicit
+    LSP 后端句柄 须 以显式相位（未启动 / 运行中 / 已死）表示；后端崩溃后请求 须 显式报不可用，不得 向死进程发请求；下一次调用 须 重建一次并记录重启观测。由单测覆盖。

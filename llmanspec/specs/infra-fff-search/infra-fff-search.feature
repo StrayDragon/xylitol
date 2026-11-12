@@ -39,3 +39,7 @@
       假如 tools-fff 插件未装配
       当 装配工具集
       那么 含 grep 与 find 且不含 ffgrep
+
+  @req:r3350
+  规则: fff-cancel-all-modes
+    检索取消 须 在 fuzzy / glob / regex 全部分支生效；索引仍 partial 时 输出 须 附后台扫描仍在进行的信号。由单测覆盖。

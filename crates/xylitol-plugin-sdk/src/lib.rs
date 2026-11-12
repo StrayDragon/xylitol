@@ -111,8 +111,8 @@ pub use plugin_events::{
 };
 pub use ports::{
     AgentTodoGateway, AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway,
-    AutomationGateway, BashChunk, BashExecOpts, BashOutputSink, FS_TOOL_TIMEOUT_SECS, HeaderBag,
-    HttpHooks, LifecycleHandler, NoopCompaction, NoopHookBus, OverflowCompactOutcome,
+    AutomationGateway, BashChunk, BashExecOpts, BashOutcome, BashOutputSink, FS_TOOL_TIMEOUT_SECS,
+    HeaderBag, HttpHooks, LifecycleHandler, NoopCompaction, NoopHookBus, OverflowCompactOutcome,
     RuntimeSessionStore, SessionListEntry, TypedTool, WorkflowGateway, XyBashExecutor,
     XyBashResult, XyBatchMode, XyCompaction, XyCompactionFactory, XyEventSink, XyExportIo,
     XyHookBus, XyHookOutcome, XyModel, XyModelBuilder, XyPermission, XyPermissionVerdict,

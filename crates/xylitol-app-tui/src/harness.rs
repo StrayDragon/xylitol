@@ -12,11 +12,11 @@ use crate::driver::{
     CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, QueueStats, ReloadStepReport,
     RuntimeReloadReport, SessionListEntry, SessionStats, XyDriver, XyDriverError, XyEvent,
 };
-use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::model::THINKING_OFF;
 use xylitol_plugin_sdk::session::{
     SessionEntry, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
+use xylitol_plugin_sdk::{BashOutcome, XyBashResult};
 
 pub use super::effects::{
     default_client_reload_steps, drain_pending, refresh_footer_tokens, run_interactive_bang,
@@ -139,8 +139,7 @@ impl ScriptedDriver {
             default_bash: XyBashResult {
                 output: "ok".into(),
                 exit_code: Some(0),
-                cancelled: false,
-                timed_out: false,
+                outcome: BashOutcome::Completed,
                 truncated: false,
                 full_output_path: None,
             },
@@ -649,8 +648,7 @@ impl XyDriver for ScriptedDriver {
                 return Ok(XyBashResult {
                     output: String::new(),
                     exit_code: None,
-                    cancelled: true,
-                    timed_out: false,
+                    outcome: BashOutcome::Killed,
                     truncated: false,
                     full_output_path: None,
                 });
@@ -3048,8 +3046,7 @@ mod slice_tests {
         driver.push_bash_result(XyBashResult {
             output: "abcdef".into(),
             exit_code: Some(0),
-            cancelled: false,
-            timed_out: false,
+            outcome: BashOutcome::Completed,
             truncated: false,
             full_output_path: None,
         });

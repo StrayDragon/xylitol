@@ -1,11 +1,12 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
 use tokio::sync::mpsc;
 use wasmtime::{
     Caller, Config, Engine, Instance, Linker, Memory, Module, Store, StoreLimits,
-    StoreLimitsBuilder, Trap,
+    StoreLimitsBuilder, Trap, UpdateDeadline,
 };
 use wasmtime_wasi::WasiCtxBuilder;
 use wasmtime_wasi::p1::{self, WasiP1Ctx};
@@ -179,12 +180,21 @@ impl CodemodeRunner {
             limits,
             host_buffer: 0,
         };
+        let interrupted = Arc::new(AtomicBool::new(false));
+        let interrupted_for_callback = Arc::clone(&interrupted);
         let mut store = Store::new(&self.engine, state);
         store.limiter(|state| &mut state.limits);
         store
             .set_fuel(self.settings.fuel)
             .map_err(|err| CodemodeError::new(CodemodeErrorKind::Runtime, err.to_string()))?;
         store.set_epoch_deadline(1);
+        store.epoch_deadline_callback(move |_state| {
+            if interrupted_for_callback.load(Ordering::SeqCst) {
+                Ok(UpdateDeadline::Interrupt)
+            } else {
+                Ok(UpdateDeadline::Continue(1))
+            }
+        });
 
         let module = match &self.module {
             Some(module) => module.clone(),
@@ -227,14 +237,22 @@ impl CodemodeRunner {
                     Ok(Ok(code)) => code,
                     Ok(Err(err)) => return Err(map_trap(err)),
                     Err(_) => {
+                        interrupted.store(true, Ordering::SeqCst);
                         self.engine.increment_epoch();
-                        return Err(CodemodeError::new(CodemodeErrorKind::Timeout, "run_code timed out"));
+                        return Err(CodemodeError::new(
+                            CodemodeErrorKind::Timeout,
+                            format!("run_code timed out (call {})", ctx.call_id),
+                        ));
                     }
                 }
             }
             _ = ctx.cancel.cancelled() => {
+                interrupted.store(true, Ordering::SeqCst);
                 self.engine.increment_epoch();
-                return Err(CodemodeError::new(CodemodeErrorKind::Cancelled, "run_code cancelled"));
+                return Err(CodemodeError::new(
+                    CodemodeErrorKind::Cancelled,
+                    format!("run_code cancelled (call {})", ctx.call_id),
+                ));
             }
         };
 
@@ -507,6 +525,9 @@ mod tests {
             name: &str,
             args: Value,
         ) -> Result<XyToolOutcome, XyToolError> {
+            if name == "sleep" {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
             Ok(XyToolOutcome {
                 parts: vec![AgentPart::text(format!("{name}:{args}"))],
                 details: None,
@@ -612,5 +633,38 @@ mod tests {
         let ctx = XyToolCtx::new("call-2").with_dispatch(Arc::new(StubDispatch));
         let error = runner.run(&ctx, "while (true) {}").await.expect_err("fuel");
         assert_eq!(error.kind, CodemodeErrorKind::FuelExhausted, "{error}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_runs_are_isolated() {
+        let runner = Arc::new(
+            CodemodeRunner::new(CodemodeConfig {
+                fuel: 2_000_000_000,
+                ..config()
+            })
+            .expect("runner"),
+        );
+        let slow = Arc::clone(&runner);
+        let slow_ctx = XyToolCtx::new("call-slow").with_dispatch(Arc::new(StubDispatch));
+        let slow_task = tokio::spawn(async move {
+            slow.run_with_timeout(&slow_ctx, "tools.sleep({}); return 0;", Some(30))
+                .await
+        });
+        let fast = Arc::clone(&runner);
+        let fast_ctx = XyToolCtx::new("call-fast").with_dispatch(Arc::new(StubDispatch));
+        let fast_task = tokio::spawn(async move {
+            fast.run_with_timeout(&fast_ctx, "tools.sleep({}); return 7;", Some(5_000))
+                .await
+        });
+        let (slow_result, fast_result) = tokio::join!(slow_task, fast_task);
+        let slow_error = slow_result.expect("join").expect_err("slow MUST time out");
+        assert_eq!(slow_error.kind, CodemodeErrorKind::Timeout, "{slow_error}");
+        assert!(
+            slow_error.message.contains("call-slow"),
+            "timeout MUST be attributable: {}",
+            slow_error.message
+        );
+        let fast_value = fast_result.expect("join").expect("fast MUST complete");
+        assert_eq!(fast_value, "7");
     }
 }

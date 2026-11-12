@@ -1,4 +1,4 @@
-use xylitol_plugin_sdk::XyBashResult;
+use xylitol_plugin_sdk::{BashOutcome, XyBashResult};
 
 use super::bridge::{BashBlockStatus, UiEntry};
 
@@ -476,7 +476,7 @@ fn parse_designing_slash(text: &str) -> Option<PendingSlash> {
 }
 
 pub fn bash_block_status(result: &XyBashResult) -> BashBlockStatus {
-    if result.cancelled {
+    if matches!(result.outcome, BashOutcome::Killed) {
         BashBlockStatus::Cancelled
     } else if result.exit_code.is_some_and(|c| c != 0) {
         BashBlockStatus::Error
@@ -509,7 +509,7 @@ pub fn bash_output_body(result: &XyBashResult) -> String {
             body.push_str("(truncated)");
         }
     }
-    if result.cancelled {
+    if matches!(result.outcome, BashOutcome::Killed) {
         if !body.is_empty() {
             body.push('\n');
         }
@@ -522,7 +522,7 @@ pub fn bash_output_body(result: &XyBashResult) -> String {
         body.push_str(&format!("(exit {c})"));
     }
     if body.is_empty() {
-        if result.cancelled {
+        if matches!(result.outcome, BashOutcome::Killed) {
             return String::new();
         }
         return "(no output)".into();

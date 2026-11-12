@@ -55,7 +55,7 @@ impl Plugin for DapPlugin {
         };
         let state = Arc::new(DapState {
             config: self.config.clone(),
-            agent: Mutex::new(None),
+            agent: Mutex::new(AgentPhase::NotStarted),
         });
         let tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> = vec![
             Arc::new(DapLaunchTool {
@@ -91,7 +91,9 @@ impl Plugin for DapPlugin {
             for name in names {
                 cleanup_registries.tools.remove(&name);
             }
-            if let Some(mut agent) = state.agent.lock().await.take() {
+            if let AgentPhase::Running(mut agent) =
+                std::mem::replace(&mut *state.agent.lock().await, AgentPhase::NotStarted)
+            {
                 let _ = agent.disconnect(Some(true)).await;
             }
             Ok(())
@@ -100,29 +102,63 @@ impl Plugin for DapPlugin {
     }
 }
 
+enum AgentPhase {
+    NotStarted,
+    Running(AgentHandle),
+    Dead { reason: String },
+}
+
 struct DapState {
     config: DapPluginConfig,
-    agent: Mutex<Option<AgentHandle>>,
+    agent: Mutex<AgentPhase>,
+}
+
+fn is_transport_error_text(text: &str) -> bool {
+    let text = text.to_ascii_lowercase();
+    [
+        "broken pipe",
+        "channel closed",
+        "connection closed",
+        "eof",
+        "not connected",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+fn mark_dead_on_transport_text(guard: &mut AgentPhase, text: &str) {
+    if is_transport_error_text(text) {
+        *guard = AgentPhase::Dead {
+            reason: text.to_string(),
+        };
+    }
 }
 
 async fn ensure_agent<'a>(
     state: &'a DapState,
-    guard: &'a mut Option<AgentHandle>,
+    guard: &'a mut AgentPhase,
 ) -> Result<&'a mut AgentHandle, XyToolError> {
-    if guard.is_none() {
-        let mut builder = AgentHandle::builder()
-            .backend(&state.config.backend)
-            .enable_compression(state.config.compression);
-        if let Some(cwd) = state.config.cwd.as_deref() {
-            builder = builder.cwd(cwd);
-        }
-        let handle = builder
-            .start()
-            .await
-            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!(e.to_string())))?;
-        *guard = Some(handle);
+    if let AgentPhase::Running(handle) = guard {
+        return Ok(handle);
     }
-    Ok(guard.as_mut().expect("agent initialized"))
+    if let AgentPhase::Dead { reason } = guard {
+        log::warn!("dap agent was dead ({reason}); restarting on next request");
+    }
+    let mut builder = AgentHandle::builder()
+        .backend(&state.config.backend)
+        .enable_compression(state.config.compression);
+    if let Some(cwd) = state.config.cwd.as_deref() {
+        builder = builder.cwd(cwd);
+    }
+    let handle = builder
+        .start()
+        .await
+        .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!(e.to_string())))?;
+    *guard = AgentPhase::Running(handle);
+    Ok(match guard {
+        AgentPhase::Running(handle) => handle,
+        _ => unreachable!("agent initialized above"),
+    })
 }
 
 fn schema_for<T: JsonSchema>() -> Value {
@@ -211,15 +247,21 @@ impl TypedTool for DapLaunchTool {
             .map(|bps| bps.into_iter().map(|bp| (bp.path, bp.lines)).collect());
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard).await?;
-        agent
+        let result = agent
             .launch(
                 &args.program,
                 args.cwd.as_deref(),
                 args.args.as_deref(),
                 breakpoints.as_deref(),
             )
-            .await
-            .map_err(map_dap_error)
+            .await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport_text(&mut guard, &error.to_string());
+                Err(map_dap_error(error))
+            }
+        }
     }
 }
 
@@ -250,10 +292,14 @@ impl TypedTool for DapStackTool {
     ) -> Result<String, XyToolError> {
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard).await?;
-        agent
-            .get_stack(args.thread_id, args.levels)
-            .await
-            .map_err(map_dap_error)
+        let result = agent.get_stack(args.thread_id, args.levels).await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport_text(&mut guard, &error.to_string());
+                Err(map_dap_error(error))
+            }
+        }
     }
 }
 
@@ -284,7 +330,14 @@ impl TypedTool for DapScopesTool {
     ) -> Result<String, XyToolError> {
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard).await?;
-        agent.get_scopes(args.frame_id).await.map_err(map_dap_error)
+        let result = agent.get_scopes(args.frame_id).await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport_text(&mut guard, &error.to_string());
+                Err(map_dap_error(error))
+            }
+        }
     }
 }
 
@@ -315,10 +368,14 @@ impl TypedTool for DapVariablesTool {
     ) -> Result<String, XyToolError> {
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard).await?;
-        agent
-            .get_variables(args.variables_reference)
-            .await
-            .map_err(map_dap_error)
+        let result = agent.get_variables(args.variables_reference).await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport_text(&mut guard, &error.to_string());
+                Err(map_dap_error(error))
+            }
+        }
     }
 }
 
@@ -349,10 +406,16 @@ impl TypedTool for DapEvaluateTool {
     ) -> Result<String, XyToolError> {
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard).await?;
-        agent
+        let result = agent
             .evaluate(&args.expression, args.frame_id, args.context.as_deref())
-            .await
-            .map_err(map_dap_error)
+            .await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport_text(&mut guard, &error.to_string());
+                Err(map_dap_error(error))
+            }
+        }
     }
 }
 
@@ -383,7 +446,14 @@ impl TypedTool for DapContinueTool {
     ) -> Result<String, XyToolError> {
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard).await?;
-        agent.continue_(args.thread_id).await.map_err(map_dap_error)
+        let result = agent.continue_(args.thread_id).await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport_text(&mut guard, &error.to_string());
+                Err(map_dap_error(error))
+            }
+        }
     }
 }
 
@@ -413,13 +483,15 @@ impl TypedTool for DapDisconnectTool {
         args: DisconnectArgs,
     ) -> Result<String, XyToolError> {
         let mut guard = self.state.agent.lock().await;
-        let Some(mut agent) = guard.take() else {
-            return Ok("not debugging".to_string());
-        };
-        agent
-            .disconnect(args.terminate_debuggee)
-            .await
-            .map_err(map_dap_error)
+        match std::mem::replace(&mut *guard, AgentPhase::NotStarted) {
+            AgentPhase::NotStarted | AgentPhase::Dead { .. } => {
+                return Ok("not debugging".to_string());
+            }
+            AgentPhase::Running(mut agent) => agent
+                .disconnect(args.terminate_debuggee)
+                .await
+                .map_err(map_dap_error),
+        }
     }
 }
 
@@ -471,7 +543,7 @@ mod tests {
         };
         let state = Arc::new(DapState {
             config,
-            agent: Mutex::new(None),
+            agent: Mutex::new(AgentPhase::NotStarted),
         });
         let ctx = XyToolCtx::new("test").with_workspace(dir.path());
         let launch = DapLaunchTool {
@@ -545,5 +617,15 @@ mod tests {
             )
             .await
             .expect("disconnect");
+    }
+
+    #[test]
+    fn transport_errors_mark_the_agent_dead() {
+        assert!(is_transport_error_text("broken pipe"));
+        assert!(is_transport_error_text("channel closed"));
+        assert!(!is_transport_error_text("file not found"));
+        let mut phase = AgentPhase::NotStarted;
+        mark_dead_on_transport_text(&mut phase, "broken pipe");
+        assert!(matches!(phase, AgentPhase::Dead { .. }));
     }
 }

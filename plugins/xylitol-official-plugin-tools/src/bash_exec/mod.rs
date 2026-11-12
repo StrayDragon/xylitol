@@ -7,7 +7,7 @@ use crate::tools::accumulator::OutputAccumulator;
 use crate::tools::process::kill_tree;
 use crate::tools::truncate::DEFAULT_MAX_BYTES;
 use xylitol_plugin_sdk::ToolTimeout;
-use xylitol_plugin_sdk::{BashExecOpts, XyBashExecutor, XyBashResult};
+use xylitol_plugin_sdk::{BashExecOpts, BashOutcome, XyBashExecutor, XyBashResult};
 
 #[derive(Debug, Clone, Default)]
 pub struct InfraBashExecutor;
@@ -77,8 +77,7 @@ impl XyBashExecutor for InfraBashExecutor {
             return XyBashResult {
                 output: String::new(),
                 exit_code: None,
-                cancelled: true,
-                timed_out: false,
+                outcome: BashOutcome::Killed,
                 truncated: false,
                 full_output_path: None,
             };
@@ -104,8 +103,7 @@ impl XyBashExecutor for InfraBashExecutor {
                 return XyBashResult {
                     output: String::from("[failed to spawn shell]"),
                     exit_code: None,
-                    cancelled: false,
-                    timed_out: false,
+                    outcome: BashOutcome::Completed,
                     truncated: false,
                     full_output_path: None,
                 };
@@ -168,8 +166,13 @@ impl XyBashExecutor for InfraBashExecutor {
             } else {
                 exit_code
             },
-            cancelled,
-            timed_out,
+            outcome: if timed_out {
+                BashOutcome::TimedOut
+            } else if cancelled {
+                BashOutcome::Killed
+            } else {
+                BashOutcome::Completed
+            },
             truncated: snapshot.truncated,
             full_output_path: snapshot
                 .full_output_path
@@ -223,8 +226,7 @@ mod tests {
         let result = InfraBashExecutor::new()
             .execute("exit 7", BashExecOpts::default())
             .await;
-        assert!(!result.cancelled);
-        assert!(!result.timed_out);
+        assert!(matches!(result.outcome, BashOutcome::Completed));
         assert_eq!(result.exit_code, Some(7));
     }
 
@@ -268,8 +270,7 @@ mod tests {
                 },
             )
             .await;
-        assert!(result.cancelled);
-        assert!(!result.timed_out);
+        assert!(matches!(result.outcome, BashOutcome::Killed));
         assert_eq!(result.exit_code, None);
     }
 
@@ -286,8 +287,7 @@ mod tests {
                 },
             )
             .await;
-        assert!(result.timed_out);
-        assert!(!result.cancelled);
+        assert!(matches!(result.outcome, BashOutcome::TimedOut));
         assert_eq!(result.exit_code, None);
     }
 
@@ -296,8 +296,7 @@ mod tests {
         let result = InfraBashExecutor::new()
             .execute("sleep 2", BashExecOpts::default())
             .await;
-        assert!(!result.timed_out);
-        assert!(!result.cancelled);
+        assert!(matches!(result.outcome, BashOutcome::Completed));
         assert_eq!(result.exit_code, Some(0));
     }
 
@@ -323,7 +322,7 @@ mod tests {
                 },
             )
             .await;
-        assert!(!result.cancelled);
+        assert!(matches!(result.outcome, BashOutcome::Completed));
         let mut collected = Vec::new();
         while let Ok(chunk) = rx.try_recv() {
             collected.extend_from_slice(&chunk);

@@ -18,7 +18,9 @@ mod workflow;
 
 pub use ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 pub use automation::AutomationGateway;
-pub use bash::{BashChunk, BashExecOpts, BashOutputSink, XyBashExecutor, XyBashResult};
+pub use bash::{
+    BashChunk, BashExecOpts, BashOutcome, BashOutputSink, XyBashExecutor, XyBashResult,
+};
 pub use compaction::{
     NoopCompaction, OverflowCompactOutcome, XyCompaction, XyCompactionFactory,
     noop_compaction_factory, should_compact,

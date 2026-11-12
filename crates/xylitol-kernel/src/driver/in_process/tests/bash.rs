@@ -78,5 +78,8 @@ async fn sink_cancel_reaches_execute_bash_out_of_band() {
         .await
         .expect("bash run");
     let result = run.await.expect("bash result");
-    assert!(result.cancelled, "sink cancel must kill the run");
+    assert!(
+        matches!(result.outcome, xylitol_plugin_sdk::BashOutcome::Killed),
+        "sink cancel must kill the run"
+    );
 }

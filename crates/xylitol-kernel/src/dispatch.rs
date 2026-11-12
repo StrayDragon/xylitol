@@ -5,8 +5,8 @@ use crate::driver::{
     CommandInfo, LoadedResourcesSnapshot, ModelInfo, RuntimeReloadReport, SessionListEntry,
     SessionState,
 };
-use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
+use xylitol_plugin_sdk::{BashOutcome, XyBashResult};
 use xylitol_protocol::Command;
 
 #[async_trait]
@@ -87,7 +87,8 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
         DispatchOutcome::Bash(r) => json!({
             "output": r.output,
             "exit_code": r.exit_code,
-            "cancelled": r.cancelled,
+            "cancelled": matches!(r.outcome, BashOutcome::Killed),
+            "timed_out": matches!(r.outcome, BashOutcome::TimedOut),
             "truncated": r.truncated,
         }),
         DispatchOutcome::Compacted(did) => json!({ "compacted": did }),
@@ -429,8 +430,7 @@ mod tests {
             outcome_to_value(DispatchOutcome::Bash(xylitol_plugin_sdk::XyBashResult {
                 output: "ok".into(),
                 exit_code: Some(0),
-                cancelled: false,
-                timed_out: false,
+                outcome: BashOutcome::Completed,
                 truncated: false,
                 full_output_path: None,
             })),
@@ -438,6 +438,7 @@ mod tests {
                 "output": "ok",
                 "exit_code": 0,
                 "cancelled": false,
+                "timed_out": false,
                 "truncated": false,
             })
         );

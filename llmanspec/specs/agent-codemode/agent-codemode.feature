@@ -115,3 +115,7 @@
       假如 WASI_SDK_PATH 缺失
       当 构建 codemode 插件
       那么 构建失败并提示 WASI SDK 24
+
+  @req:r3347
+  规则: codemode-submission-isolation
+    run_code 每次提交的取消与超时 须 相互隔离：一个提交超时或取消 不得 中断仍在执行的并发提交；中断结果 须 可归因到具体提交。由单测覆盖。

@@ -243,7 +243,7 @@ fn search(
 
     let mut out = String::new();
     if index.partial() {
-        out.push_str("[index partial]\n");
+        out.push_str("[index partial: background scan still running]\n");
     }
     let mut emitted = 0;
     for m in &result.matches {

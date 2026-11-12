@@ -12,9 +12,9 @@ use tokio_util::sync::CancellationToken;
 use crate::dispatch::DispatchOutcome;
 use crate::host_client::json_rpc::{self, Downlink};
 use crate::host_client::{HostClient, HttpWsClient};
-use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::model::THINKING_OFF;
+use xylitol_plugin_sdk::{BashOutcome, XyBashResult};
 use xylitol_protocol::registry::{METHOD_HOST_DESCRIBE, METHOD_SESSION_DETACH, METHOD_SUBSCRIBE};
 use xylitol_protocol::{Command, Notification};
 use xylitol_wire::{WireEventError, event_from_wire};
@@ -1024,14 +1024,21 @@ where
                     .get("exit_code")
                     .and_then(|c| c.as_i64())
                     .map(|c| c as i32),
-                cancelled: data
-                    .get("cancelled")
-                    .and_then(|c| c.as_bool())
-                    .unwrap_or(false),
-                timed_out: data
+                outcome: if data
                     .get("timed_out")
                     .and_then(|c| c.as_bool())
-                    .unwrap_or(false),
+                    .unwrap_or(false)
+                {
+                    BashOutcome::TimedOut
+                } else if data
+                    .get("cancelled")
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false)
+                {
+                    BashOutcome::Killed
+                } else {
+                    BashOutcome::Completed
+                },
                 truncated: data
                     .get("truncated")
                     .and_then(|c| c.as_bool())

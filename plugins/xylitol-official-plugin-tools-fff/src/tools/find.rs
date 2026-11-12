@@ -180,7 +180,7 @@ fn search(
 
     let mut out = String::new();
     if index.partial() {
-        out.push_str("[index partial]\n");
+        out.push_str("[index partial: background scan still running]\n");
     }
     let mut emitted = 0;
 
@@ -196,6 +196,9 @@ fn search(
                 },
             );
             for item in result.items {
+                if abort.load(Ordering::Relaxed) {
+                    return Err(XyToolError::Aborted);
+                }
                 if emitted >= limit {
                     break;
                 }
@@ -315,5 +318,25 @@ mod tests {
             .await
             .expect_err("invalid regex");
         assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err}");
+    }
+
+    #[tokio::test]
+    async fn fuzzy_mode_honours_abort_signal() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_file(tmp.path(), "src/lib.rs", "");
+        write_file(tmp.path(), "src/main.rs", "");
+        let cache = IndexCache::new(false, Duration::from_secs(10));
+        let abort = Arc::new(AtomicBool::new(true));
+        let err = search(
+            &cache,
+            tmp.path(),
+            "lib",
+            None,
+            FffFindMode::Fuzzy,
+            10,
+            abort,
+        )
+        .expect_err("aborted fuzzy search");
+        assert!(matches!(err, XyToolError::Aborted), "{err}");
     }
 }

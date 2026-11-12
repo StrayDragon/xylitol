@@ -152,7 +152,7 @@ pub(crate) async fn t_att9_single_success_block(host_pump_bdd: &HostPumpBdd) {
 pub(crate) async fn w_att9_submit_cancelled(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_pump(host_pump_bdd);
     pump.driver.push_bash_result(XyBashResult {
-        cancelled: true,
+        outcome: xylitol_plugin_sdk::BashOutcome::Killed,
         ..Default::default()
     });
     put_pump(host_pump_bdd, pump);

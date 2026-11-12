@@ -87,3 +87,7 @@
     场景: 可选超时与缺失参数
       当 调用bash 不传命令参数
       那么 调用失败且返回 MissingArgument 错误码
+
+  @req:r3351
+  规则: bash-result-outcome
+    bash 结果 须 以显式结局枚举（完成 / 被终止 / 超时）表达；exit_code 语义单一（仅真实退出码，无退出码时为 None）。由单测覆盖。

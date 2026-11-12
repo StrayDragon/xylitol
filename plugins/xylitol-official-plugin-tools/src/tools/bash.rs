@@ -357,10 +357,10 @@ impl BashTool {
 
         let _ = forward.await;
 
-        if result.cancelled {
+        if matches!(result.outcome, xylitol_plugin_sdk::BashOutcome::Killed) {
             return Err(XyToolError::Aborted);
         }
-        if result.timed_out {
+        if matches!(result.outcome, xylitol_plugin_sdk::BashOutcome::TimedOut) {
             return Err(XyToolError::Timeout(
                 tool_timeout
                     .duration()

@@ -1247,9 +1247,9 @@ pub(crate) fn _t_ar10_bang_cancelled() {
             .as_ref()
             .expect("execute_bash ok");
         assert!(
-            result.cancelled,
-            "bang must be cancelled, got cancelled={}",
-            result.cancelled
+            matches!(result.outcome, xylitol_plugin_sdk::BashOutcome::Killed),
+            "bang must be killed, got outcome={:?}",
+            result.outcome
         );
     });
 }

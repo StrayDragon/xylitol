@@ -57,7 +57,7 @@ impl Plugin for LspPlugin {
         };
         let state = Arc::new(LspState {
             config: self.config.clone(),
-            agent: Mutex::new(None),
+            agent: Mutex::new(AgentPhase::NotStarted),
         });
         let tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> = vec![
             Arc::new(LspDiagnosticsTool {
@@ -81,7 +81,9 @@ impl Plugin for LspPlugin {
             for name in names {
                 cleanup_registries.tools.remove(&name);
             }
-            if let Some(agent) = state.agent.lock().await.take() {
+            if let AgentPhase::Running(agent) =
+                std::mem::replace(&mut *state.agent.lock().await, AgentPhase::NotStarted)
+            {
                 let _ = agent.shutdown().await;
             }
             Ok(())
@@ -90,33 +92,73 @@ impl Plugin for LspPlugin {
     }
 }
 
+enum AgentPhase {
+    NotStarted,
+    Running(AgentHandle),
+    Dead { reason: String },
+}
+
 struct LspState {
     config: LspPluginConfig,
-    agent: Mutex<Option<AgentHandle>>,
+    agent: Mutex<AgentPhase>,
+}
+
+fn is_transport_error(error: &anyhow::Error) -> bool {
+    if error
+        .chain()
+        .any(|cause| cause.downcast_ref::<std::io::Error>().is_some())
+    {
+        return true;
+    }
+    let text = error.to_string().to_ascii_lowercase();
+    [
+        "broken pipe",
+        "channel closed",
+        "connection closed",
+        "eof",
+        "not connected",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+fn mark_dead_on_transport(guard: &mut AgentPhase, error: &anyhow::Error) {
+    if is_transport_error(error) {
+        *guard = AgentPhase::Dead {
+            reason: error.to_string(),
+        };
+    }
 }
 
 async fn ensure_agent<'a>(
     state: &'a LspState,
-    guard: &'a mut Option<AgentHandle>,
+    guard: &'a mut AgentPhase,
     workspace: &str,
 ) -> Result<&'a mut AgentHandle, XyToolError> {
-    if guard.is_none() {
-        let workspace_root = state
-            .config
-            .workspace_root
-            .clone()
-            .unwrap_or_else(|| workspace.to_string());
-        let handle = AgentHandle::builder()
-            .backend(&state.config.backend)
-            .language(&state.config.language)
-            .enable_compression(state.config.compression)
-            .workspace_root(workspace_root)
-            .start()
-            .await
-            .map_err(XyToolError::ExecutionFailed)?;
-        *guard = Some(handle);
+    if let AgentPhase::Running(handle) = guard {
+        return Ok(handle);
     }
-    Ok(guard.as_mut().expect("agent initialized"))
+    if let AgentPhase::Dead { reason } = guard {
+        log::warn!("lsp agent was dead ({reason}); restarting on next request");
+    }
+    let workspace_root = state
+        .config
+        .workspace_root
+        .clone()
+        .unwrap_or_else(|| workspace.to_string());
+    let handle = AgentHandle::builder()
+        .backend(&state.config.backend)
+        .language(&state.config.language)
+        .enable_compression(state.config.compression)
+        .workspace_root(workspace_root)
+        .start()
+        .await
+        .map_err(XyToolError::ExecutionFailed)?;
+    *guard = AgentPhase::Running(handle);
+    Ok(match guard {
+        AgentPhase::Running(handle) => handle,
+        _ => unreachable!("agent initialized above"),
+    })
 }
 
 fn resolve_uri(
@@ -186,10 +228,14 @@ impl TypedTool for LspDiagnosticsTool {
         let uri = resolve_uri(args.uri.as_deref(), args.path.as_deref(), ctx)?;
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard, &ctx.workspace.to_string_lossy()).await?;
-        agent
-            .get_diagnostics(&uri)
-            .await
-            .map_err(XyToolError::ExecutionFailed)
+        let result = agent.get_diagnostics(&uri).await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport(&mut guard, &error);
+                Err(XyToolError::ExecutionFailed(error))
+            }
+        }
     }
 }
 
@@ -217,10 +263,14 @@ impl TypedTool for LspSymbolsTool {
         let uri = resolve_uri(args.uri.as_deref(), args.path.as_deref(), ctx)?;
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard, &ctx.workspace.to_string_lossy()).await?;
-        agent
-            .get_symbols(&uri)
-            .await
-            .map_err(XyToolError::ExecutionFailed)
+        let result = agent.get_symbols(&uri).await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport(&mut guard, &error);
+                Err(XyToolError::ExecutionFailed(error))
+            }
+        }
     }
 }
 
@@ -252,10 +302,14 @@ impl TypedTool for LspHoverTool {
         let uri = resolve_uri(args.uri.as_deref(), args.path.as_deref(), ctx)?;
         let mut guard = self.state.agent.lock().await;
         let agent = ensure_agent(&self.state, &mut guard, &ctx.workspace.to_string_lossy()).await?;
-        agent
-            .get_hover(&uri, args.line, args.character)
-            .await
-            .map_err(XyToolError::ExecutionFailed)
+        let result = agent.get_hover(&uri, args.line, args.character).await;
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                mark_dead_on_transport(&mut guard, &error);
+                Err(XyToolError::ExecutionFailed(error))
+            }
+        }
     }
 }
 
@@ -311,7 +365,7 @@ mod tests {
         };
         let state = Arc::new(LspState {
             config,
-            agent: Mutex::new(None),
+            agent: Mutex::new(AgentPhase::NotStarted),
         });
         let tool = LspDiagnosticsTool { state };
         let ctx = XyToolCtx::new("test").with_workspace(dir.path());
@@ -332,5 +386,18 @@ mod tests {
             result.contains("undefined_name") || result.contains("reportUndefinedVariable"),
             "{result}"
         );
+    }
+
+    #[test]
+    fn transport_errors_mark_the_agent_dead() {
+        assert!(is_transport_error(&anyhow::anyhow!(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "pipe"
+        ))));
+        assert!(is_transport_error(&anyhow::anyhow!("channel closed")));
+        assert!(!is_transport_error(&anyhow::anyhow!("file not found")));
+        let mut phase = AgentPhase::NotStarted;
+        mark_dead_on_transport(&mut phase, &anyhow::anyhow!("broken pipe"));
+        assert!(matches!(phase, AgentPhase::Dead { .. }));
     }
 }
