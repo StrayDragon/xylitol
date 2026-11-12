@@ -170,3 +170,17 @@ fn f7_unfocus_target_while_blocked() {
     assert_eq!(*editor_log.lock().unwrap(), vec!['e']);
     assert!(overlay_log.lock().unwrap().is_empty());
 }
+
+#[test]
+fn hidden_overlay_is_not_focusable() {
+    let (mut tui, _editor_log) = tui_with_editor();
+    let (overlay, _overlay_log) = Recorder::new("OVL");
+    let handle = tui.show_overlay(Box::new(overlay), OverlayOptions::default());
+    assert!(handle.is_focused(&tui));
+    handle.set_hidden(&mut tui, true);
+    handle.focus(&mut tui);
+    assert!(
+        !handle.is_focused(&tui),
+        "hidden overlay MUST NOT be focusable"
+    );
+}

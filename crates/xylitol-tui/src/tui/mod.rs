@@ -12,7 +12,7 @@ mod diff;
 mod overlay;
 mod render;
 
-use overlay::{BlockedResume, OverlayFocusRestore, OverlayFocusRestorePolicy, OverlayStackEntry};
+use overlay::{FocusState, OverlayFocusRestorePolicy, OverlayStackEntry};
 use render::{FORCE_SIZE_SENTINEL, MIN_RENDER_INTERVAL_MS};
 
 pub use overlay::{
@@ -144,9 +144,7 @@ pub struct TUI<T: Terminal> {
     previous_width: usize,
     previous_height: usize,
     previous_viewport_top: usize,
-    focused_index: Option<usize>,
-    focused_overlay_id: Option<u64>,
-    overlay_focus_restore: OverlayFocusRestore,
+    focus: FocusState,
     stopped: bool,
     cursor_row: usize,
     hardware_cursor_row: usize,
@@ -193,9 +191,7 @@ impl<T: Terminal> TUI<T> {
             previous_width: 0,
             previous_height: 0,
             previous_viewport_top: 0,
-            focused_index: None,
-            focused_overlay_id: None,
-            overlay_focus_restore: OverlayFocusRestore::Inactive,
+            focus: FocusState::default(),
             stopped: false,
             cursor_row: 0,
             hardware_cursor_row: 0,
@@ -941,11 +937,11 @@ impl<T: Terminal> TUI<T> {
                 return InputReaction::None;
             }
             if matches!(mouse.kind, MouseEventKind::Moved) {
-                let wants_motion = self.focused_index.is_some_and(|idx| {
+                let wants_motion = self.focus.root.is_some_and(|idx| {
                     self.components
                         .get(idx)
                         .is_some_and(|c| c.wants_pointer_motion())
-                }) || self.focused_overlay_id.is_some_and(|oid| {
+                }) || self.focus.overlay.is_some_and(|oid| {
                     self.overlay_index(oid)
                         .is_some_and(|i| self.overlays[i].0.wants_pointer_motion())
                 });
@@ -977,49 +973,7 @@ impl<T: Terminal> TUI<T> {
             }
         }
 
-        if let Some(overlay_id) = self.focused_overlay_id
-            && let Some(index) = self.overlay_index(overlay_id)
-            && !self.is_overlay_entry_visible(&self.overlays[index].2)
-        {
-            let pre_focus = self.overlays[index].2.pre_focus;
-            if let Some(top) = self.topmost_visible_capturing_overlay_id() {
-                self.set_focus_internal(
-                    Some(FocusTarget::Overlay(top)),
-                    OverlayFocusRestorePolicy::Clear,
-                );
-            } else {
-                self.set_focus_internal(pre_focus, OverlayFocusRestorePolicy::Preserve);
-            }
-        }
-
-        let focus_is_overlay = matches!(self.current_focus_target(), Some(FocusTarget::Overlay(_)));
-        if !focus_is_overlay {
-            match self.get_visible_overlay_focus_restore() {
-                OverlayFocusRestore::Eligible { overlay_id } => {
-                    self.set_focus_internal(
-                        Some(FocusTarget::Overlay(overlay_id)),
-                        OverlayFocusRestorePolicy::Clear,
-                    );
-                }
-                OverlayFocusRestore::Blocked {
-                    overlay_id,
-                    blocked_by,
-                    resume,
-                } if self.current_focus_target() != Some(blocked_by) => match resume {
-                    BlockedResume::RestoreOverlay => {
-                        self.set_focus_internal(
-                            Some(FocusTarget::Overlay(overlay_id)),
-                            OverlayFocusRestorePolicy::Clear,
-                        );
-                    }
-                    BlockedResume::FocusTarget(target) => {
-                        self.clear_overlay_focus_restore();
-                        self.set_focus_internal(target, OverlayFocusRestorePolicy::Clear);
-                    }
-                },
-                _ => {}
-            }
-        }
+        self.reconcile_focus();
 
         if matches!(event, InputEvent::Mouse(_))
             && let Some(wants) = self.offer_pointer_tree(&event)
@@ -1031,7 +985,7 @@ impl<T: Terminal> TUI<T> {
             return InputReaction::rerender_if(paint);
         }
 
-        if let Some(overlay_id) = self.focused_overlay_id
+        if let Some(overlay_id) = self.focus.overlay
             && let Some(index) = self.overlay_index(overlay_id)
             && !self.overlays[index].2.hidden
         {
@@ -1045,7 +999,7 @@ impl<T: Terminal> TUI<T> {
             }
             return InputReaction::rerender_if(paint);
         }
-        if let Some(idx) = self.focused_index
+        if let Some(idx) = self.focus.root
             && idx < self.components.len()
         {
             self.components[idx].handle_input(event.clone());
@@ -1065,12 +1019,12 @@ impl<T: Terminal> TUI<T> {
     }
 
     fn clear_focused_pointer_selection(&mut self) -> bool {
-        if let Some(overlay_id) = self.focused_overlay_id
+        if let Some(overlay_id) = self.focus.overlay
             && let Some(index) = self.overlay_index(overlay_id)
         {
             return self.overlays[index].0.clear_pointer_selection();
         }
-        if let Some(idx) = self.focused_index
+        if let Some(idx) = self.focus.root
             && let Some(component) = self.components.get_mut(idx)
         {
             return component.clear_pointer_selection();
@@ -1122,12 +1076,13 @@ impl<T: Terminal> TUI<T> {
         match key.kind {
             KeyEventKind::Press | KeyEventKind::Repeat => true,
             KeyEventKind::Release => {
-                if let Some(overlay_id) = self.focused_overlay_id
+                if let Some(overlay_id) = self.focus.overlay
                     && let Some(index) = self.overlay_index(overlay_id)
                 {
                     return self.overlays[index].0.wants_key_release();
                 }
-                self.focused_index
+                self.focus
+                    .root
                     .and_then(|idx| self.components.get(idx))
                     .is_some_and(|component| component.wants_key_release())
             }

@@ -212,10 +212,29 @@ struct QuestionState {
     other_text: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChoiceTab {
+    Question(usize),
+    Review,
+}
+
+impl ChoiceTab {
+    fn question_index(self) -> Option<usize> {
+        match self {
+            Self::Question(i) => Some(i),
+            Self::Review => None,
+        }
+    }
+
+    fn is_review(self) -> bool {
+        matches!(self, Self::Review)
+    }
+}
+
 pub struct ChoicePrompt {
     questions: Vec<ChoiceQuestion>,
     theme: ChoicePromptTheme,
-    tab: usize,
+    tab: ChoiceTab,
     cursor: usize,
     other_focused: bool,
     other_input: Input,
@@ -248,7 +267,7 @@ impl ChoicePrompt {
         Self {
             questions,
             theme,
-            tab: 0,
+            tab: ChoiceTab::Question(0),
             cursor: 0,
             other_focused: false,
             other_input: Input::new(),
@@ -290,11 +309,17 @@ impl ChoicePrompt {
     }
 
     fn on_submit_tab(&self) -> bool {
-        self.is_multi_questionnaire() && self.tab >= self.questions.len()
+        self.is_multi_questionnaire() && self.tab.is_review()
+    }
+
+    fn tab_pos(&self) -> usize {
+        self.tab.question_index().unwrap_or(self.questions.len())
     }
 
     fn current_question(&self) -> Option<&ChoiceQuestion> {
-        self.questions.get(self.tab)
+        self.tab
+            .question_index()
+            .and_then(|i| self.questions.get(i))
     }
 
     fn row_count(&self, q: &ChoiceQuestion) -> usize {
@@ -347,7 +372,9 @@ impl ChoicePrompt {
     fn blur_other(&mut self) {
         if self.other_focused {
             let text = self.other_input.value().to_string();
-            if let Some(st) = self.states.get_mut(self.tab) {
+            if let Some(i) = self.tab.question_index()
+                && let Some(st) = self.states.get_mut(i)
+            {
                 st.other_text = text;
             }
             self.other_focused = false;
@@ -363,8 +390,9 @@ impl ChoicePrompt {
         }
         self.cursor = q.options.len();
         let existing = self
-            .states
-            .get(self.tab)
+            .tab
+            .question_index()
+            .and_then(|i| self.states.get(i))
             .map(|s| s.other_text.clone())
             .unwrap_or_default();
         self.other_input = Input::new();
@@ -375,10 +403,13 @@ impl ChoicePrompt {
     }
 
     fn save_current_answer(&mut self) -> bool {
-        let Some(q) = self.questions.get(self.tab).cloned() else {
+        let Some(index) = self.tab.question_index() else {
             return false;
         };
-        let st = &self.states[self.tab];
+        let Some(q) = self.questions.get(index).cloned() else {
+            return false;
+        };
+        let st = &self.states[index];
         let mut values = Vec::new();
         let mut labels = Vec::new();
         let mut was_custom = false;
@@ -444,13 +475,14 @@ impl ChoicePrompt {
             self.finish(false);
             return;
         }
-        if self.tab + 1 < self.questions.len() {
-            self.tab += 1;
-            self.cursor = 0;
+        if let ChoiceTab::Question(i) = self.tab
+            && i + 1 < self.questions.len()
+        {
+            self.tab = ChoiceTab::Question(i + 1);
         } else {
-            self.tab = self.questions.len();
-            self.cursor = 0;
+            self.tab = ChoiceTab::Review;
         }
+        self.cursor = 0;
     }
 
     fn fit(line: &str, width: usize) -> String {
@@ -589,7 +621,7 @@ impl Component for ChoicePrompt {
                 };
                 let check = if answered { " ✓" } else { "" };
                 let label = format!("{}{}{}", q.label, mode_tag, check);
-                let painted = if i == self.tab {
+                let painted = if self.tab == ChoiceTab::Question(i) {
                     (self.theme.tab_active)(&label)
                 } else if answered {
                     (self.theme.normal)(&label)
@@ -646,6 +678,9 @@ impl Component for ChoicePrompt {
         let Some(q) = self.current_question() else {
             return self.with_rail(lines, outer_w);
         };
+        let Some(tab_index) = self.tab.question_index() else {
+            return self.with_rail(lines, outer_w);
+        };
         let mode = q.mode;
         let allow_other = q.allow_other;
         let options = q.options.clone();
@@ -655,7 +690,7 @@ impl Component for ChoicePrompt {
             ChoiceMode::Multi => "多选",
         };
         let progress = if self.is_multi_questionnaire() {
-            format!("{} / {}  · ", self.tab + 1, self.questions.len())
+            format!("{} / {}  · ", self.tab_pos() + 1, self.questions.len())
         } else {
             String::new()
         };
@@ -703,7 +738,7 @@ impl Component for ChoicePrompt {
         let mut focus_desc: Option<String> = None;
         for (i, opt) in options.iter().enumerate() {
             let selected = self.cursor == i;
-            let checked = self.states[self.tab]
+            let checked = self.states[tab_index]
                 .checked
                 .get(i)
                 .copied()
@@ -733,7 +768,7 @@ impl Component for ChoicePrompt {
         if allow_other {
             let other_i = options.len();
             let selected = self.cursor == other_i;
-            let has = !self.states[self.tab].other_text.trim().is_empty()
+            let has = !self.states[tab_index].other_text.trim().is_empty()
                 || (self.other_focused && !self.other_input.value().trim().is_empty());
             let body = match mode {
                 ChoiceMode::Single => {
@@ -763,9 +798,9 @@ impl Component for ChoicePrompt {
                     left_lines.push(Self::fit(&format!("    {line}"), left_w));
                     self.option_map.push(None);
                 }
-            } else if !self.states[self.tab].other_text.is_empty() {
+            } else if !self.states[tab_index].other_text.is_empty() {
                 left_lines.push(Self::fit(
-                    &(self.theme.muted)(&format!("    > {}", self.states[self.tab].other_text)),
+                    &(self.theme.muted)(&format!("    > {}", self.states[tab_index].other_text)),
                     left_w,
                 ));
                 self.option_map.push(None);
@@ -851,9 +886,10 @@ impl Component for ChoicePrompt {
                 return;
             }
             if confirm {
-                if let Some(q) = self.questions.get(self.tab) {
+                let tab_index = self.tab.question_index();
+                if let Some(q) = tab_index.and_then(|i| self.questions.get(i)) {
                     let text = self.other_input.value().to_string();
-                    if let Some(st) = self.states.get_mut(self.tab) {
+                    if let Some(st) = tab_index.and_then(|i| self.states.get_mut(i)) {
                         st.other_text = text;
                         if q.mode == ChoiceMode::Single {
                             st.single_idx = q.options.len();
@@ -883,7 +919,7 @@ impl Component for ChoicePrompt {
                 }
             } else if left || up {
                 self.skip_confirm_pending = false;
-                self.tab = self.questions.len().saturating_sub(1);
+                self.tab = ChoiceTab::Question(self.questions.len().saturating_sub(1));
                 self.cursor = 0;
             }
             return;
@@ -892,11 +928,16 @@ impl Component for ChoicePrompt {
         if self.is_multi_questionnaire() && (left || right) {
             self.skip_confirm_pending = false;
             let max = self.questions.len();
-            if right {
-                self.tab = (self.tab + 1).min(max);
+            let pos = if right {
+                (self.tab_pos() + 1).min(max)
             } else {
-                self.tab = self.tab.saturating_sub(1);
-            }
+                self.tab_pos().saturating_sub(1)
+            };
+            self.tab = if pos < max {
+                ChoiceTab::Question(pos)
+            } else {
+                ChoiceTab::Review
+            };
             self.cursor = 0;
             self.clamp_cursor();
             return;
@@ -929,14 +970,17 @@ impl Component for ChoicePrompt {
         }
 
         if is_space {
-            let Some(q) = self.questions.get(self.tab).cloned() else {
+            let Some(tab_index) = self.tab.question_index() else {
+                return;
+            };
+            let Some(q) = self.questions.get(tab_index).cloned() else {
                 return;
             };
             if q.mode != ChoiceMode::Multi {
                 return;
             }
             if self.cursor < q.options.len() {
-                if let Some(st) = self.states.get_mut(self.tab)
+                if let Some(st) = self.states.get_mut(tab_index)
                     && let Some(slot) = st.checked.get_mut(self.cursor)
                 {
                     *slot = !*slot;
@@ -948,7 +992,10 @@ impl Component for ChoicePrompt {
         }
 
         if confirm {
-            let Some(q) = self.questions.get(self.tab).cloned() else {
+            let Some(tab_index) = self.tab.question_index() else {
+                return;
+            };
+            let Some(q) = self.questions.get(tab_index).cloned() else {
                 return;
             };
             match q.mode {
@@ -957,7 +1004,7 @@ impl Component for ChoicePrompt {
                         self.focus_other();
                         return;
                     }
-                    if let Some(st) = self.states.get_mut(self.tab) {
+                    if let Some(st) = self.states.get_mut(tab_index) {
                         st.single_idx = self.cursor;
                     }
                     if self.save_current_answer() {
@@ -966,7 +1013,7 @@ impl Component for ChoicePrompt {
                 }
                 ChoiceMode::Multi => {
                     if Some(self.cursor) == self.other_row(&q)
-                        && self.states[self.tab].other_text.trim().is_empty()
+                        && self.states[tab_index].other_text.trim().is_empty()
                     {
                         self.focus_other();
                         return;
@@ -1429,5 +1476,43 @@ mod tests {
             Some(1),
             "Beta row follows the description row"
         );
+    }
+
+    #[test]
+    fn review_tab_is_explicit_and_reversible() {
+        let second = ChoiceQuestion {
+            id: "q2".into(),
+            label: "Next".into(),
+            prompt: "What next?".into(),
+            mode: ChoiceMode::Single,
+            options: vec![ChoiceOption::new("yes", "Yes")],
+            allow_other: false,
+        };
+        let mut p = ChoicePrompt::new(
+            vec![sample_single(), second],
+            ChoicePromptTheme::default(),
+            |_| {},
+        );
+        assert_eq!(p.tab, ChoiceTab::Question(0));
+        p.handle_input(key(KeyCode::Right));
+        assert_eq!(p.tab, ChoiceTab::Question(1));
+        p.handle_input(key(KeyCode::Right));
+        assert_eq!(p.tab, ChoiceTab::Review);
+        assert!(p.on_submit_tab());
+        p.handle_input(key(KeyCode::Left));
+        assert_eq!(p.tab, ChoiceTab::Question(1));
+        assert!(!p.on_submit_tab());
+    }
+
+    #[test]
+    fn single_question_never_encodes_review() {
+        let mut p = ChoicePrompt::new(vec![sample_single()], ChoicePromptTheme::default(), |_| {});
+        p.handle_input(key(KeyCode::Right));
+        assert_eq!(
+            p.tab,
+            ChoiceTab::Question(0),
+            "single question MUST NOT move to an out-of-range tab"
+        );
+        assert!(!p.on_submit_tab());
     }
 }

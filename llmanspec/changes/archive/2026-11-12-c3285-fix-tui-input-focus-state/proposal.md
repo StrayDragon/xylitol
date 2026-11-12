@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix TUI engine pointer, selection and focus state"
+branch: sdd/c3285-fix-tui-input-focus-state
+base_branch: main
+base_sha: 9860ebe0de218aa0e65d5809657397c0fd9a946d
 ---
 
 # TUI 引擎输入 / 选区 / 焦点状态修复

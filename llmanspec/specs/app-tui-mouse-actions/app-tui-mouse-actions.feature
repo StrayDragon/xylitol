@@ -98,3 +98,11 @@
       假如 详情视口已向下滚动
       当 左键点击 gutter 顶行
       那么 滚动位置归零
+
+  @req:r3336
+  规则: pointer-capture-reclaim
+    指针捕获闩 须 在丢失 Up 后仍可回收：新 Down 距闩建立超过阈值 须 先回收再按未捕获处理；相位改写 须 清 pending_click；Up 须 清 down_cell 与 dragged。由单测覆盖。
+
+  @req:r3337
+  规则: gutter-drag-reset
+    gutter 拖拽 须 在新 Down 与指针移出 gutter 列时复位 grab；不得 因丢失 Up 残留拖拽态。由单测覆盖。

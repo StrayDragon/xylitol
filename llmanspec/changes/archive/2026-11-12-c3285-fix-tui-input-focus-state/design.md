@@ -10,7 +10,7 @@
 | 决策 | 内容 | 状态 |
 |---|---|---|
 | 指针相位 | 不新建单枚举 PointerPhase：点击策略 PointerClickPhase（app 每帧 set_phase，外部）与捕获闩 capture: Option<Instant>（内部手势）正交两轴；capture 超 750ms 遇新 Down 回收；set_phase 变更清 pending_click；Down 重置 dragged/down_cell，Up 清二者 | 定稿（修正：单枚举会要求 app 驱动捕获态并改点击吞噬语义） |
-| 选区合一 | 抽取 SelectionCore<P>（anchor/focus/dragging/granularity/click_count/last_click）泛型状态机；引擎 SelectionController 与 editor EditorSelection 均持有 core（editor 为薄包装：usize 坐标 + LayoutLine 词/行展开）；dock clamp 与 auto-scroll 仍为引擎配置 | 定稿（Open Q1 取「editor 薄包装」：坐标空间不同，强行并入引擎需坐标抽象且无行为收益） |
+| 选区合一 | 抽取 SelectionCore（anchor/focus/dragging/granularity/click_count/last_click 单一状态机；点击计数以 usize 行列为准，引擎 u16 转换）；引擎 SelectionController 与 editor EditorSelection 均持有 core（editor 为薄包装：usize 坐标 + LayoutLine 词/行展开）；dock clamp 与 auto-scroll 仍为引擎配置 | 定稿（Open Q1 取「editor 薄包装」：坐标空间不同，强行并入引擎需坐标抽象且无行为收益） |
 | 焦点合一 | FocusState { root: Option<usize>, overlay: Option<u64>, restore: OverlayFocusRestore } 单字段；dispatch 的对账改为 FocusState 单一方法（保留入口，消除散写） | 定稿（复核：hidden 不可聚焦已由 focus_overlay/hide/set_hidden 过滤，缺显式不变量测试） |
 | ChoicePrompt | ChoiceTab { Question(usize), Review } 枚举；states 索引只取 Question；消灭 tab==len 越界编码 | 定稿 |
 | overlay 可见性 | 显式不变量：focus_overlay 对 hidden 直接返回（已有）+ 单测；last_screen_rect 不引入帧号（复核：rect 仅在渲染时写入，未渲染为 None；屏上矩形即命中真值） | 定稿（修正：帧号校验无必要） |
@@ -22,7 +22,7 @@
 
 ## 4. 选区结构
 
-SelectionCore<P> 方法：clear / has_selection / bounds / update_click_count / begin(anchor,focus) / drag_to(focus) / end。引擎 controller 持 core<CellPoint> + auto_scroll/hit_priority/copy_on_release；editor 持 core<(usize,usize)> + 行内展开（expand_editor_range）。两处点击计数语义（400ms 同格）只在 core 实现一份。
+SelectionCore 方法：clear / is_dragging / has_selection / bounds / update_click_count。引擎 controller 持 core + auto_scroll/hit_priority/copy_on_release；editor 持 core + 行内展开（expand_editor_range）。两处点击计数语义（400ms 同格）只在 core 实现一份（usize 行列；引擎在 update_click_count 转换）。
 
 ## 5. 测试边界（seam）
 

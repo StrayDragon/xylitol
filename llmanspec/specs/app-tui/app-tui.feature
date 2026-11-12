@@ -42,3 +42,7 @@
       那么 编辑器插入落盘路径文本且路径经 Driver 暂存
       当 以主机泵注入含连接态的资源快照后提交 "/mcp"
       那么 MCP 面板槽打开且列出连接态且未因开面板 abort agent
+
+  @req:r3338
+  规则: overlay-focus-single-truth
+    overlay 焦点 须 由单一状态对象承载（root 焦点 / overlay 焦点 / 恢复态）；hidden overlay 不得被聚焦；对账入口 须 单点，不得 散写三字段。由单测覆盖。

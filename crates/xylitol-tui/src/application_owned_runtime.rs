@@ -300,7 +300,17 @@ impl ApplicationOwnedRuntime {
             let gutter_col = self.content_right(term_cols as usize) as u16;
             let on_track =
                 event.column == gutter_col && (event.row as usize) < transcript_h as usize;
+            if event.kind == MouseEventKind::Down(MouseButton::Left) {
+                self.gutter_drag_grab = None;
+            }
             let dragging = self.gutter_drag_grab.is_some();
+            if dragging
+                && matches!(event.kind, MouseEventKind::Drag(_) | MouseEventKind::Moved)
+                && !on_track
+            {
+                self.gutter_drag_grab = None;
+                return false;
+            }
             if event.kind == MouseEventKind::Up(MouseButton::Left) && dragging {
                 self.gutter_drag_grab = None;
             } else if on_track || dragging {

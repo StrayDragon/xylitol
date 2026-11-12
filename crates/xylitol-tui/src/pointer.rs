@@ -1,5 +1,9 @@
+use std::time::{Duration, Instant};
+
 use crate::utils::ansi_escape_len;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+const CAPTURE_STALE: Duration = Duration::from_millis(750);
 use unicode_width::UnicodeWidthChar;
 
 pub type HitId = u64;
@@ -297,7 +301,7 @@ pub struct PointerPipeline {
     hover_id: Option<HitId>,
     last_cell: Option<(u16, u16)>,
     pending_click: Option<HitId>,
-    capture_latch: bool,
+    capture: Option<Instant>,
     down_cell: Option<(u16, u16)>,
     dragged: bool,
 }
@@ -336,6 +340,7 @@ impl PointerPipeline {
 
     pub fn set_phase(&mut self, phase: PointerClickPhase) {
         self.phase = phase;
+        self.pending_click = None;
     }
 
     #[must_use]
@@ -396,7 +401,7 @@ impl PointerPipeline {
 
     #[must_use]
     pub fn capture_latched(&self) -> bool {
-        self.capture_latch
+        self.capture.is_some()
     }
 
     #[must_use]
@@ -412,8 +417,9 @@ impl PointerPipeline {
         col: u16,
         row: u16,
         overlay_capturing: bool,
+        dragged: bool,
     ) {
-        if let Some(id) = self.chrome_click_id(hit, down, col, row, overlay_capturing) {
+        if let Some(id) = self.chrome_click_id(hit, down, col, row, overlay_capturing, dragged) {
             self.pending_click = Some(id);
         }
     }
@@ -425,8 +431,9 @@ impl PointerPipeline {
         col: u16,
         row: u16,
         overlay_capturing: bool,
+        dragged: bool,
     ) -> Option<HitId> {
-        if overlay_capturing || down != Some((col, row)) || self.dragged {
+        if overlay_capturing || down != Some((col, row)) || dragged {
             return None;
         }
         let id = hit?;
@@ -461,7 +468,13 @@ impl PointerPipeline {
             MouseEventKind::Down(MouseButton::Left) => {
                 self.down_cell = Some((col, row));
                 self.dragged = false;
-                if self.capture_latch {
+                if self
+                    .capture
+                    .is_some_and(|since| since.elapsed() >= CAPTURE_STALE)
+                {
+                    self.capture = None;
+                }
+                if self.capture.is_some() {
                     return PointerOutcome {
                         skip_selection: true,
                         consume: !view.overlay_capturing,
@@ -469,7 +482,7 @@ impl PointerPipeline {
                     };
                 }
                 if view.overlay_capturing || capturing_region {
-                    self.capture_latch = true;
+                    self.capture = Some(Instant::now());
                     return PointerOutcome {
                         skip_selection: true,
                         consume: capturing_region && !view.overlay_capturing,
@@ -494,7 +507,7 @@ impl PointerPipeline {
                 {
                     self.dragged = true;
                 }
-                if self.capture_latch {
+                if self.capture.is_some() {
                     return PointerOutcome {
                         skip_selection: true,
                         consume: !view.overlay_capturing,
@@ -504,16 +517,19 @@ impl PointerPipeline {
                 PointerOutcome::default()
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                let was_capture = self.capture_latch;
-                self.capture_latch = false;
+                let was_capture = self.capture.take().is_some();
                 let down = self.down_cell.take();
-                if let Some(cell) = down
-                    && cell != (col, row)
-                {
-                    self.dragged = true;
-                }
+                let dragged_now = self.dragged || down.is_some_and(|cell| cell != (col, row));
+                self.dragged = false;
                 if was_capture {
-                    self.latch_chrome_click(hit, down, col, row, view.overlay_capturing);
+                    self.latch_chrome_click(
+                        hit,
+                        down,
+                        col,
+                        row,
+                        view.overlay_capturing,
+                        dragged_now,
+                    );
                     return PointerOutcome {
                         skip_selection: true,
                         consume: !view.overlay_capturing,
@@ -521,7 +537,7 @@ impl PointerPipeline {
                     };
                 }
                 if self.phase == PointerClickPhase::UpIfEmptySelection
-                    && !self.dragged
+                    && !dragged_now
                     && let Some(id) = hit
                 {
                     self.pending_click = Some(id);
@@ -1256,5 +1272,67 @@ mod tests {
             None,
             "a different screen row must miss"
         );
+    }
+
+    #[test]
+    fn stale_capture_is_reclaimed_on_new_down() {
+        let mut pipe = PointerPipeline::default();
+        pipe.regions_mut()
+            .push(HitRegion::new(4, 0, 0, 6).capturing());
+        let down = pipe.on_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 1, 0),
+            view(0),
+        );
+        assert!(down.skip_selection);
+        assert!(pipe.capture_latched());
+        pipe.capture = Some(Instant::now() - CAPTURE_STALE - Duration::from_millis(1));
+        let retry = pipe.on_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 20, 5),
+            view(0),
+        );
+        assert!(
+            !retry.skip_selection,
+            "a lost Up MUST NOT swallow later clicks forever"
+        );
+        assert!(!pipe.capture_latched());
+    }
+
+    #[test]
+    fn set_phase_clears_pending_click() {
+        let mut pipe = PointerPipeline::default();
+        pipe.set_phase(PointerClickPhase::DownSwallow);
+        pipe.regions_mut()
+            .push(Hit::at_cell(9, 1, 0).cols(0, 6).into_region());
+        let down = pipe.on_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 1, 0),
+            view(0),
+        );
+        assert!(down.skip_selection);
+        assert_eq!(pipe.peek_click(), Some(9));
+        pipe.set_phase(PointerClickPhase::UpIfEmptySelection);
+        assert_eq!(
+            pipe.take_click(),
+            None,
+            "phase rewrite MUST drop the stale pending click"
+        );
+    }
+
+    #[test]
+    fn up_clears_down_cell_and_drag_state() {
+        let mut pipe = PointerPipeline::default();
+        pipe.regions_mut()
+            .push(HitRegion::new(4, 0, 0, 6).capturing());
+        let _ = pipe.on_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 1, 0),
+            view(0),
+        );
+        let _ = pipe.on_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 5, 1),
+            view(0),
+        );
+        assert!(pipe.dragged);
+        let _ = pipe.on_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 5, 1), view(0));
+        assert!(!pipe.dragged);
+        assert!(pipe.down_cell.is_none());
     }
 }

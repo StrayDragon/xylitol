@@ -1,68 +1,31 @@
 use super::types::LayoutLine;
-use crate::selection::{CellPoint, ClipboardSink, SelectionGranularity, format_osc52};
+use crate::selection::{
+    CellPoint, ClipboardSink, SelectionCore, SelectionGranularity, format_osc52,
+};
 use crate::utils::visible_width;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use unicode_segmentation::UnicodeSegmentation;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(super) struct EditorSelection {
-    pub(super) anchor: Option<CellPoint>,
-    pub(super) focus: Option<CellPoint>,
-    pub(super) dragging: bool,
-    pub(super) granularity: SelectionGranularity,
-    pub(super) click_count: u8,
-    pub(super) last_click_at: Option<std::time::Instant>,
-    pub(super) last_click_cell: Option<(usize, usize)>,
-}
-
-impl Default for EditorSelection {
-    fn default() -> Self {
-        Self {
-            anchor: None,
-            focus: None,
-            dragging: false,
-            granularity: SelectionGranularity::Character,
-            click_count: 0,
-            last_click_at: None,
-            last_click_cell: None,
-        }
-    }
+    pub(super) core: SelectionCore,
 }
 
 impl EditorSelection {
     pub(super) fn clear(&mut self) {
-        self.anchor = None;
-        self.focus = None;
-        self.dragging = false;
-        self.granularity = SelectionGranularity::Character;
+        self.core.clear();
     }
 
     pub(super) fn has_selection(&self) -> bool {
-        match (self.anchor, self.focus) {
-            (Some(a), Some(f)) => a != f,
-            _ => false,
-        }
+        self.core.has_selection()
     }
 
     pub(super) fn bounds(&self) -> Option<(CellPoint, CellPoint)> {
-        let a = self.anchor?;
-        let f = self.focus?;
-        Some(ordered_cell(a, f))
+        self.core.bounds()
     }
 
     pub(super) fn update_click_count(&mut self, col: usize, row: usize) {
-        let now = std::time::Instant::now();
-        let same = self.last_click_cell == Some((col, row));
-        let quick = self
-            .last_click_at
-            .is_some_and(|t| now.duration_since(t).as_millis() < 400);
-        if same && quick {
-            self.click_count = self.click_count.saturating_add(1).min(3);
-        } else {
-            self.click_count = 1;
-        }
-        self.last_click_at = Some(now);
-        self.last_click_cell = Some((col, row));
+        self.core.update_click_count(col, row);
     }
 }
 
@@ -158,20 +121,24 @@ impl super::Editor {
                     return false;
                 };
                 self.selection.update_click_count(col, row);
-                self.selection.granularity = match self.selection.click_count {
+                self.selection.core.granularity = match self.selection.core.click_count {
                     2 => SelectionGranularity::Word,
                     3.. => SelectionGranularity::Line,
                     _ => SelectionGranularity::Character,
                 };
-                let (a, f) =
-                    expand_editor_range(cell, cell, self.selection.granularity, &self.state.lines);
-                self.selection.anchor = Some(a);
-                self.selection.focus = Some(f);
-                self.selection.dragging = true;
+                let (a, f) = expand_editor_range(
+                    cell,
+                    cell,
+                    self.selection.core.granularity,
+                    &self.state.lines,
+                );
+                self.selection.core.anchor = Some(a);
+                self.selection.core.focus = Some(f);
+                self.selection.core.dragging = true;
                 true
             }
             MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Moved => {
-                if !self.selection.dragging {
+                if !self.selection.core.dragging {
                     return false;
                 }
                 let cell = self
@@ -184,10 +151,10 @@ impl super::Editor {
                 false
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                if !self.selection.dragging {
+                if !self.selection.core.dragging {
                     return false;
                 }
-                self.selection.dragging = false;
+                self.selection.core.dragging = false;
                 if let Some(cell) = self
                     .local_to_buffer(col, row)
                     .or_else(|| self.clamp_local_to_buffer(col, row))
@@ -208,14 +175,19 @@ impl super::Editor {
     }
 
     pub(super) fn apply_editor_focus_cell(&mut self, cell: CellPoint) {
-        let (a, f) = if self.selection.granularity == SelectionGranularity::Character {
-            (self.selection.anchor.unwrap_or(cell), cell)
+        let (a, f) = if self.selection.core.granularity == SelectionGranularity::Character {
+            (self.selection.core.anchor.unwrap_or(cell), cell)
         } else {
-            let base = self.selection.anchor.unwrap_or(cell);
-            expand_editor_range(base, cell, self.selection.granularity, &self.state.lines)
+            let base = self.selection.core.anchor.unwrap_or(cell);
+            expand_editor_range(
+                base,
+                cell,
+                self.selection.core.granularity,
+                &self.state.lines,
+            )
         };
-        self.selection.anchor = Some(a);
-        self.selection.focus = Some(f);
+        self.selection.core.anchor = Some(a);
+        self.selection.core.focus = Some(f);
     }
 
     pub(super) fn maybe_copy_selection(&mut self, sink: &mut dyn ClipboardSink) {

@@ -174,7 +174,7 @@ impl Editor {
     }
 
     pub fn is_selection_dragging(&self) -> bool {
-        self.selection.dragging
+        self.selection.core.dragging
     }
 
     pub fn selection_bounds(&self) -> Option<(CellPoint, CellPoint)> {

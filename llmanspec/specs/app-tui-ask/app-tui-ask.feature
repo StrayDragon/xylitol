@@ -59,3 +59,7 @@
   @req:r3327
   规则: remote-approval-queue
     Choice 槽占用时，远端 approval/ask 到达 须排队（容量 1）；当前 ask 完成后 须按序挂载排队项；队满 须即时以拒绝载荷回应新请求（approval 回 approved=false）并通知条提示 + 记日志，不得静默覆盖在等 ask 或丢弃其 oneshot。由单测覆盖。
+
+  @req:r3339
+  规则: choice-review-tab-explicit
+    ChoicePrompt 多问题问卷的 Review 页 须 以显式页状态表达；不得 以 tab==questions.len() 越界下标编码，任何移动 不得 panic。由单测覆盖。

@@ -464,7 +464,7 @@ impl Component for super::Editor {
     fn input_wants_rerender(&self, event: &InputEvent) -> bool {
         match event {
             InputEvent::Mouse(_) => {
-                self.mouse_dirty || self.selection.dragging || self.selection.has_selection()
+                self.mouse_dirty || self.selection.core.dragging || self.selection.has_selection()
             }
             InputEvent::Key(_) if self.paste_burst_paint_suppressed() => false,
             _ => true,
@@ -476,11 +476,11 @@ impl Component for super::Editor {
     }
 
     fn wants_pointer_motion(&self) -> bool {
-        self.selection.dragging
+        self.selection.core.dragging
     }
 
     fn clear_pointer_selection(&mut self) -> bool {
-        if !self.selection.has_selection() && !self.selection.dragging {
+        if !self.selection.has_selection() && !self.selection.core.dragging {
             return false;
         }
         self.selection.clear();

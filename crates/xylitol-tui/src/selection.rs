@@ -95,18 +95,64 @@ fn base64_encode(input: &[u8]) -> String {
 
 pub type HitPriorityFn = Box<dyn FnMut(u16, u16) -> bool>;
 
+#[derive(Debug, Clone, Default)]
+pub struct SelectionCore {
+    pub anchor: Option<CellPoint>,
+    pub focus: Option<CellPoint>,
+    pub dragging: bool,
+    pub granularity: SelectionGranularity,
+    pub click_count: u8,
+    pub last_click_at: Option<std::time::Instant>,
+    pub last_click_cell: Option<(usize, usize)>,
+}
+
+impl SelectionCore {
+    pub fn clear(&mut self) {
+        self.anchor = None;
+        self.focus = None;
+        self.dragging = false;
+        self.granularity = SelectionGranularity::Character;
+    }
+
+    pub fn is_dragging(&self) -> bool {
+        self.dragging
+    }
+
+    pub fn has_selection(&self) -> bool {
+        match (self.anchor, self.focus) {
+            (Some(a), Some(f)) => a != f,
+            _ => false,
+        }
+    }
+
+    pub fn bounds(&self) -> Option<(CellPoint, CellPoint)> {
+        let a = self.anchor?;
+        let f = self.focus?;
+        Some(ordered(a, f))
+    }
+
+    pub fn update_click_count(&mut self, col: usize, row: usize) {
+        let now = std::time::Instant::now();
+        let same = self.last_click_cell == Some((col, row));
+        let quick = self
+            .last_click_at
+            .is_some_and(|t| now.duration_since(t).as_millis() < 400);
+        if same && quick {
+            self.click_count = self.click_count.saturating_add(1).min(3);
+        } else {
+            self.click_count = 1;
+        }
+        self.last_click_at = Some(now);
+        self.last_click_cell = Some((col, row));
+    }
+}
+
 pub struct SelectionController {
-    anchor: Option<CellPoint>,
-    focus: Option<CellPoint>,
-    dragging: bool,
-    granularity: SelectionGranularity,
+    core: SelectionCore,
     pub copy_on_release: bool,
     auto_scroll_dir: i8,
     auto_scroll_started_at: Option<std::time::Instant>,
     last_pointer: Option<(u16, u16)>,
-    click_count: u8,
-    last_click_at: Option<std::time::Instant>,
-    last_click_cell: Option<(u16, u16)>,
     hit_priority: Option<HitPriorityFn>,
     last_event_copied: bool,
 }
@@ -114,17 +160,11 @@ pub struct SelectionController {
 impl Default for SelectionController {
     fn default() -> Self {
         Self {
-            anchor: None,
-            focus: None,
-            dragging: false,
-            granularity: SelectionGranularity::Character,
+            core: SelectionCore::default(),
             copy_on_release: true,
             auto_scroll_dir: 0,
             auto_scroll_started_at: None,
             last_pointer: None,
-            click_count: 0,
-            last_click_at: None,
-            last_click_cell: None,
             hit_priority: None,
             last_event_copied: false,
         }
@@ -145,19 +185,19 @@ impl SelectionController {
     }
 
     pub fn clear(&mut self) {
-        self.anchor = None;
-        self.focus = None;
-        self.dragging = false;
+        self.core.anchor = None;
+        self.core.focus = None;
+        self.core.dragging = false;
         self.stop_auto_scroll();
-        self.granularity = SelectionGranularity::Character;
+        self.core.granularity = SelectionGranularity::Character;
     }
 
     pub fn is_dragging(&self) -> bool {
-        self.dragging
+        self.core.dragging
     }
 
     pub fn has_selection(&self) -> bool {
-        match (self.anchor, self.focus) {
+        match (self.core.anchor, self.core.focus) {
             (Some(a), Some(f)) => a != f,
             _ => false,
         }
@@ -168,8 +208,8 @@ impl SelectionController {
     }
 
     pub fn bounds(&self) -> Option<(CellPoint, CellPoint)> {
-        let a = self.anchor?;
-        let f = self.focus?;
+        let a = self.core.anchor?;
+        let f = self.core.focus?;
         Some(ordered(a, f))
     }
 
@@ -203,21 +243,21 @@ impl SelectionController {
                 let Some(cell) = self.screen_to_content(col, row, scroll, transcript) else {
                     return false;
                 };
-                self.granularity = match self.click_count {
+                self.core.granularity = match self.core.click_count {
                     2 => SelectionGranularity::Word,
                     3.. => SelectionGranularity::Line,
                     _ => SelectionGranularity::Character,
                 };
-                let (a, f) = expand_for_granularity(cell, self.granularity, scroll.lines());
-                self.anchor = Some(a);
-                self.focus = Some(f);
-                self.dragging = true;
+                let (a, f) = expand_for_granularity(cell, self.core.granularity, scroll.lines());
+                self.core.anchor = Some(a);
+                self.core.focus = Some(f);
+                self.core.dragging = true;
                 self.last_pointer = Some((col, row));
                 self.update_edge_dir(row, transcript);
                 true
             }
             MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Moved => {
-                if !self.dragging {
+                if !self.core.dragging {
                     return false;
                 }
                 self.last_pointer = Some((col, row));
@@ -232,10 +272,10 @@ impl SelectionController {
                 false
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                if !self.dragging {
+                if !self.core.dragging {
                     return false;
                 }
-                self.dragging = false;
+                self.core.dragging = false;
                 self.stop_auto_scroll();
                 if let Some(cell) = self
                     .screen_to_content(col, row, scroll, transcript)
@@ -279,7 +319,7 @@ impl SelectionController {
         transcript: ScreenRect,
         now: std::time::Instant,
     ) -> bool {
-        if !self.dragging || self.auto_scroll_dir == 0 {
+        if !self.core.dragging || self.auto_scroll_dir == 0 {
             return false;
         }
         let held = self
@@ -362,23 +402,23 @@ impl SelectionController {
         let (col, row) = (event.column, event.row);
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                if self.dragging || self.has_selection() {
+                if self.core.dragging || self.has_selection() {
                     self.clear();
                 }
                 false
             }
             MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Moved => {
-                if !self.dragging {
+                if !self.core.dragging {
                     return false;
                 }
                 self.extend_drag_clamped(col, row, scroll, transcript)
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                if !self.dragging {
+                if !self.core.dragging {
                     return false;
                 }
                 self.extend_drag_clamped(col, row, scroll, transcript);
-                self.dragging = false;
+                self.core.dragging = false;
                 self.stop_auto_scroll();
                 if self.copy_on_release {
                     self.last_event_copied = self.maybe_copy(scroll, sink);
@@ -448,28 +488,29 @@ impl SelectionController {
 
     fn update_click_count(&mut self, col: u16, row: u16) {
         let now = std::time::Instant::now();
-        let same = self.last_click_cell == Some((col, row));
+        let same = self.core.last_click_cell == Some((col as usize, row as usize));
         let quick = self
+            .core
             .last_click_at
             .is_some_and(|t| now.duration_since(t).as_millis() < 400);
         if same && quick {
-            self.click_count = self.click_count.saturating_add(1).min(3);
+            self.core.click_count = self.core.click_count.saturating_add(1).min(3);
         } else {
-            self.click_count = 1;
+            self.core.click_count = 1;
         }
-        self.last_click_at = Some(now);
-        self.last_click_cell = Some((col, row));
+        self.core.last_click_at = Some(now);
+        self.core.last_click_cell = Some((col as usize, row as usize));
     }
 
     fn apply_focus_cell(&mut self, cell: CellPoint, lines: &[String]) {
-        let (a, f) = if self.granularity == SelectionGranularity::Character {
-            (self.anchor.unwrap_or(cell), cell)
+        let (a, f) = if self.core.granularity == SelectionGranularity::Character {
+            (self.core.anchor.unwrap_or(cell), cell)
         } else {
-            let base = self.anchor.unwrap_or(cell);
-            expand_range(base, cell, self.granularity, lines)
+            let base = self.core.anchor.unwrap_or(cell);
+            expand_range(base, cell, self.core.granularity, lines)
         };
-        self.anchor = Some(a);
-        self.focus = Some(f);
+        self.core.anchor = Some(a);
+        self.core.focus = Some(f);
     }
 
     fn screen_to_content(
@@ -1274,5 +1315,24 @@ mod tests {
             &mut sink,
         );
         assert_eq!(sink.copies, vec!["text".to_string()]);
+    }
+
+    #[test]
+    fn selection_core_owns_click_count_and_bounds() {
+        let mut core = SelectionCore::default();
+        assert!(!core.has_selection());
+        core.update_click_count(1, 2);
+        assert_eq!(core.click_count, 1);
+        core.update_click_count(1, 2);
+        assert_eq!(core.click_count, 2, "same cell within 400ms MUST count up");
+        core.anchor = Some(CellPoint::new(3, 5));
+        core.focus = Some(CellPoint::new(1, 2));
+        assert!(core.has_selection());
+        let (a, f) = core.bounds().expect("bounds");
+        assert_eq!((a.row, a.col), (1, 2));
+        assert_eq!((f.row, f.col), (3, 5));
+        core.clear();
+        assert!(!core.has_selection());
+        assert_eq!(core.granularity, SelectionGranularity::Character);
     }
 }
