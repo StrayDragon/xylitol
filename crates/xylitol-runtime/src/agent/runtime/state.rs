@@ -93,6 +93,28 @@ struct ActiveTurnSlot {
     binding: ActiveTurnBinding,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunEvent {
+    Begin,
+    StreamStarted(RunId),
+    Cancel { clear_pending: bool },
+    Finish(RunId),
+}
+
+#[derive(Clone)]
+pub enum RunTransition {
+    Began {
+        run_id: RunId,
+        cancel: CancellationToken,
+    },
+    Streaming,
+    Cancelling,
+    Finished {
+        next: Option<(RunId, Box<FrozenRootConfig>)>,
+    },
+    Rejected,
+}
+
 pub struct RunCoordinator {
     next_id: u64,
     phase: RuntimePhase,
@@ -136,21 +158,81 @@ impl RunCoordinator {
         id
     }
 
-    pub fn try_begin_immediate(&mut self) -> Option<(RunId, CancellationToken)> {
-        if !self.phase.is_idle() {
-            return None;
+    pub fn transition(&mut self, event: RunEvent) -> RunTransition {
+        match event {
+            RunEvent::Begin => {
+                if !self.phase.is_idle() {
+                    return RunTransition::Rejected;
+                }
+                let run_id = self.allocate_run_id();
+                let token = CancellationToken::new();
+                self.phase = RuntimePhase::Starting(run_id);
+                self.cancel = Some((run_id, token.clone()));
+                RunTransition::Began {
+                    run_id,
+                    cancel: token,
+                }
+            }
+            RunEvent::StreamStarted(run_id) => match self.phase {
+                RuntimePhase::Starting(active) | RuntimePhase::Streaming(active)
+                    if active == run_id =>
+                {
+                    self.phase = RuntimePhase::Streaming(run_id);
+                    RunTransition::Streaming
+                }
+                _ => RunTransition::Rejected,
+            },
+            RunEvent::Cancel { clear_pending } => {
+                if clear_pending {
+                    self.pending.clear();
+                }
+                let Some((run_id, token)) = self.cancel.as_ref() else {
+                    return RunTransition::Rejected;
+                };
+                let run_id = *run_id;
+                match self.phase {
+                    RuntimePhase::Starting(active) | RuntimePhase::Streaming(active)
+                        if active == run_id =>
+                    {
+                        token.cancel();
+                        self.phase = RuntimePhase::Cancelling(run_id);
+                        RunTransition::Cancelling
+                    }
+                    RuntimePhase::Cancelling(active) if active == run_id => {
+                        token.cancel();
+                        RunTransition::Cancelling
+                    }
+                    _ => RunTransition::Rejected,
+                }
+            }
+            RunEvent::Finish(run_id) => {
+                if self.phase.active_run_id() != Some(run_id) {
+                    self.pending.retain(|p| p.run_id != run_id);
+                    return RunTransition::Finished { next: None };
+                }
+                self.clear_active_turn_if(run_id);
+                if self.cancel.as_ref().is_some_and(|(id, _)| *id == run_id) {
+                    self.cancel = None;
+                }
+                self.phase = RuntimePhase::Idle;
+                RunTransition::Finished {
+                    next: self
+                        .activate_next_pending()
+                        .map(|(run_id, frozen)| (run_id, Box::new(frozen))),
+                }
+            }
         }
-        let run_id = self.allocate_run_id();
-        let token = CancellationToken::new();
-        self.phase = RuntimePhase::Starting(run_id);
-        self.cancel = Some((run_id, token.clone()));
-        Some((run_id, token))
+    }
+
+    pub fn try_begin_immediate(&mut self) -> Option<(RunId, CancellationToken)> {
+        match self.transition(RunEvent::Begin) {
+            RunTransition::Began { run_id, cancel } => Some((run_id, cancel)),
+            _ => None,
+        }
     }
 
     pub fn mark_streaming(&mut self, run_id: RunId) {
-        if self.phase.active_run_id() == Some(run_id) {
-            self.phase = RuntimePhase::Streaming(run_id);
-        }
+        let _ = self.transition(RunEvent::StreamStarted(run_id));
     }
 
     pub fn enqueue_pending(
@@ -172,16 +254,10 @@ impl RunCoordinator {
     }
 
     pub fn cancel_active(&mut self, clear_pending: bool) -> bool {
-        if clear_pending {
-            self.pending.clear();
-        }
-        let Some((run_id, token)) = self.cancel.as_ref() else {
-            return false;
-        };
-        let run_id = *run_id;
-        token.cancel();
-        self.phase = RuntimePhase::Cancelling(run_id);
-        true
+        matches!(
+            self.transition(RunEvent::Cancel { clear_pending }),
+            RunTransition::Cancelling
+        )
     }
 
     pub fn cancel_token(&self) -> CancellationToken {
@@ -216,18 +292,10 @@ impl RunCoordinator {
     }
 
     pub fn finish_run(&mut self, run_id: RunId) -> Option<(RunId, FrozenRootConfig)> {
-        if self.phase.active_run_id() != Some(run_id) {
-            self.pending.retain(|p| p.run_id != run_id);
-            return None;
+        match self.transition(RunEvent::Finish(run_id)) {
+            RunTransition::Finished { next } => next.map(|(run_id, frozen)| (run_id, *frozen)),
+            _ => None,
         }
-
-        self.clear_active_turn_if(run_id);
-        if self.cancel.as_ref().is_some_and(|(id, _)| *id == run_id) {
-            self.cancel = None;
-        }
-        self.phase = RuntimePhase::Idle;
-
-        self.activate_next_pending()
     }
 
     pub fn revoke_pending(&mut self, run_id: RunId) {
@@ -344,6 +412,57 @@ mod tests {
         assert!(c.finish_run(id).is_none());
         assert!(!c.has_work());
         assert!(c.try_begin_immediate().is_some());
+    }
+
+    #[test]
+    fn mark_streaming_does_not_overwrite_cancelling() {
+        let mut c = RunCoordinator::new();
+        let (id, _) = c.try_begin_immediate().expect("idle begin");
+        c.mark_streaming(id);
+        assert!(c.cancel_active(false));
+        assert_eq!(c.phase(), RuntimePhase::Cancelling(id));
+        c.mark_streaming(id);
+        assert_eq!(
+            c.phase(),
+            RuntimePhase::Cancelling(id),
+            "mark_streaming must not overwrite Cancelling"
+        );
+        assert!(c.finish_run(id).is_none());
+        assert_eq!(c.phase(), RuntimePhase::Idle);
+    }
+
+    #[test]
+    fn transition_closed_set_guards_stale_and_busy() {
+        let mut c = RunCoordinator::new();
+        let stale = RunId::from_raw_for_test(99);
+        assert!(matches!(
+            c.transition(RunEvent::StreamStarted(stale)),
+            RunTransition::Rejected
+        ));
+        assert!(matches!(
+            c.transition(RunEvent::Cancel {
+                clear_pending: false
+            }),
+            RunTransition::Rejected
+        ));
+        let (id, _) = c.try_begin_immediate().expect("idle begin");
+        assert_eq!(c.phase(), RuntimePhase::Starting(id));
+        assert!(c.try_begin_immediate().is_none(), "busy begin rejected");
+        assert!(matches!(
+            c.transition(RunEvent::StreamStarted(stale)),
+            RunTransition::Rejected
+        ));
+        c.mark_streaming(id);
+        assert_eq!(c.phase(), RuntimePhase::Streaming(id));
+        c.mark_streaming(id);
+        assert_eq!(c.phase(), RuntimePhase::Streaming(id));
+        assert!(matches!(
+            c.transition(RunEvent::Finish(stale)),
+            RunTransition::Finished { next: None }
+        ));
+        assert_eq!(c.phase(), RuntimePhase::Streaming(id));
+        assert!(c.finish_run(id).is_none());
+        assert_eq!(c.phase(), RuntimePhase::Idle);
     }
 
     #[test]

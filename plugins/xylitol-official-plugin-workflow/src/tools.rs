@@ -12,7 +12,7 @@ use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::session::{
     Workflow, WorkflowTask, WorkflowTaskEvent, WorkflowTaskStatus, latest_workflow,
     runnable_workflow_task, task_transition, validate_workflow_replan,
-    validate_workflow_with_limits,
+    validate_workflow_status_delta, validate_workflow_with_limits,
 };
 use xylitol_plugin_sdk::{WorkflowGateway, XySessionStore, XyToolCtx, XyToolExecutionMode};
 
@@ -177,6 +177,8 @@ impl TypedTool for WorkflowWriteTool {
             .map_err(|e| XyToolError::InvalidArgs(e.0))?;
         let previous = self.gateway.latest().await?;
         validate_workflow_replan(previous.as_ref(), &workflow)
+            .map_err(|e| XyToolError::InvalidArgs(e.0))?;
+        validate_workflow_status_delta(previous.as_ref(), &workflow)
             .map_err(|e| XyToolError::InvalidArgs(e.0))?;
         self.gateway.persist(&workflow).await?;
         ctx.publish_state(xylitol_plugin_sdk::lifecycle::XyEvent::WorkflowUpdated {
@@ -491,6 +493,59 @@ mod tests {
             .await
             .expect_err("replan must reject");
         assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn write_rejects_status_bypass_and_skips_persist() {
+        let (gateway, store) = gateway().await;
+        seed(
+            &store,
+            &Workflow {
+                goal: "ship".into(),
+                tasks: vec![task(
+                    "s1",
+                    xylitol_plugin_sdk::session::WorkflowTaskStatus::Pending,
+                )],
+                resume_cursor: None,
+                updated_at: 1,
+            },
+        )
+        .await;
+        let tool = WorkflowWriteTool::new(
+            gateway,
+            xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
+            xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
+        );
+        let err = tool
+            .execute(
+                &XyToolCtx::new("c1"),
+                serde_json::json!({
+                    "goal": "ship",
+                    "tasks": [
+                        {"id": "s1", "description": "do s1", "status": "completed"}
+                    ]
+                }),
+            )
+            .await
+            .expect_err("pending cannot bypass to completed");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+        let entries = store.load_leaf_branch("s1").await.expect("entries");
+        let workflow_entries = entries
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry,
+                    xylitol_plugin_sdk::session::SessionEntry::Custom(custom)
+                        if custom.custom_type == xylitol_plugin_sdk::session::CUSTOM_TYPE_WORKFLOW
+                )
+            })
+            .count();
+        assert_eq!(workflow_entries, 1, "rejected write must not persist");
+        let latest = latest_workflow(&entries).expect("workflow");
+        assert_eq!(
+            latest.tasks[0].status,
+            xylitol_plugin_sdk::session::WorkflowTaskStatus::Pending
+        );
     }
 
     #[tokio::test]

@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use super::layout::{ANCHOR_EVERY, Anchor, IndexState, LOG_FORMAT, Manifest, RotationPolicy};
 use super::{LogSessionStore, StoreMode};
-use crate::sync::lock_rwlock_write;
+use crate::sync::{lock_rwlock_read, lock_rwlock_write};
 use crate::types::{EntryBase, SESSION_VERSION, SessionEntry, SessionHeader};
 use xylitol_plugin_sdk::error::XySessionStoreError;
 use xylitol_plugin_sdk::message::now_ms;
@@ -270,6 +270,13 @@ async fn append_persisted(
     }
     store.acquire_write_lock(session_id)?;
     let mut manifest = read_manifest_or_rebuild(store, session_id).await?;
+    let active_path = store.layout.log_file(session_id, manifest.active_file);
+    if let Ok(metadata) = tokio::fs::metadata(&active_path).await
+        && metadata.len() != manifest.tail_bytes
+    {
+        store.drop_cached_manifest(session_id);
+        manifest = rebuild_manifest(store, session_id).await?;
+    }
     let parent = manifest
         .leaf_id
         .clone()
@@ -278,6 +285,7 @@ async fn append_persisted(
     prepare(&mut prepared, parent, with_id);
     let seq = manifest.next_seq;
     let is_header = matches!(prepared, SessionEntry::Header(_));
+    let turn_end = is_turn_end(&prepared);
     let line = entry_line(&prepared, seq, is_header)?;
     let file_no = manifest.active_file;
     let path = store.layout.log_file(session_id, file_no);
@@ -298,7 +306,7 @@ async fn append_persisted(
         file.flush()
             .await
             .map_err(|e| XySessionStoreError::io("flush session entry", e))?;
-        if is_turn_end(&prepared) {
+        if turn_end {
             file.sync_all()
                 .await
                 .map_err(|e| XySessionStoreError::io("sync session entry", e))?;
@@ -309,6 +317,7 @@ async fn append_persisted(
     manifest.line_count += 1;
     manifest.leaf_id = prepared.entry_id().map(str::to_string);
     manifest.updated_at = now_secs();
+    let mut flush_manifest = turn_end;
     if manifest.line_count % ANCHOR_EVERY == 1 {
         let anchor = Anchor {
             seq: manifest.line_count,
@@ -316,13 +325,20 @@ async fn append_persisted(
             offset,
         };
         append_index_anchor(store, session_id, file_no, &anchor).await?;
+        flush_manifest = true;
     }
     if matches!(prepared, SessionEntry::Compaction(_)) {
         rotate_at_compaction(store, session_id, &mut manifest, &line, &prepared).await?;
-    } else if is_turn_end(&prepared) && manifest.tail_bytes >= manifest.rotation.threshold_bytes {
+        flush_manifest = true;
+    } else if turn_end && manifest.tail_bytes >= manifest.rotation.threshold_bytes {
         rotate_plain(store, session_id, &mut manifest).await?;
+        flush_manifest = true;
     }
-    write_manifest(store, session_id, &manifest).await?;
+    if flush_manifest {
+        write_manifest(store, session_id, &manifest).await?;
+    } else {
+        store.cache_manifest(session_id, manifest.clone(), true);
+    }
     if let Some(entry_id) = prepared.entry_id() {
         store.set_leaf(session_id, Some(entry_id.to_string()));
     }
@@ -456,6 +472,15 @@ pub(crate) async fn read_manifest(
     store: &LogSessionStore,
     session_id: &str,
 ) -> Result<Manifest, XySessionStoreError> {
+    if let Some(cached) = lock_rwlock_read(&store.manifest_cache).get(session_id) {
+        if cached.dirty {
+            log::debug!(
+                target: "xylitol::session",
+                "session {session_id} manifest is dirty in memory; disk copy is behind"
+            );
+        }
+        return Ok(cached.manifest.clone());
+    }
     let raw = tokio::fs::read(store.layout.manifest_path(session_id))
         .await
         .map_err(|e| XySessionStoreError::io("read session manifest", e))?;
@@ -467,6 +492,11 @@ pub(crate) async fn read_manifest_or_rebuild(
     store: &LogSessionStore,
     session_id: &str,
 ) -> Result<Manifest, XySessionStoreError> {
+    if !store.layout.manifest_path(session_id).exists() {
+        let manifest = rebuild_manifest(store, session_id).await?;
+        write_manifest(store, session_id, &manifest).await?;
+        return Ok(manifest);
+    }
     if let Ok(manifest) = read_manifest(store, session_id).await
         && manifest.format == LOG_FORMAT
         && store
@@ -547,6 +577,7 @@ pub(crate) async fn write_manifest(
     file.sync_all()
         .await
         .map_err(|e| XySessionStoreError::io("sync session manifest", e))?;
+    store.cache_manifest(session_id, manifest.clone(), false);
     Ok(())
 }
 

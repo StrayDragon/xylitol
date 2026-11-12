@@ -680,6 +680,25 @@ mod tests {
         );
     }
 
+    fn goal_running_entry(goal_id: &str) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: CUSTOM_TYPE_AUTOMATION.into(),
+            data: json!({
+                "kind": "goal_state_changed",
+                "goal_id": goal_id,
+                "state": "running",
+                "actor": "test",
+                "at": 0
+            }),
+        })
+    }
+
     fn goal_done_entry(goal_id: &str) -> SessionEntry {
         SessionEntry::Custom(CustomEntry {
             base: EntryBase {
@@ -709,6 +728,10 @@ mod tests {
             .unwrap();
         store
             .append_session_entry(session, &goal_entry("goal", session))
+            .await
+            .unwrap();
+        store
+            .append_session_entry(session, &goal_running_entry("goal"))
             .await
             .unwrap();
         store

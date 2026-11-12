@@ -217,6 +217,13 @@ pub trait LoopMiddleware: Send + Sync {
     }
 }
 
+#[async_trait]
+pub trait XyTurnInjector: Send + Sync {
+    fn id(&self) -> &str;
+
+    async fn on_turn_submission(&self, ctx: &BeforeStepCtx) -> Vec<AgentMessage>;
+}
+
 struct Entry {
     id: String,
     order: i64,
@@ -229,6 +236,7 @@ struct Entry {
 struct RegistryInner {
     next_seq: u64,
     entries: Vec<Entry>,
+    turn_injectors: Vec<Arc<dyn XyTurnInjector>>,
 }
 
 pub struct LoopMiddlewareRegistry {
@@ -277,6 +285,29 @@ impl LoopMiddlewareRegistry {
         })
     }
 
+    pub fn register_turn_injector(
+        &self,
+        injector: Arc<dyn XyTurnInjector>,
+    ) -> Result<TurnInjectorHandle, XyError> {
+        let id = injector.id().to_string();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if inner
+            .turn_injectors
+            .iter()
+            .any(|existing| existing.id() == id)
+        {
+            return Err(XyError::Config(format!(
+                "turn injector id already registered: {id}"
+            )));
+        }
+        inner.turn_injectors.push(injector);
+        drop(inner);
+        Ok(TurnInjectorHandle {
+            inner: Arc::downgrade(&self.inner),
+            id,
+        })
+    }
+
     pub fn unregister(&self, id: &str) -> bool {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let before = inner.entries.len();
@@ -309,6 +340,7 @@ impl LoopMiddlewareRegistry {
                 chain.bucket_mut(*stage).push(Arc::clone(&entry.middleware));
             }
         }
+        chain.turn_injectors = inner.turn_injectors.clone();
         chain
     }
 
@@ -334,6 +366,7 @@ impl LoopMiddlewareRegistry {
                     middleware: Arc::clone(&entry.middleware),
                 })
                 .collect(),
+            turn_injectors: inner.turn_injectors.clone(),
         };
         LoopMiddlewareRegistry {
             inner: Arc::new(Mutex::new(derived)),
@@ -350,6 +383,7 @@ pub struct LoopChain {
     pub after_tool: Vec<Arc<dyn LoopMiddleware>>,
     pub decide_continue: Vec<Arc<dyn LoopMiddleware>>,
     pub after_step: Vec<Arc<dyn LoopMiddleware>>,
+    pub turn_injectors: Vec<Arc<dyn XyTurnInjector>>,
     pub scope: LoopScope,
 }
 
@@ -395,9 +429,10 @@ impl LoopChain {
     }
 
     pub fn is_empty(&self) -> bool {
-        LoopStage::ALL
-            .iter()
-            .all(|stage| self.stage(*stage).is_empty())
+        self.turn_injectors.is_empty()
+            && LoopStage::ALL
+                .iter()
+                .all(|stage| self.stage(*stage).is_empty())
     }
 }
 
@@ -405,6 +440,30 @@ impl LoopChain {
 pub struct LoopMiddlewareHandle {
     inner: Weak<Mutex<RegistryInner>>,
     id: String,
+}
+
+#[derive(Debug)]
+pub struct TurnInjectorHandle {
+    inner: Weak<Mutex<RegistryInner>>,
+    id: String,
+}
+
+impl TurnInjectorHandle {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn unregister(self) -> bool {
+        let Some(inner) = self.inner.upgrade() else {
+            return false;
+        };
+        let mut guard = inner.lock().unwrap_or_else(|e| e.into_inner());
+        let before = guard.turn_injectors.len();
+        guard
+            .turn_injectors
+            .retain(|injector| injector.id() != self.id);
+        guard.turn_injectors.len() != before
+    }
 }
 
 impl LoopMiddlewareHandle {

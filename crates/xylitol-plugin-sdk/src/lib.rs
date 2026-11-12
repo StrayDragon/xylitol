@@ -73,6 +73,7 @@ pub use loop_middleware::{
     AfterLlmResponseCtx, AfterStepCtx, AfterToolCtx, BeforeLlmRequestCtx, BeforeStepCtx,
     BeforeToolCtx, CompactRequest, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware,
     LoopMiddlewareHandle, LoopMiddlewareRegistry, LoopScope, LoopStage, LoopStep, ToolFingerprint,
+    TurnInjectorHandle, XyTurnInjector,
 };
 pub use mcp::{
     McpCatalog, McpCatalogEntry, McpElicitationAction, McpElicitationGateway,

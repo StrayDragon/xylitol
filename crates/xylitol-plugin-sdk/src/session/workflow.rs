@@ -392,15 +392,7 @@ pub fn validate_workflow_replan(
         }
     }
 
-    let mut allowed = HashSet::new();
-    for failed in previous
-        .tasks
-        .iter()
-        .filter(|task| task.status == WorkflowTaskStatus::Failed)
-    {
-        allowed.insert(failed.id.clone());
-        allowed.extend(workflow_downstream_ids(previous, &failed.id));
-    }
+    let allowed = replan_allowed_ids(previous);
 
     for task in &previous.tasks {
         if task.status == WorkflowTaskStatus::Completed || allowed.contains(&task.id) {
@@ -439,6 +431,56 @@ pub fn validate_workflow_replan(
     }
 
     Ok(())
+}
+
+pub fn validate_workflow_status_delta(
+    previous: Option<&Workflow>,
+    next: &Workflow,
+) -> Result<(), WorkflowValidationError> {
+    let Some(previous) = previous else {
+        return Ok(());
+    };
+    let allowed = replan_allowed_ids(previous);
+    for task in &next.tasks {
+        let Some(prev_task) = previous.task(&task.id) else {
+            continue;
+        };
+        if task.status == prev_task.status || allowed.contains(&task.id) {
+            continue;
+        }
+        let reachable = WORKFLOW_TASK_EVENTS.iter().any(|event| {
+            task_transition(prev_task.status, *event).is_ok_and(|status| status == task.status)
+        });
+        if !reachable {
+            return Err(WorkflowValidationError(format!(
+                "illegal workflow task status delta: task {} {:?} -> {:?}",
+                task.id, prev_task.status, task.status
+            )));
+        }
+    }
+    Ok(())
+}
+
+const WORKFLOW_TASK_EVENTS: [WorkflowTaskEvent; 6] = [
+    WorkflowTaskEvent::Start,
+    WorkflowTaskEvent::Finish,
+    WorkflowTaskEvent::Fail,
+    WorkflowTaskEvent::Block,
+    WorkflowTaskEvent::Approve,
+    WorkflowTaskEvent::Replan,
+];
+
+fn replan_allowed_ids(previous: &Workflow) -> HashSet<String> {
+    let mut allowed = HashSet::new();
+    for failed in previous
+        .tasks
+        .iter()
+        .filter(|task| task.status == WorkflowTaskStatus::Failed)
+    {
+        allowed.insert(failed.id.clone());
+        allowed.extend(workflow_downstream_ids(previous, &failed.id));
+    }
+    allowed
 }
 
 fn same_structure(left: &WorkflowTask, right: &WorkflowTask) -> bool {
@@ -731,6 +773,75 @@ mod tests {
         replanned.tasks[1].status = WorkflowTaskStatus::Pending;
         replanned.tasks[2].description = "do s3 after the fix".into();
         assert!(validate_workflow_replan(Some(&previous), &replanned).is_ok());
+    }
+
+    #[test]
+    fn status_delta_first_write_has_no_previous() {
+        let next = plan(vec![task("s1", WorkflowTaskStatus::Completed, &[])]);
+        assert!(validate_workflow_status_delta(None, &next).is_ok());
+    }
+
+    #[test]
+    fn status_delta_allows_table_reachable_changes() {
+        let previous = plan(vec![
+            task("s1", WorkflowTaskStatus::Pending, &[]),
+            task("s2", WorkflowTaskStatus::InProgress, &[]),
+            task("s3", WorkflowTaskStatus::Blocked, &[]),
+            task("s4", WorkflowTaskStatus::Failed, &[]),
+        ]);
+        let mut next = previous.clone();
+        next.tasks[0].status = WorkflowTaskStatus::InProgress;
+        next.tasks[1].status = WorkflowTaskStatus::Completed;
+        next.tasks[2].status = WorkflowTaskStatus::InProgress;
+        next.tasks[3].status = WorkflowTaskStatus::InProgress;
+        assert!(validate_workflow_status_delta(Some(&previous), &next).is_ok());
+    }
+
+    #[test]
+    fn status_delta_rejects_table_bypass() {
+        let previous = plan(vec![task("s1", WorkflowTaskStatus::Pending, &[])]);
+        let mut next = previous.clone();
+        next.tasks[0].status = WorkflowTaskStatus::Completed;
+        let err = validate_workflow_status_delta(Some(&previous), &next).unwrap_err();
+        assert!(err.0.contains("s1"), "{}", err.0);
+        assert!(err.0.contains("Pending"), "{}", err.0);
+        assert!(err.0.contains("Completed"), "{}", err.0);
+    }
+
+    #[test]
+    fn status_delta_locks_completed_without_failure_downstream() {
+        let previous = plan(vec![
+            task("s1", WorkflowTaskStatus::Completed, &[]),
+            task("s2", WorkflowTaskStatus::Pending, &[]),
+        ]);
+        let unchanged = previous.clone();
+        assert!(validate_workflow_status_delta(Some(&previous), &unchanged).is_ok());
+        for status in [
+            WorkflowTaskStatus::Pending,
+            WorkflowTaskStatus::InProgress,
+            WorkflowTaskStatus::Failed,
+            WorkflowTaskStatus::Blocked,
+        ] {
+            let mut next = previous.clone();
+            next.tasks[0].status = status;
+            assert!(
+                validate_workflow_status_delta(Some(&previous), &next).is_err(),
+                "completed task must not move to {status:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn status_delta_replan_exception_covers_failed_closure() {
+        let previous = plan(vec![
+            task("s1", WorkflowTaskStatus::Completed, &[]),
+            task("s2", WorkflowTaskStatus::Failed, &["s1"]),
+            task("s3", WorkflowTaskStatus::Pending, &["s2"]),
+        ]);
+        let mut next = previous.clone();
+        next.tasks[1].status = WorkflowTaskStatus::Pending;
+        next.tasks[2].status = WorkflowTaskStatus::Completed;
+        assert!(validate_workflow_status_delta(Some(&previous), &next).is_ok());
     }
 
     #[test]

@@ -923,13 +923,13 @@ async fn plant_jsonl_with_extra_line(sess: &XySessionStore, id: &str, extra_line
     writeln!(f, "{extra_line}").unwrap();
 }
 
-#[given("目录中植入含坏 JSON 行的 log-v1 会话 {id:string}")]
+#[given("目录中植入含坏 JSON 行的现行日志格式会话 {id:string}")]
 async fn given_plant_bad_json_line(sess: &XySessionStore, id: String) {
     let id = strip_quotes(&id);
     plant_jsonl_with_extra_line(sess, &id, "not-json{{broken").await;
 }
 
-#[given("目录中植入含旧 untagged content 行的 log-v1 会话 {id:string}")]
+#[given("目录中植入含旧 untagged content 行的现行日志格式会话 {id:string}")]
 async fn given_plant_legacy_untagged(sess: &XySessionStore, id: String) {
     let id = strip_quotes(&id);
     let line = r#"{"type":"message","id":"legacy-1","timestamp":1,"message":{"role":"user","content":"plain old string"}}"#;

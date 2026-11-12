@@ -57,8 +57,8 @@ pub use workflow::{
     CUSTOM_TYPE_WORKFLOW, DEFAULT_MAX_DEPTH, DEFAULT_MAX_TOTAL_STEPS, Workflow, WorkflowPhase,
     WorkflowRisk, WorkflowTask, WorkflowTaskEvent, WorkflowTaskStatus, WorkflowValidationError,
     blocked_workflow_task, latest_workflow, runnable_workflow_task, task_transition,
-    validate_workflow, validate_workflow_replan, validate_workflow_with_limits,
-    workflow_downstream_ids,
+    validate_workflow, validate_workflow_replan, validate_workflow_status_delta,
+    validate_workflow_with_limits, workflow_downstream_ids,
 };
 
 #[cfg(test)]

@@ -15,7 +15,7 @@ use std::sync::{Mutex, RwLock};
 
 use crate::sync::{lock_mutex, lock_rwlock_read, lock_rwlock_write};
 use crate::types::SessionEntry;
-use layout::Layout;
+use layout::{CachedManifest, Layout};
 pub use lock::SESSION_WRITE_LOCK_FILENAME;
 use lock::SessionWriteLock;
 pub(crate) use store::generate_branch_summary;
@@ -42,6 +42,7 @@ pub struct LogSessionStore {
     pub(crate) locks: Mutex<HashMap<String, SessionWriteLock>>,
     pub(crate) leaf_ids: RwLock<HashMap<String, Option<String>>>,
     pub(crate) memory: RwLock<HashMap<String, MemorySession>>,
+    pub(crate) manifest_cache: RwLock<HashMap<String, CachedManifest>>,
 }
 
 impl Default for LogSessionStore {
@@ -58,6 +59,7 @@ impl LogSessionStore {
             locks: Mutex::new(HashMap::new()),
             leaf_ids: RwLock::new(HashMap::new()),
             memory: RwLock::new(HashMap::new()),
+            manifest_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -70,6 +72,7 @@ impl LogSessionStore {
             locks: Mutex::new(HashMap::new()),
             leaf_ids: RwLock::new(HashMap::new()),
             memory: RwLock::new(HashMap::new()),
+            manifest_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -89,6 +92,21 @@ impl LogSessionStore {
             .get(session_id)
             .cloned()
             .flatten()
+    }
+
+    pub(crate) fn cache_manifest(&self, session_id: &str, manifest: layout::Manifest, dirty: bool) {
+        lock_rwlock_write(&self.manifest_cache)
+            .insert(session_id.to_string(), CachedManifest { manifest, dirty });
+    }
+
+    pub(crate) fn cached_manifest(&self, session_id: &str) -> Option<layout::Manifest> {
+        lock_rwlock_read(&self.manifest_cache)
+            .get(session_id)
+            .map(|cached| cached.manifest.clone())
+    }
+
+    pub(crate) fn drop_cached_manifest(&self, session_id: &str) {
+        lock_rwlock_write(&self.manifest_cache).remove(session_id);
     }
 
     pub(crate) fn acquire_write_lock(&self, session_id: &str) -> Result<(), XySessionStoreError> {
@@ -230,6 +248,9 @@ impl LogSessionStore {
     }
 
     pub(crate) fn active_log_file(&self, session_id: &str) -> PathBuf {
+        if let Some(manifest) = self.cached_manifest(session_id) {
+            return self.layout.log_file(session_id, manifest.active_file);
+        }
         if let Ok(raw) = std::fs::read(self.layout.manifest_path(session_id))
             && let Ok(manifest) = serde_json::from_slice::<layout::Manifest>(&raw)
         {

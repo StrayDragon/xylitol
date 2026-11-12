@@ -151,18 +151,17 @@ async fn capture(
     })
 }
 
-async fn assert_golden(name: &str, known: &HashSet<String>) {
+async fn run_golden(name: &str, known: &HashSet<String>) -> Value {
     let golden = load_golden(name);
     let dir = tempfile::tempdir().expect("tempdir");
     let store = LogSessionStore::new(dir.path().join("sessions"));
     let entries = entries_from_value(&golden["entries"]);
-    let scenario = golden["scenario"].as_str().unwrap_or(name);
     let session_id = match name {
         "linear" => "s_linear",
         "compaction" => "s_comp",
         "travel" => "s_travel",
         "fork" => "s_fork_parent",
-        other => panic!("unknown golden {other} {scenario}"),
+        other => panic!("unknown golden {other}"),
     };
     seed(&store, session_id, &entries).await;
     if name == "travel" {
@@ -184,7 +183,12 @@ async fn assert_golden(name: &str, known: &HashSet<String>) {
         "compaction" => Some("a3"),
         _ => None,
     };
-    let actual = capture(&store, target, known, before).await;
+    capture(&store, target, known, before).await
+}
+
+async fn assert_golden(name: &str, known: &HashSet<String>) {
+    let golden = load_golden(name);
+    let actual = run_golden(name, known).await;
     let expected = &golden["expected"];
     for key in ["all", "branch", "context"] {
         assert_eq!(
@@ -213,6 +217,37 @@ async fn assert_golden(name: &str, known: &HashSet<String>) {
 
 fn known(names: &[&str]) -> HashSet<String> {
     names.iter().map(|name| name.to_string()).collect()
+}
+
+#[tokio::test]
+#[ignore = "regenerates golden fixtures; run explicitly: cargo test -p xylitol-official-plugin-session -- --ignored golden_regenerate"]
+async fn golden_regenerate() {
+    let fixtures: [(&str, HashSet<String>); 4] = [
+        ("linear", known(&["u1", "a1", "u2", "a2", "s_linear"])),
+        (
+            "compaction",
+            known(&["u1", "a1", "u2", "a2", "u3", "a3", "s_comp"]),
+        ),
+        ("travel", known(&["u1", "a1", "u2", "a2", "s_travel"])),
+        (
+            "fork",
+            known(&[
+                "u1",
+                "a_left",
+                "a_right",
+                "u_right",
+                "s_fork_parent",
+                "s_fork_child",
+            ]),
+        ),
+    ];
+    for (name, known_ids) in fixtures {
+        let mut golden = load_golden(name);
+        golden["expected"] = run_golden(name, &known_ids).await;
+        let path = golden_dir().join(format!("{name}.json"));
+        let body = serde_json::to_string_pretty(&golden).expect("serialize golden");
+        std::fs::write(&path, body + "\n").expect("write golden");
+    }
 }
 
 #[tokio::test]
@@ -277,6 +312,41 @@ async fn missing_manifest_is_rebuilt_from_log() {
     let entries = load_all(&store, "s").await.expect("load");
     assert_eq!(entries.len(), 2);
     assert!(store.layout.manifest_path("s").exists());
+}
+
+#[tokio::test]
+async fn manifest_flushes_at_turn_boundary_not_per_entry() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    create(&store, "s", Some("."), None).await.expect("create");
+    let manifest_path = store.layout.manifest_path("s");
+    let before = tokio::fs::read(&manifest_path).await.expect("manifest");
+    for idx in 0..3 {
+        let entry = SessionEntry::Custom(crate::types::CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: "probe".into(),
+            data: json!({ "idx": idx }),
+        });
+        append(&store, "s", &entry, true).await.expect("append");
+    }
+    let during = tokio::fs::read(&manifest_path).await.expect("manifest");
+    assert_eq!(
+        before, during,
+        "non-turn-end appends must not rewrite the manifest"
+    );
+    append(&store, "s", &msg("u1", None, "user", "hello"), true)
+        .await
+        .expect("append user");
+    let after = tokio::fs::read(&manifest_path).await.expect("manifest");
+    assert_ne!(during, after, "turn boundary must flush the manifest");
+    let manifest: Value = serde_json::from_slice(&after).expect("manifest json");
+    assert_eq!(manifest["lineCount"].as_u64(), Some(5));
+    assert_eq!(manifest["nextSeq"].as_u64(), Some(6));
 }
 
 #[tokio::test]

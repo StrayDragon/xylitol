@@ -125,3 +125,114 @@ fn assert_reminder(context_inject_bdd: &ContextInjectBdd) {
     assert!(output.contains("[skills] skill \"B\""), "{output}");
     assert!(output.contains("已变更"), "{output}");
 }
+
+pub struct ReminderProjectionBdd {
+    pub(crate) store: RefCell<Option<Arc<dyn XySessionStore>>>,
+    pub(crate) session_id: RefCell<String>,
+    pub(crate) projected: RefCell<Option<Vec<String>>>,
+}
+
+impl ReminderProjectionBdd {
+    fn new() -> Self {
+        Self {
+            store: RefCell::new(None),
+            session_id: RefCell::new(String::new()),
+            projected: RefCell::new(None),
+        }
+    }
+}
+
+#[fixture]
+pub fn reminder_projection() -> ReminderProjectionBdd {
+    ReminderProjectionBdd::new()
+}
+
+#[given("会话先写入一条 context_reminder 提醒行再写入用户消息")]
+async fn g_reminder_row_before_user(reminder_projection: &ReminderProjectionBdd) {
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
+    use xylitol_plugin_sdk::session::{CustomMessageEntry, EntryBase, MessageEntry, SessionEntry};
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let manager = xylitol_official_plugin_session::SessionManager::new(dir.keep());
+    let store: Arc<dyn XySessionStore> = Arc::new(manager);
+    let session_id = "reminder-order".to_string();
+    store
+        .create(&session_id, None, None)
+        .await
+        .expect("create session");
+    let reminder = SessionEntry::CustomMessage(CustomMessageEntry {
+        base: EntryBase {
+            entry_type: "customMessage".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: 0,
+        },
+        custom_type: "context_reminder".into(),
+        content: serde_json::json!(
+            "<system-reminder>\n[skills] skill \"B\" 已变更\n</system-reminder>"
+        ),
+        display: true,
+        details: None,
+    });
+    store
+        .append_session_entry(&session_id, &reminder)
+        .await
+        .expect("reminder row");
+    let user = AgentMessage::user_parts(vec![AgentPart::text("继续")]);
+    let message = serde_json::to_value(&user).expect("user message");
+    store
+        .append_session_entry(
+            &session_id,
+            &SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: String::new(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                message,
+            }),
+        )
+        .await
+        .expect("user message");
+    *reminder_projection.store.borrow_mut() = Some(store);
+    *reminder_projection.session_id.borrow_mut() = session_id;
+}
+
+#[when("构建 LLM 投影")]
+async fn w_build_projection(reminder_projection: &ReminderProjectionBdd) {
+    let store = reminder_projection
+        .store
+        .borrow()
+        .clone()
+        .expect("session store");
+    let session_id = reminder_projection.session_id.borrow().clone();
+    let entries = store
+        .load_entries(&session_id)
+        .await
+        .expect("session entries");
+    let messages: Vec<_> = entries
+        .iter()
+        .filter_map(|entry| entry.as_agent_message())
+        .collect();
+    let projected = xylitol_plugin_sdk::llm_project::project_for_llm(&messages);
+    *reminder_projection.projected.borrow_mut() = Some(
+        projected
+            .into_iter()
+            .map(|message| message.text())
+            .collect(),
+    );
+}
+
+#[then("提醒以 system-reminder 行出现在用户消息之前")]
+fn t_reminder_precedes_user(reminder_projection: &ReminderProjectionBdd) {
+    let projected = reminder_projection.projected.borrow();
+    let texts = projected.as_ref().expect("projection");
+    assert_eq!(texts.len(), 2, "{texts:?}");
+    assert!(texts[0].contains("<system-reminder>"), "{texts:?}");
+    assert!(
+        texts[0].contains("[skills] skill \"B\" 已变更"),
+        "{texts:?}"
+    );
+    assert_eq!(texts[1], "继续");
+}

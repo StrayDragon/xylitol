@@ -69,35 +69,44 @@ impl TodoProgressMiddleware {
             .clone()
     }
 
-    fn record_todo_result(&self, ctx: &AfterToolCtx) {
+    fn record_todo_result(&self, ctx: &AfterToolCtx) -> Result<(), String> {
         if ctx.is_error || !matches!(ctx.tool_name.as_str(), "todo_rewrite" | "todo_update") {
-            return;
+            return Ok(());
         }
         let Some(text) = ctx.parts.iter().find_map(|part| match part {
             AgentPart::Text { text } => Some(text.as_str()),
             _ => None,
         }) else {
-            return;
+            return Ok(());
         };
         let Ok(value) = serde_json::from_str::<Value>(text) else {
-            return;
+            return Ok(());
         };
         let Some(items) = value.get("items").and_then(Value::as_array) else {
-            return;
+            return Ok(());
         };
         let mut next = WorkflowProgress::default();
-        for item in items {
+        for (index, item) in items.iter().enumerate() {
             next.total += 1;
-            match item
-                .get("status")
+            let raw_status = item.get("status");
+            let Some(status) = raw_status
                 .and_then(|value| serde_json::from_value::<TodoStatus>(value.clone()).ok())
-            {
-                Some(TodoStatus::Completed) => next.completed += 1,
-                Some(TodoStatus::InProgress) => next.in_progress += 1,
-                _ => next.pending += 1,
+            else {
+                return Err(format!(
+                    "todo item {index} has unknown status: {}",
+                    raw_status
+                        .map(Value::to_string)
+                        .unwrap_or_else(|| "missing".into())
+                ));
+            };
+            match status {
+                TodoStatus::Completed => next.completed += 1,
+                TodoStatus::InProgress => next.in_progress += 1,
+                TodoStatus::Pending => next.pending += 1,
             }
         }
         *self.progress.lock().unwrap_or_else(|e| e.into_inner()) = next;
+        Ok(())
     }
 }
 
@@ -120,8 +129,17 @@ impl LoopMiddleware for TodoProgressMiddleware {
         LoopStep::continued(ctx)
     }
 
-    async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
-        self.record_todo_result(&ctx);
+    async fn after_tool(&self, mut ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        if let Err(message) = self.record_todo_result(&ctx) {
+            log::warn!(
+                target: "xylitol::loop-policies",
+                "todo progress rejected unknown status: {message}"
+            );
+            ctx.parts = vec![AgentPart::text(
+                serde_json::json!({"error": message}).to_string(),
+            )];
+            ctx.is_error = true;
+        }
         LoopStep::continued(ctx)
     }
 
@@ -807,6 +825,44 @@ mod tests {
             out.control,
             LoopControl::Stop,
             "no recorded unfinished todo means stop"
+        );
+    }
+
+    #[tokio::test]
+    async fn progress_unknown_status_fails_back_to_model_without_counting() {
+        let mw = TodoProgressMiddleware::new(8);
+        let bad = r#"{"items":[{"id":"a","content":"do a","status":"banana"}]}"#;
+        let out = mw.after_tool(after_tool("todo_rewrite", bad, false)).await;
+        assert!(out.ctx.is_error, "unknown status must flag the tool result");
+        let text = out
+            .ctx
+            .parts
+            .iter()
+            .map(|part| match part {
+                AgentPart::Text { text } => text.as_str(),
+                _ => "",
+            })
+            .collect::<String>();
+        assert!(text.contains("\"error\""), "{text}");
+        assert!(text.contains("banana"), "{text}");
+        let out = mw.decide_continue(decide_ctx(0, false)).await;
+        assert_eq!(
+            out.control,
+            LoopControl::Stop,
+            "unknown status must not be counted as pending"
+        );
+
+        mw.after_tool(after_tool(
+            "todo_rewrite",
+            &todo_json(&[("a", TodoStatus::Completed), ("b", TodoStatus::InProgress)]),
+            false,
+        ))
+        .await;
+        let out = mw.decide_continue(decide_ctx(0, false)).await;
+        assert_eq!(
+            out.control,
+            LoopControl::Continue,
+            "legal statuses must still be counted after an error"
         );
     }
 

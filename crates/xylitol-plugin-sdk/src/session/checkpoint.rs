@@ -82,15 +82,28 @@ impl TodoCheckpoint {
 }
 
 pub fn latest_todo_checkpoint(entries: &[SessionEntry]) -> Option<TodoCheckpoint> {
-    entries.iter().rev().find_map(|entry| match entry {
-        SessionEntry::Custom(custom)
-            if custom.custom_type == CUSTOM_TYPE_TODO_CHECKPOINT
-                || custom.custom_type == LEGACY_CUSTOM_TYPE_PLAN_CHECKPOINT =>
+    for entry in entries.iter().rev() {
+        let SessionEntry::Custom(custom) = entry else {
+            continue;
+        };
+        if custom.custom_type != CUSTOM_TYPE_TODO_CHECKPOINT
+            && custom.custom_type != LEGACY_CUSTOM_TYPE_PLAN_CHECKPOINT
         {
-            TodoCheckpoint::from_data_value(&custom.data)
+            continue;
         }
-        _ => None,
-    })
+        return match TodoCheckpoint::from_data_value(&custom.data) {
+            Some(checkpoint) => Some(checkpoint),
+            None => {
+                log::warn!(
+                    target: "xylitol::session",
+                    "latest {} entry fails to parse; treating session as having no checkpoint",
+                    custom.custom_type
+                );
+                None
+            }
+        };
+    }
+    None
 }
 
 #[cfg(test)]
@@ -194,6 +207,89 @@ mod tests {
             data: serde_json::json!({ "steps": "not-an-array" }),
         });
         assert!(latest_todo_checkpoint(&[entry]).is_none());
+    }
+
+    struct CaptureWarn;
+
+    impl log::Log for CaptureWarn {
+        fn enabled(&self, metadata: &log::Metadata) -> bool {
+            metadata.level() <= log::Level::Warn
+        }
+
+        fn log(&self, record: &log::Record) {
+            if self.enabled(record.metadata()) {
+                captured_warnings()
+                    .lock()
+                    .expect("capture lock")
+                    .push(record.args().to_string());
+            }
+        }
+
+        fn flush(&self) {}
+    }
+
+    static CAPTURE: CaptureWarn = CaptureWarn;
+
+    fn captured_warnings() -> &'static std::sync::Mutex<Vec<String>> {
+        static WARNINGS: std::sync::OnceLock<std::sync::Mutex<Vec<String>>> =
+            std::sync::OnceLock::new();
+        WARNINGS.get_or_init(|| {
+            let _ = log::set_logger(&CAPTURE);
+            log::set_max_level(log::LevelFilter::Warn);
+            std::sync::Mutex::new(Vec::new())
+        })
+    }
+
+    fn corrupt_entry(custom_type: &str) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: "corrupt".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: custom_type.into(),
+            data: serde_json::json!({ "steps": "not-an-array" }),
+        })
+    }
+
+    #[test]
+    fn corrupt_latest_checkpoint_short_circuits_without_backscan() {
+        let warnings = captured_warnings();
+        let before = warnings.lock().expect("capture lock").len();
+        let older = checkpoint(vec![step("s1", TodoStatus::Pending)]).to_custom_entry_shell();
+        let entries = vec![
+            older,
+            message("m1"),
+            corrupt_entry(CUSTOM_TYPE_TODO_CHECKPOINT),
+        ];
+        assert!(latest_todo_checkpoint(&entries).is_none());
+        let lines = warnings.lock().expect("capture lock");
+        let fresh = &lines[before.min(lines.len())..];
+        assert!(
+            fresh.iter().any(|line| line.contains("todo_checkpoint")),
+            "expected warn for corrupt latest checkpoint, got {fresh:?}"
+        );
+    }
+
+    #[test]
+    fn corrupt_legacy_latest_checkpoint_short_circuits_without_backscan() {
+        let warnings = captured_warnings();
+        let before = warnings.lock().expect("capture lock").len();
+        let older = checkpoint(vec![step("s1", TodoStatus::Pending)]).to_custom_entry_shell();
+        let entries = vec![older, corrupt_entry(LEGACY_CUSTOM_TYPE_PLAN_CHECKPOINT)];
+        assert!(latest_todo_checkpoint(&entries).is_none());
+        let lines = warnings.lock().expect("capture lock");
+        let fresh = &lines[before.min(lines.len())..];
+        assert!(
+            fresh.iter().any(|line| line.contains("plan_checkpoint")),
+            "expected warn for corrupt legacy checkpoint, got {fresh:?}"
+        );
+    }
+
+    #[test]
+    fn entries_without_checkpoint_match_yield_none() {
+        assert!(latest_todo_checkpoint(&[message("m1"), message("m2")]).is_none());
     }
 
     #[test]

@@ -270,6 +270,7 @@ impl XySessionStore for LogSessionStore {
             }
         }
         self.release_write_lock(session_id);
+        self.drop_cached_manifest(session_id);
         LogSessionStore::set_leaf(self, session_id, None);
         Ok(())
     }

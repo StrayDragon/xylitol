@@ -371,9 +371,17 @@ pub fn project_schedules(entries: &[SessionEntry], branch_id: &str) -> Vec<Sched
                 schedule_id, state, ..
             } => {
                 if let Some(builder) = builders.get_mut(&schedule_id) {
-                    builder.state = state;
-                    if state != ScheduleState::Active {
-                        builder.pending_trigger = None;
+                    match schedule_transition(builder.state, state) {
+                        Ok(next) => {
+                            builder.state = next;
+                            if next != ScheduleState::Active {
+                                builder.pending_trigger = None;
+                            }
+                        }
+                        Err(error) => log::warn!(
+                            target: "xylitol::session",
+                            "ignoring illegal schedule transition fact for schedule {schedule_id}: {error}"
+                        ),
                     }
                 }
             }
@@ -477,7 +485,13 @@ pub fn project_goals(entries: &[SessionEntry], branch_id: &str) -> Vec<GoalProje
             }
             AutomationFact::GoalStateChanged { goal_id, state, .. } => {
                 if let Some(builder) = builders.get_mut(&goal_id) {
-                    builder.state = state;
+                    match goal_transition(builder.state, state) {
+                        Ok(next) => builder.state = next,
+                        Err(error) => log::warn!(
+                            target: "xylitol::session",
+                            "ignoring illegal goal transition fact for goal {goal_id}: {error}"
+                        ),
+                    }
                 }
             }
             AutomationFact::GoalEvaluated {
@@ -694,5 +708,167 @@ mod tests {
         assert_eq!(goals[0].state, GoalState::Open);
         assert!(has_active_goal(&entries, "b1"));
         assert!(!has_active_goal(&entries, "b2"));
+    }
+
+    #[test]
+    fn goal_transition_matrix_is_closed() {
+        use GoalState::*;
+        let states = [Open, Running, Done, Failed, Blocked, Paused, Cancelled];
+        let allowed = |from: GoalState, to: GoalState| {
+            matches!(
+                (from, to),
+                (Open, Running | Paused | Cancelled)
+                    | (Running, Done | Failed | Blocked | Paused | Cancelled)
+                    | (Blocked, Running | Done | Failed | Paused | Cancelled)
+                    | (Paused, Running | Cancelled)
+            )
+        };
+        for from in states {
+            for to in states {
+                assert_eq!(
+                    goal_transition(from, to).is_ok(),
+                    allowed(from, to),
+                    "goal transition {from:?} -> {to:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn schedule_transition_matrix_is_closed() {
+        use ScheduleState::*;
+        let states = [Active, Paused, Exhausted, Cancelled, Failed];
+        let allowed = |from: ScheduleState, to: ScheduleState| {
+            matches!(
+                (from, to),
+                (Active, Paused | Exhausted | Cancelled | Failed) | (Paused, Active | Cancelled)
+            )
+        };
+        for from in states {
+            for to in states {
+                assert_eq!(
+                    schedule_transition(from, to).is_ok(),
+                    allowed(from, to),
+                    "schedule transition {from:?} -> {to:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn goal_projection_keeps_last_legal_state_on_illegal_fact() {
+        let entries = vec![
+            custom(json!({
+                "kind": "goal_defined",
+                "goal_id": "g1",
+                "branch_id": "b1",
+                "objective": "tests pass",
+                "acceptance": "cargo test exits 0",
+                "max_iterations": 5,
+                "created_at": 1
+            })),
+            custom(json!({
+                "kind": "goal_state_changed",
+                "goal_id": "g1",
+                "state": "running",
+                "actor": "legacy",
+                "at": 2
+            })),
+            custom(json!({
+                "kind": "goal_state_changed",
+                "goal_id": "g1",
+                "state": "done",
+                "actor": "legacy",
+                "at": 3
+            })),
+            custom(json!({
+                "kind": "goal_state_changed",
+                "goal_id": "g1",
+                "state": "running",
+                "actor": "legacy",
+                "at": 4
+            })),
+        ];
+        let goals = project_goals(&entries, "b1");
+        assert_eq!(goals.len(), 1);
+        assert_eq!(goals[0].state, GoalState::Done);
+    }
+
+    #[test]
+    fn goal_projection_continues_legal_track_after_illegal_fact() {
+        let entries = vec![
+            custom(json!({
+                "kind": "goal_defined",
+                "goal_id": "g1",
+                "branch_id": "b1",
+                "objective": "tests pass",
+                "acceptance": "cargo test exits 0",
+                "max_iterations": 5,
+                "created_at": 1
+            })),
+            custom(json!({
+                "kind": "goal_state_changed",
+                "goal_id": "g1",
+                "state": "done",
+                "actor": "legacy",
+                "at": 2
+            })),
+            custom(json!({
+                "kind": "goal_state_changed",
+                "goal_id": "g1",
+                "state": "running",
+                "actor": "llm",
+                "at": 3
+            })),
+        ];
+        let goals = project_goals(&entries, "b1");
+        assert_eq!(goals.len(), 1);
+        assert_eq!(goals[0].state, GoalState::Running);
+    }
+
+    #[test]
+    fn schedule_projection_keeps_last_legal_state_on_illegal_fact() {
+        let entries = vec![
+            custom(json!({
+                "kind": "schedule_defined",
+                "schedule_id": "s1",
+                "branch_id": "b1",
+                "prompt": "poll",
+                "cadence": {"type": "interval", "seconds": 60},
+                "max_ticks": 4,
+                "created_at": 1
+            })),
+            custom(json!({
+                "kind": "schedule_state_changed",
+                "schedule_id": "s1",
+                "state": "paused",
+                "actor": "legacy",
+                "at": 2
+            })),
+            custom(json!({
+                "kind": "schedule_state_changed",
+                "schedule_id": "s1",
+                "state": "active",
+                "actor": "legacy",
+                "at": 3
+            })),
+            custom(json!({
+                "kind": "schedule_state_changed",
+                "schedule_id": "s1",
+                "state": "exhausted",
+                "actor": "legacy",
+                "at": 4
+            })),
+            custom(json!({
+                "kind": "schedule_state_changed",
+                "schedule_id": "s1",
+                "state": "active",
+                "actor": "legacy",
+                "at": 5
+            })),
+        ];
+        let schedules = project_schedules(&entries, "b1");
+        assert_eq!(schedules.len(), 1);
+        assert_eq!(schedules[0].state, ScheduleState::Exhausted);
     }
 }

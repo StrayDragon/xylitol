@@ -544,8 +544,8 @@ mod tests {
 
     use super::*;
     use xylitol_plugin_sdk::session::{
-        ForkPosition, SessionContext, SessionEntry, TodoCheckpoint, TodoCheckpointStep, TodoStatus,
-        Workflow, WorkflowTask,
+        CustomEntry, EntryBase, ForkPosition, SessionContext, SessionEntry, TodoCheckpoint,
+        TodoCheckpointStep, TodoStatus, Workflow, WorkflowTask,
     };
     use xylitol_plugin_sdk::{XySessionError, XySessionStoreError};
 
@@ -652,11 +652,25 @@ mod tests {
             .collect()
     }
 
+    fn fingerprint_snapshot() -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: "context-fingerprint-snapshot".into(),
+            data: serde_json::json!({ "skills": {}, "tools": null, "prepare": null }),
+        })
+    }
+
     #[tokio::test]
     async fn compact_restores_every_state_custom_type() {
         let before = vec![
             workflow().to_custom_entry_shell(),
             checkpoint().to_custom_entry_shell(),
+            fingerprint_snapshot(),
         ];
         let store = Arc::new(MemStore::default());
         ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
@@ -666,10 +680,27 @@ mod tests {
         for expected in [
             xylitol_plugin_sdk::session::CUSTOM_TYPE_WORKFLOW,
             xylitol_plugin_sdk::session::CUSTOM_TYPE_TODO_CHECKPOINT,
+            "context-fingerprint-snapshot",
         ] {
             assert!(types.contains(&expected.to_string()), "missing {expected}");
         }
-        assert_eq!(appended.len(), 2);
+        assert_eq!(appended.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn compact_retains_context_fingerprint_snapshot_payload() {
+        let before = vec![fingerprint_snapshot()];
+        let store = Arc::new(MemStore::default());
+        ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
+        let appended = store.appended.lock().unwrap().clone();
+        assert_eq!(appended.len(), 1);
+        match &appended[0] {
+            SessionEntry::Custom(custom) => {
+                assert_eq!(custom.custom_type, "context-fingerprint-snapshot");
+                assert_eq!(custom.data["skills"], serde_json::json!({}));
+            }
+            other => panic!("expected fingerprint snapshot entry, got {other:?}"),
+        }
     }
 
     #[tokio::test]

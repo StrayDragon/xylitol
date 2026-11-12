@@ -1,5 +1,7 @@
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::SystemTime;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -19,20 +21,59 @@ pub struct FingerprintSnapshot {
     pub prepare: Option<String>,
 }
 
+struct CachedHash {
+    mtime: Option<SystemTime>,
+    size: u64,
+    hash: String,
+}
+
 pub struct DriftInjector {
     id: String,
+    hashes: Mutex<HashMap<PathBuf, CachedHash>>,
 }
 
 impl Default for DriftInjector {
     fn default() -> Self {
-        Self { id: "drift".into() }
+        Self::new("drift")
     }
 }
 
 impl DriftInjector {
     pub fn new(id: impl Into<String>) -> Self {
-        Self { id: id.into() }
+        Self {
+            id: id.into(),
+            hashes: Mutex::new(HashMap::new()),
+        }
     }
+
+    fn hash_file(&self, path: &Path) -> String {
+        let metadata = std::fs::metadata(path).ok();
+        let mtime = metadata.as_ref().and_then(|meta| meta.modified().ok());
+        let size = metadata.as_ref().map(|meta| meta.len()).unwrap_or(0);
+        let mut hashes = self
+            .hashes
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(cached) = hashes.get(path)
+            && metadata_matches(cached, mtime, size)
+        {
+            return cached.hash.clone();
+        }
+        let hash = hash_file(path);
+        hashes.insert(
+            path.to_path_buf(),
+            CachedHash {
+                mtime,
+                size,
+                hash: hash.clone(),
+            },
+        );
+        hash
+    }
+}
+
+fn metadata_matches(cached: &CachedHash, mtime: Option<SystemTime>, size: u64) -> bool {
+    cached.mtime == mtime && cached.size == size
 }
 
 #[async_trait]
@@ -65,7 +106,7 @@ impl NativeInjector for DriftInjector {
                 .before
                 .skills
                 .iter()
-                .map(|skill| (skill.name.clone(), hash_file(&skill.source_info.path)))
+                .map(|skill| (skill.name.clone(), self.hash_file(&skill.source_info.path)))
                 .collect(),
             tools: ctx.before.tools_fingerprint.clone(),
             prepare: ctx.before.prepare_fingerprint.clone(),
@@ -215,6 +256,39 @@ mod tests {
             }),
             prepare: prepare.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn stat_hit_matches_only_same_mtime_and_size() {
+        let mtime = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(10);
+        let cached = CachedHash {
+            mtime: Some(mtime),
+            size: 4,
+            hash: "abcd".into(),
+        };
+        assert!(metadata_matches(&cached, Some(mtime), 4));
+        assert!(!metadata_matches(
+            &cached,
+            Some(mtime + std::time::Duration::from_secs(1)),
+            4
+        ));
+        assert!(!metadata_matches(&cached, Some(mtime), 5));
+        assert!(!metadata_matches(&cached, None, 4));
+    }
+
+    #[test]
+    fn hash_file_reuses_cached_hash_and_rehashes_on_change() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("B.md");
+        std::fs::write(&path, "B").expect("write");
+        let injector = DriftInjector::default();
+        let first = injector.hash_file(&path);
+        let second = injector.hash_file(&path);
+        assert_eq!(first, second);
+        assert!(injector.hashes.lock().expect("hashes").contains_key(&path));
+        std::fs::write(&path, "BB").expect("write");
+        let third = injector.hash_file(&path);
+        assert_ne!(third, first, "changed metadata must rehash");
     }
 
     #[test]

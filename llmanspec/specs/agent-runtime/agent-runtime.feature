@@ -337,6 +337,7 @@
         | starting  | finish | run_id_match | idle      |
         | streaming | finish | run_id_match | idle      |
         | cancelling | finish | run_id_match | idle     |
+        | cancelling | stream | run_id_match | cancelling |
         | streaming  | finish | run_id_stale | starting  |
         | starting   | finish | run_id_stale | starting  |
 

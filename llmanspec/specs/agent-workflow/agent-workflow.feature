@@ -16,7 +16,7 @@
 
   @req:r2966
   规则: workflow-tools
-    workflow 插件 须提供 `workflow_write`、`workflow_read` 与 `workflow_fail` 工具。`workflow_write` 须在工具边界校验 DAG 与重规划约束；成功 须 append `custom_type = "workflow"` 的 CustomEntry 并发布 `WorkflowUpdated`；失败 须返回 `InvalidArgs` 且不写入。`workflow_read` 须返回最新 workflow JSON。`workflow_fail` 须接受可选 `task_id`（缺省当前 `in_progress`）与必填 `reason`：目标任务非 completed 时置 failed、写 `output_ref = failure:<reason>`、append 新 workflow 条目并发布 `WorkflowUpdated`；completed、任务不存在或无 `in_progress` 时 须返回 `InvalidArgs` 且不写入。workflow 插件停用时 不得注册这三个工具或中间件。所有任务状态写入 必须 经转移表：Pending→InProgress；InProgress→Completed / Failed / Blocked；Blocked→InProgress（批准消费）；Failed→InProgress（仅 replan 入口）；Completed 锁定（replan 显式入口仅可改下游）。非法写入 必须 返回 LLM 可见错误且不写入；存量事实 必须 按表容忍投影。由插件单测覆盖。
+    workflow 插件 须提供 `workflow_write`、`workflow_read` 与 `workflow_fail` 工具。`workflow_write` 须在工具边界校验 DAG 与重规划约束；成功 须 append `custom_type = "workflow"` 的 CustomEntry 并发布 `WorkflowUpdated`；失败 须返回 `InvalidArgs` 且不写入。`workflow_read` 须返回最新 workflow JSON。`workflow_fail` 须接受可选 `task_id`（缺省当前 `in_progress`）与必填 `reason`：目标任务非 completed 时置 failed、写 `output_ref = failure:<reason>`、append 新 workflow 条目并发布 `WorkflowUpdated`；completed、任务不存在或无 `in_progress` 时 须返回 `InvalidArgs` 且不写入。workflow 插件停用时 不得注册这三个工具或中间件。所有任务状态写入 必须 经转移表：Pending→InProgress；InProgress→Completed / Failed / Blocked；Blocked→InProgress（批准消费）；Failed→InProgress（仅 replan 入口）；Completed 锁定（replan 显式入口仅可改下游）。`workflow_write` 路径同样经表校验状态增量（replan 允许集例外）。非法写入 必须 返回 LLM 可见错误且不写入；存量事实 必须 按表容忍投影。由插件单测覆盖。
 
     场景: workflow_write 后进入任务指令
       假如 workflow 插件启用且写入含一个 pending 任务的 workflow

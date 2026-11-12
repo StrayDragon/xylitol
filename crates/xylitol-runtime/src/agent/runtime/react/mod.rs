@@ -1007,6 +1007,32 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             .await;
         }
 
+        let frozen_tools = crate::agent::tools::ToolTableFingerprint::from_toolset(&tools);
+        let tools_fingerprint = xylitol_plugin_sdk::ToolFingerprint {
+            names: frozen_tools.names,
+            content_digest: frozen_tools.content_digest,
+        };
+
+        if !loop_chain.turn_injectors.is_empty() {
+            let submission_ctx = BeforeStepCtx {
+                step_index: 0,
+                has_new_user_messages: true,
+                system_prompt: system_prompt.clone(),
+                system_fragments: Vec::new(),
+                skills: skills.clone(),
+                tools_fingerprint: Some(tools_fingerprint.clone()),
+                prepare_fingerprint: pending_prepare
+                    .as_ref()
+                    .map(|prepare| prepare.fingerprint.clone()),
+                session_id: Some(session_id.clone()),
+            };
+            for injector in &loop_chain.turn_injectors {
+                for message in injector.on_turn_submission(&submission_ctx).await {
+                    history.push(message);
+                }
+            }
+        }
+
         history.push(AgentMessage::user_parts(user_parts.clone()));
         persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
 
@@ -1053,12 +1079,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let decide_active = !loop_chain.decide_continue.is_empty();
         let mut stall_count: u32 = 0;
         let mut settle_count: u32 = 0;
-        let frozen_tools = crate::agent::tools::ToolTableFingerprint::from_toolset(&tools);
-        let tools_fingerprint = xylitol_plugin_sdk::ToolFingerprint {
-            names: frozen_tools.names,
-            content_digest: frozen_tools.content_digest,
-        };
-
         yield XyEvent::AgentStart {
             session_id: session_id.clone(),
             model: run_model_id,
@@ -2440,6 +2460,99 @@ mod loop_middleware_tests {
             *seen,
             vec![(0, true), (1, true)],
             "initial prompt and follow-up both open a turn"
+        );
+    }
+
+    struct MarkerTurnInjector {
+        store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
+        session_id: String,
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyTurnInjector for MarkerTurnInjector {
+        fn id(&self) -> &str {
+            "marker-turn-injector"
+        }
+
+        async fn on_turn_submission(
+            &self,
+            _ctx: &BeforeStepCtx,
+        ) -> Vec<xylitol_plugin_sdk::message::AgentMessage> {
+            use xylitol_plugin_sdk::message::{AgentMessage, EnvMessage};
+            use xylitol_plugin_sdk::session::{CustomMessageEntry, EntryBase, SessionEntry};
+            let content = serde_json::json!("<system-reminder>reminder</system-reminder>");
+            let entry = SessionEntry::CustomMessage(CustomMessageEntry {
+                base: EntryBase {
+                    entry_type: "customMessage".into(),
+                    id: String::new(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                custom_type: "context_reminder".into(),
+                content: content.clone(),
+                display: true,
+                details: None,
+            });
+            let _ = self
+                .store
+                .append_session_entry(&self.session_id, &entry)
+                .await;
+            vec![AgentMessage::Env(EnvMessage::CustomMessage {
+                custom_type: "context_reminder".into(),
+                content,
+                display: serde_json::json!(true),
+                details: serde_json::Value::Null,
+            })]
+        }
+    }
+
+    #[tokio::test]
+    async fn turn_injector_runs_before_user_message_persist() {
+        use xylitol_plugin_sdk::session::SessionEntry;
+        let reg = registry();
+        let mut base = baseline();
+        let store = base.store.clone();
+        reg.register_turn_injector(Arc::new(MarkerTurnInjector {
+            store: store.clone(),
+            session_id: "sess-inject".into(),
+        }))
+        .expect("register turn injector");
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-inject").expect("bind");
+        runtime.set_loop_middleware(Some(reg));
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        while stream.next().await.is_some() {}
+        let entries = store.load_entries("sess-inject").await.expect("entries");
+        let transcript: Vec<&SessionEntry> = entries
+            .iter()
+            .filter(|entry| entry.anchors_transcript())
+            .collect();
+        let reminder = transcript
+            .iter()
+            .position(|entry| {
+                matches!(
+                    entry,
+                    SessionEntry::CustomMessage(custom)
+                        if custom.custom_type == "context_reminder"
+                )
+            })
+            .expect("reminder row must be persisted");
+        let user = transcript
+            .iter()
+            .position(|entry| {
+                matches!(
+                    entry,
+                    SessionEntry::Message(message)
+                        if message.message.get("role").and_then(|role| role.as_str()) == Some("user")
+                )
+            })
+            .expect("user message must be persisted");
+        assert!(
+            reminder < user,
+            "reminder row must precede the user message: {transcript:?}"
         );
     }
 

@@ -13,7 +13,7 @@
 
   @req:r1090
   规则: 追加日志存储
-    SessionManager 须将会话持久化为追加式 JSONL 日志目录（位于 ~/.xylitol/sessions/<id>/log/）：每行一个 JSON entry（含 seq 可选字段），首行 header 内嵌 format=log-v1；manifest 与 index 均为可丢弃缓存，恢复真值只来自 log 行。轮转只在 turn 边界或压缩点发生；不得把 manifest 当作恢复 SSOT。
+    SessionManager 须将会话持久化为追加式 JSONL 日志目录（位于 ~/.xylitol/sessions/<id>/log/）：每行一个 JSON entry（含 seq 可选字段），首行 header 内嵌 format 字段（现行日志格式名）；manifest 与 index 均为可丢弃缓存，恢复真值只来自 log 行。轮转只在 turn 边界或压缩点发生；不得把 manifest 当作恢复 SSOT。
 
     场景: 创建加载
       假如 会话存储目录已初始化
@@ -73,7 +73,7 @@
     Session JSONL 的 message.content AgentPart 形态以 domain-message dm1 为唯一真源；系统 不得迁移或静默解读 c646 之前的 untagged/裸字符串 content。读到此类旧 content 时 须按 agent-session as46 拒绝/跳过策略处理。文件级其它版本字段若存在 MAY 保留，但 不得借此复活旧 AgentPart 语义。
 
     场景: 旧版无标签内容拒绝
-      假如 目录中植入含旧 untagged content 行的 log-v1 会话 "legacy-content"
+      假如 目录中植入含旧 untagged content 行的现行日志格式会话 "legacy-content"
       当 加载会话 "legacy-content"
       那么 坏行被跳过且其余条目正常加载
 
@@ -174,7 +174,7 @@
 
   @req:r1901
   规则: resume-projection-llm-api
-    resume/context 只从可解析 log-v1 session 的最新 leaf 分支恢复，不得为 legacy 或不可解析存储降级恢复路径；构建的 session context 须继续投影 LLM API 相关信息（thinkingLevel 与 model 选择，来自 leaf 分支上的 modelChange / thinkingLevelChange 条目）且不做钳制、不追加抵消条目；稀疏索引与 done-bash 端口只优化查询数据来源，不得破坏投影的既有可观察语义。
+    resume/context 只从可解析的现行日志格式 session 的最新 leaf 分支恢复，不得为 legacy 或不可解析存储降级恢复路径；构建的 session context 须继续投影 LLM API 相关信息（thinkingLevel 与 model 选择，来自 leaf 分支上的 modelChange / thinkingLevelChange 条目）且不做钳制、不追加抵消条目；稀疏索引与 done-bash 端口只优化查询数据来源，不得破坏投影的既有可观察语义。
 
     场景: 续跑投影模型API原文
       假如 存在会话 "proj"
@@ -220,7 +220,7 @@
 
   @req:r1095
   规则: 日志条目驼峰
-    Session persisted JSONL 须以 camelCase 为唯一磁盘格式 SSOT：log-v1 header 行内嵌 format 字段，每行含 seq；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash 须使用 type=message 且 message.role=bashExecution，不得再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version 须等于 SESSION_VERSION（7）。不得再写出 parent_id 或 version≤5 作为新会话真源；旧格式文件 不得被自动迁移为 log-v1（见 s26 旧格式边界）、不得提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
+    Session persisted JSONL 须以 camelCase 为唯一磁盘格式 SSOT：header 行内嵌 format 字段，每行含 seq；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash 须使用 type=message 且 message.role=bashExecution，不得再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version 须等于 SESSION_VERSION（7）。不得再写出 parent_id 或 version≤5 作为新会话真源；旧格式文件 不得被自动迁移为现行日志格式（见 s26 旧格式边界）、不得提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
 
     场景: 日志壳驼峰与bash消息
       假如 存在会话 "fmt7"
@@ -240,10 +240,10 @@
 
   @req:r1098
   规则: session-load-skip-warn
-    load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 须跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn 须至多 3 条，超出后 须以单条省略标记（如 ...）收敛，不得刷屏。尾部半行 须截断。log-v1 header 的 version 不等于 SESSION_VERSION（7）或 format 不等于 log-v1 时 须拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），不得静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager 须共用此策略。
+    load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 须跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn 须至多 3 条，超出后 须以单条省略标记（如 ...）收敛，不得刷屏。尾部半行 须截断。header 的 version 不等于 SESSION_VERSION（7）或 format 不等于现行日志格式名时 须拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），不得静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager 须共用此策略。
 
     场景: 加载跳过无法解析行
-      假如 目录中植入含坏 JSON 行的 log-v1 会话 "mixed"
+      假如 目录中植入含坏 JSON 行的现行日志格式会话 "mixed"
       当 加载会话 "mixed"
       那么 坏行被跳过且其余条目正常加载
 
@@ -372,7 +372,7 @@
 
   @req:r2941
   规则: todo-checkpoint-entry
-    todo checkpoint 须以 custom_type = "todo_checkpoint" 的 CustomEntry 存入会话，沿用会话存储现行落盘格式（log-v1），不改布局；data 至少含 steps（id/content/status 与可选 verification/output_ref）、可选 last_verified_artifact / last_failure / resume_cursor（task_id 与 attempt）以及 updated_at。读取 须取叶分支上最新一条；缺失或损坏时 须按无 checkpoint 处理，不得中断。会话加载时 须把旧 custom_type = "plan_checkpoint" 条目一次性迁移为 "todo_checkpoint"（只追加、幂等，重复加载不得重复追加）；读取 优先新名，旧名 仅作迁移输入，新写入 不得再使用旧名。todo checkpoint 与 agent_todo 并存：todo 仍是人可见台账，checkpoint 是恢复状态，两者 不得互相替代。写入 须只追加，不得覆盖或删除历史条目。往返、最新选取与迁移幂等 由 SDK 单测覆盖。
+    todo checkpoint 须以 custom_type = "todo_checkpoint" 的 CustomEntry 存入会话，沿用会话存储现行落盘格式，不改布局；data 至少含 steps（id/content/status 与可选 verification/output_ref）、可选 last_verified_artifact / last_failure / resume_cursor（task_id 与 attempt）以及 updated_at。读取 须取叶分支上最新一条；缺失或损坏时 须按无 checkpoint 处理，不得中断。会话加载时 须把旧 custom_type = "plan_checkpoint" 条目一次性迁移为 "todo_checkpoint"（只追加、幂等，重复加载不得重复追加）；读取 优先新名，旧名 仅作迁移输入，新写入 不得再使用旧名。todo checkpoint 与 agent_todo 并存：todo 仍是人可见台账，checkpoint 是恢复状态，两者 不得互相替代。写入 须只追加，不得覆盖或删除历史条目。往返、最新选取与迁移幂等 由 SDK 单测覆盖。
 
     场景: todo checkpoint 落为 CustomEntry
       假如 todo 状态发生变化

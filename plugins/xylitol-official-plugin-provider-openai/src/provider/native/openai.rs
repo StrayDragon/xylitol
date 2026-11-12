@@ -927,4 +927,197 @@ mod tests {
         assert_eq!(detail.status, Some(500));
         assert_eq!(detail.error_type.as_deref(), Some("server_error"));
     }
+
+    async fn run_completions_sse(sse: &str) -> Vec<Result<XyChunk, XyError>> {
+        use futures::StreamExt;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(sse.to_string(), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+        let provider = OpenAIProvider::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            None,
+        );
+        let mut stream = provider
+            .generate_stream(
+                vec![XyLlmMessage::user("hi")],
+                &[],
+                true,
+                &crate::thinking::XyGenerateOptions::default(),
+            )
+            .await
+            .expect("stream established");
+        let mut items = Vec::new();
+        while let Some(item) = stream.next().await {
+            items.push(item);
+        }
+        items
+    }
+
+    fn ok_chunks(items: &[Result<XyChunk, XyError>]) -> Vec<XyChunk> {
+        items
+            .iter()
+            .filter_map(|item| item.as_ref().ok().cloned())
+            .collect()
+    }
+
+    const TEXT_CHUNK: &str = concat!(
+        r#"data: {"id":"c1","object":"chat.completion.chunk","created":0,"model":"gpt-test","choices":[{"index":0,"delta":{"role":"assistant","content":"hel"},"finish_reason":null}]}"#,
+        "\n\n"
+    );
+    const FINISH_CHUNK: &str = concat!(
+        r#"data: {"id":"c1","object":"chat.completion.chunk","created":0,"model":"gpt-test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+        "\n\n"
+    );
+    const DONE_SENTINEL: &str = "data: [DONE]\n\n";
+
+    fn assert_single_terminal_done(chunks: &[XyChunk]) {
+        assert_eq!(
+            chunks
+                .iter()
+                .filter(|chunk| matches!(chunk, XyChunk::Done { .. }))
+                .count(),
+            1,
+            "terminal Done must not duplicate: {chunks:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn completions_double_done_sentinel_keeps_single_terminal() {
+        let sse = format!("{TEXT_CHUNK}{FINISH_CHUNK}{DONE_SENTINEL}{DONE_SENTINEL}");
+        let items = run_completions_sse(&sse).await;
+        let chunks = ok_chunks(&items);
+        assert!(
+            items.iter().all(|item| item.is_ok()),
+            "duplicate [DONE] sentinel must not surface error: {items:?}"
+        );
+        assert_single_terminal_done(&chunks);
+        match chunks.last() {
+            Some(XyChunk::Done { finish_reason, .. }) => {
+                assert_eq!(*finish_reason, XyStopReason::Stop);
+            }
+            other => panic!("stream must end on Done, got {other:?}"),
+        }
+        xylitol_plugin_sdk::StreamOutcome::new(chunks)
+            .validate()
+            .expect("shared validator accepts the single terminal Done");
+    }
+
+    #[tokio::test]
+    async fn completions_eof_without_terminal_event_errors() {
+        let items = run_completions_sse(TEXT_CHUNK).await;
+        let err = items
+            .last()
+            .expect("stream items")
+            .as_ref()
+            .expect_err("EOF without finish_reason must surface Err");
+        assert!(err.to_string().contains("without terminal event"), "{err}");
+        let chunks = ok_chunks(&items);
+        assert_eq!(chunks.len(), 1, "only the text delta replays: {chunks:?}");
+        assert!(
+            !chunks
+                .iter()
+                .any(|chunk| matches!(chunk, XyChunk::Done { .. })),
+            "no terminal Done without finish_reason"
+        );
+        assert_eq!(
+            xylitol_plugin_sdk::StreamOutcome::new(chunks).validate(),
+            Err("stream ended without terminal Done".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn completions_interrupted_stream_flushes_open_tool_call() {
+        let sse = concat!(
+            r#"data: {"id":"c1","object":"chat.completion.chunk","created":0,"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"read","arguments":"{\"pa"}}]},"finish_reason":null}]}"#,
+            "\n\n",
+            r#"data: {"id":"c1","object":"chat.completion.chunk","created":0,"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\":\"/tmp\"}"}}]},"finish_reason":null}]}"#,
+            "\n\n"
+        );
+        let items = run_completions_sse(sse).await;
+        let err = items
+            .last()
+            .expect("stream items")
+            .as_ref()
+            .expect_err("interrupted stream must surface Err");
+        assert!(err.to_string().contains("without terminal event"), "{err}");
+        let chunks = ok_chunks(&items);
+        match &chunks[..] {
+            [
+                XyChunk::ToolCallStart { id, name },
+                XyChunk::ToolCallDelta { args_delta, .. },
+                XyChunk::ToolCallDelta { .. },
+                XyChunk::ToolCallEnd {
+                    id: end_id,
+                    name: end_name,
+                    args,
+                },
+            ] => {
+                assert_eq!(id, "call-1");
+                assert_eq!(name, "read");
+                assert_eq!(args_delta, "{\"pa");
+                assert_eq!(end_id, "call-1");
+                assert_eq!(end_name, "read");
+                assert_eq!(args, &serde_json::json!({}));
+            }
+            other => panic!("expected flushed open tool call, got {other:?}"),
+        }
+        assert_eq!(
+            xylitol_plugin_sdk::StreamOutcome::new(chunks).validate(),
+            Err("stream ended without terminal Done".to_string())
+        );
+    }
+
+    fn wire_chunk(finish_reason: Option<&str>) -> CreateChatCompletionStreamResponse {
+        let chunk = serde_json::json!({
+            "id": "c1",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "gpt-test",
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "finish_reason": finish_reason,
+            }],
+        });
+        serde_json::from_value(chunk).expect("wire chunk fixture")
+    }
+
+    #[tokio::test]
+    async fn completions_event_after_terminal_done_errors() {
+        use futures::StreamExt;
+
+        let events: Vec<
+            Result<CreateChatCompletionStreamResponse, async_openai::error::OpenAIError>,
+        > = vec![Ok(wire_chunk(Some("stop"))), Ok(wire_chunk(Some("stop")))];
+        let mut stream = completions_sdk_stream(
+            futures::stream::iter(events),
+            None,
+            crate::wire_policy::WirePolicy::default(),
+        );
+        let mut items = Vec::new();
+        while let Some(item) = stream.next().await {
+            items.push(item);
+        }
+        let err = items
+            .last()
+            .expect("stream items")
+            .as_ref()
+            .expect_err("event after terminal Done must surface Err");
+        assert!(err.to_string().contains("after terminal Done"), "{err}");
+        let chunks = ok_chunks(&items);
+        assert_single_terminal_done(&chunks);
+        xylitol_plugin_sdk::StreamOutcome::new(chunks)
+            .validate()
+            .expect("chunks before the error keep a single terminal Done");
+    }
 }

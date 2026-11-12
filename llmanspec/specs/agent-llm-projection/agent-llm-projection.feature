@@ -25,4 +25,9 @@
 
   @req:r3312
   规则: context-reminder-history-row
-    HistoryRow 放置的注入提醒 必须 以 custom_message 条目持久化（custom_type = context_reminder），并 必须 在 LLM 投影中作为 system-reminder 行呈现；Ephemeral 放置 不得 持久化。由投影单测覆盖。
+    HistoryRow 放置的注入提醒 必须 以 custom_message 条目持久化（custom_type = context_reminder），并 必须 在 LLM 投影中作为 system-reminder 行呈现；该条目 必须 先于该 turn 的用户消息条目落盘。Ephemeral 放置 不得 持久化。由投影单测覆盖。
+
+    场景: 提醒行先于用户消息投影
+      假如 会话先写入一条 context_reminder 提醒行再写入用户消息
+      当 构建 LLM 投影
+      那么 提醒以 system-reminder 行出现在用户消息之前

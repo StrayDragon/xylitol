@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix P0 batch review follow-ups"
+branch: sdd/c3266-fix-p0-review-followups
+base_branch: main
+base_sha: dce4ea89f0aab2334f66b43e4a95f0bb79e14fe3
 ---
 
 # P0 批次复核收尾（c3266）

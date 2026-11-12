@@ -8,7 +8,7 @@ use xylitol_plugin_sdk::error::XyError;
 use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage};
 use xylitol_plugin_sdk::model::XyChunk;
 use xylitol_plugin_sdk::session::{
-    AutomationFact, GoalProjection, GoalState, GoalVerdict, project_goals,
+    AutomationFact, GoalProjection, GoalState, GoalVerdict, goal_transition, project_goals,
 };
 use xylitol_plugin_sdk::{LoopControl, XyGenerateOptions, XyModel, XySessionStore};
 
@@ -97,19 +97,23 @@ pub async fn decide_active_goal(
     else {
         return Ok(None);
     };
-    if goal.state == GoalState::Open {
+    let mut current_state = goal.state;
+    if current_state == GoalState::Open {
+        let next = goal_transition(current_state, GoalState::Running)
+            .map_err(|error| XyError::Config(format!("goal transition rejected: {error}")))?;
         append(
             store,
             session_id,
             &AutomationFact::GoalStateChanged {
                 goal_id: goal.goal_id.clone(),
-                state: GoalState::Running,
+                state: next,
                 reason: Some("first_turn".into()),
                 actor: "evaluator".into(),
                 at: Local::now().timestamp(),
             },
         )
         .await?;
+        current_state = next;
     }
 
     let transcript = transcript_text(history);
@@ -155,11 +159,27 @@ pub async fn decide_active_goal(
 
     match outcome.verdict {
         GoalEvalVerdict::Met => {
-            set_goal_state(store, session_id, &goal, GoalState::Done, "met").await?;
+            set_goal_state(
+                store,
+                session_id,
+                &goal,
+                current_state,
+                GoalState::Done,
+                "met",
+            )
+            .await?;
             Ok(Some(LoopControl::Stop))
         }
         GoalEvalVerdict::Impossible => {
-            set_goal_state(store, session_id, &goal, GoalState::Failed, "impossible").await?;
+            set_goal_state(
+                store,
+                session_id,
+                &goal,
+                current_state,
+                GoalState::Failed,
+                "impossible",
+            )
+            .await?;
             Ok(Some(LoopControl::Stop))
         }
         GoalEvalVerdict::NotMet if next_iterations >= goal.max_iterations => {
@@ -167,6 +187,7 @@ pub async fn decide_active_goal(
                 store,
                 session_id,
                 &goal,
+                current_state,
                 GoalState::Blocked,
                 "max_iterations",
             )
@@ -176,7 +197,15 @@ pub async fn decide_active_goal(
         GoalEvalVerdict::NotMet => Ok(Some(LoopControl::Continue)),
         GoalEvalVerdict::Invalid => {
             if goal.consecutive_invalid + 1 >= INVALID_BLOCK_THRESHOLD {
-                set_goal_state(store, session_id, &goal, GoalState::Blocked, "invalid").await?;
+                set_goal_state(
+                    store,
+                    session_id,
+                    &goal,
+                    current_state,
+                    GoalState::Blocked,
+                    "invalid",
+                )
+                .await?;
                 Ok(Some(LoopControl::Stop))
             } else {
                 Ok(Some(LoopControl::Continue))
@@ -200,15 +229,18 @@ async fn set_goal_state(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     goal: &GoalProjection,
-    state: GoalState,
+    from: GoalState,
+    to: GoalState,
     reason: &str,
 ) -> Result<(), XyError> {
+    let next = goal_transition(from, to)
+        .map_err(|error| XyError::Config(format!("goal transition rejected: {error}")))?;
     append(
         store,
         session_id,
         &AutomationFact::GoalStateChanged {
             goal_id: goal.goal_id.clone(),
-            state,
+            state: next,
             reason: Some(reason.into()),
             actor: "evaluator".into(),
             at: Local::now().timestamp(),

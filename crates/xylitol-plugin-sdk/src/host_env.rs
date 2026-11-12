@@ -21,6 +21,28 @@ impl CommandCaptureError {
     }
 }
 
+fn kill_process_tree(pid: u32) {
+    if pid == 0 {
+        return;
+    }
+
+    #[cfg(unix)]
+    {
+        let pid = pid as i32;
+        unsafe { libc::kill(-pid, libc::SIGKILL) };
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+}
+
 pub async fn run_command_capture(
     command: &str,
     timeout: std::time::Duration,
@@ -34,11 +56,15 @@ pub async fn run_command_capture(
         .arg(command)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    spawn.process_group(0);
     scrub_tokio_command(&mut spawn);
     let mut child = spawn
         .spawn()
         .map_err(|error| CommandCaptureError::new("spawn_failed", error.to_string()))?;
+    let child_pid = child.id().unwrap_or(0);
     let stdout = child
         .stdout
         .take()
@@ -65,12 +91,16 @@ pub async fn run_command_capture(
             .await
             .map_err(|error| CommandCaptureError::new("io_error", error.to_string()))
     };
-    let status = tokio::time::timeout(timeout, wait).await.map_err(|_| {
-        CommandCaptureError::new(
-            "timeout",
-            format!("command exceeded {}s", timeout.as_secs_f64()),
-        )
-    })??;
+    let status = match tokio::time::timeout(timeout, wait).await {
+        Ok(outcome) => outcome?,
+        Err(_) => {
+            kill_process_tree(child_pid);
+            return Err(CommandCaptureError::new(
+                "timeout",
+                format!("command exceeded {}s", timeout.as_secs_f64()),
+            ));
+        }
+    };
     if !status.success() {
         return Err(CommandCaptureError::new(
             "nonzero_exit",
@@ -114,6 +144,29 @@ mod tests {
             .await
             .expect("capture");
         assert_eq!(out, "abcd");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn run_command_capture_timeout_kills_process_group() {
+        let marker = std::env::temp_dir().join(format!(
+            "xylitol-host-env-groupkill-{}-{}.tmp",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let script = format!("(sleep 0.6; printf x > '{}') & sleep 30", marker.display());
+        let error = run_command_capture(&script, std::time::Duration::from_millis(200), 4096)
+            .await
+            .expect_err("timeout");
+        assert_eq!(error.kind, "timeout");
+        tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+        assert!(
+            !marker.exists(),
+            "background child survived the timeout kill: {}",
+            marker.display()
+        );
+        let _ = std::fs::remove_file(&marker);
     }
 
     #[test]

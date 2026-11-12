@@ -76,13 +76,23 @@ impl Plugin for ContextInjectPlugin {
         };
         let store = ctx.get::<dyn XySessionStore>();
         let middleware = Arc::new(ContextInjectMiddleware::new(registry, store));
-        let handle = loop_registry.register(middleware).map_err(|error| {
-            xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(std::io::Error::other(
-                error.to_string(),
-            )))
-        })?;
+        let handle = loop_registry
+            .register(middleware.clone())
+            .map_err(|error| {
+                xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(std::io::Error::other(
+                    error.to_string(),
+                )))
+            })?;
+        let turn_handle = loop_registry
+            .register_turn_injector(middleware)
+            .map_err(|error| {
+                xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(std::io::Error::other(
+                    error.to_string(),
+                )))
+            })?;
         ctx.effect(|| async move {
             handle.unregister();
+            turn_handle.unregister();
             Ok(())
         })?;
         Ok(())

@@ -973,6 +973,37 @@ mod tests {
         }
     }
 
+    fn before_step_ctx(step_index: u32, has_new_user_messages: bool) -> BeforeStepCtx {
+        BeforeStepCtx {
+            step_index,
+            has_new_user_messages,
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn critic_resets_on_follow_up_turn_boundary() {
+        let mw = GeneratorCriticMiddleware::new(&critic_config(2));
+        mw.after_llm_response(model_after("final answer")).await;
+        {
+            let state = mw.lock_state();
+            assert_eq!(state.phase, CriticPhase::Critiquing);
+            assert_eq!(state.rounds, 1);
+        }
+        mw.before_step(before_step_ctx(1, true)).await;
+        {
+            let state = mw.lock_state();
+            assert_eq!(state.phase, CriticPhase::Idle);
+            assert_eq!(state.rounds, 0);
+            assert!(!state.instruction_injected);
+        }
+        let injected = mw.before_llm_request(model_ctx(None, None)).await;
+        assert!(
+            injected.ctx.messages.is_empty(),
+            "follow-up turn must not inherit the previous critic instruction"
+        );
+    }
+
     #[tokio::test]
     async fn critic_approve_stops_the_run() {
         let mw = GeneratorCriticMiddleware::new(&critic_config(1));

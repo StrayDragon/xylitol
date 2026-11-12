@@ -61,6 +61,11 @@ pub(crate) struct Manifest {
     pub(crate) updated_at: u64,
 }
 
+pub(crate) struct CachedManifest {
+    pub(crate) manifest: Manifest,
+    pub(crate) dirty: bool,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Layout {
     pub(crate) sessions_dir: PathBuf,
