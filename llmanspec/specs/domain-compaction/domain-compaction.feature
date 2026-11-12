@@ -295,7 +295,7 @@
 
   @req:r1408
   规则: overflow 识别、一次 recovery 与分流
-    System 须经单一 is_context_overflow_assistant（或等价）判定上下文溢出：含 usage 输入超 context_window、length/max_tokens 且近零输出填窗、以及 stop_reason=error 时对 error_message 的集中 overflow 模式匹配；须应用 non-overflow 排除（如 rate limit）；不得以散落英文子串匹配作为唯一手段；该判定 须同时供 compaction Case1 与 retry 互斥使用。当 sameModel（assistant 的 provider+model 等于当前模型）且判定 overflow 时，System 须以 CompactionStart.reason 含 overflow 语义执行 auto-compact；默认每个 run/用户回合仅允许一次 compact-and-retry；二次仍 overflow 须失败并给出固定说明文案，不得无限循环；willRetry 须仅在 stop_reason 不是成功 stop 时为 true。重试前错误 assistant 不得留在将送入模型的工作上下文（session 历史可保留）。overflow Case1 须先于 threshold Case2 评估；overflow 路径 须复用 stale 防抖；CompactionEnd 须能暴露 reason=overflow、will_retry 与失败时 error_message；不得将非 overflow 错误吞进 compaction。
+    System 须经单一 is_context_overflow_assistant（或等价）判定上下文溢出：含 usage 输入超 context_window、length/max_tokens 且近零输出填窗、以及 stop_reason=error 时对 error_message 的集中 overflow 模式匹配；须应用 non-overflow 排除（如 rate limit）；不得以散落英文子串匹配作为唯一手段；该判定 须同时供 compaction Case1 与 retry 互斥使用。当 sameModel（assistant 的 provider+model 等于当前模型）且判定 overflow 时，System 须以 CompactionStart.reason 含 overflow 语义执行 auto-compact；默认每个 turn/用户回合仅允许一次 compact-and-retry；二次仍 overflow 须失败并给出固定说明文案，不得无限循环；willRetry 须仅在 stop_reason 不是成功 stop 时为 true。重试前错误 assistant 不得留在将送入模型的工作上下文（session 历史可保留）。overflow Case1 须先于 threshold Case2 评估；overflow 路径 须复用 stale 防抖；CompactionEnd 须能暴露 reason=overflow、will_retry 与失败时 error_message；不得将非 overflow 错误吞进 compaction。
 
     场景: 溢出重试成功
       假如 sameModel 的 assistant 被判定为 context overflow 且 stop_reason 非 stop

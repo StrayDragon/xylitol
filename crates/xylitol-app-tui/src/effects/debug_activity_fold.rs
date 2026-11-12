@@ -55,7 +55,7 @@ pub(super) fn run_preview_live_xy<T: Terminal>(session: &mut HostSession<T>) {
     use crate::driver::XyEvent;
     use crate::host::HostEvent;
 
-    session.on_run_started("activity-fold-live-xy");
+    session.on_turn_started("activity-fold-live-xy");
     let events = [
         XyEvent::ThinkingDelta("plan".into()),
         XyEvent::ToolExecutionStart {

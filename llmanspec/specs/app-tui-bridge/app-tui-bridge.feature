@@ -12,7 +12,7 @@
       那么 模型不 panic 且条目与相位不变
   @req:r1180
   规则: agent-loop-lifecycle
-    用户可见忙碌态 须覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 StepEnd 不得被当作整轮结束去清空 streaming 尾或复位 idle。
+    用户可见忙碌态 须覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；AgentEnd 粒度为一 turn 一对，队列非空时 不得因 AgentEnd 闪断为 idle（status 须为 Follow-up pending），下一条提交的 AgentStart 须无缝续接；中间 StepEnd 不得被当作整轮结束去清空 streaming 尾或复位 idle。
 
     场景: 忙碌生命周期直到agent结束无头
       当 以桥缝注入 AgentStart 与中间 StepEnd
@@ -30,8 +30,8 @@
       那么 滚动提示出现取消归因且相位回到 idle
 
   @req:r1952
-  规则: prompt-failure-ends-run
-    产品 attach 对 prompt 的非成功业务应答 须结束该次 run 并露出错误，不得当作已开跑而继续等待 AgentEnd。Busy 且 follow-up 为空时收到非中止 Error 须进入 Idle 并清忙碌短词；Error 条目仍保留。
+  规则: prompt-failure-ends-turn
+    产品 attach 对 prompt 的非成功业务应答 须结束该 turn 并露出错误，不得当作已开跑而继续等待 AgentEnd。Busy 且 follow-up 为空时收到非中止 Error 须进入 Idle 并清忙碌短词；Error 条目仍保留。
 
     场景: 提示词业务错误空闲忙碌
       假如 模型已进入忙碌 Working

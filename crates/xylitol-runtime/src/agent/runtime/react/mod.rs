@@ -8,7 +8,7 @@ use assistant::{
     streaming_message_update, upsert_streaming_tool,
 };
 use step_end::{
-    FinishTurnOutcome, IterationClose, close_iteration, drain_queue, queue_counts,
+    FinishTurnOutcome, IterationClose, close_iteration, drain_queue, pop_queue, queue_counts,
     try_turn_end_compaction,
 };
 use support::{
@@ -36,7 +36,7 @@ use super::state::{
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::compaction::CompactionError;
-use crate::agent::goal::decide_active_goal;
+use crate::agent::goal::{GoalDecision, decide_active_goal};
 use crate::agent::prompt::{AgentStatusBar, expand_skills_in_agent_messages, project_outbound};
 use crate::agent::tools::{ToolCatalog, ToolSet};
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
@@ -944,6 +944,18 @@ fn middleware_fault_event(fault: &MiddlewareFault) -> XyEvent {
     }
 }
 
+async fn run_turn_injection(
+    chain: &LoopChain,
+    ctx: &BeforeStepCtx,
+    history: &mut Vec<AgentMessage>,
+) {
+    for injector in &chain.turn_injectors {
+        for message in injector.on_turn_submission(ctx).await {
+            history.push(message);
+        }
+    }
+}
+
 fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
     let ReActConfig {
         run_id,
@@ -985,7 +997,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         };
 
         if let Some(bus) = &hook_bus {
-            let (ty, phase, ctx) = super::script_hook_ctx::run_start();
+            let (ty, phase, ctx) = super::script_hook_ctx::turn_start();
             observe_script_hook(bus, ty, phase, ctx).await;
         }
 
@@ -1026,11 +1038,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     .map(|prepare| prepare.fingerprint.clone()),
                 session_id: Some(session_id.clone()),
             };
-            for injector in &loop_chain.turn_injectors {
-                for message in injector.on_turn_submission(&submission_ctx).await {
-                    history.push(message);
-                }
-            }
+            run_turn_injection(&loop_chain, &submission_ctx, &mut history).await;
         }
 
         history.push(AgentMessage::user_parts(user_parts.clone()));
@@ -1783,15 +1791,18 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     };
                     let mut goal_handled = false;
                     match goal_control {
-                        Some(LoopControl::Continue) => {
+                        Some(GoalDecision::Continue { guidance }) => {
                             goal_handled = true;
-                            continue_after_tools = true;
+                            let message = AgentMessage::user_parts(vec![AgentPart::text(format!(
+                                "目标尚未达成，继续推进。\n{guidance}"
+                            ))]);
+                            crate::utils::lock_mutex(&follow_up_queue).enqueue(message);
                         }
-                        Some(LoopControl::Stop) => {
+                        Some(GoalDecision::Stop) => {
                             note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                             break 'outer;
                         }
-                        Some(LoopControl::Compact | LoopControl::Handoff) | None => {}
+                        None => {}
                     }
                     if !goal_handled && decide_active {
                         let ctx = DecideContinueCtx {
@@ -2153,11 +2164,53 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
             }
 
-            let follow_ups = drain_queue(&follow_up_queue);
-            if follow_ups.is_empty() {
+            let Some(next_submission) = pop_queue(&follow_up_queue) else {
                 break;
+            };
+            turn = 0;
+            settle_count = 0;
+            stall_count = 0;
+            if let Some(bus) = &hook_bus {
+                let (ty, phase, ctx) = super::script_hook_ctx::turn_settled();
+                observe_script_hook(bus, ty, phase, ctx).await;
+                let (ty, phase, ctx) = super::script_hook_ctx::turn_end();
+                observe_script_hook(bus, ty, phase, ctx).await;
             }
-            pending = follow_ups;
+            yield XyEvent::AgentEnd {
+                messages: history.clone(),
+                reason: None,
+            };
+            if let Some(bus) = &hook_bus {
+                let (ty, phase, ctx) = super::script_hook_ctx::turn_start();
+                observe_script_hook(bus, ty, phase, ctx).await;
+            }
+            let turn_model_id = {
+                let mm = crate::utils::lock_mutex(&model_manager);
+                mm.current_model()
+                    .map(|model| model.id.clone())
+                    .unwrap_or_default()
+            };
+            stream_clock.stamp(StreamNode::AgentStart);
+            yield XyEvent::AgentStart {
+                session_id: session_id.clone(),
+                model: turn_model_id,
+            };
+            if !loop_chain.turn_injectors.is_empty() {
+                let submission_ctx = BeforeStepCtx {
+                    step_index: 0,
+                    has_new_user_messages: true,
+                    system_prompt: system_prompt.clone(),
+                    system_fragments: Vec::new(),
+                    skills: skills.clone(),
+                    tools_fingerprint: Some(tools_fingerprint.clone()),
+                    prepare_fingerprint: pending_prepare
+                        .as_ref()
+                        .map(|prepare| prepare.fingerprint.clone()),
+                    session_id: Some(session_id.clone()),
+                };
+                run_turn_injection(&loop_chain, &submission_ctx, &mut history).await;
+            }
+            pending = vec![next_submission];
             let (steer_count, follow_up_count) = queue_counts(&steer_queue, &follow_up_queue);
             yield XyEvent::QueueUpdate {
                 steer_count,
@@ -2166,9 +2219,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         }
 
         if let Some(bus) = &hook_bus {
-            let (ty, phase, ctx) = super::script_hook_ctx::run_settled();
+            let (ty, phase, ctx) = super::script_hook_ctx::turn_settled();
             observe_script_hook(bus, ty, phase, ctx).await;
-            let (ty, phase, ctx) = super::script_hook_ctx::run_end();
+            let (ty, phase, ctx) = super::script_hook_ctx::turn_end();
             observe_script_hook(bus, ty, phase, ctx).await;
         }
         if let Some(span) = agent_turn_span {
@@ -2416,6 +2469,193 @@ mod loop_middleware_tests {
         );
     }
 
+    fn user_texts(events: &[crate::agent::runtime::XyEvent]) -> Vec<String> {
+        events
+            .iter()
+            .rev()
+            .find_map(|event| match event {
+                crate::agent::runtime::XyEvent::AgentEnd { messages, .. } => Some(
+                    messages
+                        .iter()
+                        .filter(|message| message.role_name() == "user")
+                        .map(|message| message.text())
+                        .collect::<Vec<_>>(),
+                ),
+                _ => None,
+            })
+            .expect("final AgentEnd must carry history")
+    }
+
+    #[tokio::test]
+    async fn follow_up_fifo_opens_one_turn_per_submission() {
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-fifo").expect("bind");
+        runtime.follow_up("f1");
+        runtime.follow_up("f2");
+        runtime.follow_up("f3");
+
+        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut events = Vec::new();
+        while let Some(event) = stream.next().await {
+            events.push(event);
+        }
+
+        let boundaries: Vec<&str> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::agent::runtime::XyEvent::AgentStart { .. } => Some("start"),
+                crate::agent::runtime::XyEvent::AgentEnd { .. } => Some("end"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            boundaries,
+            vec![
+                "start", "end", "start", "end", "start", "end", "start", "end"
+            ],
+            "each submission must open its own turn: {events:?}"
+        );
+        assert_eq!(
+            user_texts(&events),
+            vec!["p", "f1", "f2", "f3"],
+            "follow-ups must be delivered one by one in FIFO order"
+        );
+    }
+
+    #[tokio::test]
+    async fn steer_queued_after_settle_joins_next_submission() {
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-steer-late").expect("bind");
+
+        let mut stream = runtime.submit_root("first", RunPolicy::Reject).await;
+        while stream.next().await.is_some() {}
+        assert_eq!(runtime.queue_stats().steer_count, 0, "steer drained");
+
+        runtime.steer("late steer");
+        let mut stream = runtime.submit_root("second", RunPolicy::Reject).await;
+        let mut events = Vec::new();
+        while let Some(event) = stream.next().await {
+            events.push(event);
+        }
+        assert_eq!(
+            user_texts(&events),
+            vec!["first", "second", "late steer"],
+            "a steer arriving after settle must be delivered as the next submission"
+        );
+    }
+
+    struct GoalJsonText;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for GoalJsonText {
+        fn name(&self) -> &str {
+            "goal-json-text"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(xylitol_plugin_sdk::model::XyChunk::TextDelta(
+                    r#"{"verdict":"not_met","evidence":"still failing"}"#.into(),
+                )),
+                Ok(xylitol_plugin_sdk::model::XyChunk::Done {
+                    finish_reason: xylitol_plugin_sdk::message::XyStopReason::Stop,
+                    usage: None,
+                }),
+            ])))
+        }
+    }
+
+    fn goal_defined(max_iterations: u64) -> xylitol_plugin_sdk::session::SessionEntry {
+        use xylitol_plugin_sdk::session::{CUSTOM_TYPE_AUTOMATION, CustomEntry, EntryBase};
+        xylitol_plugin_sdk::session::SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: CUSTOM_TYPE_AUTOMATION.into(),
+            data: serde_json::json!({
+                "kind": "goal_defined",
+                "goal_id": "g1",
+                "branch_id": "sess-goal",
+                "objective": "tests pass",
+                "acceptance": "cargo test exits 0",
+                "max_iterations": max_iterations,
+                "created_at": 0
+            }),
+        })
+    }
+
+    #[tokio::test]
+    async fn goal_continue_delivers_guidance_as_new_turn() {
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(GoalJsonText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let store = base.store.clone();
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-goal").expect("bind");
+        store
+            .append_session_entry("sess-goal", &goal_defined(2))
+            .await
+            .expect("append goal");
+
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut events = Vec::new();
+        while let Some(event) = stream.next().await {
+            events.push(event);
+        }
+
+        let boundaries: Vec<&str> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::agent::runtime::XyEvent::AgentStart { .. } => Some("start"),
+                crate::agent::runtime::XyEvent::AgentEnd { .. } => Some("end"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            boundaries,
+            vec!["start", "end", "start", "end"],
+            "goal continuation must open its own turn: {events:?}"
+        );
+        let texts = user_texts(&events);
+        assert_eq!(
+            texts.len(),
+            2,
+            "one continuation submission expected: {texts:?}"
+        );
+        assert_eq!(texts[0], "go");
+        assert!(
+            texts[1].contains("still failing"),
+            "evaluator guidance must ride the next submission: {texts:?}"
+        );
+        let goals = xylitol_plugin_sdk::session::project_goals(
+            &store.load_entries("sess-goal").await.expect("load entries"),
+            "sess-goal",
+        );
+        assert_eq!(
+            goals[0].state,
+            xylitol_plugin_sdk::session::GoalState::Blocked,
+            "second not_met must hit max_iterations and block"
+        );
+    }
+
     struct CaptureBeforeStep {
         seen: Arc<std::sync::Mutex<Vec<(u32, bool)>>>,
     }
@@ -2458,8 +2698,8 @@ mod loop_middleware_tests {
         let seen = seen.lock().expect("seen");
         assert_eq!(
             *seen,
-            vec![(0, true), (1, true)],
-            "initial prompt and follow-up both open a turn"
+            vec![(0, true), (0, true)],
+            "each turn starts at step 0 and carries new user input"
         );
     }
 

@@ -13,7 +13,7 @@
 
   @req:r3290
   规则: automation-admission
-    AutomationEngine 须按 session 槽运行；到期 tick 须经同一 admission 启动 run；session busy 时 须排 follow-up，单 pending，重复到期 coalesce，不得 steer；重启后 不得补跑，须按当前时间重算 next_fire。
+    AutomationEngine 须按 session 槽运行；到期 tick 须经同一 admission 启动 turn（一次提交）；session busy 时 须排 follow-up，单 pending，重复到期 coalesce，不得 steer；重启后 不得补跑，须按当前时间重算 next_fire。
 
   @req:r3291
   规则: automation-fail-closed
@@ -21,7 +21,7 @@
 
   @req:r3292
   规则: automation-tools
-    模型工具 schedule_create / schedule_list / schedule_pause / schedule_resume / schedule_cancel 须只追加事实并投影当前 branch 状态，不得直接启动 run；非法 cadence 须返回可分类错误；schedule_* 工具 不得扩大核心 7 工具闭集。
+    模型工具 schedule_create / schedule_list / schedule_pause / schedule_resume / schedule_cancel 须只追加事实并投影当前 branch 状态，不得直接启动 turn；非法 cadence 须返回可分类错误；schedule_* 工具 不得扩大核心 7 工具闭集。
 
   @req:r3319
   规则: schedule-state-transitions

@@ -577,7 +577,7 @@ fn harness_ctrl_c_consumed_before_editor_insert() {
 fn harness_busy_enter_queues_steer() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     root.borrow_mut().set_editor_text("nudge");
     session.step(HostEvent::Input(enter_event())).unwrap();
     assert_eq!(session.take_steer().as_deref(), Some("nudge"));
@@ -608,7 +608,7 @@ fn harness_busy_enter_queues_steer() {
 fn harness_busy_steer_expands_paste_marker() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     let pasted = (0..12)
         .map(|i| format!("steer{i}"))
         .collect::<Vec<_>>()
@@ -629,7 +629,7 @@ fn harness_busy_steer_expands_paste_marker() {
 fn harness_busy_alt_enter_queues_follow_up() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     root.borrow_mut().set_editor_text("later");
     session.step(HostEvent::Input(alt_enter_event())).unwrap();
     assert_eq!(session.take_follow_up().as_deref(), Some("later"));
@@ -672,7 +672,7 @@ fn alt_up_event() -> InputEvent {
 fn harness_busy_alt_up_restores_queued_to_editor() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     root.borrow_mut().set_editor_text("nudge");
     session.step(HostEvent::Input(enter_event())).unwrap();
     let _ = session.take_steer();
@@ -687,7 +687,7 @@ fn harness_busy_alt_up_restores_queued_to_editor() {
 fn harness_busy_esc_requests_abort_not_tree() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     session.step(HostEvent::Input(esc_event())).unwrap();
     assert!(session.take_abort());
     assert!(
@@ -701,7 +701,7 @@ fn harness_busy_ctrl_c_aborts_not_quit() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
     root.borrow_mut().set_editor_text(String::new());
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     session.step(HostEvent::Input(ctrl_c_event())).unwrap();
     assert!(session.take_abort(), "busy Ctrl+C must latch abort");
     assert!(
@@ -716,7 +716,7 @@ fn harness_busy_ctrl_c_with_draft_still_aborts() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
     root.borrow_mut().set_editor_text("steer draft");
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     session.step(HostEvent::Input(ctrl_c_event())).unwrap();
     assert!(session.take_abort());
     assert!(!session.should_quit());
@@ -1036,7 +1036,7 @@ fn harness_editor_slot_mutex_and_esc_closes() {
 fn harness_busy_esc_aborts_not_tree_slot() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     assert_eq!(root.borrow().slot(), super::layout::EditorSlotKind::Editor);
     session.step(HostEvent::Input(esc_event())).unwrap();
     assert!(session.take_abort());
@@ -1050,7 +1050,7 @@ fn harness_busy_esc_aborts_not_tree_slot() {
 #[test]
 fn harness_xy_events_update_ui_model_and_transcript() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::TextDelta("Hi".into()))))
         .unwrap();
@@ -1087,7 +1087,7 @@ fn harness_xy_events_update_ui_model_and_transcript() {
 #[test]
 fn harness_middle_turn_end_keeps_busy() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.on_run_started("x");
+    session.on_turn_started("x");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::StepEnd { step_index: 0 })))
         .unwrap();
@@ -1207,7 +1207,7 @@ async fn harness_history_copy_last_copies_assistant() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("prompt");
+    session.on_turn_started("prompt");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(
             "copy-me-please".into(),
@@ -1286,7 +1286,7 @@ async fn harness_busy_history_copy_last_still_copies() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("first");
+    session.on_turn_started("first");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::TextDelta("A".into()))))
         .unwrap();
@@ -1296,7 +1296,7 @@ async fn harness_busy_history_copy_last_still_copies() {
             messages: Vec::new(),
         })))
         .unwrap();
-    session.on_run_started("busy again");
+    session.on_turn_started("busy again");
     assert!(session.is_busy());
 
     let mut driver = ScriptedDriver::new();
@@ -1324,7 +1324,7 @@ async fn harness_history_copy_emits_pending_osc52_on_terminal() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("prompt");
+    session.on_turn_started("prompt");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(
             "osc52-payload".into(),
@@ -1395,7 +1395,7 @@ async fn harness_busy_slash_trust_refused() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     assert!(session.is_busy());
 
     let mut driver = ScriptedDriver::new();
@@ -1424,7 +1424,7 @@ async fn harness_busy_slash_reload_refused() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     assert!(session.is_busy());
 
     let mut driver = ScriptedDriver::new();
@@ -1452,7 +1452,7 @@ async fn harness_busy_slash_session_name_allows_not_steer() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     assert!(session.is_busy());
 
     let mut driver = ScriptedDriver::new();
@@ -1482,7 +1482,7 @@ async fn harness_busy_slash_session_name_allows_not_steer() {
 fn harness_busy_unknown_slash_not_steered() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.on_run_started("hello");
+    session.on_turn_started("hello");
     root.borrow_mut().set_editor_text("/totally-unknown");
     session.step(HostEvent::Input(enter_event())).unwrap();
     assert!(session.take_steer().is_none());
@@ -4561,7 +4561,7 @@ fn streaming_deltas_do_not_drift_a_scrolled_viewport() {
         "anchor must be content: {row_before:?}"
     );
 
-    session.on_run_started("stream");
+    session.on_turn_started("stream");
     session.sync_dock_rows();
     session.render_now().unwrap();
 
@@ -6415,7 +6415,7 @@ fn scene_live_xy_steps_host_session() {
     b.tool_end("r1", "read");
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(100, 32));
-    session.on_run_started("scene");
+    session.on_turn_started("scene");
     for ev in b.live_events() {
         session.step(HostEvent::Xy(Box::new(ev.clone()))).unwrap();
     }
@@ -7045,7 +7045,7 @@ fn harness_hover_survives_streaming_full_render() {
         "hover must arm before streaming"
     );
 
-    session.on_run_started("stream");
+    session.on_turn_started("stream");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::ThinkingDelta(
             "stream".into(),

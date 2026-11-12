@@ -369,7 +369,7 @@ pub(crate) fn g_after_step_stop_with_followup(agent: &AgentState, ws: &Workspace
     ar_store_runner(runner);
 }
 
-#[then("after_step 中间件已被调用且 run 继续到下一轮")]
+#[then("after_step 中间件已被调用且 turn 继续到下一步")]
 pub(crate) fn t_after_step_stop_ignored() {
     let calls = LOOP_AFTER_TURN_CALLS.with(|c| *c.borrow());
     assert!(calls >= 1, "after_step must run after a turn");

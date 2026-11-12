@@ -305,7 +305,7 @@ fn t_scroll_zero(host_pump_bdd: &HostPumpBdd) {
 async fn g_busy_mcp_openable(host_pump_bdd: &HostPumpBdd) {
     let mut pump = pump_with(100, 30, long_details());
     pump.session.refresh_loaded_resources(&pump.driver).await;
-    pump.session.on_run_started("hello");
+    pump.session.on_turn_started("hello");
     put_pump(host_pump_bdd, pump);
 }
 

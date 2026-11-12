@@ -113,7 +113,7 @@
 
   @req:r3309
   规则: context-injection-framework
-    上下文注入框架 必须 由官方插件提供并默认装配：七个注入点 必须 复用统一生命周期名（session_start / session_shutdown / run_start / run_end / turn_pre / step_start / step_end），编译到既有缝，不得新增内核钩子。turn_pre 必须 以「有新用户消息」为谓词；step 之间不得评估。注册 必须 支持内置、插件服务与用户配置三来源；调度 必须 按 priority 升序、同优先级 id 字典序，注册序不得参与。空注册 必须 零开销。放置 必须 支持 HistoryRow 与 Ephemeral；同 group 的提醒 必须 聚合为单条 system-reminder 块。命令注入器 必须 以 4KB 截断、默认 2s 超时执行，失败或超时 必须 跳过并告警（advisory fail-open）。由插件单测覆盖。
+    上下文注入框架 必须 由官方插件提供并默认装配：七个注入点 必须 复用统一生命周期名（session_start / session_shutdown / turn_start / turn_end / turn_pre / step_start / step_end），编译到既有缝，不得新增内核钩子。turn_pre 必须 在每次提交时评估一次（每 turn 恰一次真，提交必伴随新用户消息）；step 之间不得评估。注册 必须 支持内置、插件服务与用户配置三来源；调度 必须 按 priority 升序、同优先级 id 字典序，注册序不得参与。空注册 必须 零开销。放置 必须 支持 HistoryRow 与 Ephemeral；同 group 的提醒 必须 聚合为单条 system-reminder 块。命令注入器 必须 以 4KB 截断、默认 2s 超时执行，失败或超时 必须 跳过并告警（advisory fail-open）。由插件单测覆盖。
 
   @req:r3310
   规则: context-reminder-drift

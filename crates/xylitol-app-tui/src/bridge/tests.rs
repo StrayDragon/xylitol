@@ -31,6 +31,31 @@ fn agent_end_reason_adds_scroll_notice() {
 }
 
 #[test]
+fn agent_end_keeps_busy_while_follow_up_queue_nonempty() {
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    apply_xy_event(
+        &mut model,
+        &XyEvent::QueueUpdate {
+            steer_count: 0,
+            follow_up_count: 2,
+        },
+    );
+    apply_xy_event(&mut model, &assistant_end());
+    assert_eq!(model.phase, UiPhase::Busy, "status: {:?}", model.status);
+    assert_eq!(model.status.as_deref(), Some("Follow-up pending"));
+    apply_xy_event(
+        &mut model,
+        &XyEvent::QueueUpdate {
+            steer_count: 0,
+            follow_up_count: 0,
+        },
+    );
+    apply_xy_event(&mut model, &assistant_end());
+    assert_eq!(model.phase, UiPhase::Idle);
+}
+
+#[test]
 fn agent_end_user_cancel_dedupes_with_abort_notice() {
     let mut model = UiModel::new();
     model.begin_run("hi");

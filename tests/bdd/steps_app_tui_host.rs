@@ -281,7 +281,7 @@ fn esc_stream(
 
 pub(crate) fn open_busy(bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
-    pump.session.on_run_started("hello");
+    pump.session.on_turn_started("hello");
     put_pump(bdd, pump);
 }
 
@@ -411,7 +411,7 @@ pub(crate) async fn t_ati2_abort_once_idle(host_pump_bdd: &HostPumpBdd) {
 #[when("再次开启忙碌流并按下 Ctrl+C")]
 pub(crate) async fn w_ati2_busy_ctrl_c(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_pump(host_pump_bdd);
-    pump.session.on_run_started("again");
+    pump.session.on_turn_started("again");
     put_pump(host_pump_bdd, pump);
     step_key(host_pump_bdd, ctrl_c_event());
     pump_once(host_pump_bdd).await;
@@ -884,7 +884,7 @@ pub(crate) async fn t_ati28_tree_opened_not_run(host_pump_bdd: &HostPumpBdd) {
 #[when("开启忙碌流再提交斜杠 session-tree")]
 pub(crate) async fn w_ati28_busy_slash_tree(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_pump(host_pump_bdd);
-    pump.session.on_run_started("busy");
+    pump.session.on_turn_started("busy");
     pump.session
         .ui_root()
         .expect("ui")
@@ -2196,7 +2196,7 @@ pub(crate) async fn w_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
     c2826_submit_slash(host_pump_bdd, "第一问").await;
     {
         let mut pump = take_pump(host_pump_bdd);
-        pump.session.on_run_started("插一句");
+        pump.session.on_turn_started("插一句");
         put_pump(host_pump_bdd, pump);
     }
     set_editor(host_pump_bdd, "插一句");
@@ -2357,7 +2357,7 @@ pub(crate) fn w_c2826_short_terminal_busy(host_pump_bdd: &HostPumpBdd) {
         .take()
         .unwrap_or_else(fresh_pump);
     pump.session = HostSession::new_product_ui(xylitol_app_tui::harness::TestTerminal::new(80, 10));
-    pump.session.on_run_started("hi");
+    pump.session.on_turn_started("hi");
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
     let frame = c2826_frame(host_pump_bdd);
     host_pump_bdd.ansi_frames.borrow_mut().push(frame);
@@ -3095,7 +3095,7 @@ fn t_c2875_esc_no_tree_chain(host_pump_bdd: &HostPumpBdd) {
 #[when("忙碌中按 Esc")]
 async fn w_c2875_busy_esc(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_pump(host_pump_bdd);
-    pump.session.on_run_started("c2875-busy");
+    pump.session.on_turn_started("c2875-busy");
     put_pump(host_pump_bdd, pump);
     pump_once(host_pump_bdd).await;
     c2875_press(
@@ -4281,7 +4281,7 @@ pub(crate) fn t_c2827_skill_popup_apply(host_pump_bdd: &HostPumpBdd, expected: S
 pub(crate) fn w_c2827_huge_diff(host_pump_bdd: &HostPumpBdd, n: u32) {
     mount_if_needed(host_pump_bdd);
     let mut pump = take_host(host_pump_bdd);
-    pump.session.on_run_started("edit big file");
+    pump.session.on_turn_started("edit big file");
     let args = serde_json::json!({ "path": "big.rs", "old_text": "a", "new_text": "b" });
     pump.session
         .step(HostEvent::Xy(Box::new(XyEvent::ToolExecutionStart {

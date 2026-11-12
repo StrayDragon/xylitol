@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: 会话级目标：goal 事实、每轮 evaluator、同 run 续跑与 loop 交互。
+# purpose: 会话级目标：goal 事实、每轮 evaluator、逐 turn 续跑与 loop 交互。
 
 功能: agent-goal
 
@@ -13,11 +13,11 @@
 
   @req:r3301
   规则: goal-decide-continue
-    settle 阶段 须读取当前 branch 的 active goal；无 goal 时保持原行为；met + evidence 须追加 GoalEvaluated(met) 与 GoalStateChanged(done) 并 Stop；not_met 须追加 GoalEvaluated(not_met) 并 Continue，达到 max_iterations 须 blocked + Stop；impossible 须 failed + Stop；pause / cancel 后 不得再调用 evaluator，pending 结果须丢弃；goal 续跑 须在同一 run 内完成，不得新开 run 或新增第二 admission。
+    settle 阶段 须读取当前 branch 的 active goal；无 goal 时保持原行为；met + evidence 须追加 GoalEvaluated(met) 与 GoalStateChanged(done) 并 Stop；not_met 须追加 GoalEvaluated(not_met) 并 Continue，达到 max_iterations 须 blocked + Stop；not_met 的 reason 须作为下一条提交的用户消息（下一轮指导）；impossible 须 failed + Stop；pause / cancel 后 不得再调用 evaluator，pending 结果须丢弃；goal 续跑 须逐 turn 续跑（evaluator 在 turn 收尾投递下一条提交，新 turn 独立 AgentStart/AgentEnd），不得在同一 turn 内续跑或新增第二 admission。
 
   @req:r3302
   规则: goal-loop-interaction
-    active goal 存在时，同 branch 的 loop tick 须记 RunSkipped(goal_active) 且不得启动 run；goal done 后 c3207 engine 须追加 ScheduleStateChanged(paused, reason=goal_done)，不得删除 schedule 事实；goal 续跑与 loop tick 不得并行驱动同一 session。
+    active goal 存在时，同 branch 的 loop tick 须记 RunSkipped(goal_active) 且不得启动 turn；goal done 后 c3207 engine 须追加 ScheduleStateChanged(paused, reason=goal_done)，不得删除 schedule 事实；goal 续跑与 loop tick 不得并行驱动同一 session。
 
   @req:r3318
   规则: goal-state-transitions

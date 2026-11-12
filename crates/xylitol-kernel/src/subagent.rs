@@ -122,7 +122,6 @@ impl XyTool for SubagentTool {
                                     text = final_text;
                                 }
                             }
-                            break;
                         }
                         Some(_) => {}
                         None => break,

@@ -882,8 +882,8 @@ pub struct ContextInjectorConfig {
 pub enum ContextInjectPoint {
     SessionStart,
     SessionShutdown,
-    RunStart,
-    RunEnd,
+    TurnStart,
+    TurnEnd,
     TurnPre,
     StepStart,
     StepEnd,

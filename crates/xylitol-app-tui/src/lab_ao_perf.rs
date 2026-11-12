@@ -298,7 +298,7 @@ async fn lab_ao_stream_1000_delta_cpu() {
     let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
     seed_long_session(&mut session).await;
     session.tui.render_now().expect("warm");
-    session.on_run_started("lab");
+    session.on_turn_started("lab");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
             session_id: "lab".into(),
@@ -351,7 +351,7 @@ async fn lab_ao_stream_delta_perf_report() {
     seed_long_session(&mut session).await;
     session.tui.render_now().expect("warm");
 
-    session.on_run_started("lab");
+    session.on_turn_started("lab");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
             session_id: "lab".into(),
@@ -564,7 +564,7 @@ async fn lab_ao_busy_mixed_perf() {
     let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
     seed_long_session(&mut session).await;
     session.tui.render_now().expect("warm");
-    session.on_run_started("lab");
+    session.on_turn_started("lab");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
             session_id: "lab".into(),

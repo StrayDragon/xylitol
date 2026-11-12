@@ -94,7 +94,7 @@
       那么 帧内不再含忙碌短词且滚动提示含取消说明一行
   @req:r1216
   规则: models-picker-footer
-    经 models 槽或 /model <id> 成功更新 selected 后：idle 时 footer model/thinking 须反映新 active（与 selected 收敛）；agent-busy 时 footer 须立即反映当前 selected（run 绑定语义：本轮生成仍用开跑时绑定，由 Host 保证）；产品面 不得渲染换模预告（Next turn cue 已随 attach run 绑定退役）。无思考模型 须省略 footer thinking 段。
+    经 models 槽或 /model <id> 成功更新 selected 后：idle 时 footer model/thinking 须反映新 active（与 selected 收敛）；agent-busy 时 footer 须立即反映当前 selected（turn 绑定语义：本轮生成仍用开跑时绑定，由 Host 保证）；产品面 不得渲染换模预告（Next turn cue 已随 attach run 绑定退役）。无思考模型 须省略 footer thinking 段。
 
     场景: 模型选择器页脚反映活动
       当 以主机泵在 idle 提交 "/model fake"
@@ -109,7 +109,7 @@
       那么 帧内不出现 Ready 文案
   @req:r1219
   规则: footer-token-refresh
-    产品 host 须在 session tree travel 换叶、CompactionEnd、turn 收尾 settlement（经 StepEnd 携带或独立 ContextTokenSettlement 事件或 Driver 缓存）、以及 turn 进行中有可用 Api usage 更新时（节流）刷新 footer token 字段；刷新 须经 settlement snapshot 或 Driver 只读 estimate_context_tokens（或等价 seam）且异步不阻塞输入；同一轮 agent run 在已应用 TurnSettled settlement 后，stream close / AgentEnd 不得再触发第二次 estimate；不得在每个 TextDelta 上全量重算上下文估计。
+    产品 host 须在 session tree travel 换叶、CompactionEnd、turn 收尾 settlement（经 StepEnd 携带或独立 ContextTokenSettlement 事件或 Driver 缓存）、以及 turn 进行中有可用 Api usage 更新时（节流）刷新 footer token 字段；刷新 须经 settlement snapshot 或 Driver 只读 estimate_context_tokens（或等价 seam）且异步不阻塞输入；同一 turn 在已应用 TurnSettled settlement 后，stream close / AgentEnd 不得再触发第二次 estimate；不得在每个 TextDelta 上全量重算上下文估计。
 
     场景: 页脚词元刷新单一估算
       当 以固定估计驱动一次 footer token 刷新

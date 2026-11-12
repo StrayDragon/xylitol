@@ -10,13 +10,19 @@ use xylitol_plugin_sdk::model::XyChunk;
 use xylitol_plugin_sdk::session::{
     AutomationFact, GoalProjection, GoalState, GoalVerdict, goal_transition, project_goals,
 };
-use xylitol_plugin_sdk::{LoopControl, XyGenerateOptions, XyModel, XySessionStore};
+use xylitol_plugin_sdk::{XyGenerateOptions, XyModel, XySessionStore};
 
 use crate::agent::model::manager::ModelManager;
 
 pub const ACCEPTANCE_MAX_CHARS: usize = 4000;
 const TRANSCRIPT_MAX_CHARS: usize = 12000;
 const INVALID_BLOCK_THRESHOLD: u32 = 3;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GoalDecision {
+    Continue { guidance: String },
+    Stop,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GoalEvalVerdict {
@@ -83,7 +89,7 @@ pub async fn decide_active_goal(
     history: &[AgentMessage],
     model_manager: &Arc<Mutex<ModelManager>>,
     cancel: &CancellationToken,
-) -> Result<Option<LoopControl>, XyError> {
+) -> Result<Option<GoalDecision>, XyError> {
     if cancel.is_cancelled() {
         return Ok(None);
     }
@@ -168,7 +174,7 @@ pub async fn decide_active_goal(
                 "met",
             )
             .await?;
-            Ok(Some(LoopControl::Stop))
+            Ok(Some(GoalDecision::Stop))
         }
         GoalEvalVerdict::Impossible => {
             set_goal_state(
@@ -180,7 +186,7 @@ pub async fn decide_active_goal(
                 "impossible",
             )
             .await?;
-            Ok(Some(LoopControl::Stop))
+            Ok(Some(GoalDecision::Stop))
         }
         GoalEvalVerdict::NotMet if next_iterations >= goal.max_iterations => {
             set_goal_state(
@@ -192,9 +198,11 @@ pub async fn decide_active_goal(
                 "max_iterations",
             )
             .await?;
-            Ok(Some(LoopControl::Stop))
+            Ok(Some(GoalDecision::Stop))
         }
-        GoalEvalVerdict::NotMet => Ok(Some(LoopControl::Continue)),
+        GoalEvalVerdict::NotMet => Ok(Some(GoalDecision::Continue {
+            guidance: outcome.evidence.clone(),
+        })),
         GoalEvalVerdict::Invalid => {
             if goal.consecutive_invalid + 1 >= INVALID_BLOCK_THRESHOLD {
                 set_goal_state(
@@ -206,9 +214,11 @@ pub async fn decide_active_goal(
                     "invalid",
                 )
                 .await?;
-                Ok(Some(LoopControl::Stop))
+                Ok(Some(GoalDecision::Stop))
             } else {
-                Ok(Some(LoopControl::Continue))
+                Ok(Some(GoalDecision::Continue {
+                    guidance: outcome.evidence.clone(),
+                }))
             }
         }
     }
@@ -536,7 +546,7 @@ mod tests {
     async fn run_decide(
         store: Arc<dyn XySessionStore>,
         manager: Arc<Mutex<ModelManager>>,
-    ) -> Option<LoopControl> {
+    ) -> Option<GoalDecision> {
         decide_active_goal(&store, "s1", &[], &manager, &CancellationToken::new())
             .await
             .expect("decide")
@@ -554,7 +564,7 @@ mod tests {
             manager(r#"{"verdict":"met","evidence":"cargo test exits 0"}"#),
         )
         .await;
-        assert_eq!(control, Some(LoopControl::Stop));
+        assert_eq!(control, Some(GoalDecision::Stop));
         let goals = project_goals(&store.load_entries("s1").await.unwrap(), "s1");
         assert_eq!(goals[0].state, GoalState::Done);
     }
@@ -571,7 +581,7 @@ mod tests {
             manager(r#"{"verdict":"not_met","evidence":"still failing"}"#),
         )
         .await;
-        assert_eq!(control, Some(LoopControl::Stop));
+        assert_eq!(control, Some(GoalDecision::Stop));
         let goals = project_goals(&store.load_entries("s1").await.unwrap(), "s1");
         assert_eq!(goals[0].state, GoalState::Blocked);
     }
@@ -588,7 +598,7 @@ mod tests {
             manager(r#"{"verdict":"impossible","evidence":"missing tool"}"#),
         )
         .await;
-        assert_eq!(control, Some(LoopControl::Stop));
+        assert_eq!(control, Some(GoalDecision::Stop));
         let goals = project_goals(&store.load_entries("s1").await.unwrap(), "s1");
         assert_eq!(goals[0].state, GoalState::Failed);
     }
@@ -633,17 +643,19 @@ mod tests {
             .await
             .unwrap();
         let manager = manager("not json");
-        assert_eq!(
-            run_decide(store.clone(), manager.clone()).await,
-            Some(LoopControl::Continue)
+        let first = run_decide(store.clone(), manager.clone()).await;
+        assert!(
+            matches!(first, Some(GoalDecision::Continue { ref guidance }) if !guidance.is_empty()),
+            "invalid verdict must continue with guidance: {first:?}"
+        );
+        let second = run_decide(store.clone(), manager.clone()).await;
+        assert!(
+            matches!(second, Some(GoalDecision::Continue { .. })),
+            "second invalid verdict must still continue: {second:?}"
         );
         assert_eq!(
             run_decide(store.clone(), manager.clone()).await,
-            Some(LoopControl::Continue)
-        );
-        assert_eq!(
-            run_decide(store.clone(), manager.clone()).await,
-            Some(LoopControl::Stop)
+            Some(GoalDecision::Stop)
         );
         let goals = project_goals(&store.load_entries("s1").await.unwrap(), "s1");
         assert_eq!(goals[0].state, GoalState::Blocked);

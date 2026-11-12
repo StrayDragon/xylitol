@@ -1910,7 +1910,7 @@ mod slice_tests {
     #[tokio::test]
     async fn h2_stream_then_idle() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-        session.on_run_started("prompt");
+        session.on_turn_started("prompt");
         session
             .step(HostEvent::Xy(Box::new(XyEvent::TextDelta("A".into()))))
             .unwrap();
@@ -1934,7 +1934,7 @@ mod slice_tests {
     async fn h3_tool_entry_visible() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        session.on_run_started("tool please");
+        session.on_turn_started("tool please");
         session
             .step(HostEvent::Xy(Box::new(XyEvent::ToolExecutionStart {
                 id: "t1".into(),
@@ -1976,7 +1976,7 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         root.borrow_mut().set_editor_text("nudge");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -2009,7 +2009,7 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         root.borrow_mut().set_editor_text("later");
         session.step(HostEvent::Input(alt_enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -2035,7 +2035,7 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         root.borrow_mut().set_editor_text("nudge");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -2060,7 +2060,7 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.on_run_started("first");
+        session.on_turn_started("first");
         session.step(HostEvent::Input(esc_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
@@ -2207,7 +2207,7 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.on_run_started("busy-turn");
+        session.on_turn_started("busy-turn");
         root.borrow_mut().set_editor_text("/model");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -2665,7 +2665,7 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.on_run_started("first");
+        session.on_turn_started("first");
         session.step(HostEvent::Input(esc_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
@@ -2694,7 +2694,7 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         driver.force_zero_queue_stats.store(true, Ordering::SeqCst);
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         root.borrow_mut().set_editor_text("nudge");
         session.step(HostEvent::Input(enter_event())).unwrap();
         let mut stream = None;
@@ -2713,7 +2713,7 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.on_run_started("first");
+        session.on_turn_started("first");
         session
             .step(HostEvent::Xy(Box::new(XyEvent::TextDelta("draft".into()))))
             .unwrap();
@@ -3111,7 +3111,7 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("!ls");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -4682,7 +4682,7 @@ mod slice_tests {
     #[tokio::test]
     async fn h35f_message_update_coalesces_into_tick() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
-        session.on_run_started("u");
+        session.on_turn_started("u");
         assert!(!session.stream_sync_pending());
         session.handle_xy(Box::new(XyEvent::MessageUpdate { message: None }));
         assert!(
@@ -4790,7 +4790,7 @@ mod slice_tests {
     fn busy_follow_up_slash_popup_survives_skill_catalog_refresh() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         session.ui_model_mut().enqueue_follow_up_strip("hi".into());
         session.ui_model_mut().set_busy_status("Assembling");
         session.sync_ui_root_from_model();
@@ -4821,7 +4821,7 @@ mod slice_tests {
     async fn busy_slash_fuzzy_enter_applies_before_steer() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         session.ui_model_mut().enqueue_follow_up_strip("hi".into());
         session.sync_ui_root_from_model();
         let mut driver = ScriptedDriver::new();
@@ -4859,7 +4859,7 @@ mod slice_tests {
     async fn busy_model_fuzzy_enter_opens_picker() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         session.ui_model_mut().enqueue_follow_up_strip("hi".into());
         session.sync_ui_root_from_model();
         let mut driver = ScriptedDriver::new();
@@ -4891,7 +4891,7 @@ mod slice_tests {
     async fn busy_model_arg_highlight_enter_sets_model() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         session.ui_model_mut().enqueue_follow_up_strip("hi".into());
         session.sync_ui_root_from_model();
         let mut driver = ScriptedDriver::new();
@@ -4925,7 +4925,7 @@ mod slice_tests {
     async fn busy_model_arg_down_enter_after_catalog_refresh_sets_highlighted() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        session.on_run_started("hello");
+        session.on_turn_started("hello");
         session.ui_model_mut().enqueue_follow_up_strip("hi".into());
         session.sync_ui_root_from_model();
         let mut driver = ScriptedDriver::new();
@@ -5362,7 +5362,7 @@ mod slice_tests {
             last_usage_index: Some(0),
             ..Default::default()
         }));
-        session.on_run_started("hi");
+        session.on_turn_started("hi");
         session
             .step(HostEvent::Xy(Box::new(XyEvent::ContextTokenSettlement {
                 estimate: ContextTokenEstimate {
@@ -5534,7 +5534,7 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/reload");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -6815,7 +6815,7 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/theme light");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -6840,7 +6840,7 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/model");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -6894,7 +6894,7 @@ mod slice_tests {
         driver.set_session_messages(harness_sample_session_messages());
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/session-resume");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -6976,7 +6976,7 @@ mod slice_tests {
         ]);
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/session-resume");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7151,7 +7151,7 @@ mod slice_tests {
         driver.set_session_list(entries);
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/session-resume");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7194,7 +7194,7 @@ mod slice_tests {
         );
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/model");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7214,7 +7214,7 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/theme");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7250,7 +7250,7 @@ mod slice_tests {
         session.refresh_loaded_resources(&driver).await;
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/mcp");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7268,7 +7268,7 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
         let root = session.ui_root().expect("ui").clone();
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         session.mount_import_confirm("/tmp/export.jsonl");
         assert!(root.borrow().import_confirm_open());
 
@@ -7317,7 +7317,7 @@ mod slice_tests {
         driver.set_session_list(entries);
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/session-resume");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7367,7 +7367,7 @@ mod slice_tests {
         driver.set_session_list(entries);
         let mut stream = None;
 
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         root.borrow_mut().set_editor_text("/session-resume");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7580,7 +7580,7 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         driver.set_thinking_levels(vec!["off".into(), "high".into()]);
         session.apply_thinking_level_ui(driver.thinking_level());
-        session.on_run_started("busy");
+        session.on_turn_started("busy");
         assert!(session.is_busy());
         let mut stream = None;
 
@@ -7833,7 +7833,7 @@ mod slice_tests {
             buf.push(ch);
             char_chunks.push(std::mem::take(&mut buf));
         }
-        session.on_run_started("你能做什么");
+        session.on_turn_started("你能做什么");
         session
             .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
                 session_id: "sid-same".into(),

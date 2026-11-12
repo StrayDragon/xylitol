@@ -60,13 +60,7 @@ impl Stream for XyEventStream {
         }
 
         match self.inner.as_mut().poll_next(cx) {
-            Poll::Ready(Some(event)) => {
-                if matches!(event, XyEvent::AgentEnd { .. }) {
-                    self.done = true;
-                    self.finish_lease();
-                }
-                Poll::Ready(Some(event))
-            }
+            Poll::Ready(Some(event)) => Poll::Ready(Some(event)),
             Poll::Ready(None) => {
                 self.done = true;
                 self.finish_lease();

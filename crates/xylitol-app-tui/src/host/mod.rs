@@ -962,7 +962,7 @@ impl<T: Terminal> HostSession<T> {
         self.external_editor_cmd_override = cmd;
     }
 
-    pub fn on_run_started(&mut self, prompt: &str) {
+    pub fn on_turn_started(&mut self, prompt: &str) {
         self.suppress_idle_esc = false;
         self.suppress_xy_until_stream_end = false;
         self.run_active = true;
@@ -1448,6 +1448,7 @@ impl<T: Terminal> HostSession<T> {
         );
         match xy.as_ref() {
             XyEvent::AgentStart { .. } => {
+                self.run_active = true;
                 self.agent_started_at = Some(OffsetDateTime::now_utc());
             }
             XyEvent::AgentEnd { .. } => {

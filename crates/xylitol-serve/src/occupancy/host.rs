@@ -1331,9 +1331,6 @@ async fn run_automation(
             outcome = RunOutcome::Failed;
         }
         slot.append_and_push(&event).await;
-        if matches!(event, XyEvent::AgentEnd { .. }) {
-            break;
-        }
     }
     drop(guard);
     slot.flush_pending_runtime().await;
@@ -1739,9 +1736,6 @@ async fn dispatch_session_unary(
             let mut stream = stream;
             while let Some(event) = stream.next().await {
                 slot_push.append_and_push(&event).await;
-                if matches!(event, XyEvent::AgentEnd { .. }) {
-                    break;
-                }
             }
             drop(guard);
             slot_push.flush_pending_runtime().await;

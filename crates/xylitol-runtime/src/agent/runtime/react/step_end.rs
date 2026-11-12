@@ -17,6 +17,10 @@ pub(crate) fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentM
     crate::utils::lock_mutex(queue).drain()
 }
 
+pub(crate) fn pop_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Option<AgentMessage> {
+    crate::utils::lock_mutex(queue).drain().into_iter().next()
+}
+
 pub(crate) fn queue_counts(
     steer: &Arc<Mutex<PendingMessageQueue>>,
     follow_up: &Arc<Mutex<PendingMessageQueue>>,

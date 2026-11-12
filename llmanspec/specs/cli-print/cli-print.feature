@@ -33,7 +33,7 @@
       那么 stdout 恰为增量拼接且无前缀重复
   @req:r55
   规则: error-nonzero-exit
-    Print 模式在 XyEvent 流中出现 Error（或等价不可恢复失败）时，进程 须以非零退出码结束；无此类错误且 run 正常结束（含 should_stop_after_step）时 须以零退出。AgentEnd.reason 为 Some 时 须向 stderr 输出一行归因摘要；None 时 不得新增输出。工具单次失败但 ReAct 继续时 不得仅因此非零退出。
+    Print 模式在 XyEvent 流中出现 Error（或等价不可恢复失败）时，进程 须以非零退出码结束；无此类错误且 turn 正常结束（含 should_stop_after_step）时 须以零退出。AgentEnd.reason 为 Some 时 须向 stderr 输出一行归因摘要；None 时 不得新增输出。工具单次失败但 ReAct 继续时 不得仅因此非零退出。
 
     场景: print错误非零工具失败零
       当 渲染含错误的事件流到缓冲

@@ -380,7 +380,7 @@ async fn start_agent_run<T: Terminal>(
         .map(|c| format!("{}/{}", c.server, c.uri))
         .collect::<Vec<_>>()
         .join(", ");
-    session.on_run_started(&prompt);
+    session.on_turn_started(&prompt);
     let _ = session.render_now();
     let t0 = std::time::Instant::now();
     *agent_stream = Some(if contexts.is_empty() {

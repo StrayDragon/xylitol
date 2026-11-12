@@ -186,7 +186,7 @@
 
   @req:r1482
   规则: otel-session-id-whole-tree-per-processing
-    当低频观测 span 激活且一次处理（绑定某会话 UUID 的 generate / compaction）导出任意低频观测 span（agent.turn、agent.iteration、llm.request、tool.execute、loop.middleware、过 prepare 的 agent.compaction、token.estimate、react.error、tool.error，含 compaction summarizer 发起的 llm.request）时，这些 span 的 langfuse.session.id 须全部等于该次处理所绑定会话的书签 UUID；重叠处理下 不得在 span 创建时读进程级会话槽，不得因他路 bind 或 reader 物化改写槽而串入其它会话 id。无 run 上下文的闲置路径（如 slash compaction）MAY 以槽为回退。本 req 不改变「值为书签 UUID」的语义。由单测覆盖，不得单独扩 BDD step。
+    当低频观测 span 激活且一次处理（绑定某会话 UUID 的 generate / compaction）导出任意低频观测 span（agent.turn、agent.iteration、llm.request、tool.execute、loop.middleware、过 prepare 的 agent.compaction、token.estimate、react.error、tool.error，含 compaction summarizer 发起的 llm.request）时，这些 span 的 langfuse.session.id 须全部等于该次处理所绑定会话的书签 UUID；重叠处理下 不得在 span 创建时读进程级会话槽，不得因他路 bind 或 reader 物化改写槽而串入其它会话 id。无活动 turn 上下文的闲置路径（如 slash compaction）MAY 以槽为回退。本 req 不改变「值为书签 UUID」的语义。由单测覆盖，不得单独扩 BDD step。
     场景: 整棵树一会话标识
       假如 mock 模型先 tool 后无 tool
       当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
@@ -194,7 +194,7 @@
 
   @req:r1483
   规则: otel-obs-slot-default-identity-only
-    进程级观测槽 须仅作为「默认身份」供无 options 的闲置回退（remote count、无快照的 HTTP hooks、无 options 的 ProviderRequestTrace）与测试使用；materialized 会话（turn / iteration / tool / compaction / generate）须使用运行时自持的会话事实快照，不得在 span 创建时读该槽。bind / switch_session 不得写该槽（c2843 Phase B 移除 obs_slot_writes 门：读者结构上不触达写入路径），槽仅由显式 writer 事件（rename、会话恢复）更新；读者物化前后槽内容 须不变。无 run 上下文的闲置路径 MAY 以槽为回退。由单测覆盖（switch 不写槽 + 快照归因），不得单独扩 BDD step。
+    进程级观测槽 须仅作为「默认身份」供无 options 的闲置回退（remote count、无快照的 HTTP hooks、无 options 的 ProviderRequestTrace）与测试使用；materialized 会话（turn / iteration / tool / compaction / generate）须使用运行时自持的会话事实快照，不得在 span 创建时读该槽。bind / switch_session 不得写该槽（c2843 Phase B 移除 obs_slot_writes 门：读者结构上不触达写入路径），槽仅由显式 writer 事件（rename、会话恢复）更新；读者物化前后槽内容 须不变。无活动 turn 上下文的闲置路径 MAY 以槽为回退。由单测覆盖（switch 不写槽 + 快照归因），不得单独扩 BDD step。
     场景: 观测槽已写按写者路径
       当 以观测闸开启并触发一次会话压缩
       那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane

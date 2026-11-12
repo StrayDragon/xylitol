@@ -115,7 +115,6 @@ where
                 if let Some(reason) = reason {
                     eprintln!("\n[End] {reason}");
                 }
-                break;
             }
         }
     }
@@ -263,6 +262,36 @@ mod tests {
         let mut buf: Vec<u8> = Vec::new();
         render_stream(&mut stream, &mut buf).await.unwrap();
         assert_eq!(String::from_utf8(buf).unwrap(), "done\n");
+    }
+
+    #[tokio::test]
+    async fn multiple_turns_render_each_answer_and_keep_going() {
+        let events = vec![
+            XyEvent::AgentStart {
+                session_id: "s".into(),
+                model: "m".into(),
+            },
+            XyEvent::TextDelta("first".into()),
+            XyEvent::AgentEnd {
+                reason: None,
+                messages: vec![],
+            },
+            XyEvent::AgentStart {
+                session_id: "s".into(),
+                model: "m".into(),
+            },
+            XyEvent::TextDelta("second".into()),
+            XyEvent::AgentEnd {
+                reason: None,
+                messages: vec![],
+            },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf).await.unwrap();
+        let out = String::from_utf8(buf).unwrap();
+        assert!(out.contains("first"), "{out}");
+        assert!(out.contains("second"), "{out}");
     }
 
     #[tokio::test]

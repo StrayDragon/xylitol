@@ -50,7 +50,7 @@ impl ContextInjectMiddleware {
     fn after_points(ctx: &AfterStepCtx) -> Vec<InjectorPoint> {
         let mut points = vec![InjectorPoint::StepEnd];
         if !ctx.continued_tools {
-            points.push(InjectorPoint::RunEnd);
+            points.push(InjectorPoint::TurnEnd);
         }
         points
     }
@@ -65,14 +65,14 @@ impl ContextInjectMiddleware {
             started.insert(session_key)
         };
         if !first_of_session {
-            return vec![InjectorPoint::RunStart, InjectorPoint::TurnPre];
+            return vec![InjectorPoint::TurnStart, InjectorPoint::TurnPre];
         }
         let mut points = Vec::new();
         if self.session_has_transcript(ctx.session_id.as_deref()).await {
             points.push(InjectorPoint::SessionShutdown);
         }
         points.push(InjectorPoint::SessionStart);
-        points.push(InjectorPoint::RunStart);
+        points.push(InjectorPoint::TurnStart);
         points.push(InjectorPoint::TurnPre);
         points
     }
@@ -418,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn after_points_include_run_end_at_settle() {
+    fn after_points_include_turn_end_at_settle() {
         let ctx = AfterStepCtx {
             step_index: 1,
             continued_tools: false,
@@ -427,7 +427,7 @@ mod tests {
         };
         let points = ContextInjectMiddleware::after_points(&ctx);
         assert!(points.contains(&InjectorPoint::StepEnd));
-        assert!(points.contains(&InjectorPoint::RunEnd));
+        assert!(points.contains(&InjectorPoint::TurnEnd));
     }
 
     #[test]
@@ -457,13 +457,13 @@ mod tests {
             middleware.submission_points(&ctx).await,
             vec![
                 InjectorPoint::SessionStart,
-                InjectorPoint::RunStart,
+                InjectorPoint::TurnStart,
                 InjectorPoint::TurnPre
             ]
         );
         assert_eq!(
             middleware.submission_points(&ctx).await,
-            vec![InjectorPoint::RunStart, InjectorPoint::TurnPre]
+            vec![InjectorPoint::TurnStart, InjectorPoint::TurnPre]
         );
     }
 

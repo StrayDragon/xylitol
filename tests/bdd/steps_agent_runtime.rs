@@ -317,7 +317,9 @@ pub(crate) fn _t_ar8_steer_drained() {
 pub(crate) async fn _g_ar8_followup_extends(agent: &AgentState, ws: &Workspace) {
     set_fake_text("followup ack");
     let runner = ar_make_runner(agent, ws);
-    runner.follow_up("追问内容");
+    runner.follow_up("追问一");
+    runner.follow_up("追问二");
+    runner.follow_up("追问三");
     ar_store_runner(runner);
 }
 
@@ -326,11 +328,53 @@ pub(crate) async fn _w_ar8_run_until_end() {
     ar_take_run_store("主提示").await;
 }
 
-#[then("继续循环而非 AgentEnd")]
-pub(crate) fn _t_ar8_followup_continues() {
-    assert!(
-        !ar_events().is_empty(),
-        "follow_up should extend the turn, got empty stream"
+#[then("follow_up 逐条独立成回合")]
+pub(crate) fn _t_ar8_followups_one_turn_each() {
+    let events = ar_events();
+    let starts = events
+        .iter()
+        .filter(|event| matches!(event, XyEvent::AgentStart { .. }))
+        .count();
+    let ends = events
+        .iter()
+        .filter(|event| matches!(event, XyEvent::AgentEnd { .. }))
+        .count();
+    assert_eq!(
+        starts, 4,
+        "initial submission plus three follow_ups must each open a turn: {events:?}"
+    );
+    assert_eq!(ends, 4, "each turn must close with AgentEnd: {events:?}");
+    let mut open = false;
+    for event in &events {
+        match event {
+            XyEvent::AgentStart { .. } => {
+                assert!(!open, "AgentStart must not nest: {events:?}");
+                open = true;
+            }
+            XyEvent::AgentEnd { .. } => {
+                assert!(open, "AgentEnd must follow AgentStart: {events:?}");
+                open = false;
+            }
+            _ => {}
+        }
+    }
+    let messages = events
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            XyEvent::AgentEnd { messages, .. } => Some(messages),
+            _ => None,
+        })
+        .expect("final AgentEnd must carry history");
+    let user_texts: Vec<String> = messages
+        .iter()
+        .filter(|message| message.role_name() == "user")
+        .map(|message| message.text())
+        .collect();
+    assert_eq!(
+        user_texts,
+        vec!["主提示", "追问一", "追问二", "追问三"],
+        "follow_ups must be delivered one by one in FIFO order"
     );
 }
 
@@ -664,7 +708,7 @@ pub(crate) fn _t_ar30_max_two_turns(agent: &AgentState) {
     );
 }
 
-#[then("本 run 以 AgentEnd 结束且 follow_up 未被注入历史")]
+#[then("本 turn 以 AgentEnd 结束且 follow_up 未被注入历史")]
 pub(crate) fn _t_ar24_followup_not_injected(agent: &AgentState) {
     let events = agent.events.borrow();
     let agent_end = events.iter().rev().find_map(|ev| match ev {

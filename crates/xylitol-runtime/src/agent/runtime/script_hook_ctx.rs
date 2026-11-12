@@ -2,16 +2,16 @@ use serde_json::{Value, json};
 
 pub type ScriptHookCtx = (&'static str, &'static str, Value);
 
-pub fn run_start() -> ScriptHookCtx {
-    ("run_start", "", json!({}))
+pub fn turn_start() -> ScriptHookCtx {
+    ("turn_start", "", json!({}))
 }
 
-pub fn run_end() -> ScriptHookCtx {
-    ("run_end", "", json!({}))
+pub fn turn_end() -> ScriptHookCtx {
+    ("turn_end", "", json!({}))
 }
 
-pub fn run_settled() -> ScriptHookCtx {
-    ("run_settled", "", json!({}))
+pub fn turn_settled() -> ScriptHookCtx {
+    ("turn_settled", "", json!({}))
 }
 
 pub fn step_start(step_index: u32) -> ScriptHookCtx {

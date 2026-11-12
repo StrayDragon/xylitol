@@ -33,7 +33,7 @@ async fn test_ar_abort_drops_sse(agent: AgentState, ws: Workspace) {}
 async fn test_ar_steer_before_llm_request(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "追问延长"
+    name = "追问逐条独立回合"
 )]
 async fn test_ar_followup_extends(agent: AgentState, ws: Workspace) {}
 #[scenario(

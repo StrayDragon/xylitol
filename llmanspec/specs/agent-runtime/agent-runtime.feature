@@ -5,7 +5,7 @@
 
   @req:r1027
   规则: thin-react-loop
-    agent/ 层 须以 AgentRuntime 驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_step 请求停；不得以产品默认 max_iterations 或未配置的硬步数闸结束 run；可选 session.max_steps_per_turn（见 r1048）须仅通过 should_stop_after_step 生效。不得在循环实现内联 bash 执行或厂商 HTTP。
+    agent/ 层 须以 AgentRuntime 驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_step 请求停；不得以产品默认 max_iterations 或未配置的硬步数闸结束本 turn；可选 session.max_steps_per_turn（见 r1048）须仅通过 should_stop_after_step 生效。不得在循环实现内联 bash 执行或厂商 HTTP。
 
     场景: ReAct结束
       假如 mock 模型先 tool 后无 tool
@@ -66,7 +66,7 @@
 
   @req:r1057
   规则: mutable-slots-next-turn
-    set_tools / set_hooks / set_system_prompt 等 须只影响下一轮 run；进行中回合使用启动快照。
+    set_tools / set_hooks / set_system_prompt 等 须只影响下一次提交（turn）；进行中 turn 使用启动快照。
     场景: 热已应用槽重建提示词
       假如 Agent 能力聚合体已就绪
       当 热应用新的上下文与系统提示资源
@@ -83,22 +83,26 @@
 
   @req:r1059
   规则: pending-queues
-    须提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；缺省 QueueMode / SteeringMode 须为 OneAtATime（一次 drain 一条；配置可显式 all）；ReAct 须在模型调用前 drain steer；在将因无 tool_calls 而结束前 drain follow_up（非空则继续）；若 should_stop_after_step 已请求停，不得 drain steer 或 follow_up。
+    须提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；缺省 QueueMode / SteeringMode 须为 OneAtATime（一次 drain 一条；配置可显式 all）；ReAct 须在模型调用前 drain steer；turn 收尾时 须从 follow_up FIFO 弹一条作为下一次提交（新 turn，独立 AgentStart/AgentEnd）；队列空时才结束事件流；若 should_stop_after_step 已请求停，不得 drain steer 或 follow_up。
 
     场景: 改向之前模型
       假如 装配并运行入队 steer 的 agent
       当 检查队列与历史
       那么 steer 计数归零且已处理
 
-    场景: 追问延长
-      假如 装配无工具 agent 并入队 follow_up
-      当 运行至将结束
-      那么 继续循环而非 AgentEnd
-
     场景: 应当停止跳过追问
       假如 入队 follow_up 且 should_stop_after_step 在首次 StepEnd 后返回 true
       当 运行 AgentRuntime
-      那么 本 run 以 AgentEnd 结束且 follow_up 未被注入历史
+      那么 本 turn 以 AgentEnd 结束且 follow_up 未被注入历史
+
+  @req:r3322
+  规则: one-submission-one-turn
+    每次提交（含 follow_up FIFO 弹出）须产生独立 turn 与独立 AgentStart/AgentEnd；follow_up 须逐条弹出，不得合并进同一次模型调用；steer 在 turn 在途时 须在 step 边界注入当前 turn，settle 后到达的 steer 视为一次提交（新 turn）。abort 须取消当前 turn、清空 steer 并保留 follow_up FIFO。队列非空时 须立即弹出下一条（新 turn）；队列空时才进入空闲。
+
+    场景: 追问逐条独立回合
+      假如 装配无工具 agent 并入队 follow_up
+      当 运行至将结束
+      那么 follow_up 逐条独立成回合
 
   @req:r1060
   规则: queue-update-events
@@ -111,7 +115,7 @@
 
   @req:r1028
   规则: abort-queue-semantics
-    abort 须清空 steer、保留 follow_up；须取消当前 run CancellationToken 与进行中工具/交互 bash；不得仅靠无人订阅的 EventBus 旁路传队列状态。
+    abort 须取消当前 turn、清空 steer 并保留 follow_up FIFO（后续提交照常弹出）；须取消当前 CancellationToken 与进行中工具/交互 bash；不得仅靠无人订阅的 EventBus 旁路传队列状态。
 
     场景: 中止清除改向
       假如 装配 agent 并入队 steer 与 follow_up
@@ -125,7 +129,7 @@
 
   @req:r1029
   规则: abort-resets-token
-    每次 run 开始 须安装新 CancellationToken；abort 后下一次 run 不得因沿用已取消 token 立刻 aborted。
+    每次提交 须安装新 CancellationToken；abort 后下一次提交 不得因沿用已取消 token 立刻 aborted。
 
     场景: 第二次运行之后中止
       假如 装配慢速 agent 并在首轮 abort 后
@@ -182,7 +186,7 @@
 
   @req:r1041
   规则: should-stop-after-step
-    ReAct 须在每个 step 收尾（StepEnd 之后：Settle 在结算与压缩预检之后，ContinueTools 在工具批收尾之后）调用可选的单槽 should_stop_after_step；ctx 须含 step_index 与 is_settle。返回 true 时 须发射 AgentEnd（reason=StepLimit）并结束本 run，不得为此新增专用停闸 XyEvent 变体，不得 abort 本 step 已完成的助手消息或工具。未注册时 须不因步数上限停止。该行为 须有可执行 BDD 场景（live `.feature`，`@req`）。
+    ReAct 须在每个 step 收尾（StepEnd 之后：Settle 在结算与压缩预检之后，ContinueTools 在工具批收尾之后）调用可选的单槽 should_stop_after_step；ctx 须含 step_index 与 is_settle。返回 true 时 须发射 AgentEnd（reason=StepLimit）并结束本 turn，不得为此新增专用停闸 XyEvent 变体，不得 abort 本 step 已完成的助手消息或工具。未注册时 须不因步数上限停止。该行为 须有可执行 BDD 场景（live `.feature`，`@req`）。
 
     场景: 应当停止发出agent结束
       假如 注册 should_stop_after_step 在首次 StepEnd 后返回 true
@@ -196,7 +200,7 @@
 
   @req:r1042
   规则: next-turn-refresh-model-thinking
-    ReAct 须在每次模型调用前（turn 边界，对齐 pi prepareNextTurn）从 session 重读当前选中模型与 thinking level，并据此重建本 turn 的 XyModel 与 XyGenerateOptions（或等价绑定）；不得在整个 run 内握死首帧 model/thinking snapshot。已开始的 in-flight generate_stream 须继续使用该次调用开始时的绑定，不得中途拆流。run 结束（AgentEnd）或 abort 后无 in-flight 时，active 与 selected 须收敛。该行为 须有可执行 BDD 或等价单测场景。
+    ReAct 须在每次模型调用前（turn 边界，对齐 pi prepareNextTurn）从 session 重读当前选中模型与 thinking level，并据此重建本 turn 的 XyModel 与 XyGenerateOptions（或等价绑定）；不得在整个 turn 内握死首帧 model/thinking snapshot。已开始的 in-flight generate_stream 须继续使用该次调用开始时的绑定，不得中途拆流。turn 结束（AgentEnd）或 abort 后无 in-flight 时，active 与 selected 须收敛。该行为 须有可执行 BDD 或等价单测场景。
     场景: 下一回合重读模型与思考
       当 以桥缝注入元数据事件（模型选择与 thinking 档位）
       那么 模型不 panic 且条目与相位不变
@@ -245,7 +249,7 @@
 
   @req:r1048
   规则: config-max-steps-via-should-stop
-    当运行时配置 session.max_steps_per_turn（正整数 N）存在时，组合根 须在装配后安装 should_stop_after_step：于每个 step 收尾（含 ContinueTools）后若 step_index + 1 >= N 则返回 true 结束 run（AgentEnd reason=StepLimit）；缺省或未配置时 不得安装该钩子（开放结束，见 r1027）。旧键 session.max_turns 须使配置加载失败并指路新键，不得留别名。不得使用 max_iterations 字段名。该行为 须有可执行 BDD 或等价单测场景。
+    当运行时配置 session.max_steps_per_turn（正整数 N）存在时，组合根 须在装配后安装 should_stop_after_step：于每个 step 收尾（含 ContinueTools）后若 step_index + 1 >= N 则返回 true 结束本 turn（AgentEnd reason=StepLimit）；缺省或未配置时 不得安装该钩子（开放结束，见 r1027）。旧键 session.max_turns 须使配置加载失败并指路新键，不得留别名。不得使用 max_iterations 字段名。该行为 须有可执行 BDD 或等价单测场景。
 
     场景: 最大步数停止运行
       假如 按 session.max_steps_per_turn=2 安装 should_stop_after_step 且入队 follow_up 以迫使第二轮
@@ -263,7 +267,7 @@
 
   @req:r1843
   规则: iteration-close-vs-settle
-    一次用户触发的 run（观测根 agent.turn，AgentStart…AgentEnd）内，每一轮模型 generate 及其工具批是一次 iteration（观测 agent.iteration，XyEvent StepStart/StepEnd 成对）。本轮仍有 tool_calls、将再 generate 时 须以 ContinueTools 关闭 iteration：发 StepEnd 配成对，不得 ContextTokenSettlement、不得 auto-compact 预检、不得 should_stop_after_step。本轮不再要工具时 须 Settle：StepEnd + settlement + threshold/overflow 预检 + should_stop。generate 失败走 overflow Case1 的收尾仍为 Settle。不得用「跳过 StepEnd」或「导出侧去重 skipped」代替这组穷举。由单测覆盖，不得为静态存在性单独扩 BDD step。
+    一次提交即一个 turn（观测根 agent.turn，AgentStart…AgentEnd）内，每一轮模型 generate 及其工具批是一次 iteration（观测 agent.iteration，XyEvent StepStart/StepEnd 成对）。本轮仍有 tool_calls、将再 generate 时 须以 ContinueTools 关闭 iteration：发 StepEnd 配成对，不得 ContextTokenSettlement、不得 auto-compact 预检、不得 should_stop_after_step。本轮不再要工具时 须 Settle：StepEnd + settlement + threshold/overflow 预检 + should_stop。generate 失败走 overflow Case1 的收尾仍为 Settle。不得用「跳过 StepEnd」或「导出侧去重 skipped」代替这组穷举。由单测覆盖，不得为静态存在性单独扩 BDD step。
 
     场景: 工具回合两轮次一结算
       假如 mock 模型先 tool 后无 tool
@@ -281,7 +285,7 @@
 
   @req:r1050
   规则: turn-end-overflow-compact-retry
-    ReAct 在 Settle（或 generate 失败走 overflow Case1 的收尾）后 须先于 threshold（ar31）评估 overflow Case1（domain-compaction c21–c23）。ContinueTools 不得做该预检。sameModel 且 is_context_overflow 时执行一次 compact-and-retry；willRetry 为 true 时 须从 store 重载与 as45 同源的 compaction-aware 工作 history（含摘掉错误 assistant 的效果，因 error/aborted 投影跳过或重载不含未裁切旧链）并继续本 run 的下一模型调用；不得仅 pop 错误行却继续握持 firstKept 之前的膨胀 history；二次 overflow 须失败并结束 recovery；overflow 不得走 AutoRetry 瞬态重试。该行为 须有可执行 BDD 场景（见 domain-compaction.feature 锚点）。
+    ReAct 在 Settle（或 generate 失败走 overflow Case1 的收尾）后 须先于 threshold（ar31）评估 overflow Case1（domain-compaction c21–c23）。ContinueTools 不得做该预检。sameModel 且 is_context_overflow 时执行一次 compact-and-retry；willRetry 为 true 时 须从 store 重载与 as45 同源的 compaction-aware 工作 history（含摘掉错误 assistant 的效果，因 error/aborted 投影跳过或重载不含未裁切旧链）并继续本 turn 的下一模型调用；不得仅 pop 错误行却继续握持 firstKept 之前的膨胀 history；二次 overflow 须失败并结束 recovery；overflow 不得走 AutoRetry 瞬态重试。该行为 须有可执行 BDD 场景（见 domain-compaction.feature 锚点）。
     场景: 溢出情形一压缩重试
       假如 sameModel 的 assistant 被判定为 context overflow 且 stop_reason 非 stop
       假如 compaction enabled 且尚未做过 overflow recovery
@@ -312,7 +316,7 @@
 
   @req:r1054
   规则: stream-node-timestamps
-    ReAct 持久化 assistant 消息时 须附加 streamTiming（camelCase unix-ms 节点，LLM 投影忽略）：本 run 的 agentStarted、本 turn 的 turnStarted、思考通道起止、正文首末 TextDelta、首个工具意图、messageEnded；仅写入实际发生的键。思考通道结束 须在先到的正文/工具意图/ThinkingEnd 打一次，不得用 Done 或整段正文结束冒充。textEnded MAY 随最后 TextDelta 覆盖。Thought 展示用思考通道起止派生 thinkingElapsedSecs（不到 1s 省略）。由单测覆盖，不得单独扩 BDD step。
+    ReAct 持久化 assistant 消息时 须附加 streamTiming（camelCase unix-ms 节点，LLM 投影忽略）：本 turn 的 agentStarted、本 turn 的 turnStarted、思考通道起止、正文首末 TextDelta、首个工具意图、messageEnded；仅写入实际发生的键。思考通道结束 须在先到的正文/工具意图/ThinkingEnd 打一次，不得用 Done 或整段正文结束冒充。textEnded MAY 随最后 TextDelta 覆盖。Thought 展示用思考通道起止派生 thinkingElapsedSecs（不到 1s 省略）。由单测覆盖，不得单独扩 BDD step。
     场景: 已持久化节点计时结算思考
       当 以场景构建器回放思考加工具并结算 7 秒封轮挂载交互面
       当 左键单击折叠命中表中的簇头三角列
@@ -343,7 +347,7 @@
 
   @req:r2920
   规则: loop-middleware-spi
-    插件 须经 rutis 生命周期注册 loop 中间件参与 ReAct 决策：阶段闭集为 before_step、before_llm_request、after_llm_response、before_tool、after_tool、decide_continue、after_step；注册表 须按阶段分组并按 order 升序排列，同 order 保持注册序；注册 须返回卸载句柄，插件停止时 须卸干净。每次 run 须在启动时快照中间件链，进行中 run 不得受后挂中间件影响；链为空时 须零开销直走基线路径，不得创建观测 span 或额外事件。core 须永远持有 turn 边界、取消、权限最终裁决与消息落盘格式，不得允许插件整段替换 ReAct。
+    插件 须经 rutis 生命周期注册 loop 中间件参与 ReAct 决策：阶段闭集为 before_step、before_llm_request、after_llm_response、before_tool、after_tool、decide_continue、after_step；注册表 须按阶段分组并按 order 升序排列，同 order 保持注册序；注册 须返回卸载句柄，插件停止时 须卸干净。每次提交（turn）须在启动时快照中间件链，进行中 turn 不得受后挂中间件影响；链为空时 须零开销直走基线路径，不得创建观测 span 或额外事件。core 须永远持有 turn 边界、取消、权限最终裁决与消息落盘格式，不得允许插件整段替换 ReAct。
 
     场景: 中间件有序且卸载后消失
       假如 注册 before_llm_request 阶段 order 10 与 order 5 的两个中间件
@@ -357,7 +361,7 @@
 
   @req:r2921
   规则: loop-middleware-control
-    中间件返回值 须为 { ctx, control }；control 闭集为 continue、stop、compact、handoff。decide_continue 须仅在 Settle 的 StepEnd 之后、settle 与压缩预检之后调用，ContinueTools 不得调用；stop 须以 AgentEnd 结束本 run 且不得再 drain steer 或 follow_up；compact 须由 core 执行一次强制压缩后继续；handoff 本 change 未支持，core 须以稳定 kind LoopMiddlewareHandoffUnsupported 的错误结束本 run，不得静默忽略。中间件不得自行再调模型，下一次 generate 只能由 core 调度。after_step 的 control 须仅为 continue，其他取值须记入观测并忽略，不得静默改变行为。
+    中间件返回值 须为 { ctx, control }；control 闭集为 continue、stop、compact、handoff。decide_continue 须仅在 Settle 的 StepEnd 之后、settle 与压缩预检之后调用，ContinueTools 不得调用；stop 须以 AgentEnd 结束本 turn 且不得再 drain steer 或 follow_up；compact 须由 core 执行一次强制压缩后继续；handoff 本 change 未支持，core 须以稳定 kind LoopMiddlewareHandoffUnsupported 的错误结束本 turn，不得静默忽略。中间件不得自行再调模型，下一次 generate 只能由 core 调度。after_step 的 control 须仅为 continue，其他取值须记入观测并忽略，不得静默改变行为。
 
     场景: 自定义停止结束运行
       假如 注册 decide_continue 中间件在首次结算返回 stop
@@ -372,7 +376,7 @@
     场景: after_step 非法控制被忽略
       假如 注册 after_step 中间件返回 stop 且入队 follow_up
       当 运行 AgentRuntime 并收集事件
-      那么 after_step 中间件已被调用且 run 继续到下一轮
+      那么 after_step 中间件已被调用且 turn 继续到下一步
 
   @req:r2922
   规则: loop-middleware-tool-gate
@@ -410,7 +414,7 @@
 
   @req:r2923
   规则: loop-middleware-bounded
-    core 须对 decide_continue 的 continue 与 compact 设硬上限：连续裁决且本轮无新工具结果、无新用户消息的次数超过上限时 须停止本 run 并以稳定 kind LoopMiddlewareLimit 的错误可观测，不得挂死循环或静默停。单次中间件调用 须与取消令牌和超时竞速；取消须以 aborted 结束本 run，超时须以稳定 kind LoopMiddlewareTimeout 的错误结束本 run，不得让中间件无限期占用 turn。
+    core 须对 decide_continue 的 continue 与 compact 设硬上限：连续裁决且本轮无新工具结果、无新用户消息的次数超过上限时 须停止本 turn 并以稳定 kind LoopMiddlewareLimit 的错误可观测，不得挂死循环或静默停。单次中间件调用 须与取消令牌和超时竞速；取消须以 aborted 结束本 turn，超时须以稳定 kind LoopMiddlewareTimeout 的错误结束本 turn，不得让中间件无限期占用 turn。
 
     场景: 无进展继续触发上限
       假如 注册 decide_continue 中间件总是返回 continue 且无新工具与新用户消息
@@ -491,7 +495,7 @@
 
   @req:r2930
   规则: loop-middleware-compact-request
-    decide_continue 返回 compact 时，中间件 须能随决策提供压缩指令与来源标签；core 须把来源标签带入压缩开始与结束事件的 reason，缺省时 须以中间件标识构造稳定标签，不得一律记为手动压缩。压缩成功后 须向本 run 事件流发出压缩后结算，供插件与端读取压缩后占用；压缩失败 须以带中间件标识的错误结束本 run。压缩仍只由 core 调度，中间件不得自行调用压缩或改写压缩策略。
+    decide_continue 返回 compact 时，中间件 须能随决策提供压缩指令与来源标签；core 须把来源标签带入压缩开始与结束事件的 reason，缺省时 须以中间件标识构造稳定标签，不得一律记为手动压缩。压缩成功后 须向本 turn 事件流发出压缩后结算，供插件与端读取压缩后占用；压缩失败 须以带中间件标识的错误结束本 turn。压缩仍只由 core 调度，中间件不得自行调用压缩或改写压缩策略。
 
     场景: 压缩来源可辨识
       假如 注册 decide_continue 中间件返回带来源标签的 compact 决策
@@ -505,7 +509,7 @@
 
   @req:r2926
   规则: loop-middleware-visible-consistency
-    中间件改动 须与对外可见形状一致：before_step 注入的系统碎片与 before_llm_request 改写的 system / tool schema 须回流到本 run 的压缩固定上下文（token 估计与压缩阈值按最终形状计算，不得沿用启动快照）；before_tool 改写的参数须在 ToolExecutionStart 中呈现，不得先发原始参数再执行改写后参数；after_llm_response 改写的 assistant（含新增 tool_call）须在 MessageEnd 之前生效，不得让已发出的 MessageEnd 与随后落盘/执行的形状不一致。中间件超时或取消结束本 run 时，回合观测须标记为非正常结束，不得记为成功。
+    中间件改动 须与对外可见形状一致：before_step 注入的系统碎片与 before_llm_request 改写的 system / tool schema 须回流到本 turn 的压缩固定上下文（token 估计与压缩阈值按最终形状计算，不得沿用启动快照）；before_tool 改写的参数须在 ToolExecutionStart 中呈现，不得先发原始参数再执行改写后参数；after_llm_response 改写的 assistant（含新增 tool_call）须在 MessageEnd 之前生效，不得让已发出的 MessageEnd 与随后落盘/执行的形状不一致。中间件超时或取消结束本 turn 时，回合观测须标记为非正常结束，不得记为成功。
 
     场景: 改写参数可见
       假如 注册 before_tool 中间件把 bash 命令改为 echo safe
@@ -523,8 +527,8 @@
       那么 含碎片的估计不低于无碎片基线
 
   @req:r2927
-  规则: run-event-boundary
-    一次用户触发的 run 的事件流 须以 AgentStart 开始、以 AgentEnd 结束：AgentStart 须在本 run 的会话与历史装配完成、回合观测建立之后、首个 StepStart 之前发出，且为流内第一个事件；AgentEnd 须为最后一个事件。AgentStart 的 session_id 须为本 run 绑定的会话，model 须取本 run 启动时的当前模型标识，流内不得重读以免与回合观测属性不一致；未选模型时 model 为空串。装配失败（会话或历史加载失败）时 不得发 AgentStart。
+  规则: turn-event-boundary
+    一次提交即一个 turn：每个 turn 须以 AgentStart 开始、以 AgentEnd 结束。流内首个 AgentStart 须在会话与历史装配完成、回合观测建立之后、首个 StepStart 之前发出，且为流内第一个事件；每个 turn 的 AgentEnd 须为该 turn 的最后一个事件；队列非空时 turn 之间 须以 AgentEnd → AgentStart 相邻衔接。AgentStart 的 session_id 须为本 turn 绑定的会话，model 须取本 turn 启动时的当前模型标识，流内不得重读以免与回合观测属性不一致；未选模型时 model 为空串。装配失败（会话或历史加载失败）时 不得发 AgentStart。
 
     场景: 首末事件边界
       假如 mock 模型先 tool 后无 tool
@@ -612,7 +616,7 @@
 
   @req:r2942
   规则: todo-checkpoint-middleware
-    todo checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_llm_request（或 after_step）把变化落为 todo_checkpoint 条目；恢复后的首个 before_llm_request 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或 todo 已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
+    todo checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_llm_request（或 after_step）把变化落为 todo_checkpoint 条目；恢复后的首个 before_llm_request 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或 todo 已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 turn。写入 须只追加，不覆盖或删除历史 checkpoint。
 
     场景: todo 变化落为 checkpoint 并恢复注入
       假如 工具调用改变了 todo 状态
@@ -643,7 +647,7 @@
 
   @req:r3008
   规则: image-modality-gate
-    ReAct 在调用 provider 前 须检查出站消息是否含图像部件；当前模型未声明 image 时 须发出明确错误（提示配置 input_modalities）并结束本 run，不得调用 provider、不得静默丢图或假装已理解。模型已声明 image 时 须照常调用。
+    ReAct 在调用 provider 前 须检查出站消息是否含图像部件；当前模型未声明 image 时 须发出明确错误（提示配置 input_modalities）并结束本 turn，不得调用 provider、不得静默丢图或假装已理解。模型已声明 image 时 须照常调用。
 
     场景: 未声明图像模态诚实拒绝
       假如 当前模型 input_modalities 仅含 text

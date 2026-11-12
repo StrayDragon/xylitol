@@ -75,8 +75,8 @@ pub struct InjectorConfig {
 pub enum InjectorPoint {
     SessionStart,
     SessionShutdown,
-    RunStart,
-    RunEnd,
+    TurnStart,
+    TurnEnd,
     TurnPre,
     StepStart,
     StepEnd,

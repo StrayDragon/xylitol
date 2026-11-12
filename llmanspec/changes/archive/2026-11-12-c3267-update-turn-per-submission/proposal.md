@@ -2,6 +2,9 @@
 depends_on:
   - c3266-fix-p0-review-followups
 title: "Update to one-submission-one-turn admission"
+branch: sdd/c3267-update-turn-per-submission
+base_branch: main
+base_sha: 380a41ca91af8cffbce834b69ba38be67c7cffe0
 ---
 
 # 提交即 turn：顺序单条投递模型（c3267）

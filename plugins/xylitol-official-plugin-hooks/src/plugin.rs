@@ -75,7 +75,7 @@ impl Plugin for HooksPlugin {
                 let dispatcher = dispatcher.clone();
                 async move {
                     let ctx = serde_json::json!({ "step": event.step });
-                    match XyHookBus::dispatch(dispatcher.as_ref(), "run_start", "pre", ctx).await {
+                    match XyHookBus::dispatch(dispatcher.as_ref(), "turn_start", "pre", ctx).await {
                         XyHookOutcome::Blocked { reason } => Ok(Some(Err(reason))),
                         _ => call.chain().await,
                     }

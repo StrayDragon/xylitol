@@ -119,7 +119,7 @@
       那么 重载经共享缝完成且尾插 Reload 步进汇总
   @req:r1251
   规则: thinking-level-silent-commit
-    产品 host 经 /model 槽或有参 /model 提交 model/thinking、或经 /theme 应用主题时 须经共享执行器更新 selected；成功路径 须仅更新固定区（footer、边框、主题），不得向 live scrollback / transcript 追加 model → … / thinking-border → … / theme → … 类滚动提示确认块；失败或诊断 MAY 写滚动提示。agent-busy 时 footer 须立即反映 selected（run 绑定语义；产品面无换模预告）。模型切换后 须从 Driver 重同步 UI；组件 不得直接 reach ModelManager。
+    产品 host 经 /model 槽或有参 /model 提交 model/thinking、或经 /theme 应用主题时 须经共享执行器更新 selected；成功路径 须仅更新固定区（footer、边框、主题），不得向 live scrollback / transcript 追加 model → … / thinking-border → … / theme → … 类滚动提示确认块；失败或诊断 MAY 写滚动提示。agent-busy 时 footer 须立即反映 selected（turn 绑定语义；产品面无换模预告）。模型切换后 须从 Driver 重同步 UI；组件 不得直接 reach ModelManager。
 
     场景: 静默提交模型与主题固定区仅
       当 以主机泵在 idle 提交 "/model test-model"

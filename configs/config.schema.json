@@ -233,8 +233,8 @@
       "enum": [
         "session_start",
         "session_shutdown",
-        "run_start",
-        "run_end",
+        "turn_start",
+        "turn_end",
         "turn_pre",
         "step_start",
         "step_end"

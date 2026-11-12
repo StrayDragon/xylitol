@@ -23,7 +23,7 @@ Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成�
 
 共享概念词汇（文档叙事主语）：**session（会话）⊃ turn（问答轮：一条用户输入到最终答复）⊃ step（一次模型调用周期 + 工具批）**。事件 / 字段载体：`StepStart` / `StepEnd` / `step_index`；Settle 是 turn 的收尾动作（发生在末个 step）。
 
-**run 是宿主实现术语**（一次提交 / 一个事件流：`RunCoordinator`、`AgentStart…AgentEnd`、`run_start` / `run_end` hook），不进共享概念词汇。文档与代码注释不得把 run 当概念层使用；旧稿若把「run 边界」「同 run」当概念，按本三层版修订。
+**run 已退役为历史实现命名**（仅存于标识符：`RunCoordinator` / `RunId` / `run_inflight` / `RunLease`；语义 = 单个 turn 的执行与串行化机器），概念层与文档叙事零使用。提交边界一律写 turn（= 一次提交 = 一对 `AgentStart` / `AgentEnd`）或「每次提交」；旧稿若把「run 边界」「同 run」当概念，按三层版修订。
 
 
 ## 产品定调
