@@ -7,6 +7,7 @@ pub mod compaction_settings;
 pub mod compat;
 pub mod dto;
 pub mod error;
+pub mod file_lock;
 pub mod generate;
 pub mod host_env;
 pub mod lifecycle;

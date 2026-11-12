@@ -231,3 +231,11 @@
   @req:r3316
   规则: context-inject-project-trust
     context_inject 的 project 层 必须 随 trust 门禁：未信任项目 不得 加载其注入器配置。
+
+  @req:r3344
+  规则: file-lock-raii
+    文件锁 须 以 RAII guard 持有（Drop 删锁文件）；持锁路径 panic 不得 留下死锁文件；获取 须 指数退避重试。由单测覆盖。
+
+  @req:r3345
+  规则: stale-lock-reclaim
+    锁文件 mtime 超阈值（默认 30s）须 视为陈旧并回收后重试；锁内容 须 记 pid 辅助诊断。由单测覆盖。

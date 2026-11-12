@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix file lock lifecycle"
+branch: sdd/c3295-fix-file-lock-lifecycle
+base_branch: main
+base_sha: 83ed769ed181c1a02e2e3a3bc545d5b34d39e312
 ---
 
 # 文件锁生命周期修复

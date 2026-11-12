@@ -1,21 +1,5 @@
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{0}")]
-struct SettingsLockError(String);
-
-impl From<&str> for SettingsLockError {
-    fn from(value: &str) -> Self {
-        Self(value.to_string())
-    }
-}
-
-impl From<String> for SettingsLockError {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
 pub trait SettingsStorage {
     fn with_lock(&self, scope: SettingsScope, f: &mut dyn FnMut(Option<&str>) -> Option<String>);
 }
@@ -39,42 +23,6 @@ impl FileSettingsStorage {
             project_path: cwd.join(".xylitol").join("settings.json"),
         }
     }
-
-    fn acquire_with_retry(&self, path: &Path) -> Result<(), SettingsLockError> {
-        let max_attempts = 10;
-        let delay_us = 20_000;
-
-        for attempt in 1..=max_attempts {
-            let lock_path = path.with_extension("json.lock");
-            match std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&lock_path)
-            {
-                Ok(_lock) => {
-                    return Ok(());
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    if attempt == max_attempts {
-                        return Err(format!(
-                            "Failed to acquire settings lock after {max_attempts} attempts"
-                        )
-                        .into());
-                    }
-                    std::thread::sleep(std::time::Duration::from_micros(delay_us));
-                }
-                Err(e) => {
-                    return Err(format!("Lock error: {e}").into());
-                }
-            }
-        }
-        Err("unreachable".into())
-    }
-
-    fn release(&self, path: &Path) {
-        let lock_path = path.with_extension("json.lock");
-        let _ = std::fs::remove_file(lock_path);
-    }
 }
 
 impl SettingsStorage for FileSettingsStorage {
@@ -83,26 +31,54 @@ impl SettingsStorage for FileSettingsStorage {
             SettingsScope::Global => &self.global_path,
             SettingsScope::Project => &self.project_path,
         };
-
-        let current = std::fs::read_to_string(path).ok();
-        let current_ref = current.as_deref();
-        let next = f(current_ref);
-
-        if let Some(content) = next {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+        let lock_path = path.with_extension("json.lock");
+        let parent_exists = path.parent().is_some_and(|parent| parent.exists());
+        if parent_exists {
+            let guard = match xylitol_plugin_sdk::file_lock::FileLockGuard::acquire(lock_path) {
+                Ok(guard) => guard,
+                Err(e) => {
+                    log::error!(
+                        target: "xylitol::config",
+                        "settings lock acquire failed ({e}); refusing unlocked write"
+                    );
+                    return;
+                }
+            };
+            let current = std::fs::read_to_string(path).ok();
+            let next = f(current.as_deref());
+            if let Some(content) = next {
+                write_settings(path, &content);
             }
-            let locked = self.acquire_with_retry(path).is_ok();
-            let tmp = path.with_extension("json.tmp");
-            if let Err(e) = std::fs::write(&tmp, format!("{content}\n")) {
-                log::warn!("write settings temp file: {e}");
-            } else if let Err(e) = std::fs::rename(&tmp, path) {
-                log::warn!("rename settings temp file: {e}");
-            }
-            if locked {
-                self.release(path);
-            }
+            drop(guard);
+            return;
         }
+        let Some(content) = f(None) else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let guard = match xylitol_plugin_sdk::file_lock::FileLockGuard::acquire(lock_path) {
+            Ok(guard) => guard,
+            Err(e) => {
+                log::error!(
+                    target: "xylitol::config",
+                    "settings lock acquire failed ({e}); refusing unlocked write"
+                );
+                return;
+            }
+        };
+        write_settings(path, &content);
+        drop(guard);
+    }
+}
+
+fn write_settings(path: &Path, content: &str) {
+    let tmp = path.with_extension("json.tmp");
+    if let Err(e) = std::fs::write(&tmp, format!("{content}\n")) {
+        log::warn!("write settings temp file: {e}");
+    } else if let Err(e) = std::fs::rename(&tmp, path) {
+        log::warn!("rename settings temp file: {e}");
     }
 }
 
@@ -192,6 +168,31 @@ mod tests {
         assert!(
             !project.join(".xylitol").exists(),
             "reading project settings must not mkdir <cwd>/.xylitol"
+        );
+    }
+
+    #[test]
+    fn concurrent_writes_do_not_lose_updates() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let storage = std::sync::Arc::new(FileSettingsStorage::new(dir.path(), dir.path()));
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let storage = std::sync::Arc::clone(&storage);
+            handles.push(std::thread::spawn(move || {
+                storage.with_lock(SettingsScope::Global, &mut |current| {
+                    Some(format!("{}a", current.unwrap_or("")))
+                });
+            }));
+        }
+        for handle in handles {
+            handle.join().expect("join");
+        }
+        let content =
+            std::fs::read_to_string(dir.path().join("settings.json")).expect("read settings");
+        assert_eq!(
+            content.matches('a').count(),
+            8,
+            "locked read-modify-write MUST NOT lose updates: {content:?}"
         );
     }
 }

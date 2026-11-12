@@ -317,3 +317,7 @@
       假如 配置含两条同 id 的 context_inject 注入器
       当 校验配置
       那么 校验报错
+
+  @req:r3346
+  规则: settings-read-modify-write-locked
+    settings 读-改-写 须 全程持锁（锁内读取）；获取锁失败 须 记录错误且不写入，不得 静默无锁写入。由单测覆盖。

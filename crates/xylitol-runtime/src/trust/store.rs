@@ -197,22 +197,14 @@ impl TrustManager {
         }
     }
 
-    fn acquire_lock(&self) -> Result<fs::File, XyTrustError> {
+    fn acquire_lock(&self) -> Result<xylitol_plugin_sdk::file_lock::FileLockGuard, XyTrustError> {
         let lock_path = self.trust_file_path.with_extension("json.lock");
         acquire_lock_at(&lock_path)
     }
 
-    fn release_lock(&self, lock_file: fs::File) {
-        let lock_path = self.trust_file_path.with_extension("json.lock");
-        drop(lock_file);
-        let _ = fs::remove_file(&lock_path);
-    }
-
     fn with_lock<T>(&self, f: impl FnOnce() -> Result<T, XyTrustError>) -> Result<T, XyTrustError> {
-        let lock = self.acquire_lock()?;
-        let result = f();
-        self.release_lock(lock);
-        result
+        let _guard = self.acquire_lock()?;
+        f()
     }
 
     fn load_store(&self) -> Result<LoadedStore, XyTrustError> {
@@ -834,51 +826,30 @@ fn write_atomic_private(path: &Path, contents: &str) -> Result<(), XyTrustError>
     Ok(())
 }
 
-fn ensure_lock_dir(lock_path: &Path) -> Result<(), XyTrustError> {
-    if let Some(parent) = lock_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| XyTrustError::io("create trust lock dir", e))?;
-    }
-    Ok(())
+fn acquire_lock_at(
+    lock_path: &Path,
+) -> Result<xylitol_plugin_sdk::file_lock::FileLockGuard, XyTrustError> {
+    acquire_lock_at_with_stale(
+        lock_path,
+        xylitol_plugin_sdk::file_lock::DEFAULT_STALE_AFTER,
+    )
 }
 
-fn acquire_lock_at(lock_path: &Path) -> Result<fs::File, XyTrustError> {
-    ensure_lock_dir(lock_path)?;
-    let max_attempts = 10;
-    let delay = Duration::from_millis(20);
-    for attempt in 1..=max_attempts {
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
+fn acquire_lock_at_with_stale(
+    lock_path: &Path,
+    stale_after: Duration,
+) -> Result<xylitol_plugin_sdk::file_lock::FileLockGuard, XyTrustError> {
+    xylitol_plugin_sdk::file_lock::FileLockGuard::acquire_with_stale(
+        lock_path.to_path_buf(),
+        stale_after,
+    )
+    .map_err(|e| {
+        if e.kind() == ErrorKind::AlreadyExists {
+            XyTrustError::Lock
+        } else {
+            XyTrustError::io("create trust lock", e)
         }
-        match options.open(lock_path) {
-            Ok(file) => {
-                let _ = (&file).write_all(format!("{}\n", std::process::id()).as_bytes());
-                return Ok(file);
-            }
-            Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-                handle_lock_exists(attempt, max_attempts, delay)?;
-            }
-            Err(e) => {
-                return Err(XyTrustError::io("create trust lock", e));
-            }
-        }
-    }
-    Err(XyTrustError::Lock)
-}
-
-fn handle_lock_exists(
-    attempt: u32,
-    max_attempts: u32,
-    delay: Duration,
-) -> Result<(), XyTrustError> {
-    if attempt == max_attempts {
-        return Err(XyTrustError::Lock);
-    }
-    std::thread::sleep(delay);
-    Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -1102,32 +1073,34 @@ mod tests {
     fn test_acquire_lock_succeeds_and_releases() {
         let dir = tempfile::tempdir().expect("tempdir");
         let lock_path = dir.path().join("trust.json.lock");
-        let file = acquire_lock_at(&lock_path).expect("first acquire");
+        let guard = acquire_lock_at(&lock_path).expect("first acquire");
         assert!(lock_path.exists());
-        drop(file);
-        fs::remove_file(&lock_path).expect("remove lock");
+        drop(guard);
+        assert!(!lock_path.exists(), "RAII guard MUST remove the lock file");
         acquire_lock_at(&lock_path).expect("re-acquire after release");
     }
 
     #[test]
-    fn test_acquire_lock_gives_up_on_stale_lock() {
+    fn test_acquire_lock_reclaims_stale_lock() {
         let dir = tempfile::tempdir().expect("tempdir");
         let lock_path = dir.path().join("trust.json.lock");
         fs::write(&lock_path, "stale").expect("write stale lock");
-        let err = acquire_lock_at(&lock_path).expect_err("stale lock must exhaust attempts");
-        assert!(
-            matches!(err, XyTrustError::Lock),
-            "unexpected error: {err:?}"
-        );
+        let guard = acquire_lock_at_with_stale(&lock_path, Duration::ZERO)
+            .expect("stale lock MUST be reclaimed");
+        drop(guard);
+        assert!(!lock_path.exists());
     }
 
     #[test]
-    fn test_handle_lock_exists_sleeps_until_final_attempt() {
-        handle_lock_exists(1, 2, Duration::ZERO).expect("retry allowed");
-        assert!(matches!(
-            handle_lock_exists(2, 2, Duration::ZERO),
-            Err(XyTrustError::Lock)
-        ));
+    fn test_lock_guard_removes_file_on_panic() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let lock_path = dir.path().join("trust.json.lock");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = acquire_lock_at(&lock_path).expect("acquire");
+            panic!("boom");
+        }));
+        assert!(result.is_err());
+        assert!(!lock_path.exists(), "panic MUST NOT leave a dead lock file");
     }
 
     #[test]
