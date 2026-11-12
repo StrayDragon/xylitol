@@ -133,7 +133,8 @@ pub(crate) fn g_comp_cut_assistant(agent: &AgentState) {
     };
     agent.last_result.replace(Some(Ok(format!(
         "role:{role} split:{} turn:{}",
-        result.is_split_turn, result.turn_start_index
+        result.split_turn.is_some(),
+        result.split_turn.unwrap_or(0)
     ))));
 }
 

@@ -99,7 +99,7 @@ impl CompactionOrchestrator {
             let settled =
                 compute_after_compaction_settlement(store, sid, fixed_context, None, obs_session)
                     .await;
-            let notice = take_fallback_notice(summary, fallback_notice_emitted, None);
+            let pending = take_fallback_notice(summary, fallback_notice_emitted, None);
             event_sink
                 .emit(&XyEvent::CompactionEnd {
                     result: result.as_ref().ok().map(|_| "ok".to_string()),
@@ -113,9 +113,12 @@ impl CompactionOrchestrator {
                     summary: result.as_ref().ok().map(|e| e.summary.clone()),
                     tokens_before: result.as_ref().ok().map(|e| e.tokens_before),
                     tokens_after: settled.as_ref().map(|s| s.estimate.tokens),
-                    notice,
+                    notice: pending.text,
                 })
                 .await;
+            if pending.fallback_included {
+                *fallback_notice_emitted = true;
+            }
             if let Some(settled) = settled {
                 emit_settlement_event(event_sink, &settled).await;
             }
@@ -391,6 +394,7 @@ impl CompactionOrchestrator {
 
         let mut tokens_after = None;
         let mut floor_notice = None;
+        let mut floor_included = false;
         let mut settled_event = None;
         if result.is_ok()
             && let Some(settled) = compute_after_compaction_settlement(
@@ -405,18 +409,17 @@ impl CompactionOrchestrator {
             tokens_after = Some(settled.estimate.tokens);
             if context_window > 0
                 && settled.estimate.tokens >= context_window
-                && let Some(flag) = floor_notice_emitted
-                && !*flag
+                && floor_notice_emitted.as_ref().is_some_and(|flag| !**flag)
             {
-                *flag = true;
                 floor_notice = Some(floor_diagnostic_notice(
                     settled.estimate.tokens,
                     context_window,
                 ));
+                floor_included = true;
             }
             settled_event = Some(settled);
         }
-        let notice = take_fallback_notice(summary_binding, fallback_notice_emitted, floor_notice);
+        let pending = take_fallback_notice(summary_binding, fallback_notice_emitted, floor_notice);
 
         event_sink
             .emit(&XyEvent::CompactionEnd {
@@ -428,9 +431,15 @@ impl CompactionOrchestrator {
                 summary: summary_text,
                 tokens_before,
                 tokens_after,
-                notice,
+                notice: pending.text,
             })
             .await;
+        if pending.fallback_included {
+            *fallback_notice_emitted = true;
+        }
+        if floor_included && let Some(flag) = floor_notice_emitted {
+            *flag = true;
+        }
 
         if let Some(settled) = settled_event {
             emit_settlement_event(event_sink, &settled).await;
@@ -443,23 +452,30 @@ impl CompactionOrchestrator {
     }
 }
 
+struct PendingNotice {
+    text: Option<String>,
+    fallback_included: bool,
+}
+
 fn take_fallback_notice(
     summary_binding: &CompactionSummaryBinding,
-    fallback_notice_emitted: &mut bool,
+    fallback_notice_emitted: &bool,
     floor_notice: Option<String>,
-) -> Option<String> {
+) -> PendingNotice {
     let fallback = if !*fallback_notice_emitted {
         summary_binding.attribution.notice_message()
     } else {
         None
     };
-    if fallback.is_some() {
-        *fallback_notice_emitted = true;
-    }
-    match (fallback, floor_notice) {
+    let fallback_included = fallback.is_some();
+    let text = match (fallback, floor_notice) {
         (Some(fb), Some(fl)) => Some(format!("{fb}\n{fl}")),
         (Some(fb), None) => Some(fb),
         (None, fl) => fl,
+    };
+    PendingNotice {
+        text,
+        fallback_included,
     }
 }
 

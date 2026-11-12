@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix compaction boundary and one-shot notices"
+branch: sdd/c3290-fix-compaction-boundary-notices
+base_branch: main
+base_sha: 5e75637997e46f9c1003f1d9dc9682bb208c94a3
 ---
 
 # 压缩边界推导与一次性通知修复

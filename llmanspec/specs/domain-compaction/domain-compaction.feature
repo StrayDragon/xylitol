@@ -410,3 +410,19 @@
   @req:r3315
   规则: compact-preserve-context-fingerprint
     压缩后 必须 保留 context-fingerprint-snapshot 自定义条目；缺失时 必须 从压缩前条目补写。由插件单测覆盖。
+
+  @req:r3340
+  规则: compaction-boundary-single-source
+    压缩边界起点推导 须单点实现供手动压缩与溢出压缩共用；「已压缩」判定 须跳过非消息条目后看最后一条上下文条目，不得只看 entries.last()。由单测覆盖。
+
+  @req:r3341
+  规则: compaction-notice-after-emit
+    一次性通知（fallback / floor）须在 CompactionEnd 事件 emit 之后置位；emit 之前 不得置位。由只读标志类型与 emit 后置位顺序保证。
+
+  @req:r3342
+  规则: compaction-cut-point-explicit
+    切点结果的 turn 起点 须以显式 Option 表达（None=不拆分 turn），不得用 -1 哨兵或冗余 bool 双字段。由单测覆盖。
+
+  @req:r3343
+  规则: post-compact-state-single-transaction
+    压缩后不变量重建（session_env / session_prepare / agent_todo / workflow 等状态条目）须单次加载逐项补齐；失败 须记日志并报告未完成（返回未完成标记），不得要求持久重试标记。由单测覆盖。

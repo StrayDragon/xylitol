@@ -88,6 +88,32 @@ pub fn projected_post_compact_tokens(
 
 pub use xylitol_plugin_sdk::effective_trigger_threshold;
 
+fn boundary_start(entries: &[SessionEntry]) -> usize {
+    for (i, entry) in entries.iter().enumerate().rev() {
+        if let SessionEntry::Compaction(comp) = entry {
+            let first_kept_id = comp.first_kept_entry_id.as_str();
+            return entries
+                .iter()
+                .position(|e| e.entry_id() == Some(first_kept_id))
+                .unwrap_or(i + 1);
+        }
+    }
+    0
+}
+
+fn last_context_entry_is_compaction(entries: &[SessionEntry]) -> bool {
+    entries
+        .iter()
+        .rev()
+        .find(|entry| {
+            matches!(
+                entry,
+                SessionEntry::Message(_) | SessionEntry::Compaction(_)
+            )
+        })
+        .is_some_and(|entry| matches!(entry, SessionEntry::Compaction(_)))
+}
+
 pub fn prepare_compaction(
     entries: &[SessionEntry],
     settings: &CompactionSettings,
@@ -97,25 +123,11 @@ pub fn prepare_compaction(
     if entries.is_empty() {
         return Err("Nothing to compact (empty session)".into());
     }
-    if matches!(entries.last(), Some(SessionEntry::Compaction(_))) {
+    if last_context_entry_is_compaction(entries) {
         return Err("Already compacted".into());
     }
 
-    let mut boundary_start = 0usize;
-    for (i, entry) in entries.iter().enumerate().rev() {
-        if let SessionEntry::Compaction(comp) = entry {
-            let first_kept_id = comp.first_kept_entry_id.as_str();
-            if let Some(idx) = entries
-                .iter()
-                .position(|e| e.entry_id() == Some(first_kept_id))
-            {
-                boundary_start = idx;
-            } else {
-                boundary_start = i + 1;
-            }
-            break;
-        }
-    }
+    let boundary_start = boundary_start(entries);
     let boundary_end = entries.len();
     let cut = find_cut_point(
         entries,
@@ -127,24 +139,20 @@ pub fn prepare_compaction(
     if first_kept.entry_id().is_none() {
         return Err("Nothing to compact (no summarizable history beyond keep window)".into());
     }
-    let history_end = if cut.is_split_turn {
-        cut.turn_start_index.max(0) as usize
-    } else {
-        cut.first_kept_entry_index
-    };
+    let history_end = cut.split_turn.unwrap_or(cut.first_kept_entry_index);
     let history_count = entries[boundary_start..history_end]
         .iter()
         .filter_map(|e| e.as_agent_message())
         .count();
-    let turn_prefix_count = if cut.is_split_turn {
-        let turn_start = cut.turn_start_index.max(0) as usize;
-        entries[turn_start..cut.first_kept_entry_index]
-            .iter()
-            .filter_map(|e| e.as_agent_message())
-            .count()
-    } else {
-        0
-    };
+    let turn_prefix_count = cut
+        .split_turn
+        .map(|turn_start| {
+            entries[turn_start..cut.first_kept_entry_index]
+                .iter()
+                .filter_map(|e| e.as_agent_message())
+                .count()
+        })
+        .unwrap_or(0);
     if history_count == 0 && turn_prefix_count == 0 {
         return Err("Nothing to compact (no summarizable history beyond keep window)".into());
     }
@@ -174,23 +182,11 @@ pub async fn compact_session(
         return Err("empty session, nothing to compact".into());
     }
 
-    let mut prev_compaction: Option<&CompactionEntry> = None;
-    let mut boundary_start = 0usize;
-    for (i, entry) in entries.iter().enumerate().rev() {
-        if let SessionEntry::Compaction(comp) = entry {
-            prev_compaction = Some(comp);
-            let first_kept_id = comp.first_kept_entry_id.as_str();
-            if let Some(idx) = entries
-                .iter()
-                .position(|e| e.entry_id() == Some(first_kept_id))
-            {
-                boundary_start = idx;
-            } else {
-                boundary_start = i + 1;
-            }
-            break;
-        }
-    }
+    let prev_compaction = entries.iter().rev().find_map(|entry| match entry {
+        SessionEntry::Compaction(comp) => Some(comp),
+        _ => None,
+    });
+    let boundary_start = boundary_start(&entries);
 
     let boundary_end = entries.len();
 
@@ -221,11 +217,7 @@ pub async fn compact_session(
         .ok_or_else(|| "first kept entry has no id".to_string())?
         .to_string();
 
-    let history_end = if cut.is_split_turn {
-        cut.turn_start_index.max(0) as usize
-    } else {
-        cut.first_kept_entry_index
-    };
+    let history_end = cut.split_turn.unwrap_or(cut.first_kept_entry_index);
 
     let messages_to_summarize: Vec<xylitol_plugin_sdk::message::AgentMessage> = entries
         [boundary_start..history_end]
@@ -233,23 +225,22 @@ pub async fn compact_session(
         .filter_map(|entry| entry.as_agent_message())
         .collect();
 
-    let turn_prefix_messages: Vec<xylitol_plugin_sdk::message::AgentMessage> = if cut.is_split_turn
-    {
-        let turn_start = cut.turn_start_index.max(0) as usize;
-        entries[turn_start..cut.first_kept_entry_index]
-            .iter()
-            .filter_map(|entry| entry.as_agent_message())
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let turn_prefix_messages: Vec<xylitol_plugin_sdk::message::AgentMessage> = cut
+        .split_turn
+        .map(|turn_start| {
+            entries[turn_start..cut.first_kept_entry_index]
+                .iter()
+                .filter_map(|entry| entry.as_agent_message())
+                .collect()
+        })
+        .unwrap_or_default();
 
     let mut file_ops_messages = messages_to_summarize.clone();
     file_ops_messages.extend(turn_prefix_messages.iter().cloned());
     let file_ops = extract_file_ops_from_messages(&file_ops_messages, prev_compaction);
 
     let previous_summary = prev_compaction.map(|c| c.summary.as_str());
-    let summary = if cut.is_split_turn && !turn_prefix_messages.is_empty() {
+    let summary = if cut.split_turn.is_some() && !turn_prefix_messages.is_empty() {
         let history_text = if messages_to_summarize.is_empty() {
             "No prior history.".to_string()
         } else {
@@ -350,10 +341,7 @@ pub async fn compact_session(
         .commit_compaction(session_id, &SessionEntry::Compaction(entry.clone()))
         .await?;
 
-    ensure_session_env_after_compact(store, session_id, &entries).await;
-    ensure_session_prepare_after_compact(store, session_id, &entries).await;
-    ensure_agent_todo_after_compact(store, session_id, &entries).await;
-    ensure_state_entries_after_compact(store, session_id, &entries).await;
+    ensure_state_after_compact(store, session_id, &entries).await;
 
     Ok(entry)
 }
@@ -394,24 +382,57 @@ pub async fn ensure_agent_todo_after_compact(
     }
 }
 
-async fn ensure_state_entries_after_compact(
+async fn ensure_state_after_compact(
     store: &dyn XySessionStore,
     session_id: &str,
     entries_before: &[SessionEntry],
-) {
+) -> bool {
+    let mut entries = match store.load_leaf_branch(session_id).await {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("post-compact state ensure: reload failed ({e})");
+            return false;
+        }
+    };
+    let mut pending = Vec::new();
+    pending.extend(session_env_entry(&entries, entries_before));
+    pending.extend(session_prepare_entry(entries_before));
+    pending.extend(agent_todo_entry(&entries, entries_before));
+    pending.extend(state_entries(&entries, entries_before));
+    let mut all_ok = true;
+    for entry in pending {
+        match store.append_session_entry(session_id, &entry).await {
+            Ok(()) => entries.push(entry),
+            Err(e) => {
+                log::warn!("post-compact state persist failed: {e}");
+                all_ok = false;
+            }
+        }
+    }
+    all_ok
+}
+
+fn agent_todo_entry(
+    entries: &[SessionEntry],
+    entries_before: &[SessionEntry],
+) -> Option<SessionEntry> {
+    use xylitol_plugin_sdk::session::{build_context_entries, latest_agent_todo};
+
+    let snapshot = latest_agent_todo(entries_before)?;
+    let cut = build_context_entries(entries);
+    if latest_agent_todo(&cut).is_some() {
+        return None;
+    }
+    Some(snapshot.to_custom_entry_shell())
+}
+
+fn state_entries(entries: &[SessionEntry], entries_before: &[SessionEntry]) -> Vec<SessionEntry> {
     use xylitol_plugin_sdk::session::{
         CUSTOM_TYPE_TODO_CHECKPOINT, CUSTOM_TYPE_WORKFLOW, build_context_entries,
         latest_todo_checkpoint, latest_workflow,
     };
 
-    let entries = match store.load_leaf_branch(session_id).await {
-        Ok(e) => e,
-        Err(e) => {
-            log::warn!("post-compact state ensure: reload failed ({e})");
-            return;
-        }
-    };
-    let cut = build_context_entries(&entries);
+    let cut = build_context_entries(entries);
     let has_custom = |custom_type: &str| {
         cut.iter().any(|entry| {
             matches!(entry, SessionEntry::Custom(custom) if custom.custom_type == custom_type)
@@ -435,12 +456,7 @@ async fn ensure_state_entries_after_compact(
     {
         snapshots.push(snapshot);
     }
-
-    for snapshot in snapshots {
-        if let Err(e) = store.append_session_entry(session_id, &snapshot).await {
-            log::warn!("post-compact state persist failed: {e}");
-        }
-    }
+    snapshots
 }
 
 fn latest_custom_entry(entries: &[SessionEntry], custom_type: &str) -> Option<SessionEntry> {
@@ -451,89 +467,60 @@ fn latest_custom_entry(entries: &[SessionEntry], custom_type: &str) -> Option<Se
         .cloned()
 }
 
-async fn ensure_session_env_after_compact(
-    store: &dyn XySessionStore,
-    session_id: &str,
+fn session_env_entry(
+    entries: &[SessionEntry],
     entries_before_reload: &[SessionEntry],
-) {
-    let entries = match store.load_leaf_branch(session_id).await {
-        Ok(e) => e,
-        Err(e) => {
-            log::warn!("post-compact session_env ensure: reload failed ({e})");
-            return;
-        }
-    };
-    let cut = xylitol_plugin_sdk::session::build_context_entries(&entries);
+) -> Option<SessionEntry> {
+    let cut = xylitol_plugin_sdk::session::build_context_entries(entries);
     let mut history: Vec<_> = cut.iter().filter_map(|e| e.as_agent_message()).collect();
-    let cwd = session_cwd_from_entries(&entries)
+    let cwd = session_cwd_from_entries(entries)
         .or_else(|| session_cwd_from_entries(entries_before_reload))
         .unwrap_or(".");
     let snap = xylitol_plugin_sdk::session_env::snapshot_for_cwd(cwd);
     if !xylitol_plugin_sdk::session_env::ensure_session_env_in_history(&mut history, &snap) {
-        return;
+        return None;
     }
-    let Some(msg) = history.last() else {
-        return;
-    };
-    let Ok(message) = serde_json::to_value(msg) else {
-        return;
-    };
-    let entry = SessionEntry::Message(MessageEntry {
-        base: EntryBase {
-            entry_type: "message".into(),
-            id: String::new(),
-            parent_id: None,
-            timestamp: 0,
-        },
-        message,
-    });
-    if let Err(e) = store.append_session_entry(session_id, &entry).await {
-        log::warn!("post-compact session_env persist failed: {e}");
-    }
+    history
+        .last()
+        .and_then(|msg| serde_json::to_value(msg).ok())
+        .map(|message| {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: String::new(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                message,
+            })
+        })
 }
 
-async fn ensure_session_prepare_after_compact(
-    store: &dyn XySessionStore,
-    session_id: &str,
-    entries_before_reload: &[SessionEntry],
-) {
+fn session_prepare_entry(entries_before_reload: &[SessionEntry]) -> Option<SessionEntry> {
     let before: Vec<_> = entries_before_reload
         .iter()
         .filter_map(|e| e.as_agent_message())
         .collect();
-    let Some(snap) = xylitol_plugin_sdk::last_session_prepare(&before) else {
-        return;
-    };
-    let entries = match store.load_leaf_branch(session_id).await {
-        Ok(e) => e,
-        Err(e) => {
-            log::warn!("post-compact session_prepare ensure: reload failed ({e})");
-            return;
-        }
-    };
-    let cut = xylitol_plugin_sdk::session::build_context_entries(&entries);
+    let snap = xylitol_plugin_sdk::last_session_prepare(&before)?;
+    let cut = xylitol_plugin_sdk::session::build_context_entries(entries_before_reload);
     let mut history: Vec<_> = cut.iter().filter_map(|e| e.as_agent_message()).collect();
     if !xylitol_plugin_sdk::ensure_session_prepare_in_history(&mut history, &snap) {
-        return;
+        return None;
     }
-    let Some(msg) = history.last() else {
-        return;
-    };
-    let Ok(message) = serde_json::to_value(msg) else {
-        return;
-    };
-    let entry = SessionEntry::Message(MessageEntry {
-        base: EntryBase {
-            entry_type: "message".into(),
-            id: String::new(),
-            parent_id: None,
-            timestamp: 0,
-        },
-        message,
-    });
-    if let Err(e) = store.append_session_entry(session_id, &entry).await {
-        log::warn!("post-compact session_prepare persist failed: {e}");
-    }
+    history
+        .last()
+        .and_then(|msg| serde_json::to_value(msg).ok())
+        .map(|message| {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: String::new(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                message,
+            })
+        })
 }
 
 #[cfg(test)]
@@ -544,8 +531,8 @@ mod tests {
 
     use super::*;
     use xylitol_plugin_sdk::session::{
-        CustomEntry, EntryBase, ForkPosition, SessionContext, SessionEntry, TodoCheckpoint,
-        TodoCheckpointStep, TodoStatus, Workflow, WorkflowTask,
+        CompactionEntry, CustomEntry, EntryBase, ForkPosition, SessionContext, SessionEntry,
+        TodoCheckpoint, TodoCheckpointStep, TodoStatus, Workflow, WorkflowTask,
     };
     use xylitol_plugin_sdk::{XySessionError, XySessionStoreError};
 
@@ -673,7 +660,7 @@ mod tests {
             fingerprint_snapshot(),
         ];
         let store = Arc::new(MemStore::default());
-        ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
+        ensure_state_after_compact(store.as_ref(), "s1", &before).await;
 
         let appended = store.appended.lock().unwrap().clone();
         let types = custom_types(&appended);
@@ -684,19 +671,23 @@ mod tests {
         ] {
             assert!(types.contains(&expected.to_string()), "missing {expected}");
         }
-        assert_eq!(appended.len(), 3);
+        assert_eq!(types.len(), 3, "one entry per missing state type");
     }
 
     #[tokio::test]
     async fn compact_retains_context_fingerprint_snapshot_payload() {
         let before = vec![fingerprint_snapshot()];
         let store = Arc::new(MemStore::default());
-        ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
+        ensure_state_after_compact(store.as_ref(), "s1", &before).await;
         let appended = store.appended.lock().unwrap().clone();
-        assert_eq!(appended.len(), 1);
-        match &appended[0] {
+        let fingerprint = appended
+            .iter()
+            .find(|entry| {
+                matches!(entry, SessionEntry::Custom(custom) if custom.custom_type == "context-fingerprint-snapshot")
+            })
+            .expect("fingerprint snapshot MUST be appended");
+        match fingerprint {
             SessionEntry::Custom(custom) => {
-                assert_eq!(custom.custom_type, "context-fingerprint-snapshot");
                 assert_eq!(custom.data["skills"], serde_json::json!({}));
             }
             other => panic!("expected fingerprint snapshot entry, got {other:?}"),
@@ -709,10 +700,73 @@ mod tests {
         let before = vec![workflow.clone()];
         let store = Arc::new(MemStore::default());
         store.branch.lock().unwrap().extend([workflow]);
-        ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
-        assert!(
-            store.appended.lock().unwrap().is_empty(),
+        ensure_state_after_compact(store.as_ref(), "s1", &before).await;
+        assert_eq!(
+            custom_types(&store.appended.lock().unwrap().clone()).len(),
+            0,
             "state already present in the cut must not be duplicated"
         );
+    }
+
+    fn compaction_entry(first_kept: &str) -> SessionEntry {
+        SessionEntry::Compaction(CompactionEntry {
+            base: EntryBase {
+                entry_type: "compaction".into(),
+                id: "c1".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            summary: "summary".into(),
+            first_kept_entry_id: first_kept.into(),
+            tokens_before: 10,
+            details: None,
+            from_hook: None,
+            policy: None,
+        })
+    }
+
+    fn custom_entry(id: &str) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: "todo".into(),
+            data: serde_json::json!({}),
+        })
+    }
+
+    fn message_entry(id: &str, role: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: serde_json::json!({"role": role, "content": "hi"}),
+        })
+    }
+
+    #[test]
+    fn boundary_start_is_shared_and_skips_non_message_tail() {
+        let entries = vec![
+            custom_entry("m1"),
+            compaction_entry("m1"),
+            custom_entry("tail"),
+        ];
+        assert_eq!(boundary_start(&entries), 0);
+        assert!(
+            last_context_entry_is_compaction(&entries),
+            "a custom tail MUST NOT hide the trailing compaction"
+        );
+    }
+
+    #[test]
+    fn last_context_entry_after_compaction_is_a_message() {
+        let entries = vec![compaction_entry("m1"), message_entry("m2", "user")];
+        assert!(!last_context_entry_is_compaction(&entries));
     }
 }

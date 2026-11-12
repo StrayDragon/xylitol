@@ -5,8 +5,7 @@ use xylitol_plugin_sdk::session::SessionEntry;
 #[derive(Debug, Clone)]
 pub struct CutPointResult {
     pub first_kept_entry_index: usize,
-    pub turn_start_index: isize,
-    pub is_split_turn: bool,
+    pub split_turn: Option<usize>,
 }
 
 const ESTIMATED_IMAGE_CHARS: u64 = 4800;
@@ -246,13 +245,10 @@ fn find_turn_start_index(
     entries: &[SessionEntry],
     entry_index: usize,
     start_index: usize,
-) -> isize {
-    for i in (start_index..=entry_index).rev() {
-        if is_turn_start_entry(&entries[i]) {
-            return i as isize;
-        }
-    }
-    -1
+) -> Option<usize> {
+    (start_index..=entry_index)
+        .rev()
+        .find(|&i| is_turn_start_entry(&entries[i]))
 }
 
 pub fn find_cut_point(
@@ -264,8 +260,7 @@ pub fn find_cut_point(
     if entries.is_empty() || start_index >= end_index {
         return CutPointResult {
             first_kept_entry_index: start_index,
-            turn_start_index: -1,
-            is_split_turn: false,
+            split_turn: None,
         };
     }
 
@@ -279,8 +274,7 @@ pub fn find_cut_point(
     if cut_points.is_empty() {
         return CutPointResult {
             first_kept_entry_index: start_index,
-            turn_start_index: -1,
-            is_split_turn: false,
+            split_turn: None,
         };
     }
 
@@ -315,15 +309,12 @@ pub fn find_cut_point(
     if starts_turn {
         CutPointResult {
             first_kept_entry_index: cut_index,
-            turn_start_index: -1,
-            is_split_turn: false,
+            split_turn: None,
         }
     } else {
-        let turn_start = find_turn_start_index(entries, original_cut_index, start_index);
         CutPointResult {
             first_kept_entry_index: cut_index,
-            turn_start_index: turn_start,
-            is_split_turn: turn_start >= 0,
+            split_turn: find_turn_start_index(entries, original_cut_index, start_index),
         }
     }
 }
