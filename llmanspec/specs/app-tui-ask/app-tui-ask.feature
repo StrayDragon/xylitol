@@ -56,3 +56,6 @@
       假如 项目尚未信任
       当 启动需 Trust 闸的路径
       那么 仍走 Trust ChoicePrompt 而非 ask 工具
+  @req:r3327
+  规则: remote-approval-queue
+    Choice 槽占用时，远端 approval/ask 到达 须排队（容量 1）；当前 ask 完成后 须按序挂载排队项；队满 须即时以拒绝载荷回应新请求（approval 回 approved=false）并通知条提示 + 记日志，不得静默覆盖在等 ask 或丢弃其 oneshot。由单测覆盖。

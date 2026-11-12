@@ -28,7 +28,7 @@ impl<T: Terminal> HostSession<T> {
         if !self.suppress_idle_esc {
             return false;
         }
-        if self.is_busy() || self.reload_active {
+        if self.is_busy() || self.busy.reload {
             self.suppress_idle_esc = false;
             return false;
         }
@@ -54,7 +54,7 @@ impl<T: Terminal> HostSession<T> {
     pub(super) fn try_reload_input(&mut self, input: &InputEvent) -> bool {
         use super::super::commands::RELOADING_WAIT_NOTICE;
 
-        if !self.reload_active {
+        if !self.busy.reload {
             return false;
         }
         let Some(root) = self.ui_root.as_ref() else {
@@ -169,13 +169,13 @@ impl<T: Terminal> HostSession<T> {
                 }
                 None => {}
             }
-            let reject_bang = self.bash_active || self.run_active || self.is_busy();
+            let reject_bang = self.busy.bash || self.busy.agent_run || self.is_busy();
             if reject_bang {
                 match parse_bang_command(&text) {
                     BangParse::NotBang => {}
                     BangParse::Empty { .. } | BangParse::Cmd { .. } => {
                         drop(root);
-                        let note = if self.bash_active {
+                        let note = if self.busy.bash {
                             "bash already running — wait or Esc to cancel (second ! rejected)"
                         } else {
                             "agent busy — wait or Esc (! command cannot steer; rejected)"
@@ -202,7 +202,7 @@ impl<T: Terminal> HostSession<T> {
         let Some(root) = self.ui_root.as_ref() else {
             return false;
         };
-        if self.run_active || self.ui_model.phase == UiPhase::Busy {
+        if self.busy.agent_run || self.ui_model.phase == UiPhase::Busy {
             return false;
         }
         let InputEvent::Key(key) = input else {

@@ -388,3 +388,10 @@
       假如 agent 正在运行且 `/mcp` 可打开
       当 打开 `/mcp` 并滚动详情
       那么 agent 未被 abort 且详情滚动不触发 host MCP 重连
+  @req:r3326
+  规则: host-busy-activity-set
+    host 的忙碌真值 须为单一活动位集（agent run / bang / reload 可并存）；任一活动结束 须按剩余活动重算：位集非空 须投影 Busy 且状态栏保留剩余活动文案（reload 进行中结束 bang 须仍为 Reloading），位集空 才投影 Idle；abort 清 agent/bang 不得清 reload。bridge 的细粒度状态文案（Drafting reply / Compacting / Retry …）须保留。由 harness 单测覆盖。
+
+  @req:r3329
+  规则: settlement-reason-enum
+    结算判据 须以 ContextTokenSettlementReason 枚举判定（turn 收尾 / compaction 后置位），不得以字符串字面量比较 wire reason。由单测覆盖。

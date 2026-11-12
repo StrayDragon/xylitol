@@ -243,6 +243,11 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn poll_ask_host(&mut self) {
+        if let Some(gw) = self.ask_gateway.clone() {
+            for notice in gw.take_notices() {
+                self.push_toast_notice(notice);
+            }
+        }
         if let Some(json) = self.complete_ask_if_ready() {
             if let Some(target) = self.mcp_prompt_target.take() {
                 self.pending.mcp_prompt_args_result = Some((target, json));
@@ -258,6 +263,13 @@ impl<T: Terminal> HostSession<T> {
         let Some(gw) = self.ask_gateway.clone() else {
             return;
         };
+        if self
+            .ui_root
+            .as_ref()
+            .is_some_and(|root| root.borrow().ask_choice_open())
+        {
+            return;
+        }
         let Some(pending) = gw.take_pending() else {
             return;
         };

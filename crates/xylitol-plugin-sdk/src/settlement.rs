@@ -15,7 +15,7 @@ pub fn next_settlement_generation() -> u64 {
     SETTLEMENT_GENERATION.fetch_add(1, Ordering::Relaxed)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr, strum::EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub enum ContextTokenSettlementReason {
     TurnSettled,

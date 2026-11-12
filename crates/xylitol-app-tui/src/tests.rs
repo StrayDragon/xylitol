@@ -7150,3 +7150,68 @@ fn activity_fold_live_thinking_folds_after_channel_end() {
         "settled thinking body folds by default: {settled}"
     );
 }
+
+#[tokio::test]
+async fn host_busy_reload_survives_bash_end() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.begin_reload();
+    session.begin_bash_exec("sleep 1", false);
+    session.end_bash_exec();
+    assert!(session.reload_active(), "reload MUST stay active");
+    assert_eq!(session.ui_model().phase, UiPhase::Busy);
+    assert_eq!(session.ui_model().status.as_deref(), Some("Reloading"));
+    session.end_reload();
+    assert_eq!(session.ui_model().phase, UiPhase::Idle);
+}
+
+#[tokio::test]
+async fn host_busy_abort_keeps_reload_phase() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.begin_reload();
+    session.note_user_abort();
+    assert!(session.reload_active(), "abort MUST NOT clear reload");
+    assert_eq!(session.ui_model().phase, UiPhase::Busy);
+    assert_eq!(session.ui_model().status.as_deref(), Some("Reloading"));
+}
+
+#[tokio::test]
+async fn host_busy_reload_end_with_agent_run_stays_busy() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.begin_reload();
+    session.on_turn_started("hello");
+    session.end_reload();
+    assert!(session.run_active());
+    assert_eq!(session.ui_model().phase, UiPhase::Busy);
+}
+
+#[tokio::test]
+async fn ask_gateway_queues_remote_and_rejects_overflow() {
+    let gw = crate::AskHostGateway::new();
+    gw.push_from_server("c1".into(), "ask", serde_json::json!({ "questions": [] }));
+    gw.push_from_server("c2".into(), "ask", serde_json::json!({ "questions": [] }));
+    gw.push_from_server("c3".into(), "ask", serde_json::json!({ "questions": [] }));
+    let notices = gw.take_notices();
+    assert_eq!(notices.len(), 1, "overflow MUST notify: {notices:?}");
+    let first = gw.take_pending().expect("first pending");
+    let second = gw.take_pending().expect("queued remote promoted");
+    assert!(gw.take_pending().is_none(), "queue capacity MUST be 1");
+    drop(first);
+    drop(second);
+}
+
+#[test]
+fn settlement_reason_enum_gates_applied_flag() {
+    use xylitol_plugin_sdk::settlement::ContextTokenSettlementReason;
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.note_context_token_settlement(
+        xylitol_plugin_sdk::model::ContextTokenEstimate::default(),
+        ContextTokenSettlementReason::TurnSettled,
+    );
+    assert!(session.run_applied_settlement_for_test());
+    session.on_turn_started("next");
+    session.note_context_token_settlement(
+        xylitol_plugin_sdk::model::ContextTokenEstimate::default(),
+        ContextTokenSettlementReason::MidTurnUsage,
+    );
+    assert!(!session.run_applied_settlement_for_test());
+}

@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix TUI host busy state and ask slot"
+branch: sdd/c3275-fix-tui-host-busy-ask
+base_branch: main
+base_sha: 2caaa7076abe8be033d0776d8c2fd13fe556c439
 ---
 
 # TUI 端 busy 状态与 ask 单槽修复

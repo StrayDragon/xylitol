@@ -20,11 +20,7 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.entries.clear();
     ui_model.phase = UiPhase::Idle;
     ui_model.status = None;
-    ui_model.streaming_assistant.clear();
-    ui_model.streaming_thinking.clear();
-    ui_model.streaming_think_id = None;
-    ui_model.thought_clock.reset();
-    ui_model.current_role = None;
+    ui_model.clear_streaming_buffers();
 
     let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());
     let bash_done_ids = bash_done_ids(entries);

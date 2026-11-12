@@ -89,10 +89,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                         text: "Operation aborted".into(),
                     });
                 }
-                model.streaming_thinking.clear();
-                model.streaming_think_id = None;
-                model.streaming_assistant.clear();
-                model.current_role = None;
+                model.clear_streaming_buffers();
                 if model.queue.follow_up_count == 0 {
                     model.phase = UiPhase::Idle;
                     model.status = None;

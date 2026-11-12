@@ -182,3 +182,6 @@
       假如 会话条目数超过端侧窗口上限
       当 按窗口上限裁剪滚动区
       那么 最旧部分替换为顶部提示行且提示行可点击加载更早
+  @req:r3328
+  规则: streaming-reset-single-entry
+    streaming 缓冲（assistant / thinking / think_id / clock / role）复位 须经单一入口（clear_streaming_buffers 或等价）；abort 收口与 resume/travel 重建 不得各自手工清空字段。由单测覆盖。

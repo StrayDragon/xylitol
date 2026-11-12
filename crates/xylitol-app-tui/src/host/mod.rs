@@ -93,9 +93,7 @@ pub struct HostSession<T: Terminal> {
     completed_turns: u64,
     agent_started_at: Option<OffsetDateTime>,
     stream_sync_pending: bool,
-    run_active: bool,
-    bash_active: bool,
-    reload_active: bool,
+    busy: HostBusy,
     reload_cancel: Option<tokio_util::sync::CancellationToken>,
     suppress_idle_esc: bool,
     suppress_xy_until_stream_end: bool,
@@ -124,6 +122,31 @@ pub struct HostSession<T: Terminal> {
     _keybindings_scope: Option<xylitol_tui::KeybindingsScope>,
     pointer_down_had_selection: bool,
     loaded_history: Option<crate::history_window::LoadedHistory>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct HostBusy {
+    agent_run: bool,
+    bash: bool,
+    reload: bool,
+}
+
+impl HostBusy {
+    fn is_empty(&self) -> bool {
+        !self.agent_run && !self.bash && !self.reload
+    }
+
+    fn label(&self) -> Option<&'static str> {
+        if self.reload {
+            Some("Reloading")
+        } else if self.agent_run {
+            Some("Working")
+        } else if self.bash {
+            Some("Running")
+        } else {
+            None
+        }
+    }
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -168,9 +191,7 @@ impl<T: Terminal> HostSession<T> {
             completed_turns: 0,
             agent_started_at: None,
             stream_sync_pending: false,
-            run_active: false,
-            bash_active: false,
-            reload_active: false,
+            busy: HostBusy::default(),
             reload_cancel: None,
             suppress_idle_esc: false,
             suppress_xy_until_stream_end: false,
@@ -446,18 +467,34 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn is_busy(&self) -> bool {
-        self.ui_model.phase == UiPhase::Busy || self.run_active || self.bash_active
+        self.ui_model.phase == UiPhase::Busy || !self.busy.is_empty()
     }
 
     pub fn reload_active(&self) -> bool {
-        self.reload_active
+        self.busy.reload
     }
 
     pub fn wants_busy_tick(&self) -> bool {
         self.is_busy()
-            || self.reload_active
+            || self.busy.reload
             || (self.tui.is_render_requested()
                 && self.tui.application_owned_wheel_render_deadline().is_none())
+    }
+
+    fn recalc_busy(&mut self) {
+        let Some(label) = self.busy.label() else {
+            self.ui_model.phase = UiPhase::Idle;
+            self.ui_model.status = None;
+            return;
+        };
+        self.ui_model.phase = UiPhase::Busy;
+        let stale = matches!(
+            self.ui_model.status.as_deref(),
+            None | Some("Working") | Some("Running") | Some("Reloading")
+        );
+        if stale {
+            self.ui_model.status = Some(label.to_string());
+        }
     }
 
     pub fn take_reload(&mut self) -> bool {
@@ -471,7 +508,7 @@ impl<T: Terminal> HostSession<T> {
     pub fn begin_reload(&mut self) {
         let cancel = tokio_util::sync::CancellationToken::new();
         self.reload_cancel = Some(cancel);
-        self.reload_active = true;
+        self.busy.reload = true;
         self.ui_model.set_busy_status("Reloading");
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().set_suppress_status_right_cue(true);
@@ -490,20 +527,17 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn end_reload(&mut self) {
-        self.reload_active = false;
+        self.busy.reload = false;
         self.reload_cancel = None;
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().set_suppress_status_right_cue(false);
         }
-        if !self.run_active && !self.bash_active {
-            self.ui_model.phase = UiPhase::Idle;
-            self.ui_model.status = None;
-        }
+        self.recalc_busy();
         self.sync_ui_root_from_model();
     }
 
     pub fn run_active(&self) -> bool {
-        self.run_active
+        self.busy.agent_run
     }
 
     pub fn reload_keybindings(
@@ -521,6 +555,11 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn last_render_perf(&self) -> xylitol_tui::RenderPerfSnap {
         self.tui.last_render_perf()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn run_applied_settlement_for_test(&self) -> bool {
+        self.run_applied_token_settlement
     }
 
     #[cfg(test)]
@@ -571,32 +610,30 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn bash_active(&self) -> bool {
-        self.bash_active
+        self.busy.bash
     }
 
     pub fn begin_bash_exec(&mut self, command: &str, exclude_from_context: bool) {
         self.pending.abort = false;
         self.suppress_idle_esc = false;
-        self.bash_active = true;
+        self.busy.bash = true;
         self.ui_model
             .begin_bash_block(command, exclude_from_context);
         self.sync_ui_root_from_model();
     }
 
     pub fn end_bash_exec(&mut self) {
-        self.bash_active = false;
+        self.busy.bash = false;
         self.pending.abort = false;
-        if !self.run_active {
-            self.ui_model.phase = UiPhase::Idle;
-            self.ui_model.status = None;
-        }
+        self.recalc_busy();
         self.sync_ui_root_from_model();
     }
 
     pub fn note_user_abort(&mut self) {
         self.ui_model.note_user_abort();
-        self.bash_active = false;
-        self.run_active = false;
+        self.busy.bash = false;
+        self.busy.agent_run = false;
+        self.recalc_busy();
         self.pending.abort = false;
         self.suppress_xy_until_stream_end = true;
         self.suppress_idle_esc = true;
@@ -605,7 +642,8 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn note_bash_cancelled(&mut self) {
         self.ui_model.note_bash_cancelled();
-        self.bash_active = false;
+        self.busy.bash = false;
+        self.recalc_busy();
         self.pending.abort = false;
         self.pending.bash_cancelled = true;
         self.suppress_idle_esc = true;
@@ -707,7 +745,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn end_gated_assemble_idle(&mut self) {
-        if self.run_active || self.bash_active {
+        if !self.busy.is_empty() {
             return;
         }
         self.ui_model.phase = UiPhase::Idle;
@@ -965,14 +1003,15 @@ impl<T: Terminal> HostSession<T> {
     pub fn on_turn_started(&mut self, prompt: &str) {
         self.suppress_idle_esc = false;
         self.suppress_xy_until_stream_end = false;
-        self.run_active = true;
+        self.busy.agent_run = true;
         self.run_applied_token_settlement = false;
         self.ui_model.begin_run(prompt);
         self.sync_ui_root_from_model();
     }
 
     pub fn on_run_stream_closed(&mut self) {
-        self.run_active = false;
+        self.busy.agent_run = false;
+        self.recalc_busy();
         self.suppress_xy_until_stream_end = false;
         self.ui_model.on_stream_closed_without_agent_end();
         if !self.run_applied_token_settlement {
@@ -984,10 +1023,15 @@ impl<T: Terminal> HostSession<T> {
     pub fn note_context_token_settlement(
         &mut self,
         estimate: xylitol_plugin_sdk::model::ContextTokenEstimate,
-        reason: &str,
+        reason: xylitol_plugin_sdk::settlement::ContextTokenSettlementReason,
     ) {
+        use xylitol_plugin_sdk::settlement::ContextTokenSettlementReason;
         self.pending_settlement_estimate = Some(estimate);
-        if matches!(reason, "turn_settled" | "after_compaction") {
+        if matches!(
+            reason,
+            ContextTokenSettlementReason::TurnSettled
+                | ContextTokenSettlementReason::AfterCompaction
+        ) {
             self.run_applied_token_settlement = true;
         }
     }
@@ -1430,7 +1474,7 @@ impl<T: Terminal> HostSession<T> {
             self.tui.request_render(false);
             return;
         }
-        if !self.run_active && Self::is_agent_tape_event(xy.as_ref()) {
+        if !self.busy.agent_run && Self::is_agent_tape_event(xy.as_ref()) {
             log::debug!(
                 target: "xylitol::tui",
                 "agent tape event dropped while idle"
@@ -1448,11 +1492,12 @@ impl<T: Terminal> HostSession<T> {
         );
         match xy.as_ref() {
             XyEvent::AgentStart { .. } => {
-                self.run_active = true;
+                self.busy.agent_run = true;
                 self.agent_started_at = Some(OffsetDateTime::now_utc());
             }
             XyEvent::AgentEnd { .. } => {
-                self.run_active = false;
+                self.busy.agent_run = false;
+                self.recalc_busy();
                 self.completed_turns = self.completed_turns.saturating_add(1);
                 let end = OffsetDateTime::now_utc();
                 if let (Some(start), Some(root)) =
@@ -1482,7 +1527,11 @@ impl<T: Terminal> HostSession<T> {
             XyEvent::ContextTokenSettlement {
                 estimate, reason, ..
             } => {
-                self.note_context_token_settlement(estimate.clone(), reason);
+                if let Ok(reason) =
+                    reason.parse::<xylitol_plugin_sdk::settlement::ContextTokenSettlementReason>()
+                {
+                    self.note_context_token_settlement(estimate.clone(), reason);
+                }
             }
             XyEvent::CompactionEnd { .. } => {
                 self.request_footer_token_refresh();
