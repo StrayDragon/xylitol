@@ -269,6 +269,7 @@ async fn append_persisted(
         create(store, session_id, None, None).await?;
     }
     store.acquire_write_lock(session_id)?;
+    repair_partial_tail(store, session_id).await?;
     let mut manifest = read_manifest_or_rebuild(store, session_id).await?;
     let active_path = store.layout.log_file(session_id, manifest.active_file);
     if let Ok(metadata) = tokio::fs::metadata(&active_path).await
@@ -291,16 +292,15 @@ async fn append_persisted(
     let path = store.layout.log_file(session_id, file_no);
     let offset = manifest.tail_bytes;
     {
+        let mut record = line.clone().into_bytes();
+        record.push(b'\n');
         let mut file = tokio::fs::OpenOptions::new()
             .append(true)
             .create(true)
             .open(&path)
             .await
             .map_err(|e| XySessionStoreError::io("open session log", e))?;
-        file.write_all(line.as_bytes())
-            .await
-            .map_err(|e| XySessionStoreError::io("write session entry", e))?;
-        file.write_all(b"\n")
+        file.write_all(&record)
             .await
             .map_err(|e| XySessionStoreError::io("write session entry", e))?;
         file.flush()
@@ -745,7 +745,7 @@ async fn append_index_anchor(
     Ok(())
 }
 
-pub(crate) async fn truncate_partial_tail(
+pub(crate) async fn repair_partial_tail(
     store: &LogSessionStore,
     session_id: &str,
 ) -> Result<bool, XySessionStoreError> {
@@ -759,17 +759,38 @@ pub(crate) async fn truncate_partial_tail(
     if bytes.is_empty() || bytes.ends_with(b"\n") {
         return Ok(false);
     }
-    let cut = bytes
+    let tail_start = bytes
         .iter()
         .rposition(|byte| *byte == b'\n')
         .map(|index| index + 1)
         .unwrap_or(0);
+    if serde_json::from_slice::<serde_json::Value>(&bytes[tail_start..]).is_ok() {
+        let mut file = tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .await
+            .map_err(|e| XySessionStoreError::io("open session log to terminate tail", e))?;
+        file.write_all(b"\n")
+            .await
+            .map_err(|e| XySessionStoreError::io("terminate session log tail", e))?;
+        file.flush()
+            .await
+            .map_err(|e| XySessionStoreError::io("flush terminated session log tail", e))?;
+        file.sync_all()
+            .await
+            .map_err(|e| XySessionStoreError::io("sync terminated session log tail", e))?;
+        return Ok(true);
+    }
+    log::warn!(
+        target: "xylitol::session",
+        "truncating corrupt partial tail of session {session_id} log"
+    );
     let file = tokio::fs::OpenOptions::new()
         .write(true)
         .open(&path)
         .await
         .map_err(|e| XySessionStoreError::io("open session log for truncate", e))?;
-    file.set_len(cut as u64)
+    file.set_len(tail_start as u64)
         .await
         .map_err(|e| XySessionStoreError::io("truncate session log", e))?;
     file.sync_all()

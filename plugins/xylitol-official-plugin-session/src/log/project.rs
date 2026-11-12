@@ -66,6 +66,7 @@ async fn persisted_load_all(
         return Err(XySessionStoreError::not_found(session_id));
     }
     let mut map: HashMap<String, RawLine> = HashMap::new();
+    let mut untracked: Vec<RawLine> = Vec::new();
     let mut header_line: Option<RawLine> = None;
     let mut header_format: Option<String> = None;
     let mut header_version: Option<u32> = None;
@@ -77,8 +78,11 @@ async fn persisted_load_all(
                 header_line = Some(line.clone());
                 continue;
             }
-            if let Some(entry_id) = line.entry.entry_id() {
-                map.insert(entry_id.to_string(), line);
+            match line.entry.entry_id().filter(|id| !id.is_empty()) {
+                Some(entry_id) => {
+                    map.insert(entry_id.to_string(), line);
+                }
+                None => untracked.push(line),
             }
         }
     }
@@ -91,7 +95,7 @@ async fn persisted_load_all(
             header_version
         )));
     }
-    let mut lines: Vec<RawLine> = map.into_values().collect();
+    let mut lines: Vec<RawLine> = map.into_values().chain(untracked).collect();
     lines.sort_by_key(|line| line.seq);
     let mut own: Vec<SessionEntry> = Vec::with_capacity(lines.len() + 1);
     if let Some(header) = header_line {
@@ -108,7 +112,7 @@ async fn persisted_load_all(
     let parent_entries = Box::pin(persisted_load_all(store, &parent_id, depth + 1)).await?;
     let mut merged = parent_entries;
     for entry in own {
-        if let Some(entry_id) = entry.entry_id() {
+        if let Some(entry_id) = entry.entry_id().filter(|id| !id.is_empty()) {
             if let Some(position) = merged
                 .iter()
                 .position(|existing| existing.entry_id() == Some(entry_id))

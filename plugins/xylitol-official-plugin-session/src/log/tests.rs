@@ -1,16 +1,17 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::{Value, json};
 
 use super::LogSessionStore;
 use super::append::{append, create, read_manifest, write_manifest};
-use super::maintain::quick_check;
 use super::page::{PageToken, load_last_turns, load_page};
 use super::project::{build_context_entries, build_session_context, load_all, load_branch};
 use crate::types::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_plugin_sdk::XySessionStore;
-use xylitol_plugin_sdk::session::ForkPosition;
+use xylitol_plugin_sdk::session::{ForkPosition, message_text};
 
 fn ts(id: &str) -> u64 {
     1_760_000_000_000u64
@@ -346,19 +347,183 @@ async fn golden_fork_projection_matches_old_store() {
 }
 
 #[tokio::test]
-async fn partial_tail_is_truncated_on_open() {
+async fn partial_tail_is_repaired_on_write() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = LogSessionStore::new(dir.path().join("sessions"));
     seed(&store, "s", &[msg("u1", None, "user", "hello")]).await;
     let path = store.layout.log_file("s", 1);
     let mut content = tokio::fs::read_to_string(&path).await.expect("read");
     content.push_str("{\"type\":\"message\",\"seq\":9,\"id\":\"half\"");
-    tokio::fs::write(&path, content).await.expect("write");
-    quick_check(&store, "s").await.expect("quick check");
+    tokio::fs::write(&path, &content).await.expect("write");
     let entries = load_all(&store, "s").await.expect("load");
     assert!(entries.iter().all(|entry| entry.entry_id() != Some("half")));
     let bytes = tokio::fs::read(&path).await.expect("read");
+    assert_eq!(
+        bytes,
+        content.as_bytes(),
+        "read path must not rewrite the log"
+    );
+    append(
+        &store,
+        "s",
+        &msg("a1", Some("u1"), "assistant", "done"),
+        true,
+    )
+    .await
+    .expect("append");
+    let entries = load_all(&store, "s").await.expect("load");
+    assert!(entries.iter().all(|entry| entry.entry_id() != Some("half")));
+    assert!(entries.iter().any(|entry| entry.entry_id() == Some("a1")));
+    let bytes = tokio::fs::read(&path).await.expect("read");
     assert!(bytes.ends_with(b"\n"));
+}
+
+#[tokio::test]
+async fn complete_tail_without_terminator_is_preserved_on_write() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    seed(&store, "s", &[msg("u1", None, "user", "hello")]).await;
+    let path = store.layout.log_file("s", 1);
+    let mut value =
+        serde_json::to_value(msg("a1", Some("u1"), "assistant", "in flight")).expect("json");
+    value
+        .as_object_mut()
+        .expect("object")
+        .insert("seq".into(), json!(3));
+    let line = serde_json::to_string(&value).expect("line");
+    let mut content = tokio::fs::read_to_string(&path).await.expect("read");
+    content.push_str(&line);
+    tokio::fs::write(&path, content).await.expect("write");
+    append(
+        &store,
+        "s",
+        &msg("a2", Some("a1"), "assistant", "next"),
+        true,
+    )
+    .await
+    .expect("append");
+    let entries = load_all(&store, "s").await.expect("load");
+    let ids: Vec<_> = entries
+        .iter()
+        .filter_map(|entry| entry.entry_id())
+        .collect();
+    assert_eq!(ids, vec!["u1", "a1", "a2"]);
+}
+
+#[tokio::test]
+async fn projection_keeps_rows_without_entry_id() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    seed(&store, "s", &[msg("u1", None, "user", "hello")]).await;
+    let path = store.layout.log_file("s", 1);
+    let mut content = tokio::fs::read_to_string(&path).await.expect("read");
+    for (seq, text) in [(3u64, "first"), (4u64, "second")] {
+        let mut value = serde_json::to_value(msg("", None, "user", text)).expect("json");
+        value
+            .as_object_mut()
+            .expect("object")
+            .insert("seq".into(), json!(seq));
+        content.push_str(&serde_json::to_string(&value).expect("line"));
+        content.push('\n');
+    }
+    tokio::fs::write(&path, content).await.expect("write");
+    let entries = load_all(&store, "s").await.expect("load");
+    let texts: Vec<_> = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            SessionEntry::Message(message) => Some(message_text(&message.message)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts, vec!["hello", "first", "second"]);
+}
+
+#[tokio::test]
+async fn concurrent_reader_does_not_lose_appends() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
+    create(&store, "s", Some("."), None).await.expect("create");
+    let stop = Arc::new(AtomicBool::new(false));
+    let reader = {
+        let store = store.clone();
+        let stop = stop.clone();
+        tokio::spawn(async move {
+            while !stop.load(Ordering::Relaxed) {
+                let _ = load_all(&store, "s").await;
+                tokio::task::yield_now().await;
+            }
+        })
+    };
+    for idx in 0..40u32 {
+        let entry = SessionEntry::Custom(crate::types::CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: format!("e{idx}"),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: "probe".into(),
+            data: json!({ "idx": idx }),
+        });
+        append(&store, "s", &entry, true).await.expect("append");
+    }
+    stop.store(true, Ordering::Relaxed);
+    reader.await.expect("reader");
+    let entries = load_all(&store, "s").await.expect("load");
+    for idx in 0..40u32 {
+        let id = format!("e{idx}");
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.entry_id() == Some(id.as_str())),
+            "append {id} lost under a concurrent reader"
+        );
+    }
+}
+
+#[tokio::test]
+async fn session_name_reads_back_right_after_create() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    store.create("s", Some("."), None).await.expect("create");
+    store
+        .set_session_name("s", " remote name\n")
+        .await
+        .expect("set name");
+    let fetched = store.get_session_name("s").await.expect("get name");
+    assert_eq!(fetched.as_deref(), Some("remote name"));
+}
+
+#[tokio::test]
+async fn load_all_does_not_truncate_in_progress_tail() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    seed(&store, "s", &[msg("u1", None, "user", "hello")]).await;
+    let path = store.layout.log_file("s", 1);
+    let mut value =
+        serde_json::to_value(msg("a1", Some("u1"), "assistant", "mid-write")).expect("json");
+    value
+        .as_object_mut()
+        .expect("object")
+        .insert("seq".into(), json!(3));
+    let line = serde_json::to_string(&value).expect("line");
+    let mut bytes = tokio::fs::read(&path).await.expect("read");
+    bytes.extend_from_slice(line.as_bytes());
+    tokio::fs::write(&path, bytes).await.expect("write");
+    let _ = load_all(&store, "s").await.expect("load");
+    let after = tokio::fs::read(&path).await.expect("read");
+    assert!(
+        after.ends_with(line.as_bytes()),
+        "read path must not truncate a complete in-progress tail"
+    );
+    let mut bytes = tokio::fs::read(&path).await.expect("read");
+    bytes.push(b'\n');
+    tokio::fs::write(&path, bytes).await.expect("write");
+    let entries = load_all(&store, "s").await.expect("load");
+    assert!(
+        entries.iter().any(|entry| entry.entry_id() == Some("a1")),
+        "terminated line must be visible"
+    );
 }
 
 #[tokio::test]

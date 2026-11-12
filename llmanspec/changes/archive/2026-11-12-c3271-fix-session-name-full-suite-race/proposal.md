@@ -2,6 +2,9 @@
 depends_on: []
 title: "Fix session name read race under full-suite load"
 needs_specs_change: false
+branch: sdd/c3271-fix-session-name-full-suite-race
+base_branch: main
+base_sha: a42e005b057f6e538f17266b9f163cd367a86f84
 ---
 
 # 会话名读取在全量套件下的竞态（c3271）
@@ -30,6 +33,10 @@ needs_specs_change: false
 ## Impact
 
 - 范围：plugins/xylitol-official-plugin-session/src/log/{store,project}.rs。
+
+## 实施首日复核（T1，2026-11-12）
+
+原「无 id 行 → 投影丢弃」嫌疑链不成立（`prepare()` 在 `with_id=false` 时分配 uuid）；真实根因是读路径 `quick_check` 截断在写尾 + 两写窗口 + automation 首 tick 并发读。详见 `design.md` §0，修复见 §1。
 
 ## 决策记录（2026-11-12，全部已决）
 

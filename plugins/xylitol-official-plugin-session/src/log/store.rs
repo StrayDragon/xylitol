@@ -122,7 +122,7 @@ impl XySessionStore for LogSessionStore {
         session_id: &str,
         entry: &SessionEntry,
     ) -> Result<(), XySessionStoreError> {
-        append(self, session_id, entry, false).await
+        append(self, session_id, entry, true).await
     }
 
     async fn load_done_bash_ids(

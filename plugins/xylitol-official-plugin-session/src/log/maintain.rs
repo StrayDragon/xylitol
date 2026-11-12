@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::append::{
-    ensure_supported, list_log_files, read_manifest_or_rebuild, truncate_partial_tail,
+    ensure_supported, list_log_files, read_manifest_or_rebuild, repair_partial_tail,
     write_index_file,
 };
 use super::layout::{
@@ -36,7 +36,6 @@ pub(crate) async fn quick_check(
     if !store.layout.log_dir(session_id).exists() {
         return Err(XySessionStoreError::not_found(session_id));
     }
-    truncate_partial_tail(store, session_id).await?;
     remove_tmp_files(store, session_id).await?;
     let manifest = read_manifest_or_rebuild(store, session_id).await?;
     for file in manifest.index.files {
@@ -118,6 +117,30 @@ pub(crate) async fn maintain_session(
     store: &LogSessionStore,
     session_id: &str,
 ) -> Result<SessionHealth, XySessionStoreError> {
+    let already_held = store.holds_write_lock(session_id);
+    let mut acquired = false;
+    if !already_held {
+        match store.acquire_write_lock(session_id) {
+            Ok(()) => acquired = true,
+            Err(XySessionStoreError::WriteHeld { .. }) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    let result = maintain_session_locked(store, session_id, already_held || acquired).await;
+    if acquired {
+        store.release_write_lock(session_id);
+    }
+    result
+}
+
+async fn maintain_session_locked(
+    store: &LogSessionStore,
+    session_id: &str,
+    repair: bool,
+) -> Result<SessionHealth, XySessionStoreError> {
+    if repair {
+        repair_partial_tail(store, session_id).await?;
+    }
     quick_check(store, session_id).await?;
     let files = list_log_files(store, session_id).await?;
     let mut bytes = 0u64;
