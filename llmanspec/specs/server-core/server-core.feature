@@ -194,7 +194,7 @@
 
   @req:r1914
   规则: prompt 会话身份保真
-    产品 RemoteDriver 发送 prompt/run 时 须携带会话身份与 run 上下文字段（session_id、cwd、model_id、thinking_level 或等价信息），并使其经任何线协议形状转换后仍保真到达 Host 的会话解析；Host 须将 run 路由到该字段所指会话并在其上广播事件，不得因命令承载字段收缩把 run 落向无订阅者的 fallback 会话而事件不可达。
+    产品 RemoteDriver 发送 prompt 提交时 须携带会话身份与提交上下文字段（session_id、cwd、model_id、thinking_level 或等价信息），并使其经任何线协议形状转换后仍保真到达 Host 的会话解析；Host 须将提交路由到该字段所指会话并在其上广播事件，不得因命令承载字段收缩把提交落向无订阅者的 fallback 会话而事件不可达。
 
     场景: 提示词运行时已订阅会话
       假如 客户端已订阅会话 s-prompt 并以可用模型 fake-model 发送 prompt

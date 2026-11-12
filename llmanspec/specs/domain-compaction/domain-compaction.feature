@@ -357,7 +357,7 @@
 
   @req:r1415
   规则: 压后地板一次性诊断
-    auto 路径（threshold / overflow）compaction 成功且其 AfterCompaction settlement tokens ≥ contextWindow（压后仍无可用窗口，固定开销吃满窗口的退化形态）时，System 须经 CompactionEnd 载荷（notice 或等价）发一条可行动诊断（建议：调低 keepRecentTokens / 调高 contextWindow / 精简工具面），每个会话运行（run）至多一次（对齐 c22 每 run 一次 overflow recovery 的作用域纪律）；manual force 路径 不得发诊断；地板阈值本身不构成诊断条件（地板 + 迟滞 ∈ (window − reserve, window) 的受控频繁模式 不得触发诊断）。
+    auto 路径（threshold / overflow）compaction 成功且其 AfterCompaction settlement tokens ≥ contextWindow（压后仍无可用窗口，固定开销吃满窗口的退化形态）时，System 须经 CompactionEnd 载荷（notice 或等价）发一条可行动诊断（建议：调低 keepRecentTokens / 调高 contextWindow / 精简工具面），每次提交至多一次（对齐 c22 overflow recovery 的作用域纪律）；manual force 路径 不得发诊断；地板阈值本身不构成诊断条件（地板 + 迟滞 ∈ (window − reserve, window) 的受控频繁模式 不得触发诊断）。
     场景: 下限诊断在至多一次
       假如 compaction 配置了任务模型条目且该条目构建失败
       当 执行 compact 摘要
