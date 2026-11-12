@@ -41,8 +41,8 @@
 
 ## 7. W8 注入点两处缺陷
 
-- 前：session_shutdown 仅 config 枚举（config.rs:77），coordinator 不评估——静默失效；session_start 谓词 = step_index==0（coordinator.rs:37-40）→ 每 run 触发而非进程内首次。
-- 后：session_shutdown 接线为「下一次 session_start 补记」（对齐已决决策 2）；session_start 改 first_of_session 标志，每 run 语义由 run_start 承担。
+- 前：session_shutdown 仅 config 枚举（config.rs:77），coordinator 不评估——静默失效；session_start 谓词 = step_index==0（coordinator.rs:37-40）→ 每次提交都触发而非进程内首次打开会话。
+- 后：session_shutdown 接线为「下一次 session_start 补记」（对齐已决决策 2）；session_start 改 first_of_session 标志，「每次提交」的语义由 run_start（hook 事件名）承担。
 - 优劣：补记保留点完整性；备选装载期对 session_shutdown 报错（把负担丢给用户，不取）。
 
 ## 8. W9 命令超时杀进程
