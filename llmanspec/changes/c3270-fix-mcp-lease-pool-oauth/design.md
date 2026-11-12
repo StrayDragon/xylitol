@@ -5,18 +5,18 @@
 - 租约相位显式建模，空闲关闭任务可取消；OAuth 终态必达；prepare 门禁随会话复位。
 - 边界：租约模型沿用 c3228 的 ResourcePool（不推翻）；不改 MCP 配置格式。
 
-## 2. 决策摘要
+## 2. 决策摘要（2026-11-12 复核后全部定稿）
 
 | 决策 | 内容 | 状态 |
 |---|---|---|
-| 租约相位 | PoolEntry 增 phase: Leased / IdleGrace / Closed；acquire/release/expire 显式转移 | 定稿方向 |
-| 关闭任务 | schedule_idle_close 返回 JoinHandle 存 entry，新事件 abort 旧任务 | 定稿方向 |
-| 重连计数 | 空闲过期不再计入 reconnects（移到独立 idle_closes 观测） | 定稿方向 |
-| 快照缓存 | update_snapshot 单点更新全部派生；try_lock 失败视图标 degraded | 定稿方向 |
-| OAuth 真值 | status 表为唯一真值；flow 只承载 channel；回调失败/超时/无 gateway 均落终态 | 推荐，待 review |
-| 过期 | expires_at_ms 生效：查询时过期转 Failed(expired) | 定稿方向 |
-| 进度代际 | McpConnectProgress 增 generation，并发 connect 旧代际丢弃 | 定稿方向 |
-| prepare 复位 | switch_session 重置 prepare_acked 与 gate notice | 定稿方向 |
+| 租约相位 | PoolEntry 增 phase: Leased / IdleGrace / Closed；acquire/release/expire 显式转移 | 定稿 |
+| 关闭任务 | schedule_idle_close 返回 JoinHandle 存 entry，新 acquire / reset_pool abort 旧任务 | 定稿 |
+| 重连计数 | 空闲过期不再计入 reconnects（移到独立 idle_closes 观测） | 定稿 |
+| 快照缓存 | update_snapshot 单点更新 last_view / last_result / last_tools；try_lock 失败视图标 degraded 且 complete=false | 定稿 |
+| OAuth 真值 | **status 表为唯一真值**（存 status + expires_at_ms）；flows 只承载 channel；回调失败 / 监听器死亡 / 过期 均落 Failed，cancel 落 Cancelled；写 status 不再以 gateway 存在为前提 | 定稿 |
+| 过期 | expires_at_ms 生效：查询时 Pending 且已过期转 Failed | 定稿 |
+| 进度代际 | McpConnectProgress 增 generation；并发 connect 旧代际写入丢弃 | 定稿 |
+| prepare 复位 | **新会话 / fork 会话**（不是 switch_session，见 §7）重置 prepare_acked 并开火准备 | 定稿 |
 
 ## 3. 租约相位
 
@@ -45,3 +45,22 @@ stateDiagram-v2
 ## 6. 风险与回滚
 
 - 回滚：租约 / 快照 / OAuth 三片独立。
+
+## 7. 实施前复核（2026-11-12）
+
+逐条核对 proposal 的静态阅读结论（证据为代码行）：
+
+| 结论 | 复核 | 证据 |
+|---|---|---|
+| 租约三元组：claims / idle_generation / reconnect_count | 成立 | hub.rs:37-40、49-73；resource_lease.rs:99-128 |
+| 空闲过期计入 reconnects（语义污染） | 成立 | hub.rs:232（`expire_idle` 内 `reconnects += 1`） |
+| schedule_idle_close 无 JoinHandle，卸载后仍可触发 | 成立 | hub.rs:208-217（`tokio::spawn` 丢弃句柄） |
+| 快照五份独立更新 | 成立（last_* 由 update_snapshot 写；current/notice/progress 各自独立） | hub.rs:242、603-633、903-905；client.rs:596-614 |
+| try_lock 失败合成「假就绪」视图 | 成立 | hub.rs:915-933：`servers.try_lock()` 失败 → configured=0 → `complete=true` |
+| OAuth 双表；监听器失败只删 flow 不写 status | 成立 | client.rs:1078-1090、1095-1107 |
+| 无 gateway 时终态永不落地 | **不成立**：无 gateway 时 `start_oauth` 在创建 flow 前即返回错误（client.rs:1032-1036），不会留下 Pending。真实缺口是「flow 已建、gateway 随后缺失」时 `complete_oauth` 的 status 写入被 gateway 条件包住（client.rs:1143-1152） | client.rs:1032-1036、1143-1152 |
+| expires_at_ms 已生成但无人检查 | 成立 | client.rs:1076；全仓无读取（TUI 仅展示） |
+| 连接进度无代际，并发 connect 互相覆盖 | 成立 | client.rs:515-614：两次 connect 都写同一 `progress_out` |
+| prepare_acked 在 switch_session 未重置 | **不成立**：`switch_session` 调 `fire_session_prepare`，其首行即 `prepare_acked=false`（prepare.rs:144-145；session.rs:66）。真实缺口是 **new_session / fork_session** 只绑定不重置（session.rs:221-254、1-26），新会话沿用上一会话的 ack 跳过 MCP 首轮门禁 | session.rs:66、221-254；prepare.rs:144-145 |
+
+修正后的实施范围：租约相位 / 关闭任务 / idle_closes；快照单点 + degraded；OAuth 终态（监听器失败、无 gateway 后缺失、过期）；进度代际；**new_session / fork_session** 门禁复位。
