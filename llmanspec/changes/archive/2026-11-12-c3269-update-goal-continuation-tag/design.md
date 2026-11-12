@@ -20,9 +20,12 @@ user_parts("<system-reminder>目标尚未达成，继续推进。\n{guidance}</s
 
 ## 2. 端侧渲染
 
-- app-tui bridge：检测 user 行首尾 system-reminder 标签 → 按「系统消息」固定词样式渲染（滚动区样式，非用户气泡）；剥标签后展示正文。
-- print：同检测，前缀样式输出；标签不进输出正文。
-- 与 c3248 reminder 渲染共用同一检测函数（词表统一，一处实现）。
+- app-tui bridge：整包匹配（trim 后首尾前缀/后缀同时命中），两处共用同一检测：
+  1. user 角色消息（历史重建与 live `MessageStart`）→ `UiEntry::SystemMessage`（剥标签）；
+  2. `custom_type = context_reminder` 且 display 为真的 `CustomMessage` 行 → 同一 `UiEntry::SystemMessage`。
+  命中即按系统消息呈现：scrollback 以 muted `system: ` 前缀绘制（滚动区样式，非用户气泡）；未命中仍为 `UiEntry::User`，真人输入样式不变。
+- 检测实现：`bridge/model.rs` 的 `system_reminder_body` + `user_entry`，两处共用（一处实现）。
+- print：核实 print 只渲染流式事件（TextDelta / 工具 / 错误 / 归因），**不回显 user 行**，故续跑指导不出现在 print 输出；不加 print 渲染代码，spec 补 `no-user-echo` 条款。
 
 ## 3. spec delta（landing 时）
 
@@ -31,7 +34,7 @@ user_parts("<system-reminder>目标尚未达成，继续推进。\n{guidance}</s
 
 ## 4. 测试边界
 
-单测：消息构造含标签；投影保留。BDD：goal 续跑场景断言 transcript 渲染为系统消息样式（harness 快照）；print 输出断言。
+单测（harness 层）：消息构造含标签（runtime `goal_continue_delivers_guidance_as_new_turn`）；桥接两路径均产 SystemMessage（历史重建 + live MessageStart）；真人输入（含子串标签）仍为 User；整包匹配边界。未加 BDD 场景：渲染检测属组件边界，按仓库测试分层由 harness/单测覆盖；新增 spec 规则为裸规则（review pending 计量）。
 
 ## 5. 风险与回滚
 

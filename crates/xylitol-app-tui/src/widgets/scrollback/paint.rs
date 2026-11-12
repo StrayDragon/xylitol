@@ -873,6 +873,20 @@ pub(super) fn paint_scroll_notice_block(
     (lines, Vec::new())
 }
 
+pub(super) fn paint_system_message_block(
+    text: &str,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx { theme, width, .. } = ctx;
+    let mut lines = Vec::new();
+    push_wrapped(
+        &mut lines,
+        &theme.paint_muted(&format!("system: {text}")),
+        width,
+    );
+    (lines, Vec::new())
+}
+
 pub(super) fn paint_error_block(text: &str, ctx: PaintCtx) -> (Vec<String>, Vec<CachedFoldHit>) {
     let PaintCtx { theme, width, .. } = ctx;
     let mut lines = Vec::new();

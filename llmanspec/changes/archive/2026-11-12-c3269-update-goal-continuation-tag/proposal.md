@@ -3,6 +3,9 @@ depends_on:
   - c3268-fix-turn-model-review-followups
 title: "Tag goal continuation guidance with source marker"
 needs_specs_change: true
+branch: sdd/c3269-update-goal-continuation-tag
+base_branch: main
+base_sha: e0a6fd20f222c169f4eb8df4f314b53195db17b8
 ---
 
 # goal 续跑指导加来源标记（c3269）

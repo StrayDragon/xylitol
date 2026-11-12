@@ -8,6 +8,7 @@ pub use model::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID,
     StreamingTailKind, UiEntry, UiModel, UiPhase, allocate_thinking_id,
 };
+pub(crate) use model::{CUSTOM_TYPE_CONTEXT_REMINDER, system_reminder_body, user_entry};
 pub use preview::TODO_EMPTY_BODY_HINT;
 pub use preview::extract_display_diff;
 pub use preview::human_tool_args_preview;
@@ -356,16 +357,18 @@ fn humanize_run_code_details(details: Option<&serde_json::Value>, result: &str) 
 }
 
 pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
-    let same_trailing_user = matches!(
-        model.entries.last(),
-        Some(UiEntry::User { text: last }) if last == &text
-    );
+    let entry = user_entry(text.clone());
+    let same_trailing = match (&entry, model.entries.last()) {
+        (UiEntry::User { text: a }, Some(UiEntry::User { text: b }))
+        | (UiEntry::SystemMessage { text: a }, Some(UiEntry::SystemMessage { text: b })) => a == b,
+        _ => false,
+    };
     let queued_inject = model.pending_steer.iter().any(|s| s == &text)
         || model.pending_follow_up.iter().any(|s| s == &text);
-    if same_trailing_user && !queued_inject {
+    if same_trailing && !queued_inject {
         return;
     }
-    model.entries.push(UiEntry::User { text });
+    model.entries.push(entry);
 }
 
 #[cfg(test)]

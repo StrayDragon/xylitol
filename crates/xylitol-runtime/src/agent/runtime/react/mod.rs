@@ -1799,7 +1799,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         Some(GoalDecision::Continue { guidance }) => {
                             goal_handled = true;
                             let message = AgentMessage::user_parts(vec![AgentPart::text(format!(
-                                "目标尚未达成，继续推进。\n{guidance}"
+                                "<system-reminder>目标尚未达成，继续推进。\n{guidance}</system-reminder>"
                             ))]);
                             crate::utils::lock_mutex(&follow_up_queue).enqueue(message);
                         }
@@ -3008,6 +3008,10 @@ mod loop_middleware_tests {
         assert!(
             texts[1].contains("still failing"),
             "evaluator guidance must ride the next submission: {texts:?}"
+        );
+        assert!(
+            texts[1].starts_with("<system-reminder>") && texts[1].ends_with("</system-reminder>"),
+            "goal continuation must carry the source marker: {texts:?}"
         );
         let goals = xylitol_plugin_sdk::session::project_goals(
             &store.load_entries("sess-goal").await.expect("load entries"),

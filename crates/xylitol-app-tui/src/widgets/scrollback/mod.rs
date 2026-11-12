@@ -31,8 +31,8 @@ use live::{
 use paint::{
     PaintCtx, inter_block_spacer, paint_ask_block, paint_assistant_block, paint_bash_block,
     paint_compaction_block, paint_diff_block, paint_error_block, paint_scroll_notice_block,
-    paint_streaming_assistant, paint_thinking_block, paint_tool_block, paint_user_block,
-    push_wrapped,
+    paint_streaming_assistant, paint_system_message_block, paint_thinking_block, paint_tool_block,
+    paint_user_block, push_wrapped,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -478,6 +478,7 @@ pub fn render_scrollback(
                 paint_ctx,
             ),
             UiEntry::ScrollNotice { text } => paint_scroll_notice_block(text, paint_ctx),
+            UiEntry::SystemMessage { text } => paint_system_message_block(text, paint_ctx),
             UiEntry::Error { text } => paint_error_block(text, paint_ctx),
         };
         cache.entry_misses = cache.entry_misses.saturating_add(1);

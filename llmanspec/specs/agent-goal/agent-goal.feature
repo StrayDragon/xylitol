@@ -13,7 +13,7 @@
 
   @req:r3301
   规则: goal-decide-continue
-    settle 阶段 须读取当前 branch 的 active goal；无 goal 时保持原行为；met + evidence 须追加 GoalEvaluated(met) 与 GoalStateChanged(done) 并 Stop；not_met 须追加 GoalEvaluated(not_met) 并 Continue，达到 max_iterations 须 blocked + Stop；not_met 的 reason 须作为下一条提交的用户消息（下一轮指导）；impossible 须 failed + Stop；pause / cancel 后 不得再调用 evaluator，pending 结果须丢弃；goal 续跑 须逐 turn 续跑（evaluator 在 turn 收尾投递下一条提交，新 turn 独立 AgentStart/AgentEnd），不得在同一 turn 内续跑或新增第二 admission。
+    settle 阶段 须读取当前 branch 的 active goal；无 goal 时保持原行为；met + evidence 须追加 GoalEvaluated(met) 与 GoalStateChanged(done) 并 Stop；not_met 须追加 GoalEvaluated(not_met) 并 Continue，达到 max_iterations 须 blocked + Stop；not_met 的 reason 须作为下一条提交的用户消息（下一轮指导）；该指导 须以 `<system-reminder>` 开闭标签整包包裹（与 context_reminder 同约定），投影给模型 须保留标签；端侧 须按系统消息呈现，不得伪装为真人输入样式；impossible 须 failed + Stop；pause / cancel 后 不得再调用 evaluator，pending 结果须丢弃；goal 续跑 须逐 turn 续跑（evaluator 在 turn 收尾投递下一条提交，新 turn 独立 AgentStart/AgentEnd），不得在同一 turn 内续跑或新增第二 admission。
 
   @req:r3302
   规则: goal-loop-interaction

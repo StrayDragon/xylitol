@@ -58,9 +58,10 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             text.hash(&mut h);
             fold.user_effective(text).hash(&mut h);
         }
-        UiEntry::Assistant { text } | UiEntry::ScrollNotice { text } | UiEntry::Error { text } => {
-            text.hash(&mut h)
-        }
+        UiEntry::Assistant { text }
+        | UiEntry::ScrollNotice { text }
+        | UiEntry::SystemMessage { text }
+        | UiEntry::Error { text } => text.hash(&mut h),
         UiEntry::Thinking {
             id,
             text,

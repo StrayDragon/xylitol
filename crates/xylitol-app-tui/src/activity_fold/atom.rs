@@ -87,6 +87,7 @@ pub fn activity_atom(entry: &UiEntry) -> ActivityAtom {
         | UiEntry::User { .. }
         | UiEntry::Assistant { .. }
         | UiEntry::ScrollNotice { .. }
+        | UiEntry::SystemMessage { .. }
         | UiEntry::Error { .. } => ActivityAtom::Noise,
     }
 }

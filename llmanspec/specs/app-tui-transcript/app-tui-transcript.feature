@@ -34,6 +34,10 @@
     场景: 左轨复用包绘制器
       当 读取应用面对包组件的复用
       那么 左轨只经包 paint_left_rail_line 绘制
+  @req:r3323
+  规则: system-message-rows
+    user 角色消息正文若以 `<system-reminder>` 与 `</system-reminder>` 整包包裹（首尾完整匹配，非子串），产品 TUI 须按系统消息呈现：须剥去标签、以滚动区 muted 样式绘制，不得按真人用户气泡样式渲染；`custom_type = context_reminder` 且 display 为真的 custom_message 行 须按同一检测口径呈现。续跑指导与 context_reminder 两类来源 须共用同一整包匹配口径，不得各写一套。
+
   @req:r1370
   规则: no-codex-transcript-view
     产品 TUI 不得实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel 须经双 Esc 会话树（app-tui session-tree / package TreeSelector）。

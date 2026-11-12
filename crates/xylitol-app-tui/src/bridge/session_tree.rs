@@ -7,8 +7,9 @@ use xylitol_plugin_sdk::session::{
 };
 
 use super::{
-    BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase, allocate_thinking_id,
-    apply_tool_result_to_entries, find_tool_mut,
+    BashBlockStatus, CUSTOM_TYPE_CONTEXT_REMINDER, CompactionBlockStatus, UiEntry, UiModel,
+    UiPhase, allocate_thinking_id, apply_tool_result_to_entries, find_tool_mut,
+    system_reminder_body, user_entry,
 };
 
 pub fn rebuild_scrollback_from_travel(
@@ -228,6 +229,19 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
         SessionEntry::Message(m) => {
             message_json_to_ui_entries(&m.base.id, &m.message, thought_elapsed, prior)
         }
+        SessionEntry::CustomMessage(c)
+            if c.custom_type == CUSTOM_TYPE_CONTEXT_REMINDER && c.display =>
+        {
+            let text = c.content.as_str().unwrap_or_default();
+            let body = system_reminder_body(text).unwrap_or(text);
+            if body.is_empty() {
+                Vec::new()
+            } else {
+                vec![UiEntry::SystemMessage {
+                    text: body.to_string(),
+                }]
+            }
+        }
         SessionEntry::CustomMessage(_) => Vec::new(),
         SessionEntry::Compaction(c) => vec![UiEntry::Compaction {
             status: CompactionBlockStatus::Complete,
@@ -323,9 +337,7 @@ fn message_json_to_ui_entries(
         return Vec::new();
     }
     match role {
-        "user" => vec![UiEntry::User {
-            text: message_text(message),
-        }],
+        "user" => vec![user_entry(message_text(message))],
         "assistant" => assistant_parts_to_ui(entry_id, message, thought_elapsed, prior),
         "toolResult" | "tool" => {
             let tool_call_id = message
@@ -546,7 +558,9 @@ mod tests {
     use crate::bridge::apply_xy_event;
     use crate::driver::XyEvent;
     use serde_json::json;
-    use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, fixture_message_json};
+    use xylitol_plugin_sdk::session::{
+        CustomMessageEntry, EntryBase, MessageEntry, fixture_message_json,
+    };
 
     #[test]
     fn rebuild_projects_path_only_without_history_banner() {
@@ -998,6 +1012,73 @@ mod tests {
         assert!(
             ui.is_empty(),
             "session_env must not surface in scrollback: {ui:?}"
+        );
+    }
+
+    #[test]
+    fn goal_continuation_user_row_renders_as_system_message() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u2".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: fixture_message_json(
+                "user",
+                "<system-reminder>目标尚未达成，继续推进。\nmore</system-reminder>",
+            ),
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert!(
+            matches!(
+                ui.as_slice(),
+                [UiEntry::SystemMessage { text }]
+                    if text.contains("目标尚未达成") && !text.contains("<system-reminder>")
+            ),
+            "got: {ui:?}"
+        );
+    }
+
+    #[test]
+    fn plain_user_row_stays_user_bubble() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u3".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: fixture_message_json(
+                "user",
+                "why does <system-reminder>x</system-reminder> show up",
+            ),
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert!(
+            matches!(ui.as_slice(), [UiEntry::User { .. }]),
+            "substring tags must not flip a real user row: {ui:?}"
+        );
+    }
+
+    #[test]
+    fn context_reminder_custom_message_renders_as_system_message() {
+        let entry = SessionEntry::CustomMessage(CustomMessageEntry {
+            base: EntryBase {
+                entry_type: "customMessage".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: CUSTOM_TYPE_CONTEXT_REMINDER.into(),
+            content: json!("<system-reminder>\n[skills] a\n</system-reminder>"),
+            display: true,
+            details: None,
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert!(
+            matches!(ui.as_slice(), [UiEntry::SystemMessage { text }] if text == "[skills] a"),
+            "got: {ui:?}"
         );
     }
 

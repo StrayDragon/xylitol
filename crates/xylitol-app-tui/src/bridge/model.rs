@@ -142,12 +142,35 @@ pub enum UiEntry {
     ScrollNotice {
         text: String,
     },
+    SystemMessage {
+        text: String,
+    },
     Error {
         text: String,
     },
 }
 
 pub const STREAMING_THINK_ID: &str = "live:streaming";
+
+pub const SYSTEM_REMINDER_OPEN: &str = "<system-reminder>";
+pub const SYSTEM_REMINDER_CLOSE: &str = "</system-reminder>";
+pub const CUSTOM_TYPE_CONTEXT_REMINDER: &str = "context_reminder";
+
+pub fn system_reminder_body(text: &str) -> Option<&str> {
+    let trimmed = text.trim();
+    let body = trimmed.strip_prefix(SYSTEM_REMINDER_OPEN)?;
+    let body = body.strip_suffix(SYSTEM_REMINDER_CLOSE)?;
+    Some(body.trim())
+}
+
+pub fn user_entry(text: String) -> UiEntry {
+    match system_reminder_body(&text) {
+        Some(body) => UiEntry::SystemMessage {
+            text: body.to_string(),
+        },
+        None => UiEntry::User { text },
+    }
+}
 
 pub fn allocate_thinking_id<'a>(
     entries: impl IntoIterator<Item = &'a UiEntry>,
@@ -290,6 +313,7 @@ impl UiModel {
         for entry in &self.entries {
             match entry {
                 UiEntry::User { text } => lines.push(format!("user: {text}")),
+                UiEntry::SystemMessage { text } => lines.push(format!("system: {text}")),
                 UiEntry::Assistant { text } => lines.push(format!("assistant: {text}")),
                 UiEntry::Thinking { text, .. } => lines.push(format!("thinking: {text}")),
                 UiEntry::Tool {

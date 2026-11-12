@@ -1,5 +1,5 @@
 use super::*;
-use xylitol_plugin_sdk::message::AgentMessage;
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_wire::{event_from_wire, event_to_wire};
 
 fn assistant_end() -> XyEvent {
@@ -28,6 +28,65 @@ fn agent_end_reason_adds_scroll_notice() {
         "{:?}",
         model.entries
     );
+}
+
+#[test]
+fn live_goal_continuation_renders_as_system_message() {
+    let mut model = UiModel::new();
+    let message = AgentMessage::user_parts(vec![AgentPart::text(
+        "<system-reminder>目标尚未达成，继续推进。\nmore</system-reminder>",
+    )]);
+    apply_xy_event(
+        &mut model,
+        &XyEvent::MessageStart {
+            role: "user".into(),
+            message: Some(message),
+        },
+    );
+    assert!(
+        matches!(
+            model.entries.last(),
+            Some(UiEntry::SystemMessage { text })
+                if text.contains("目标尚未达成") && !text.contains("<system-reminder>")
+        ),
+        "{:?}",
+        model.entries
+    );
+}
+
+#[test]
+fn live_plain_user_message_stays_user_bubble() {
+    let mut model = UiModel::new();
+    let message = AgentMessage::user_parts(vec![AgentPart::text("hello")]);
+    apply_xy_event(
+        &mut model,
+        &XyEvent::MessageStart {
+            role: "user".into(),
+            message: Some(message),
+        },
+    );
+    assert!(
+        matches!(model.entries.last(), Some(UiEntry::User { text }) if text == "hello"),
+        "{:?}",
+        model.entries
+    );
+}
+
+#[test]
+fn system_reminder_detection_requires_full_wrapping() {
+    assert_eq!(
+        system_reminder_body("<system-reminder>x</system-reminder>"),
+        Some("x")
+    );
+    assert_eq!(
+        system_reminder_body("<system-reminder>\nx\n</system-reminder>"),
+        Some("x")
+    );
+    assert_eq!(
+        system_reminder_body("hi <system-reminder>x</system-reminder>"),
+        None
+    );
+    assert_eq!(system_reminder_body("<system-reminder>x"), None);
 }
 
 #[test]
