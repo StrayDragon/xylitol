@@ -372,7 +372,7 @@
 
   @req:r2941
   规则: todo-checkpoint-entry
-    todo checkpoint 须以 custom_type = "todo_checkpoint" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式，不改布局；data 至少含 steps（id/content/status 与可选 verification/output_ref）、可选 last_verified_artifact / last_failure / resume_cursor（step_id 与 attempt）以及 updated_at。读取 须取叶分支上最新一条；缺失或损坏时 须按无 checkpoint 处理，不得中断。会话加载时 须把旧 custom_type = "plan_checkpoint" 条目一次性迁移为 "todo_checkpoint"（只追加、幂等，重复加载不得重复追加）；读取 优先新名，旧名 仅作迁移输入，新写入 不得再使用旧名。todo checkpoint 与 agent_todo 并存：todo 仍是人可见台账，checkpoint 是恢复状态，两者 不得互相替代。写入 须只追加，不得覆盖或删除历史条目。往返、最新选取与迁移幂等 由 SDK 单测覆盖。
+    todo checkpoint 须以 custom_type = "todo_checkpoint" 的 CustomEntry 存入会话，沿用会话存储现行落盘格式（log-v1），不改布局；data 至少含 steps（id/content/status 与可选 verification/output_ref）、可选 last_verified_artifact / last_failure / resume_cursor（task_id 与 attempt）以及 updated_at。读取 须取叶分支上最新一条；缺失或损坏时 须按无 checkpoint 处理，不得中断。会话加载时 须把旧 custom_type = "plan_checkpoint" 条目一次性迁移为 "todo_checkpoint"（只追加、幂等，重复加载不得重复追加）；读取 优先新名，旧名 仅作迁移输入，新写入 不得再使用旧名。todo checkpoint 与 agent_todo 并存：todo 仍是人可见台账，checkpoint 是恢复状态，两者 不得互相替代。写入 须只追加，不得覆盖或删除历史条目。往返、最新选取与迁移幂等 由 SDK 单测覆盖。
 
     场景: todo checkpoint 落为 CustomEntry
       假如 todo 状态发生变化

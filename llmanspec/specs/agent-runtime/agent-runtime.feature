@@ -245,7 +245,7 @@
 
   @req:r1048
   规则: config-max-steps-via-should-stop
-    当运行时配置 session.max_steps_per_turn（正整数 N）存在时，组合根 须在装配后安装 should_stop_after_step：于每个 step 收尾（含 ContinueTools）后若 step_index + 1 >= N 则返回 true 结束 run（AgentEnd reason=StepLimit）；缺省或未配置时 不得安装该钩子（开放结束，见 r1027）。旧键 session.max_steps_per_turn 须使配置加载失败并指路新键，不得留别名。不得使用 max_iterations 字段名。该行为 须有可执行 BDD 或等价单测场景。
+    当运行时配置 session.max_steps_per_turn（正整数 N）存在时，组合根 须在装配后安装 should_stop_after_step：于每个 step 收尾（含 ContinueTools）后若 step_index + 1 >= N 则返回 true 结束 run（AgentEnd reason=StepLimit）；缺省或未配置时 不得安装该钩子（开放结束，见 r1027）。旧键 session.max_turns 须使配置加载失败并指路新键，不得留别名。不得使用 max_iterations 字段名。该行为 须有可执行 BDD 或等价单测场景。
 
     场景: 最大步数停止运行
       假如 按 session.max_steps_per_turn=2 安装 should_stop_after_step 且入队 follow_up 以迫使第二轮
