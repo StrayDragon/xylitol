@@ -176,6 +176,61 @@ async fn leaving_mcp_gate_must_signal_ui_refresh() {
     assert!(!snap.mcp_tools_pending());
 }
 
+async fn settle_mcp_gate(driver: &mut XyInProcessDriver) {
+    let deadline = std::time::Instant::now()
+        + xylitol_official_plugin_mcp::MCP_SERVER_CONNECT_TIMEOUT
+        + std::time::Duration::from_secs(2);
+    while driver.mcp_blocks_agent() && std::time::Instant::now() < deadline {
+        driver.poll_prepare_progress().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+#[tokio::test]
+async fn new_session_reengages_mcp_first_turn_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let (mut driver, _obs) = build_test_driver(store).await;
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
+    attach_mcp(&mut driver, vec![bad_mcp("bad")]);
+    driver.begin_session_prepare().await;
+    assert!(driver.mcp_blocks_agent());
+    settle_mcp_gate(&mut driver).await;
+    assert!(!driver.mcp_blocks_agent());
+    let new_id = driver.new_session().await.expect("new session");
+    assert!(
+        driver.mcp_blocks_agent(),
+        "new session {new_id} must re-engage the MCP first-turn gate"
+    );
+}
+
+#[tokio::test]
+async fn fork_session_reengages_mcp_first_turn_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let (mut driver, _obs) = build_test_driver(store.clone()).await;
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
+    attach_mcp(&mut driver, vec![bad_mcp("bad")]);
+    driver.begin_session_prepare().await;
+    settle_mcp_gate(&mut driver).await;
+    assert!(!driver.mcp_blocks_agent());
+    let sid = driver.new_session().await.expect("new session");
+    settle_mcp_gate(&mut driver).await;
+    assert!(!driver.mcp_blocks_agent());
+    store
+        .append_session_entry(&sid, &msg_entry("u1", None, "user", "hi"))
+        .await
+        .expect("append");
+    let forked = driver
+        .fork_session("u1", xylitol_plugin_sdk::session::ForkPosition::Before)
+        .await
+        .expect("fork");
+    assert!(
+        driver.mcp_blocks_agent(),
+        "fork {forked} must re-engage the MCP first-turn gate"
+    );
+}
+
 #[test]
 fn mcp_progress_needs_ui_refresh_only_on_label_change() {
     let mut last = None;

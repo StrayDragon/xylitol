@@ -74,7 +74,7 @@ pub async fn connect_and_discover(
 pub async fn connect_and_discover_at(
     servers: &[McpServerConfig],
     workspace: Option<&std::path::Path>,
-    progress: Option<std::sync::Arc<tokio::sync::Mutex<super::client::McpConnectProgress>>>,
+    progress: Option<super::client::McpConnectTarget>,
 ) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {
     if servers.is_empty() {
         return None;
@@ -93,10 +93,12 @@ pub async fn connect_and_discover_at(
         manager.clone(),
         &resources,
     ));
-    if let Some(progress) = progress.as_ref() {
+    if let Some((progress, generation)) = progress.as_ref() {
         let mut snap = progress.lock().await;
-        snap.connecting = false;
-        snap.current = None;
+        if snap.generation == *generation {
+            snap.connecting = false;
+            snap.current = None;
+        }
     }
     Some((manager, tools))
 }

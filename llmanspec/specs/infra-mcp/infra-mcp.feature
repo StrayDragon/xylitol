@@ -119,7 +119,7 @@
 
   @req:r3294
   规则: mcp-host-resource-lease
-    MCP 连接 须由 host 作为资源租约管理：session attach 获取 claim，clean detach / session eviction 释放 claim；同 key 复用；最后一个 claim 释放后，连接保留 keep_alive_ms + idle_ttl_ms 后关闭；延迟期内新 claim 须复用未关闭连接。Shared 跨 session，Workspace 同 workspace，Session 单 session 且结束即关（忽略 keep_alive_ms / idle_ttl_ms）；有状态 server 须用 Session。LoadedResourcesSnapshot 只含当前 session claim，不得聚合 idle 或其他 session 的连接。由单测覆盖，不扩 BDD step。
+    MCP 连接 须由 host 作为资源租约管理：session attach 获取 claim，clean detach / session eviction 释放 claim；同 key 复用；最后一个 claim 释放后，连接保留 keep_alive_ms + idle_ttl_ms 后关闭；延迟期内新 claim 须复用未关闭连接。Shared 跨 session，Workspace 同 workspace，Session 单 session 且结束即关（忽略 keep_alive_ms / idle_ttl_ms）；有状态 server 须用 Session。租约相位 须显式建模（Leased / IdleGrace / Closed）并以相位为权威、claims 降为观测；延迟关闭任务 须可取消（新 claim 到达时中止旧任务，插件卸载时不得残留触发）；空闲过期 须计入独立的 idle_closes 观测，不得计入重建/重连计数。LoadedResourcesSnapshot 只含当前 session claim，不得聚合 idle 或其他 session 的连接。由单测覆盖，不扩 BDD step。
 
   @req:r3235
   规则: mcp-canonical-transport
@@ -183,7 +183,7 @@
 
   @req:r3270
   规则: mcp-oauth-host-callback
-    Host 须监听 localhost 一次性 callback（默认 127.0.0.1 临时端口；pre-registered client 可固定 redirect URI，固定端口不得为 0）；callback 只接受 GET；取消须终止 listener；redirect URI 须与 client 注册一致；多个并发 flow 须按 flow_id / state 隔离；TUI 须展示 URL 与同意/取消；code exchange 成功后 须保存 credential 并发完成事件，失败 须发失败事件；code/token 不得进事件或日志；TUI 与 Host 不同机器时 不得承诺 localhost callback 可达，须明确不支持远程 TUI OAuth。由单测覆盖，不扩 BDD step。
+    Host 须监听 localhost 一次性 callback（默认 127.0.0.1 临时端口；pre-registered client 可固定 redirect URI，固定端口不得为 0）；callback 只接受 GET；取消须终止 listener；redirect URI 须与 client 注册一致；多个并发 flow 须按 flow_id / state 隔离；TUI 须展示 URL 与同意/取消；code exchange 成功后 须保存 credential 并发完成事件，失败 须发失败事件；code/token 不得进事件或日志；TUI 与 Host 不同机器时 不得承诺 localhost callback 可达，须明确不支持远程 TUI OAuth。OAuth 终态 须必达且以 status 表为唯一真值（flow 只承载 channel）：回调失败、监听器死亡或超时、查询时已过期 均须落 Failed 并发布 Failed 事件；cancel 须落 Cancelled；无 gateway 时 须在创建 flow 前失败，不得留下 Pending。由单测覆盖，不扩 BDD step。
 
   @req:r3271
   规则: mcp-capability-probe

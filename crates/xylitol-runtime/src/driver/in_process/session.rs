@@ -16,12 +16,20 @@ impl super::XyInProcessDriver {
         entry_id: &str,
         position: xylitol_plugin_sdk::session::ForkPosition,
     ) -> Result<String, XyDriverError> {
+        let previous = self.agent.session_id().map(str::to_string);
         let id = self
             .agent
             .fork_session(entry_id, position)
             .await
             .map_err(XyDriverError::from)?;
+        if let Some(previous) = previous
+            && let Some(hub) = &self.prepare_hub
+        {
+            hub.release_session(&previous);
+        }
         self.bind_todo_session(Some(&id)).await;
+        self.agent.clear_tool_freeze();
+        self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
         Ok(id)
     }
 
@@ -250,6 +258,8 @@ impl super::XyInProcessDriver {
         }
         bind_session_or_err(&mut self.agent, session_id.clone())?;
         self.bind_todo_session(Some(&session_id)).await;
+        self.agent.clear_tool_freeze();
+        self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
         Ok(session_id)
     }
 

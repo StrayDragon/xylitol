@@ -375,11 +375,14 @@ pub struct ConnectedMcpServer {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct McpConnectProgress {
+    pub generation: u64,
     pub connecting: bool,
     pub total: usize,
     pub finished: usize,
     pub current: Option<String>,
 }
+
+pub type McpConnectTarget = (Arc<Mutex<McpConnectProgress>>, u64);
 
 impl McpConnectProgress {
     pub fn connecting_label(&self) -> Option<String> {
@@ -409,6 +412,13 @@ struct OAuthFlowState {
     http_client: reqwest::Client,
 }
 
+#[derive(Debug, Clone)]
+struct OAuthStatusEntry {
+    status: xylitol_plugin_sdk::mcp::McpOAuthStatus,
+    server: String,
+    expires_at_ms: u64,
+}
+
 pub struct McpClientManager {
     services: Mutex<HashMap<String, McpService>>,
     tools_dirty: Arc<AtomicBool>,
@@ -422,7 +432,7 @@ pub struct McpClientManager {
     subscription_tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
     connect_attempts: AtomicUsize,
     oauth_flows: Mutex<HashMap<String, OAuthFlowState>>,
-    oauth_status: Mutex<HashMap<String, xylitol_plugin_sdk::mcp::McpOAuthStatus>>,
+    oauth_status: Mutex<HashMap<String, OAuthStatusEntry>>,
 }
 
 impl Default for McpClientManager {
@@ -516,9 +526,13 @@ impl McpClientManager {
         self: &Arc<Self>,
         servers: &[McpServerConfig],
         workspace: Option<&std::path::Path>,
-        progress_out: Option<Arc<Mutex<McpConnectProgress>>>,
+        progress_out: Option<McpConnectTarget>,
     ) {
         self.connect_attempts.fetch_add(1, Ordering::SeqCst);
+        let generation = progress_out
+            .as_ref()
+            .map(|(_, generation)| *generation)
+            .unwrap_or(0);
         {
             let mut diags = self.diagnostics.lock().await;
             diags.clear();
@@ -536,7 +550,7 @@ impl McpClientManager {
         }
 
         let total = validated.len();
-        self.write_progress(&progress_out, true, total, 0, None)
+        self.write_progress(&progress_out, generation, true, total, 0, None)
             .await;
 
         let mut futs = FuturesUnordered::new();
@@ -583,11 +597,11 @@ impl McpClientManager {
                 self.push_diagnostic(name.clone(), e.to_string()).await;
             }
             finished += 1;
-            self.write_progress(&progress_out, true, total, finished, Some(name))
+            self.write_progress(&progress_out, generation, true, total, finished, Some(name))
                 .await;
         }
 
-        self.write_progress(&progress_out, false, total, finished, None)
+        self.write_progress(&progress_out, generation, false, total, finished, None)
             .await;
         self.spawn_probes().await;
         self.spawn_resource_subscriptions().await;
@@ -595,21 +609,26 @@ impl McpClientManager {
 
     async fn write_progress(
         &self,
-        progress_out: &Option<Arc<Mutex<McpConnectProgress>>>,
+        progress_out: &Option<McpConnectTarget>,
+        generation: u64,
         connecting: bool,
         total: usize,
         finished: usize,
         current: Option<String>,
     ) {
         let snap = McpConnectProgress {
+            generation,
             connecting,
             total,
             finished,
             current,
         };
         *self.progress.lock().await = snap.clone();
-        if let Some(out) = progress_out {
-            *out.lock().await = snap;
+        if let Some((out, expected)) = progress_out {
+            let mut guard = out.lock().await;
+            if guard.generation == *expected {
+                *guard = snap;
+            }
         }
     }
 
@@ -1067,17 +1086,22 @@ impl McpClientManager {
                 server: name.to_string(),
                 message: error.to_string(),
             })?;
+        let expires_at_ms = xylitol_plugin_sdk::dto::now_ms().saturating_add(300_000);
         let flow = xylitol_plugin_sdk::mcp::McpOAuthFlow {
             flow_id: flow_id.clone(),
             server: name.to_string(),
             auth_url,
             redirect_uri,
             scopes: oauth.scopes.clone(),
-            expires_at_ms: xylitol_plugin_sdk::dto::now_ms().saturating_add(300_000),
+            expires_at_ms,
         };
         self.oauth_status.lock().await.insert(
             flow_id.clone(),
-            xylitol_plugin_sdk::mcp::McpOAuthStatus::Pending,
+            OAuthStatusEntry {
+                status: xylitol_plugin_sdk::mcp::McpOAuthStatus::Pending,
+                server: name.to_string(),
+                expires_at_ms,
+            },
         );
         self.oauth_flows.lock().await.insert(
             flow_id.clone(),
@@ -1093,19 +1117,74 @@ impl McpClientManager {
         let gateway_wait = gateway.clone();
         let wait_flow_id = flow_id.clone();
         tokio::spawn(async move {
-            match gateway_wait.wait(&wait_flow_id).await {
-                Ok(callback_url) => {
-                    if let Err(error) = manager.complete_oauth(&wait_flow_id, &callback_url).await {
-                        log::warn!("MCP OAuth callback failed for {wait_flow_id}: {error}");
-                    }
-                }
-                Err(error) => {
-                    log::warn!("MCP OAuth callback wait failed for {wait_flow_id}: {error}");
-                    manager.oauth_flows.lock().await.remove(&wait_flow_id);
-                }
-            }
+            manager
+                .await_oauth_callback(&wait_flow_id, gateway_wait)
+                .await;
         });
         Ok(flow)
+    }
+
+    async fn await_oauth_callback(
+        self: &Arc<Self>,
+        flow_id: &str,
+        gateway: Arc<dyn xylitol_plugin_sdk::mcp::McpOAuthGateway>,
+    ) {
+        match gateway.wait(flow_id).await {
+            Ok(callback_url) => {
+                if let Err(error) = self.complete_oauth(flow_id, &callback_url).await {
+                    log::warn!("MCP OAuth callback failed for {flow_id}: {error}");
+                }
+            }
+            Err(error) => {
+                log::warn!("MCP OAuth callback wait failed for {flow_id}: {error}");
+                self.oauth_flows.lock().await.remove(flow_id);
+                self.finish_oauth(
+                    flow_id,
+                    xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed,
+                    Some(&gateway),
+                    Some(error),
+                )
+                .await;
+            }
+        }
+    }
+
+    async fn finish_oauth(
+        &self,
+        flow_id: &str,
+        status: xylitol_plugin_sdk::mcp::McpOAuthStatus,
+        gateway: Option<&Arc<dyn xylitol_plugin_sdk::mcp::McpOAuthGateway>>,
+        error: Option<String>,
+    ) {
+        let server = {
+            let mut map = self.oauth_status.lock().await;
+            map.get_mut(flow_id).map(|entry| {
+                entry.status = status;
+                entry.server.clone()
+            })
+        };
+        let Some(server) = server else {
+            return;
+        };
+        let Some(gateway) = gateway else {
+            return;
+        };
+        match status {
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Completed => {
+                gateway.publish(xylitol_plugin_sdk::mcp::McpOAuthEvent::Completed {
+                    flow_id: flow_id.to_string(),
+                    server,
+                });
+            }
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed => {
+                gateway.publish(xylitol_plugin_sdk::mcp::McpOAuthEvent::Failed {
+                    flow_id: flow_id.to_string(),
+                    server,
+                    error: error.unwrap_or_default(),
+                });
+            }
+            _ => {}
+        }
     }
 
     async fn complete_oauth(
@@ -1122,46 +1201,48 @@ impl McpClientManager {
                 server: flow_id.to_string(),
                 message: "OAuth flow not found".into(),
             })?;
+        let gateway = xylitol_plugin_sdk::mcp::mcp_oauth_gateway();
         let mut state = flow.state;
-        state
-            .handle_callback_url(callback_url)
-            .await
-            .map_err(|error| McpError::OAuth {
-                server: flow.server.clone(),
-                message: error.to_string(),
-            })?;
-        let manager = state
-            .into_authorization_manager()
-            .ok_or_else(|| McpError::OAuth {
-                server: flow.server.clone(),
-                message: "OAuth callback did not produce authorized state".into(),
-            })?;
+        if let Err(error) = state.handle_callback_url(callback_url).await {
+            let message = error.to_string();
+            self.finish_oauth(
+                flow_id,
+                xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed,
+                gateway.as_ref(),
+                Some(message.clone()),
+            )
+            .await;
+            return Err(McpError::OAuth {
+                server: flow.server,
+                message,
+            });
+        }
+        let Some(manager) = state.into_authorization_manager() else {
+            let message = "OAuth callback did not produce authorized state".to_string();
+            self.finish_oauth(
+                flow_id,
+                xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed,
+                gateway.as_ref(),
+                Some(message.clone()),
+            )
+            .await;
+            return Err(McpError::OAuth {
+                server: flow.server,
+                message,
+            });
+        };
         let auth_client = rmcp::transport::auth::AuthClient::new(flow.http_client, manager);
         let result = self
             .connect_http_with_auth_client(&flow.server, &flow.config, auth_client)
             .await;
-        if let Some(gateway) = xylitol_plugin_sdk::mcp::mcp_oauth_gateway() {
-            let status = if result.is_ok() {
-                xylitol_plugin_sdk::mcp::McpOAuthStatus::Completed
-            } else {
-                xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed
-            };
-            self.oauth_status
-                .lock()
-                .await
-                .insert(flow_id.to_string(), status);
-            match &result {
-                Ok(()) => gateway.publish(xylitol_plugin_sdk::mcp::McpOAuthEvent::Completed {
-                    flow_id: flow_id.to_string(),
-                    server: flow.server.clone(),
-                }),
-                Err(error) => gateway.publish(xylitol_plugin_sdk::mcp::McpOAuthEvent::Failed {
-                    flow_id: flow_id.to_string(),
-                    server: flow.server.clone(),
-                    error: error.to_string(),
-                }),
-            }
-        }
+        let status = if result.is_ok() {
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Completed
+        } else {
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed
+        };
+        let error = result.as_ref().err().map(|error| error.to_string());
+        self.finish_oauth(flow_id, status, gateway.as_ref(), error)
+            .await;
         result
     }
 
@@ -1244,19 +1325,43 @@ impl McpClientManager {
             gateway.cancel(flow_id).await;
         }
         self.oauth_flows.lock().await.remove(flow_id);
-        self.oauth_status.lock().await.insert(
+        let mut map = self.oauth_status.lock().await;
+        let server = map
+            .get(flow_id)
+            .map(|entry| entry.server.clone())
+            .unwrap_or_default();
+        map.insert(
             flow_id.to_string(),
-            xylitol_plugin_sdk::mcp::McpOAuthStatus::Cancelled,
+            OAuthStatusEntry {
+                status: xylitol_plugin_sdk::mcp::McpOAuthStatus::Cancelled,
+                server,
+                expires_at_ms: 0,
+            },
         );
     }
 
     pub async fn oauth_status(&self, flow_id: &str) -> xylitol_plugin_sdk::mcp::McpOAuthStatus {
-        self.oauth_status
-            .lock()
-            .await
-            .get(flow_id)
-            .copied()
-            .unwrap_or(xylitol_plugin_sdk::mcp::McpOAuthStatus::Unknown)
+        let (status, server, expired) = {
+            let mut map = self.oauth_status.lock().await;
+            let Some(entry) = map.get_mut(flow_id) else {
+                return xylitol_plugin_sdk::mcp::McpOAuthStatus::Unknown;
+            };
+            let expired = entry.status == xylitol_plugin_sdk::mcp::McpOAuthStatus::Pending
+                && entry.expires_at_ms != 0
+                && xylitol_plugin_sdk::dto::now_ms() >= entry.expires_at_ms;
+            if expired {
+                entry.status = xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed;
+            }
+            (entry.status, entry.server.clone(), expired)
+        };
+        if expired && let Some(gateway) = xylitol_plugin_sdk::mcp::mcp_oauth_gateway() {
+            gateway.publish(xylitol_plugin_sdk::mcp::McpOAuthEvent::Failed {
+                flow_id: flow_id.to_string(),
+                server,
+                error: "expired".into(),
+            });
+        }
+        status
     }
 
     pub async fn revoke_oauth(
@@ -1880,6 +1985,121 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn oauth_status_expires_pending_flow() {
+        let manager = McpClientManager::new();
+        manager.oauth_status.lock().await.insert(
+            "expired-flow".into(),
+            OAuthStatusEntry {
+                status: xylitol_plugin_sdk::mcp::McpOAuthStatus::Pending,
+                server: "srv".into(),
+                expires_at_ms: xylitol_plugin_sdk::dto::now_ms().saturating_sub(1),
+            },
+        );
+        assert_eq!(
+            manager.oauth_status("expired-flow").await,
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed
+        );
+    }
+
+    struct ListenerDeadGateway {
+        events: Arc<std::sync::Mutex<Vec<xylitol_plugin_sdk::mcp::McpOAuthEvent>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::mcp::McpOAuthGateway for ListenerDeadGateway {
+        async fn bind(
+            &self,
+            _flow_id: &str,
+            _redirect_uri: Option<&str>,
+        ) -> Result<String, String> {
+            Ok("http://127.0.0.1:1/cb".into())
+        }
+
+        async fn wait(&self, _flow_id: &str) -> Result<String, String> {
+            Err("listener died".into())
+        }
+
+        async fn cancel(&self, _flow_id: &str) {}
+
+        fn publish(&self, event: xylitol_plugin_sdk::mcp::McpOAuthEvent) {
+            self.events.lock().expect("events").push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn oauth_listener_failure_lands_failed_and_publishes() {
+        let manager = Arc::new(McpClientManager::new());
+        manager.oauth_status.lock().await.insert(
+            "flow-x".into(),
+            OAuthStatusEntry {
+                status: xylitol_plugin_sdk::mcp::McpOAuthStatus::Pending,
+                server: "srv".into(),
+                expires_at_ms: 0,
+            },
+        );
+        let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let gateway = Arc::new(ListenerDeadGateway {
+            events: events.clone(),
+        });
+        manager.await_oauth_callback("flow-x", gateway).await;
+        assert_eq!(
+            manager.oauth_status("flow-x").await,
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed
+        );
+        let events = events.lock().expect("events");
+        assert!(
+            matches!(
+                events.as_slice(),
+                [xylitol_plugin_sdk::mcp::McpOAuthEvent::Failed { .. }]
+            ),
+            "{events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn oauth_failure_without_gateway_still_lands_terminal() {
+        let manager = McpClientManager::new();
+        manager.oauth_status.lock().await.insert(
+            "flow-y".into(),
+            OAuthStatusEntry {
+                status: xylitol_plugin_sdk::mcp::McpOAuthStatus::Pending,
+                server: "srv".into(),
+                expires_at_ms: 0,
+            },
+        );
+        manager
+            .finish_oauth(
+                "flow-y",
+                xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed,
+                None,
+                Some("boom".into()),
+            )
+            .await;
+        assert_eq!(
+            manager.oauth_status("flow-y").await,
+            xylitol_plugin_sdk::mcp::McpOAuthStatus::Failed
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_progress_generation_is_ignored() {
+        let manager = McpClientManager::new();
+        let out = Arc::new(Mutex::new(McpConnectProgress {
+            generation: 2,
+            ..Default::default()
+        }));
+        let stale = Some((out.clone(), 1u64));
+        manager.write_progress(&stale, 1, true, 3, 0, None).await;
+        assert!(
+            !out.lock().await.connecting,
+            "stale generation must be dropped"
+        );
+        let current = Some((out.clone(), 2u64));
+        manager.write_progress(&current, 2, true, 3, 1, None).await;
+        assert!(out.lock().await.connecting, "current generation must apply");
+    }
+
+    #[tokio::test]
     async fn oauth_without_gateway_records_diagnostic_without_blocking() {
         let manager = Arc::new(McpClientManager::new());
         let servers = vec![McpServerConfig {
@@ -2070,6 +2290,7 @@ mod tests {
     #[test]
     fn connecting_label_is_ready_over_total() {
         let start = McpConnectProgress {
+            generation: 0,
             connecting: true,
             total: 2,
             finished: 0,
@@ -2078,6 +2299,7 @@ mod tests {
         assert_eq!(start.connecting_label().as_deref(), Some("connecting 0/2"));
 
         let mid = McpConnectProgress {
+            generation: 0,
             connecting: true,
             total: 2,
             finished: 1,
@@ -2086,6 +2308,7 @@ mod tests {
         assert_eq!(mid.connecting_label().as_deref(), Some("connecting 1/2"));
 
         let done_but_boot = McpConnectProgress {
+            generation: 0,
             connecting: true,
             total: 2,
             finished: 2,
@@ -2097,6 +2320,7 @@ mod tests {
         );
 
         let settled = McpConnectProgress {
+            generation: 0,
             connecting: false,
             total: 2,
             finished: 2,

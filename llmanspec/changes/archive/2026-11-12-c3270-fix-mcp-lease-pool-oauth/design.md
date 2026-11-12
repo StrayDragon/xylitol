@@ -64,3 +64,12 @@ stateDiagram-v2
 | prepare_acked 在 switch_session 未重置 | **不成立**：`switch_session` 调 `fire_session_prepare`，其首行即 `prepare_acked=false`（prepare.rs:144-145；session.rs:66）。真实缺口是 **new_session / fork_session** 只绑定不重置（session.rs:221-254、1-26），新会话沿用上一会话的 ack 跳过 MCP 首轮门禁 | session.rs:66、221-254；prepare.rs:144-145 |
 
 修正后的实施范围：租约相位 / 关闭任务 / idle_closes；快照单点 + degraded；OAuth 终态（监听器失败、无 gateway 后缺失、过期）；进度代际；**new_session / fork_session** 门禁复位。
+
+实施中新增发现（同一 session 重复 ensure 会反复重建连接）：`claim_and_connect` 每次 ensure 都先释放该 session 全部旧 claim 再重新 acquire；同 key 同 session 的重复 ensure 因此走到「释放归零 → 关闭 → 重插 → 重连」（Workspace 且 keep_alive=0 时零延迟关闭），表现为 reconnect_count 递增与连接风暴；并发 prepare 事件（Switch 与 Generate）还会让两批 connect 同时写同一 entry。
+
+修复：
+1. `ensure_for` 单飞（`ensure_lock`）：并发 prepare 事件串行执行，不再起两批 connect。
+2. 仍被本 session 需要的 key 跳过释放；已连接（`connected` 非空）直接复用，不再 shutdown/重连。
+3. 未连接的 still-desired key 就地重试：shutdown 旧 manager、起新 connect、`reconnect_count` +1（保持 r3272「失败 server 下一次 ensure 重连」语义），不再走释放→重插。
+
+该修复同时让进度代际在并发 ensure 下稳定收敛。

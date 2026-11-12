@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix MCP lease pool and OAuth terminal states"
+branch: sdd/c3270-fix-mcp-lease-pool-oauth
+base_branch: main
+base_sha: 96d817748ab73ad52f1395237fdb1f0b1fa8e638
 ---
 
 # MCP 租约池与 OAuth 终态修复

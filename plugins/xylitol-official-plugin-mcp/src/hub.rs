@@ -25,6 +25,13 @@ use crate::config::{McpScope, McpServerConfig};
 
 pub type ConnectionKey = ResourceKey;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LeasePhase {
+    Leased,
+    IdleGrace,
+    Closed,
+}
+
 struct PoolEntry {
     manager: Arc<McpClientManager>,
     name: String,
@@ -35,8 +42,11 @@ struct PoolEntry {
     connect_timeout_ms: u64,
     call_timeout_ms: u64,
     claims: usize,
+    phase: LeasePhase,
     reconnect_count: usize,
+    idle_closes: usize,
     idle_generation: u64,
+    close_task: Option<tokio::task::JoinHandle<()>>,
     last_used: Instant,
     connected: Vec<(String, usize)>,
     diags: Vec<String>,
@@ -99,15 +109,18 @@ pub struct McpToolDescriptor {
 
 struct HubState {
     servers: Mutex<Vec<McpServerConfig>>,
+    configured: usize,
     pool: Mutex<ResourcePool<ConnectionKey, PoolEntry>>,
     claims: Mutex<HashMap<String, Vec<ConnectionKey>>>,
     current: Mutex<Option<(String, Vec<String>)>>,
     last_view: Mutex<Option<SessionPrepareView>>,
     last_result: Mutex<Option<SessionPrepareResult>>,
     reconnects: Mutex<HashMap<ConnectionKey, usize>>,
+    idle_closes: Mutex<HashMap<ConnectionKey, usize>>,
     last_tools: Mutex<Vec<Arc<dyn XyTool>>>,
     progress: Arc<Mutex<McpConnectProgress>>,
     notice: Mutex<Option<String>>,
+    ensure_lock: Mutex<()>,
 }
 
 #[derive(Clone)]
@@ -187,6 +200,7 @@ impl McpPrepareHub {
         Self {
             state: Arc::new(HubState {
                 servers: Mutex::new(servers),
+                configured: total,
                 pool: Mutex::new(ResourcePool::new()),
                 claims: Mutex::new(HashMap::new()),
                 current: Mutex::new(None),
@@ -194,6 +208,7 @@ impl McpPrepareHub {
                 last_result: Mutex::new(None),
                 last_tools: Mutex::new(Vec::new()),
                 progress: Arc::new(Mutex::new(McpConnectProgress {
+                    generation: 0,
                     connecting: false,
                     total,
                     finished: 0,
@@ -201,27 +216,55 @@ impl McpPrepareHub {
                 })),
                 notice: Mutex::new(None),
                 reconnects: Mutex::new(HashMap::new()),
+                idle_closes: Mutex::new(HashMap::new()),
+                ensure_lock: Mutex::new(()),
             }),
         }
     }
 
-    fn schedule_idle_close(&self, key: ConnectionKey, generation: u64, delay: Duration) {
+    async fn schedule_idle_close(&self, key: ConnectionKey, generation: u64, delay: Duration) {
         if delay.is_zero() {
             return;
         }
         let hub = self.clone();
-        tokio::spawn(async move {
+        let close_key = key.clone();
+        let task = tokio::spawn(async move {
             tokio::time::sleep(delay).await;
-            hub.expire_idle(key, generation).await;
+            hub.expire_idle(close_key, generation).await;
         });
+        let mut pool = self.state.pool.lock().await;
+        let Some(entry) = pool.get_mut(&key) else {
+            task.abort();
+            return;
+        };
+        if entry.ref_count() != 0 || entry.idle_generation() != generation {
+            task.abort();
+            return;
+        }
+        if let Some(previous) = entry.close_task.replace(task) {
+            previous.abort();
+        }
+        entry.phase = LeasePhase::IdleGrace;
+    }
+
+    fn cancel_close_task(entry: &mut PoolEntry) {
+        if let Some(task) = entry.close_task.take() {
+            task.abort();
+        }
     }
 
     async fn expire_idle(&self, key: ConnectionKey, generation: u64) {
         let manager = {
             let mut pool = self.state.pool.lock().await;
             match pool.get(&key) {
-                Some(entry) if entry.ref_count() == 0 && entry.idle_generation() == generation => {
-                    pool.remove(&key).map(|entry| entry.manager)
+                Some(entry)
+                    if entry.phase == LeasePhase::IdleGrace
+                        && entry.ref_count() == 0
+                        && entry.idle_generation() == generation =>
+                {
+                    let mut entry = pool.remove(&key).expect("entry exists");
+                    entry.close_task.take();
+                    Some(entry.manager)
                 }
                 _ => None,
             }
@@ -229,7 +272,7 @@ impl McpPrepareHub {
         let Some(manager) = manager else {
             return;
         };
-        *self.state.reconnects.lock().await.entry(key).or_insert(0) += 1;
+        *self.state.idle_closes.lock().await.entry(key).or_insert(0) += 1;
         manager.shutdown().await;
         self.update_snapshot().await;
     }
@@ -239,6 +282,7 @@ impl McpPrepareHub {
         session_id: &str,
         workspaces: &[String],
     ) -> SessionPrepareResult {
+        let _single_flight = self.state.ensure_lock.lock().await;
         *self.state.current.lock().await = Some((session_id.to_string(), workspaces.to_vec()));
         self.claim_and_connect(session_id, workspaces).await;
         self.refresh_dirty_entries().await;
@@ -266,7 +310,15 @@ impl McpPrepareHub {
                 .await
                 .remove(session_id)
                 .unwrap_or_default();
+            let still_desired: HashSet<ConnectionKey> = old
+                .iter()
+                .filter(|key| desired.contains_key(*key))
+                .cloned()
+                .collect();
             for key in old {
+                if still_desired.contains(&key) {
+                    continue;
+                }
                 let Some(outcome) = pool.release(&key) else {
                     continue;
                 };
@@ -287,8 +339,35 @@ impl McpPrepareHub {
             let mut keys = Vec::new();
             for (key, key_servers) in desired {
                 keys.push(key.clone());
+                if still_desired.contains(&key) {
+                    let mut retry = None;
+                    if let Some(entry) = pool.get_mut(&key) {
+                        Self::cancel_close_task(entry);
+                        entry.phase = LeasePhase::Leased;
+                        entry.touch();
+                        if entry.connected.is_empty() {
+                            entry.reconnect_count = entry.reconnect_count.saturating_add(1);
+                            retry = Some((entry.reconnect_count, entry.manager.clone()));
+                        }
+                    }
+                    if let Some((reconnect_count, old_manager)) = retry {
+                        self.state
+                            .reconnects
+                            .lock()
+                            .await
+                            .insert(key.clone(), reconnect_count);
+                        shutdowns.push(old_manager);
+                        to_connect.push((key.clone(), key_servers));
+                    }
+                    continue;
+                }
                 match pool.acquire(&key) {
-                    Some(_) => {}
+                    Some(_) => {
+                        if let Some(entry) = pool.get_mut(&key) {
+                            Self::cancel_close_task(entry);
+                            entry.phase = LeasePhase::Leased;
+                        }
+                    }
                     None => {
                         pool.insert(
                             key.clone(),
@@ -319,6 +398,7 @@ impl McpPrepareHub {
                                     .map(|server| server.call_timeout_ms)
                                     .unwrap_or(120_000),
                                 claims: 1,
+                                phase: LeasePhase::Leased,
                                 reconnect_count: self
                                     .state
                                     .reconnects
@@ -327,7 +407,16 @@ impl McpPrepareHub {
                                     .get(&key)
                                     .copied()
                                     .unwrap_or(0),
+                                idle_closes: self
+                                    .state
+                                    .idle_closes
+                                    .lock()
+                                    .await
+                                    .get(&key)
+                                    .copied()
+                                    .unwrap_or(0),
                                 idle_generation: 0,
+                                close_task: None,
                                 last_used: Instant::now(),
                                 connected: Vec::new(),
                                 diags: Vec::new(),
@@ -348,20 +437,28 @@ impl McpPrepareHub {
                 .insert(session_id.to_string(), keys);
         }
         for (key, generation, delay) in idle {
-            self.schedule_idle_close(key, generation, delay);
+            self.schedule_idle_close(key, generation, delay).await;
         }
         for manager in shutdowns {
             manager.shutdown().await;
         }
         if to_connect.is_empty() {
+            let mut progress = self.state.progress.lock().await;
+            progress.connecting = false;
+            progress.current = None;
             return;
         }
+        let generation = {
+            let mut progress = self.state.progress.lock().await;
+            progress.generation = progress.generation.wrapping_add(1);
+            progress.generation
+        };
         for (key, servers) in to_connect {
             let workspace = key.workspace.clone().map(PathBuf::from);
             let discovered = connect_and_discover_at(
                 &servers,
                 workspace.as_deref(),
-                Some(self.state.progress.clone()),
+                Some((self.state.progress.clone(), generation)),
             )
             .await;
             let Some((manager, _tools)) = discovered else {
@@ -660,7 +757,7 @@ impl McpPrepareHub {
         let mut server_details = Vec::new();
         let mut probe_lines = Vec::new();
         for (key, entry) in pool.iter() {
-            if entry.ref_count() == 0 {
+            if entry.phase != LeasePhase::Leased {
                 continue;
             }
             if claimed_keys
@@ -688,7 +785,7 @@ impl McpPrepareHub {
                 entry.credential_configured
             };
             server_details.push(format!(
-                "server={} transport={} scope={} credential={} connected={} tools={} prompts={} resources={} connect_timeout_ms={} call_timeout_ms={} reconnect_count={} claims={} last_used_ms={} probe={} last_error={}",
+                "server={} transport={} scope={} credential={} connected={} tools={} prompts={} resources={} connect_timeout_ms={} call_timeout_ms={} reconnect_count={} idle_closes={} claims={} last_used_ms={} probe={} last_error={}",
                 entry.name,
                 entry.transport,
                 entry.scope,
@@ -704,6 +801,7 @@ impl McpPrepareHub {
                 entry.connect_timeout_ms,
                 entry.call_timeout_ms,
                 entry.reconnect_count,
+                entry.idle_closes,
                 entry.ref_count(),
                 entry.last_used.elapsed().as_millis(),
                 entry
@@ -731,6 +829,7 @@ impl McpPrepareHub {
             .collect();
         SessionPrepareView {
             configured: servers.len(),
+            degraded: false,
             connected,
             diags,
             connecting_label: if progress.connecting {
@@ -754,11 +853,15 @@ impl McpPrepareHub {
         };
         *self.state.claims.lock().await = HashMap::new();
         *self.state.reconnects.lock().await = HashMap::new();
+        *self.state.idle_closes.lock().await = HashMap::new();
         *self.state.last_tools.lock().await = Vec::new();
         *self.state.last_result.lock().await = None;
-        for entry in entries.into_values() {
+        for mut entry in entries.into_values() {
+            Self::cancel_close_task(&mut entry);
+            entry.phase = LeasePhase::Closed;
             entry.manager.shutdown().await;
         }
+        self.update_snapshot().await;
     }
 
     pub fn release_session(&self, session_id: &str) {
@@ -794,7 +897,7 @@ impl McpPrepareHub {
             }
         }
         for (key, generation, delay) in idle {
-            self.schedule_idle_close(key, generation, delay);
+            self.schedule_idle_close(key, generation, delay).await;
         }
         for manager in shutdowns {
             manager.shutdown().await;
@@ -918,14 +1021,10 @@ impl SessionPrepareHub for McpPrepareHub {
         {
             return view.clone();
         }
-        let configured = self
-            .state
-            .servers
-            .try_lock()
-            .map(|servers| servers.len())
-            .unwrap_or(0);
+        let configured = self.state.configured;
         SessionPrepareView {
             configured,
+            degraded: configured > 0,
             connecting: configured > 0,
             complete: configured == 0,
             ..SessionPrepareView::default()
@@ -1221,6 +1320,75 @@ mod tests {
             view.server_details.is_empty(),
             "idle entries must not leak into the current session snapshot"
         );
+    }
+
+    #[tokio::test]
+    async fn idle_expiry_counts_idle_closes_not_reconnects() {
+        let mut config = server("fs", McpScope::Shared);
+        config.keep_alive_ms = 20;
+        let hub = McpPrepareHub::new(vec![config]);
+        hub.ensure_for("s1", &[]).await;
+        hub.release_session("s1");
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(hub.state.pool.lock().await.len(), 0);
+        assert_eq!(
+            hub.state
+                .idle_closes
+                .lock()
+                .await
+                .values()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+        assert!(
+            hub.state.reconnects.lock().await.is_empty(),
+            "idle expiry must not count as a reconnect"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_close_task_is_cancelled_by_new_claim() {
+        let mut config = server("fs", McpScope::Shared);
+        config.keep_alive_ms = 100;
+        let hub = McpPrepareHub::new(vec![config]);
+        hub.ensure_for("s1", &[]).await;
+        hub.release_session("s1");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        {
+            let pool = hub.state.pool.lock().await;
+            let entry = pool.values().next().expect("idle entry");
+            assert_eq!(entry.phase, LeasePhase::IdleGrace);
+            assert!(
+                entry.close_task.is_some(),
+                "idle close task must be tracked so a claim can cancel it"
+            );
+        }
+        hub.ensure_for("s2", &[]).await;
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let pool = hub.state.pool.lock().await;
+        assert_eq!(pool.len(), 1, "cancelled close task must not fire");
+        assert_eq!(
+            pool.values().next().map(|entry| entry.phase),
+            Some(LeasePhase::Leased)
+        );
+    }
+
+    #[tokio::test]
+    async fn view_fallback_is_degraded_not_ready() {
+        let hub = McpPrepareHub::new(vec![server("fs", McpScope::Workspace)]);
+        let view = hub.view();
+        assert_eq!(view.configured, 1);
+        assert!(view.degraded);
+        assert!(
+            !view.complete,
+            "an unavailable snapshot must not claim ready"
+        );
+        let empty = McpPrepareHub::new(Vec::new());
+        let view = empty.view();
+        assert_eq!(view.configured, 0);
+        assert!(view.complete);
+        assert!(!view.degraded);
     }
 
     #[tokio::test]

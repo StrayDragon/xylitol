@@ -107,6 +107,7 @@ pub fn ensure_session_prepare_in_history(
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionPrepareView {
     pub configured: usize,
+    pub degraded: bool,
     pub connected: Vec<(String, usize)>,
     pub diags: Vec<String>,
     pub connecting_label: Option<String>,
