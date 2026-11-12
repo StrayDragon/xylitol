@@ -12,6 +12,6 @@
 - [ ] T8 W9：run_command_capture kill_on_drop + 超时杀进程组 + 单测
 - [ ] T9 checkpoint 短路 + warn（旧字段条目不再回扫）+ 单测
 - [ ] T10 卫生项：v1 门禁回收；golden 生成脚本；drift stat 快路径；context_reminder 端到端 BDD；示例注入器；critic follow-up 变体与转移矩阵单测；compaction 快照测试补全；decide_active_goal 走表；勘误入 research
-- [ ] T11 W7（待决定稿后启用）：② 修序（提交管线调用协调器 + 取消 fragment）或 ① 改约（spec 勘误）
+- [ ] T11 W7 ② 修序（已决）：turn 提交管线在用户消息落盘前调用注入协调器（单调用点）；提醒行进 store + 内存 history；fragment 通道删除；顺序断言（提醒 entry 先于用户消息 entry）+ fork 场景测试（分叉后提醒仍在祖先链）+ spec r3312 场景固化顺序
 - [ ] T12 全量回归 [blocked-by: T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11]
   just fmt / lint / test / qa；llman-sdd validate --all --strict；rg 终检（v1 allowlist 已删等）

@@ -5,7 +5,7 @@ title: "Fix P0 batch review follow-ups"
 
 # P0 批次复核收尾（c3266）
 
-> 2026-11-12 三组只读 review + 本机复核的产出。上游 9 个 change 均已归档合入，本 change 承接全部遗留：1 CRITICAL、8 WARNING、checkpoint 短路、v1 门禁回收与卫生项。W7（HistoryRow 落盘顺序）待用户决策后定稿入任务。
+> 2026-11-12 三组只读 review + 本机复核的产出。上游 9 个 change 均已归档合入，本 change 承接全部遗留：1 CRITICAL、8 WARNING、checkpoint 短路、v1 门禁回收与卫生项。W7 已决 ② 修序（2026-11-12）。
 
 ## Why
 
@@ -23,7 +23,7 @@ P0 批次主体成立（qa 3727/3727、validate 全绿、双 rg 归零），但�
 - W9：run_command_capture 超时杀子进程（kill_on_drop + 进程组）。
 - checkpoint：解析失败短路返回 None + warn（不再回扫更旧条目）。
 - 卫生项：v1 门禁回收；golden 夹具生成脚本；drift stat 快路径；context_reminder 行持久化→投影端到端 BDD；T8 示例注入器；critic follow-up 变体与转移矩阵单测；compaction 快照保留测试补全；decide_active_goal 内部转移走表；勘误记录（BeforeStepCtx 实为 4 字段含 session_id、trust 条款落点 app-tui-trust）入 research。
-- 待决（W7）：① 改约（提醒行紧随用户消息，零代码）② 修序（评估前移到用户消息落盘前，取消 fragment 双通道，fork 安全）——推荐 ②，待用户拍板后并入任务。
+- W7 ② 修序：turn 提交管线在用户消息落盘前调用注入协调器（单调用点）；提醒行进 store + 内存 history；fragment 通道取消；顺序对齐家族契约（环境框架先于用户消息的注意力次序），fork 场景提醒保留。
 
 ## Capabilities
 
@@ -41,4 +41,4 @@ P0 批次主体成立（qa 3727/3727、validate 全绿、双 rg 归零），但�
 4. （已决）W8 补记方案（备选装载期报错把负担丢给用户，不取）；session_start 改 first_of_session。
 5. （已决）checkpoint 短路 + warn（备选 serde alias 兼容违反「不留兼容解析」已决口径，不取）。
 6. （已决）v1 门禁回收含在本 change。
-7. （待决）W7 顺序：推荐 ② 修序（fork 场景提醒丢失 + 消灭双通道）；① 零代码改约。定稿后更新本记录与 tasks。
+7. （已决 2026-11-12）W7 = ② 修序：评估前移到用户消息落盘前（提交管线单调用点），fragment 通道取消。理由：LLM 注意力次序——session_env 族是状态栏上下文注入，环境框架应先于用户问题被读（用户裁决）；fork 场景提醒保留；双通道消灭。

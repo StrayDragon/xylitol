@@ -60,10 +60,12 @@
 
 v1 门禁回收（specs 无 v1 字样，allowlist 项删除安全）；golden 夹具生成脚本（兑现 c3233 T1「可重复跑」）；drift stat 快路径（mtime+size 命中跳过重哈希）；context_reminder 行持久化→投影端到端 BDD；T8 fake 示例注入器（三步接入验证）；critic follow-up 变体 + goal/schedule 转移矩阵单测；compaction 快照保留测试补 context-fingerprint-snapshot 类型；decide_active_goal 内部转移走表；勘误记录入 research（BeforeStepCtx 实为 4 字段含 session_id 且落地 spec r3313 一致；c3235 trust 条款落点为 app-tui-trust）。
 
-## 11. W7（待决，定稿后并入）
+## 11. W7 修序（已决 ②，2026-11-12）
 
-- ① 改约：design/spec 勘误「提醒行紧随用户消息、首个 step 之前」；零代码；fork 场景提醒丢失、保留双通道。
-- ② 修序（推荐）：turn 提交管线在用户消息落盘前调用注入协调器（单调用点，非新中间件阶段）；提醒行进 store + 内存 history；fragment 通道取消；顺序对齐家族契约；fork 安全。
+- 做法：turn 提交管线在用户消息 entry 落盘前调用注入协调器（单调用点，非新中间件阶段）；提醒行写 store 并同步进入内存 history；fragment 通道整个删除（本轮可见性由行本身承载）。
+- 顺序：[提醒, 用户消息]——与 session_env / session_prepare 家族契约一致。
+- 理由：① LLM 注意力次序——session_env 族是状态栏上下文注入，环境框架先于问题被读（用户裁决 2026-11-12）；② fork 场景提醒保留（祖先链含提醒行，SuppressIfUnchanged 不再漏判）；③ 双通道（fragment + 行）收敛为单通道。
+- 实现注记：评估所需指纹（skills / tools / prepare）在提交时刻已可用（装配态快照）；该调用点 has_new_user_messages 恒真，复用同一评估函数；spec 场景补顺序断言（提醒 entry 先于用户消息 entry）。
 
 ## 12. spec delta（landing 时）
 
