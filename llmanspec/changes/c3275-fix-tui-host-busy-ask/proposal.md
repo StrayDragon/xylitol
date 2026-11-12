@@ -31,6 +31,12 @@ app-tui host 层的忙闲状态由 4 个写点 × 2 个载体拼出，ask 提问
 - 范围：crates/xylitol-app-tui/src/{host,ask_host,bridge}。
 - 验证：reload 中 bash 结束的状态栏 harness 断言；远端 approval + 本地 ask 并发场景；流式缓冲重置矩阵。
 
+## 复核与范围裁定（2026-11-12）
+
+- busy 多源 / reload 中 end_bash 误置 Idle / abort 不清 reload / ask 单槽覆盖 / 结算字符串判据：均复核成立（证据见 design §7）。
+- 「流式缓冲六文件手工清」部分不成立：`UiModel::clear_streaming_buffers()` 已是单一复位入口，缺口只在 lifecycle 与 session_tree 两处绕过。
+- PendingOps 14 lane 类型化：design §1 已保留 lane 机制，本 change 不实施（另单）。
+
 ## Open Questions
 
 1. ask 槽并发策略：后到拒绝（推荐，提示用户先答当前）还是排队？
