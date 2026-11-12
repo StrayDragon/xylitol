@@ -32,6 +32,66 @@ fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
     })
 }
 
+fn reminder_row(id: &str, parent: Option<&str>, body: &str) -> SessionEntry {
+    SessionEntry::CustomMessage(crate::types::CustomMessageEntry {
+        base: EntryBase {
+            entry_type: "customMessage".into(),
+            id: id.into(),
+            parent_id: parent.map(str::to_string),
+            timestamp: ts(id),
+        },
+        custom_type: "context_reminder".into(),
+        content: json!(body),
+        display: true,
+        details: None,
+    })
+}
+
+#[tokio::test]
+async fn fork_branch_keeps_context_reminder_in_ancestor_chain() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    seed(
+        &store,
+        "s",
+        &[
+            reminder_row(
+                "r1",
+                None,
+                "<system-reminder>[skills] skill B 已变更</system-reminder>",
+            ),
+            msg("u1", Some("r1"), "user", "one"),
+            msg("a1", Some("u1"), "assistant", "two"),
+        ],
+    )
+    .await;
+    store
+        .fork("s", "s_fork_child", "u1", ForkPosition::Before)
+        .await
+        .expect("fork at the user message entry");
+    let branch = store
+        .load_leaf_branch("s_fork_child")
+        .await
+        .expect("fork branch");
+    assert!(
+        branch.iter().any(|entry| matches!(
+            entry,
+            SessionEntry::CustomMessage(custom)
+                if custom.custom_type == "context_reminder"
+        )),
+        "context_reminder row must stay in the fork branch ancestor chain: {branch:?}"
+    );
+    let ids: Vec<_> = branch.iter().filter_map(|entry| entry.entry_id()).collect();
+    assert!(
+        ids.contains(&"r1"),
+        "reminder row id must ride the ancestor chain: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&"u1"),
+        "ForkPosition::Before must drop the forked-at user message: {ids:?}"
+    );
+}
+
 fn normalize_entries(entries: &[SessionEntry], known: &HashSet<String>) -> Value {
     let mut map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut next = 0usize;

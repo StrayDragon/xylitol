@@ -81,8 +81,10 @@ pub(crate) struct ClearActiveTurn {
 
 impl Drop for ClearActiveTurn {
     fn drop(&mut self) {
-        self.coordinator
-            .with_mut(|c| c.clear_active_turn_if(self.run_id));
+        self.coordinator.with_mut(|c| {
+            c.clear_active_turn_if(self.run_id);
+            c.set_turn_in_flight(false);
+        });
     }
 }
 

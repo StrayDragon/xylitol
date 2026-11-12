@@ -669,12 +669,20 @@ where
     )
     .await
     .expect("steer");
-    assert_eq!(driver.queue_stats().steer_count, 1);
+    assert_eq!(
+        driver.queue_stats().follow_up_count,
+        1,
+        "idle steer must land in the follow_up FIFO"
+    );
+    assert_eq!(driver.queue_stats().steer_count, 0);
     let queued = driver
         .unary("queue_stats", serde_json::json!({}))
         .await
         .expect("queue_stats unary");
-    assert_eq!(queued.get("steer_count").and_then(Value::as_u64), Some(1));
+    assert_eq!(
+        queued.get("follow_up_count").and_then(Value::as_u64),
+        Some(1)
+    );
     dispatch(
         &mut driver,
         Command::ClearQueue {

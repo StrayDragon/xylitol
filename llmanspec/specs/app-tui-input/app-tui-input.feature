@@ -119,9 +119,9 @@
 
     场景: 中止然后再提交运行再次无头
       当 以主机泵开启忙碌流并按下 Esc 后收流关闭
-      那么 run 不再活跃且 abort 已计一次
+      那么 turn 不再活跃且 abort 已计一次
       当 输入 second 并按 Enter
-      那么 run 收到 second 且无粘性 aborted 错误
+      那么 turn 收到 second 且无粘性 aborted 错误
   @req:r1289
   规则: product-bash-prefix-border
     产品 TUI 中当编辑器文本 trim 后以 ! 或 !! 开头时，Editor 操作区边框 须切换为 bash 强调色（对齐 DESIGN success 前景）；去掉该前缀后 须恢复当前 thinking level 边框（atc17），不得在已接线 thinking 边框后仍用 muted 覆盖。

@@ -89,7 +89,7 @@
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 steer 携带文本
       并且 POST /rpc 查询会话 "s-prompt" 的只读 queue_stats
-      那么 steer 深度至少为 1
+      那么 steer 与 follow_up 深度之和至少为 1（空闲改向计入 follow_up FIFO）
 
   @req:r1694
   规则: 线协议不镜像厂商事件

@@ -181,18 +181,32 @@ mod tests {
         a.steer("a-steer");
         b.steer("b-steer");
         b.follow_up("b-fu");
-        assert_eq!(a.queue_stats().steer_count, 1);
-        assert_eq!(b.queue_stats().steer_count, 1);
-        assert_eq!(b.queue_stats().follow_up_count, 1);
+        assert_eq!(
+            a.queue_stats().follow_up_count,
+            1,
+            "idle steer must land in this runtime's follow_up FIFO"
+        );
+        assert_eq!(
+            b.queue_stats().follow_up_count,
+            2,
+            "each runtime must keep its own follow_up FIFO"
+        );
+        assert_eq!(a.queue_stats().steer_count, 0);
+        assert_eq!(b.queue_stats().steer_count, 0);
 
         a.abort();
-        assert_eq!(a.queue_stats().steer_count, 0);
         assert_eq!(
-            b.queue_stats().steer_count,
+            a.queue_stats().follow_up_count,
             1,
-            "abort on one runtime must not clear the other's steer queue"
+            "abort clears the steer queue only"
         );
-        assert_eq!(b.queue_stats().follow_up_count, 1);
+        assert_eq!(
+            b.queue_stats().follow_up_count,
+            2,
+            "abort on one runtime must not clear the other's queues"
+        );
+        assert_eq!(a.queue_stats().steer_count, 0);
+        assert_eq!(b.queue_stats().steer_count, 0);
         assert!(!a.has_active_turn());
         assert!(!b.has_active_turn());
     }

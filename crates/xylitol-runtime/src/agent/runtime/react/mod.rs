@@ -58,9 +58,13 @@ pub struct AgentRuntime {
 impl AgentRuntime {
     pub fn new(mut inner: AgentCapabilities) -> Self {
         let coordinator = SharedRunCoordinator::new();
-        let probe_coord = coordinator.clone();
+        let midturn_coord = coordinator.clone();
+        let turn_flight_coord = coordinator.clone();
         inner.set_midturn_active_probe(Arc::new(move || {
-            probe_coord.with(|c| c.has_active_run() || c.has_active_turn())
+            midturn_coord.with(|c| c.has_active_run() || c.has_active_turn())
+        }));
+        inner.set_turn_in_flight_probe(Arc::new(move || {
+            turn_flight_coord.with(|c| c.turn_in_flight())
         }));
         Self {
             inner,
@@ -966,7 +970,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         tool_schemas,
         tool_catalog,
         user_parts,
-        cancel,
+        mut cancel,
         permission_check,
         hooks,
         hook_bus,
@@ -1087,6 +1091,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let decide_active = !loop_chain.decide_continue.is_empty();
         let mut stall_count: u32 = 0;
         let mut settle_count: u32 = 0;
+        coordinator.with_mut(|c| c.set_turn_in_flight(true));
         yield XyEvent::AgentStart {
             session_id: session_id.clone(),
             model: run_model_id,
@@ -1095,11 +1100,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         'outer: loop {
             let mut continue_after_tools = true;
 
-            while continue_after_tools || !pending.is_empty() {
+            'steps: while continue_after_tools || !pending.is_empty() {
                 if cancel.is_cancelled() {
                     note_abort(AgentEndReason::UserCancel, &mut abort_reason);
                     yield XyEvent::aborted();
-                    break 'outer;
+                    break 'steps;
                 }
 
                 let mut turn_system_prompt = system_prompt.clone();
@@ -1346,7 +1351,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     None => {
                         note_abort(AgentEndReason::UserCancel, &mut abort_reason);
                         yield XyEvent::aborted();
-                        break 'outer;
+                        break 'steps;
                     }
                     Some(Ok(s)) => {
                         chunk_stream = s;
@@ -1450,7 +1455,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             }
                             note_abort(AgentEndReason::UserCancel, &mut abort_reason);
                             yield XyEvent::aborted();
-                            break 'outer;
+                            break 'steps;
                         }
                         next = chunk_stream.next() => next,
                     };
@@ -2164,12 +2169,23 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
             }
 
+            // NOTE: 本 turn 到达边界（settle 或 abort 完成），turn 不再在途；steer 自此刻起改走 follow_up FIFO
+            coordinator.with_mut(|c| c.set_turn_in_flight(false));
+            let turn_reason = abort_reason;
+            abort_reason = None;
             let Some(next_submission) = pop_queue(&follow_up_queue) else {
+                abort_reason = turn_reason;
                 break;
             };
             turn = 0;
             settle_count = 0;
             stall_count = 0;
+            if turn_reason.is_some() {
+                // NOTE: abort 只针对被取消的 turn；后续 turn 换发全新取消令牌，流继续弹出下一条
+                cancel = coordinator
+                    .with_mut(|c| c.rearm_cancel_after_abort(run_id))
+                    .unwrap_or_else(CancellationToken::new);
+            }
             if let Some(bus) = &hook_bus {
                 let (ty, phase, ctx) = super::script_hook_ctx::turn_settled();
                 observe_script_hook(bus, ty, phase, ctx).await;
@@ -2178,7 +2194,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             }
             yield XyEvent::AgentEnd {
                 messages: history.clone(),
-                reason: None,
+                reason: turn_reason,
             };
             if let Some(bus) = &hook_bus {
                 let (ty, phase, ctx) = super::script_hook_ctx::turn_start();
@@ -2191,6 +2207,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     .unwrap_or_default()
             };
             stream_clock.stamp(StreamNode::AgentStart);
+            coordinator.with_mut(|c| c.set_turn_in_flight(true));
             yield XyEvent::AgentStart {
                 session_id: session_id.clone(),
                 model: turn_model_id,
@@ -2527,7 +2544,7 @@ mod loop_middleware_tests {
     }
 
     #[tokio::test]
-    async fn steer_queued_after_settle_joins_next_submission() {
+    async fn steer_after_settle_becomes_own_turn_via_fifo() {
         let mut base = baseline();
         base.model_builder =
             Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
@@ -2540,15 +2557,362 @@ mod loop_middleware_tests {
         assert_eq!(runtime.queue_stats().steer_count, 0, "steer drained");
 
         runtime.steer("late steer");
+        assert_eq!(
+            runtime.queue_stats().follow_up_count,
+            1,
+            "a steer arriving with no turn in flight must land in the follow_up FIFO"
+        );
+        assert_eq!(runtime.queue_stats().steer_count, 0);
+
         let mut stream = runtime.submit_root("second", RunPolicy::Reject).await;
         let mut events = Vec::new();
         while let Some(event) = stream.next().await {
             events.push(event);
         }
+        let boundaries: Vec<&str> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::agent::runtime::XyEvent::AgentStart { .. } => Some("start"),
+                crate::agent::runtime::XyEvent::AgentEnd { .. } => Some("end"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            boundaries,
+            vec!["start", "end", "start", "end"],
+            "the settled steer must open its own turn with independent boundaries: {events:?}"
+        );
+        let steps = events
+            .iter()
+            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::StepStart { .. }))
+            .count();
+        assert_eq!(
+            steps, 2,
+            "the steer must not merge into the second submission's model call: {events:?}"
+        );
+        let delivered_user_texts: Vec<String> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::agent::runtime::XyEvent::MessageStart {
+                    role,
+                    message: Some(message),
+                    ..
+                } if role == "user" => Some(message.text()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            delivered_user_texts,
+            vec!["late steer"],
+            "the settled steer must be delivered as a fresh user message in its own turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_mid_turn_clears_steer_and_pops_follow_up_into_new_turns() {
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-abort-fifo").expect("bind");
+        runtime.follow_up("f1");
+        runtime.follow_up("f2");
+
+        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut events = Vec::new();
+        let first = stream.next().await.expect("AgentStart");
+        assert!(matches!(
+            first,
+            crate::agent::runtime::XyEvent::AgentStart { .. }
+        ));
+        events.push(first);
+        runtime.steer("to-clear");
+        assert_eq!(
+            runtime.queue_stats().steer_count,
+            1,
+            "steer while the turn is in flight must queue for the current turn"
+        );
+        runtime.abort();
+        assert_eq!(runtime.queue_stats().steer_count, 0, "abort clears steer");
+        assert_eq!(
+            runtime.queue_stats().follow_up_count,
+            2,
+            "abort keeps the follow_up FIFO"
+        );
+        while let Some(event) = stream.next().await {
+            events.push(event);
+        }
+
+        let boundaries: Vec<(String, Option<AgentEndReason>)> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::agent::runtime::XyEvent::AgentStart { .. } => {
+                    Some(("start".to_string(), None))
+                }
+                crate::agent::runtime::XyEvent::AgentEnd { reason, .. } => {
+                    Some(("end".to_string(), *reason))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            boundaries,
+            vec![
+                ("start".to_string(), None),
+                ("end".to_string(), Some(AgentEndReason::UserCancel)),
+                ("start".to_string(), None),
+                ("end".to_string(), None),
+                ("start".to_string(), None),
+                ("end".to_string(), None),
+            ],
+            "abort must close the current turn then immediately open turns for f1 and f2: {events:?}"
+        );
+        assert!(
+            events.iter().any(
+                |e| matches!(e, crate::agent::runtime::XyEvent::Error(err) if err.is_aborted())
+            ),
+            "the aborted turn must surface aborted: {events:?}"
+        );
         assert_eq!(
             user_texts(&events),
-            vec!["first", "second", "late steer"],
-            "a steer arriving after settle must be delivered as the next submission"
+            vec!["p", "f1", "f2"],
+            "follow-ups must be delivered in FIFO order after abort: {events:?}"
+        );
+        assert!(
+            !user_texts(&events).contains(&"to-clear".to_string()),
+            "steer cleared by abort must never reach history: {events:?}"
+        );
+        let stats = runtime.queue_stats();
+        assert_eq!(stats.steer_count, 0);
+        assert_eq!(stats.follow_up_count, 0);
+    }
+
+    struct RoundPlanModel {
+        rounds: std::sync::Mutex<Vec<Vec<xylitol_plugin_sdk::model::XyChunk>>>,
+        call_count: std::sync::atomic::AtomicUsize,
+    }
+
+    impl RoundPlanModel {
+        fn round_index(&self) -> usize {
+            self.call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for RoundPlanModel {
+        fn name(&self) -> &str {
+            "round-plan-mock"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            let index = self.round_index();
+            let chunks = {
+                let rounds = self.rounds.lock().expect("rounds");
+                rounds.get(index).cloned().ok_or_else(|| {
+                    xylitol_plugin_sdk::error::XyError::provider(
+                        xylitol_plugin_sdk::error::XyProviderError {
+                            message: format!("round plan exhausted at {index}"),
+                            ..Default::default()
+                        },
+                    )
+                })?
+            };
+            Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
+        }
+    }
+
+    struct GateTool {
+        started: tokio::sync::mpsc::UnboundedSender<()>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyTool for GateTool {
+        fn name(&self) -> &str {
+            "gate_tool"
+        }
+
+        fn description(&self) -> &str {
+            "blocks until released"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+
+        async fn execute_outcome(
+            &self,
+            _ctx: &xylitol_plugin_sdk::XyToolCtx,
+            _args: serde_json::Value,
+        ) -> Result<xylitol_plugin_sdk::XyToolOutcome, xylitol_plugin_sdk::error::XyToolError>
+        {
+            let _ = self.started.send(());
+            self.release.notified().await;
+            Ok(xylitol_plugin_sdk::XyToolOutcome::text("gate ok"))
+        }
+    }
+
+    fn tool_call_round(name: &str) -> Vec<xylitol_plugin_sdk::model::XyChunk> {
+        use xylitol_plugin_sdk::message::XyStopReason;
+        use xylitol_plugin_sdk::model::XyChunk;
+        vec![
+            XyChunk::ToolCallStart {
+                id: "call-1".into(),
+                name: name.into(),
+            },
+            XyChunk::ToolCallEnd {
+                id: "call-1".into(),
+                name: name.into(),
+                args: serde_json::json!({}),
+            },
+            XyChunk::Done {
+                finish_reason: XyStopReason::Stop,
+                usage: None,
+            },
+        ]
+    }
+
+    fn text_round(text: &str) -> Vec<xylitol_plugin_sdk::model::XyChunk> {
+        use xylitol_plugin_sdk::message::XyStopReason;
+        use xylitol_plugin_sdk::model::XyChunk;
+        vec![
+            XyChunk::TextDelta(text.into()),
+            XyChunk::Done {
+                finish_reason: XyStopReason::Stop,
+                usage: None,
+            },
+        ]
+    }
+
+    #[tokio::test]
+    async fn steer_mid_turn_injects_into_following_step_without_new_agent_start() {
+        use crate::agent::tools::ToolSet;
+
+        let (started_tx, mut started_rx) = tokio::sync::mpsc::unbounded_channel();
+        let release = Arc::new(tokio::sync::Notify::new());
+        let mut base = baseline();
+        base.tools = ToolSet::from_iter(vec![Arc::new(GateTool {
+            started: started_tx,
+            release: release.clone(),
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>]);
+        base.model_builder = Arc::new(move |_| {
+            Arc::new(RoundPlanModel {
+                rounds: std::sync::Mutex::new(vec![
+                    tool_call_round("gate_tool"),
+                    text_round("settled once"),
+                    text_round("after steer"),
+                ]),
+                call_count: std::sync::atomic::AtomicUsize::new(0),
+            }) as Arc<dyn xylitol_plugin_sdk::XyModel>
+        });
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-steer-midturn").expect("bind");
+
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut events = Vec::new();
+        let mut saw_tool_start = false;
+        while let Some(event) = stream.next().await {
+            saw_tool_start |= matches!(
+                event,
+                crate::agent::runtime::XyEvent::ToolExecutionStart { .. }
+            );
+            events.push(event);
+            if saw_tool_start {
+                break;
+            }
+        }
+        assert!(
+            saw_tool_start,
+            "tool must start before steering: {events:?}"
+        );
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), started_rx.recv())
+            .await
+            .expect("gate tool entered")
+            .expect("gate tool signal");
+        runtime.steer("mid-turn steer");
+        assert_eq!(
+            runtime.queue_stats().steer_count,
+            1,
+            "steer while the turn is in flight must queue for the current turn"
+        );
+        release.notify_waiters();
+        while let Some(event) = stream.next().await {
+            events.push(event);
+        }
+
+        let boundaries: Vec<&str> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::agent::runtime::XyEvent::AgentStart { .. } => Some("start"),
+                crate::agent::runtime::XyEvent::AgentEnd { .. } => Some("end"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            boundaries,
+            vec!["start", "end"],
+            "mid-turn steer must stay inside the current turn boundaries: {events:?}"
+        );
+        let steps = events
+            .iter()
+            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::StepStart { .. }))
+            .count();
+        assert_eq!(
+            steps, 3,
+            "tool step, settled step, and post-steer step in one turn: {events:?}"
+        );
+        let tool_start_at = events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event,
+                    crate::agent::runtime::XyEvent::ToolExecutionStart { .. }
+                )
+            })
+            .expect("tool start position");
+        let steer_injected_at = events
+            .iter()
+            .position(|event| match event {
+                crate::agent::runtime::XyEvent::MessageStart {
+                    role,
+                    message: Some(message),
+                    ..
+                } => role == "user" && message.text() == "mid-turn steer",
+                _ => false,
+            })
+            .expect("steer must be injected as a user message");
+        assert!(
+            steer_injected_at > tool_start_at,
+            "steer must be injected in a later step of the same turn"
+        );
+        assert_eq!(runtime.queue_stats().steer_count, 0);
+        let history = events
+            .iter()
+            .rev()
+            .find_map(|event| match event {
+                crate::agent::runtime::XyEvent::AgentEnd { messages, .. } => Some(messages.clone()),
+                _ => None,
+            })
+            .expect("AgentEnd history");
+        let user_history: Vec<String> = history
+            .iter()
+            .filter(|m| m.role_name() == "user")
+            .map(|m| m.text())
+            .collect();
+        assert_eq!(
+            user_history,
+            vec!["go", "mid-turn steer"],
+            "steer rides the same turn right after the tool step: {user_history:?}"
         );
     }
 

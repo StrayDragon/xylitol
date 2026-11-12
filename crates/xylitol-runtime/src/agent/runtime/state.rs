@@ -120,6 +120,7 @@ pub struct RunCoordinator {
     phase: RuntimePhase,
     cancel: Option<(RunId, CancellationToken)>,
     active_turn: Option<ActiveTurnSlot>,
+    turn_in_flight: bool,
     pending: VecDeque<PendingRoot>,
 }
 
@@ -136,6 +137,7 @@ impl RunCoordinator {
             phase: RuntimePhase::Idle,
             cancel: None,
             active_turn: None,
+            turn_in_flight: false,
             pending: VecDeque::new(),
         }
     }
@@ -168,6 +170,7 @@ impl RunCoordinator {
                 let token = CancellationToken::new();
                 self.phase = RuntimePhase::Starting(run_id);
                 self.cancel = Some((run_id, token.clone()));
+                self.turn_in_flight = false;
                 RunTransition::Began {
                     run_id,
                     cancel: token,
@@ -258,6 +261,26 @@ impl RunCoordinator {
             self.transition(RunEvent::Cancel { clear_pending }),
             RunTransition::Cancelling
         )
+    }
+
+    pub fn set_turn_in_flight(&mut self, in_flight: bool) {
+        self.turn_in_flight = in_flight;
+    }
+
+    pub fn turn_in_flight(&self) -> bool {
+        self.turn_in_flight
+    }
+
+    pub fn rearm_cancel_after_abort(&mut self, run_id: RunId) -> Option<CancellationToken> {
+        if self.phase.active_run_id() != Some(run_id) {
+            return None;
+        }
+        let token = CancellationToken::new();
+        self.cancel = Some((run_id, token.clone()));
+        if matches!(self.phase, RuntimePhase::Cancelling(_)) {
+            self.phase = RuntimePhase::Streaming(run_id);
+        }
+        Some(token)
     }
 
     pub fn cancel_token(&self) -> CancellationToken {
@@ -463,6 +486,41 @@ mod tests {
         assert_eq!(c.phase(), RuntimePhase::Streaming(id));
         assert!(c.finish_run(id).is_none());
         assert_eq!(c.phase(), RuntimePhase::Idle);
+    }
+
+    #[test]
+    fn rearm_after_abort_issues_fresh_token_and_restores_streaming() {
+        let mut c = RunCoordinator::new();
+        let (id, token) = c.try_begin_immediate().unwrap();
+        c.mark_streaming(id);
+        assert!(c.cancel_active(false));
+        assert!(token.is_cancelled());
+        let fresh = c.rearm_cancel_after_abort(id).expect("rearm");
+        assert_eq!(c.phase(), RuntimePhase::Streaming(id));
+        assert!(!fresh.is_cancelled());
+        assert!(!c.cancel_token().is_cancelled());
+        c.cancel_active(false);
+        assert!(fresh.is_cancelled());
+        c.finish_run(id);
+        assert!(c.rearm_cancel_after_abort(id).is_none());
+        assert_eq!(c.phase(), RuntimePhase::Idle);
+    }
+
+    #[test]
+    fn turn_in_flight_resets_on_begin_and_tracks_probe() {
+        let mut c = RunCoordinator::new();
+        assert!(!c.turn_in_flight());
+        c.set_turn_in_flight(true);
+        assert!(c.turn_in_flight());
+        let (id, _) = c.try_begin_immediate().unwrap();
+        assert!(
+            !c.turn_in_flight(),
+            "a fresh begin starts with no turn in flight"
+        );
+        c.finish_run(id);
+        c.set_turn_in_flight(true);
+        c.set_turn_in_flight(false);
+        assert!(!c.turn_in_flight());
     }
 
     #[test]

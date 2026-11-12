@@ -1,6 +1,10 @@
 ---
 depends_on: []
 title: "Fix turn-model review follow-ups"
+branch: sdd/c3268-fix-turn-model-review-followups
+base_branch: main
+base_sha: e552e0ff4271ab4e275157ddd5657c04f74f9129
+needs_specs_change: true
 ---
 
 # turn 模型复核收尾（c3268）

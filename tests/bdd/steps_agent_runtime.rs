@@ -210,9 +210,19 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
     static AR_RUNNER_EVENTS: std::cell::RefCell<Vec<XyEvent>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    static AR_OPEN_STREAM: std::cell::RefCell<Option<xylitol_runtime::agent::XyEventStream>> =
+        const { std::cell::RefCell::new(None) };
     static AR_BANG_RESULT: std::cell::RefCell<
         Option<Result<xylitol_plugin_sdk::XyBashResult, XyDriverError>>,
     > = const { std::cell::RefCell::new(None) };
+}
+
+pub(crate) fn ar_store_open_stream(stream: xylitol_runtime::agent::XyEventStream) {
+    AR_OPEN_STREAM.with(|s| *s.borrow_mut() = Some(stream));
+}
+
+pub(crate) fn ar_take_open_stream() -> xylitol_runtime::agent::XyEventStream {
+    AR_OPEN_STREAM.with(|s| s.borrow_mut().take().expect("open stream stored"))
 }
 
 pub(crate) fn ar_register_fake(agent: &AgentState, id: &str) {
@@ -296,9 +306,21 @@ pub(crate) async fn ar_take_run_store(prompt: &str) {
 pub(crate) async fn _g_ar8_steer_before_llm_request(agent: &AgentState, ws: &Workspace) {
     set_fake_text("steer ack");
     let mut runner = ar_make_runner(agent, ws);
+    let mut stream = agent_submit_root(&mut runner, "初始提示").await;
+    let mut local = Vec::new();
+    while let Some(event) = stream.next().await {
+        let started = matches!(event, XyEvent::AgentStart { .. });
+        local.push(event);
+        if started {
+            break;
+        }
+    }
     runner.steer("插队指令");
-    let _ = ar_run_capture(&mut runner, "初始提示").await;
+    while let Some(event) = stream.next().await {
+        local.push(event);
+    }
     ar_store_runner(runner);
+    ar_store_events(local);
 }
 
 #[when("检查队列与历史")]
@@ -406,10 +428,17 @@ pub(crate) fn _t_ar9_queue_update_emitted() {
 #[given("装配 agent 并入队 steer 与 follow_up")]
 pub(crate) async fn _g_ar10_abort_clears(agent: &AgentState, ws: &Workspace) {
     set_fake_text("abort queue ack");
-    let runner = ar_make_runner(agent, ws);
-    runner.steer("待清除 steer");
+    let mut runner = ar_make_runner(agent, ws);
     runner.follow_up("保留 follow_up");
+    let mut stream = agent_submit_root(&mut runner, "主提示").await;
+    while let Some(event) = stream.next().await {
+        if matches!(event, XyEvent::AgentStart { .. }) {
+            break;
+        }
+    }
+    runner.steer("待清除 steer");
     ar_store_runner(runner);
+    ar_store_open_stream(stream);
 }
 
 #[when("abort")]
@@ -418,12 +447,62 @@ pub(crate) fn _w_ar10_abort() {
 }
 
 #[then("steer 空且 follow_up 保留")]
-pub(crate) fn _t_ar10_queue_semantics() {
+pub(crate) async fn _t_ar10_queue_semantics() {
     ar_with_runner(|r| {
         let stats = r.queue_stats();
         assert_eq!(stats.steer_count, 0, "abort must clear steer");
-        assert_eq!(stats.follow_up_count, 1, "abort must keep follow_up");
+        assert_eq!(
+            stats.follow_up_count, 1,
+            "abort must keep the follow_up FIFO queued"
+        );
     });
+    let runner = ar_take_runner();
+    let mut stream = ar_take_open_stream();
+    let mut local = Vec::new();
+    while let Some(event) = stream.next().await {
+        local.push(event);
+    }
+    ar_store_runner(runner);
+    ar_store_events(local.clone());
+    let boundaries: Vec<(&str, Option<xylitol_plugin_sdk::AgentEndReason>)> = local
+        .iter()
+        .filter_map(|event| match event {
+            XyEvent::AgentStart { .. } => Some(("start", None)),
+            XyEvent::AgentEnd { reason, .. } => Some(("end", reason.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        boundaries,
+        vec![
+            ("end", Some(xylitol_plugin_sdk::AgentEndReason::UserCancel)),
+            ("start", None),
+            ("end", None),
+        ],
+        "abort must close the current turn and immediately open a turn for the kept follow_up; the given step already consumed the first AgentStart: {local:?}"
+    );
+    let final_user_texts: Vec<String> = local
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            XyEvent::AgentEnd { messages, .. } => Some(
+                messages
+                    .iter()
+                    .filter(|m| m.role_name() == "user")
+                    .map(|m| m.text())
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .expect("final AgentEnd carries history");
+    assert!(
+        final_user_texts.contains(&"保留 follow_up".to_string()),
+        "kept follow_up must be delivered after abort: {final_user_texts:?}"
+    );
+    assert!(
+        !final_user_texts.contains(&"待清除 steer".to_string()),
+        "steer cleared by abort must never reach history: {final_user_texts:?}"
+    );
 }
 
 #[given("装配慢速 agent 并在首轮 abort 后")]

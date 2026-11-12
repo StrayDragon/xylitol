@@ -61,6 +61,7 @@ impl ActiveTurnBinding {
 pub struct AgentCapabilities {
     model_manager: Arc<Mutex<ModelManager>>,
     midturn_active: Arc<dyn Fn() -> bool + Send + Sync>,
+    turn_in_flight: Arc<dyn Fn() -> bool + Send + Sync>,
     tools: ToolSet,
     tool_freeze: ToolFreezePhase,
     tool_fingerprint: Option<ToolTableFingerprint>,
@@ -113,6 +114,7 @@ impl AgentCapabilities {
         let mut session = Self {
             model_manager: Arc::new(Mutex::new(ModelManager::new(model_registry, model_builder))),
             midturn_active: Arc::new(|| false),
+            turn_in_flight: Arc::new(|| false),
             tools: tool_registry,
             tool_freeze: ToolFreezePhase::Unfrozen,
             tool_fingerprint: None,
@@ -235,8 +237,12 @@ impl AgentCapabilities {
 
     pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) {
         let msg = AgentMessage::user_parts(parts);
-        self.queues
-            .steer
+        let target = if (self.turn_in_flight)() {
+            &self.queues.steer
+        } else {
+            &self.queues.follow_up
+        };
+        target
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .enqueue(msg);
@@ -332,6 +338,10 @@ impl AgentCapabilities {
 
     pub(crate) fn set_midturn_active_probe(&mut self, probe: Arc<dyn Fn() -> bool + Send + Sync>) {
         self.midturn_active = probe;
+    }
+
+    pub(crate) fn set_turn_in_flight_probe(&mut self, probe: Arc<dyn Fn() -> bool + Send + Sync>) {
+        self.turn_in_flight = probe;
     }
 
     #[cfg(test)]

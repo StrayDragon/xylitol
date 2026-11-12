@@ -2074,10 +2074,14 @@ async fn t_idem_replay_once(server_test: &ServerTest) {
     )
     .await;
     let stats: serde_json::Value = serde_json::from_str(&stats).expect("queue_stats envelope");
+    let steer = stats["result"]["steer_count"].as_u64().unwrap_or_default();
+    let follow_up = stats["result"]["follow_up_count"]
+        .as_u64()
+        .unwrap_or_default();
     assert_eq!(
-        stats["result"]["steer_count"],
-        serde_json::json!(1),
-        "steer MUST be admitted exactly once: {stats}"
+        steer + follow_up,
+        1,
+        "steer MUST be admitted exactly once (idle steer lands in the follow_up FIFO): {stats}"
     );
 }
 
@@ -2723,14 +2727,21 @@ async fn w_rpc_steer(server_test: &ServerTest) {
     server_test.unary_body.replace(Some(body));
 }
 
-#[then("steer 深度至少为 1")]
+#[then("steer 与 follow_up 深度之和至少为 1（空闲改向计入 follow_up FIFO）")]
 fn t_steer_enqueued(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow().clone().expect("body");
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
     let steer = v["result"]["steer_count"]
         .as_u64()
         .unwrap_or_else(|| panic!("c2826: queue_stats 缺 steer_count：{body}"));
-    assert!(steer >= 1, "c2826: steer 未见入队（深度 {steer}）：{body}");
+    let follow_up = v["result"]["follow_up_count"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("c2826: queue_stats 缺 follow_up_count：{body}"));
+    assert_eq!(
+        steer + follow_up,
+        1,
+        "c2826: steer 命令须恰好入队一条（空闲改向走 follow_up FIFO，深度 {steer}+{follow_up}）：{body}"
+    );
 }
 
 #[when("查询方法表的会话能力方法")]

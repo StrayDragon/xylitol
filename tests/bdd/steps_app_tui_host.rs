@@ -521,7 +521,7 @@ pub(crate) async fn t_ati10_no_tree(host_pump_bdd: &HostPumpBdd) {
     assert_eq!(s.tree_calls, 0);
 }
 
-#[then("run 不再活跃且 abort 已计一次")]
+#[then("turn 不再活跃且 abort 已计一次")]
 pub(crate) async fn t_ati14_run_closed(host_pump_bdd: &HostPumpBdd) {
     let s = stats(host_pump_bdd);
     assert!(!s.run_active);
@@ -547,7 +547,7 @@ pub(crate) async fn w_ati14_second_run(host_pump_bdd: &HostPumpBdd) {
     submit_with(host_pump_bdd, enter_event()).await;
 }
 
-#[then("run 收到 second 且无粘性 aborted 错误")]
+#[then("turn 收到 second 且无粘性 aborted 错误")]
 pub(crate) async fn t_ati14_runs_again(host_pump_bdd: &HostPumpBdd) {
     let s = stats(host_pump_bdd);
     assert_eq!(s.runs, vec!["second".to_string()]);
