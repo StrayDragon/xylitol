@@ -106,7 +106,7 @@ async fn run_downlink_briefly(host: MuxOkHost) -> (usize, bool) {
         coalesce_window: Duration::ZERO,
     });
     let life = driver.session_life.clone();
-    let subscribed_ok = driver.subscribed_ok.clone();
+    let phase = driver.phase.clone();
     let handle = tokio::spawn(downlink_loop(driver.downlink_ctx()));
     tokio::time::sleep(Duration::from_millis(50)).await;
     life.cancel();
@@ -114,10 +114,11 @@ async fn run_downlink_briefly(host: MuxOkHost) -> (usize, bool) {
         .await
         .expect("downlink stops after cancel")
         .expect("downlink task joins");
-    (
-        mux_calls.load(Ordering::SeqCst),
-        subscribed_ok.load(Ordering::SeqCst),
-    )
+    let live = matches!(
+        *phase.lock().unwrap_or_else(|e| e.into_inner()),
+        super::super::LinkPhase::Live
+    );
+    (mux_calls.load(Ordering::SeqCst), live)
 }
 
 fn new_driver(host: ScriptedHost) -> XyRemoteDriver<ScriptedHost> {
@@ -143,7 +144,10 @@ async fn attach_stops_on_protocol_mismatch_without_opening_mux() {
         .await
         .expect_err("protocol mismatch is fatal");
     assert!(err.to_string().contains("protocol mismatch"), "{err}");
-    assert!(driver.fatal.lock().expect("fatal slot").is_some());
+    assert!(matches!(
+        *driver.phase.lock().expect("phase slot"),
+        super::super::LinkPhase::FatalClosed { .. }
+    ));
     assert_eq!(mux_calls.load(Ordering::SeqCst), 0);
 }
 
@@ -159,7 +163,10 @@ async fn attach_stops_on_wire_format_mismatch_without_opening_mux() {
         .await
         .expect_err("format mismatch is fatal");
     assert!(err.to_string().contains("wire format mismatch"), "{err}");
-    assert!(driver.fatal.lock().expect("fatal slot").is_some());
+    assert!(matches!(
+        *driver.phase.lock().expect("phase slot"),
+        super::super::LinkPhase::FatalClosed { .. }
+    ));
     assert_eq!(mux_calls.load(Ordering::SeqCst), 0);
 }
 
@@ -170,7 +177,10 @@ async fn matching_describe_passes_the_handshake() {
         .check_host_protocol()
         .await
         .expect("matching describe passes");
-    assert!(driver.fatal.lock().expect("fatal slot").is_none());
+    assert!(!matches!(
+        *driver.phase.lock().expect("phase slot"),
+        super::super::LinkPhase::FatalClosed { .. }
+    ));
 }
 
 #[tokio::test]
@@ -182,7 +192,10 @@ async fn downlink_loop_stops_on_handshake_mismatch_without_retry() {
         .await
         .expect("fatal mismatch ends the downlink loop instead of retrying");
     assert_eq!(mux_calls.load(Ordering::SeqCst), 1);
-    assert!(driver.fatal.lock().expect("fatal slot").is_some());
+    assert!(matches!(
+        *driver.phase.lock().expect("phase slot"),
+        super::super::LinkPhase::FatalClosed { .. }
+    ));
 }
 
 #[tokio::test]
@@ -336,7 +349,10 @@ async fn resync_required_frame_resubscribes_from_zero() {
     )
     .await;
     assert_eq!(driver.last_seq.load(Ordering::SeqCst), 0);
-    assert!(driver.resync_needed.load(Ordering::SeqCst));
+    assert!(matches!(
+        *driver.phase.lock().expect("phase slot"),
+        super::super::LinkPhase::ResyncNeeded
+    ));
 }
 
 #[derive(Clone)]
@@ -470,4 +486,78 @@ async fn detach_session_sends_session_detach_unary() {
         calls[0].1.get("session_id").and_then(Value::as_str),
         Some("s-detach")
     );
+}
+
+#[tokio::test]
+async fn fatal_closed_reports_down_and_reason() {
+    let host = ScriptedHost::describing(RpcResult::ok_value(
+        json!({"protocol": 3, "formats": [WIRE_FORMAT_JSONRPC]}),
+    ));
+    let mut driver = new_driver(host);
+    let err = driver
+        .attach_session()
+        .await
+        .expect_err("protocol mismatch is fatal");
+    assert!(err.to_string().contains("protocol mismatch"), "{err}");
+    assert_eq!(driver.link_health(), super::super::LinkHealth::Down);
+    let wait_err = driver
+        .wait_subscribed()
+        .await
+        .expect_err("fatal blocks subscribe");
+    assert!(
+        wait_err.to_string().contains("protocol mismatch"),
+        "{wait_err}"
+    );
+}
+
+#[tokio::test]
+async fn resync_take_rebuild_transitions_to_connecting() {
+    let mut driver = new_driver(ScriptedHost::describing(describe_ok()));
+    *driver.phase.lock().expect("phase") = super::super::LinkPhase::ResyncNeeded;
+    assert_eq!(driver.link_health(), super::super::LinkHealth::Down);
+    assert!(
+        driver.take_resync_rebuild(),
+        "ResyncNeeded MUST be consumable"
+    );
+    assert!(matches!(
+        *driver.phase.lock().expect("phase"),
+        super::super::LinkPhase::Connecting
+    ));
+    assert!(!driver.take_resync_rebuild(), "only one rebuild per resync");
+}
+
+#[tokio::test]
+async fn agent_end_resets_turn_cancel() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    driver.turn_cancel.lock().expect("turn cancel").cancel();
+    let ctx = driver.downlink_ctx();
+    handle_frame(
+        &ctx,
+        &|_: XyEvent| {},
+        frame(
+            method::SESSION_EVENT,
+            json!({
+                "session_id": "s-test",
+                "seq": 9,
+                "event": {"type": "agent_end"},
+            }),
+        ),
+    )
+    .await;
+    assert!(
+        !driver
+            .turn_cancel
+            .lock()
+            .expect("turn cancel")
+            .is_cancelled(),
+        "AgentEnd MUST reset the turn cancel token"
+    );
+}
+
+#[tokio::test]
+async fn explicit_resubscribe_clears_ended_observe() {
+    let mut driver = new_driver(ScriptedHost::describing(describe_ok()));
+    *driver.attach_observe.lock().expect("observe") = AttachObserve::Ended;
+    driver.restart_downlink().await;
+    assert_eq!(driver.attach_observe(), AttachObserve::Live);
 }

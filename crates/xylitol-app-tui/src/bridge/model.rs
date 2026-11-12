@@ -221,6 +221,7 @@ pub struct UiModel {
     pub todo: TodoList,
     pub stage_name: Option<String>,
     pub has_earlier: bool,
+    pub(crate) history_notice: bool,
 }
 
 impl Default for UiModel {
@@ -247,6 +248,7 @@ impl UiModel {
             todo: TodoList::default(),
             stage_name: None,
             has_earlier: false,
+            history_notice: false,
         }
     }
 

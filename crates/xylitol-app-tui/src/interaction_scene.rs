@@ -13,6 +13,7 @@ use xylitol_tui::TreeNode;
 pub struct InteractionBdd {
     model: UiModel,
     root: UiRoot,
+    esc_window: crate::layout::EscWindow,
     quit_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -23,6 +24,7 @@ impl InteractionBdd {
         Self {
             model,
             root,
+            esc_window: crate::layout::EscWindow::default(),
             quit_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -65,7 +67,7 @@ impl InteractionBdd {
             self.root.on_ctrl_c(&flag);
             return self;
         }
-        if matches_binding(&key, "app.interrupt") && self.root.on_escape() {
+        if matches_binding(&key, "app.interrupt") && self.root.on_escape(&mut self.esc_window) {
             return self;
         }
         self.root.handle_key(key);

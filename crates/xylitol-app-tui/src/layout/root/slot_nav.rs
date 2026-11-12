@@ -4,8 +4,14 @@ use super::super::slots::EditorSlot;
 use super::{ImportConfirmDecision, UiRoot};
 use crate::bridge::UiPhase;
 
+#[derive(Debug, Default)]
+pub struct EscWindow {
+    pub last_at: Option<Instant>,
+    pub suppress_idle: bool,
+}
+
 impl UiRoot {
-    pub fn on_escape(&mut self) -> bool {
+    pub fn on_escape(&mut self, esc: &mut EscWindow) -> bool {
         if matches!(&self.slot, EditorSlot::Tree(_)) {
             let stay = if let EditorSlot::Tree(tree) = &mut self.slot {
                 tree.cancel_label_edit() || tree.clear_search_if_any()
@@ -49,22 +55,22 @@ impl UiRoot {
             return true;
         }
         if self.ui_model.phase == UiPhase::Busy {
-            self.last_esc_at = None;
+            esc.last_at = None;
             return false;
         }
         if self.editor.get_text().is_empty() {
             let now = Instant::now();
-            if let Some(prev) = self.last_esc_at
+            if let Some(prev) = esc.last_at
                 && now.duration_since(prev) < Duration::from_millis(500)
             {
-                self.last_esc_at = None;
+                esc.last_at = None;
                 self.pending.tree_open = true;
                 return true;
             }
-            self.last_esc_at = Some(now);
+            esc.last_at = Some(now);
             return false;
         }
-        self.last_esc_at = None;
+        esc.last_at = None;
         false
     }
 
@@ -99,5 +105,20 @@ impl UiRoot {
             | EditorSlot::McpResources(_)
             | EditorSlot::Capabilities(_) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn double_esc_window_is_caller_owned() {
+        let mut root = UiRoot::new();
+        let mut window = EscWindow::default();
+        assert!(!root.on_escape(&mut window), "first Esc arms the window");
+        assert!(window.last_at.is_some());
+        assert!(root.on_escape(&mut window), "second Esc opens the tree");
+        assert!(window.last_at.is_none(), "window resets after opening");
     }
 }

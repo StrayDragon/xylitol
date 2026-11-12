@@ -6,7 +6,7 @@ mod types;
 
 pub use crate::driver_error::XyDriverError;
 pub use proto::BashRun;
-pub use proto::{AttachObserve, LinkHealth, XyDriver};
+pub use proto::{AttachObserve, LinkHealth, LinkPhase, XyDriver};
 pub use remote::{LinkTunings, XyRemoteDriver};
 #[allow(unused_imports)]
 pub use types::{

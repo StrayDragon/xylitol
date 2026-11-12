@@ -395,3 +395,27 @@
   @req:r3329
   规则: settlement-reason-enum
     结算判据 须以 ContextTokenSettlementReason 枚举判定（turn 收尾 / compaction 后置位），不得以字符串字面量比较 wire reason。由单测覆盖。
+
+  @req:r3330
+  规则: attach-link-phase
+    attach 驱动的链路态 须为单一相位（Connecting / Live / ResyncNeeded / FatalClosed(原因)）；link_health 须由相位派生（仅 Live=Up，Connecting/ResyncNeeded/FatalClosed=Down）；致命不匹配 须保持 Down 且原因可观测，不得退化为永久 Connecting；用户下次提交 prompt 时 须清致命并重启下行（显式重试）。由单测覆盖。
+
+  @req:r3331
+  规则: attach-observe-explicit
+    观察态 Ended 只 须经显式重订阅回到 Live；自动重连重订阅 不得把 Ended 直接改 Live（不得跳过收敛）。由单测覆盖。
+
+  @req:r3332
+  规则: turn-cancel-reset
+    turn 结束（AgentEnd）与 prompt 流关闭 须复位取消 token；abort 之后下一 turn 不得继承已取消 token。由单测覆盖。
+
+  @req:r3333
+  规则: history-window-notice-state
+    历史窗口「加载更早 / 已收起」提示 须以显式状态表达并按其固定文案定位，不得靠滚动区首条条目类型判定。由单测覆盖。
+
+  @req:r3334
+  规则: esc-window-single-owner
+    Esc 双击窗口与 abort 后抑制标志 须由 host 单点持有；槽处理 不得自持双击计时。由单测覆盖。
+
+  @req:r3335
+  规则: attach-peer-state
+    attach 客户端连接死亡 须单一载体（Alive / Dead(原因) / Resetting）；换 peer 或重置 须同时清除死亡原因，不得分读多字段拼出状态。由单测覆盖。

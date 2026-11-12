@@ -88,17 +88,35 @@ fn notice_text(has_earlier: bool, collapsed: bool) -> Option<String> {
     }
 }
 
+fn is_history_notice(entry: &UiEntry) -> bool {
+    matches!(
+        entry,
+        UiEntry::ScrollNotice { text }
+            if *text == load_earlier_notice_text() || *text == collapsed_notice_text()
+    )
+}
+
 fn apply_notice(model: &mut UiModel, text: Option<String>) {
-    let notice_now = matches!(model.entries.first(), Some(UiEntry::ScrollNotice { .. }));
-    match (text, notice_now) {
+    match (text, model.history_notice) {
         (Some(text), true) => {
-            if let Some(UiEntry::ScrollNotice { text: current }) = model.entries.first_mut() {
+            if let Some(UiEntry::ScrollNotice { text: current }) = model
+                .entries
+                .iter_mut()
+                .find(|entry| is_history_notice(entry))
+            {
                 *current = text;
             }
+            model.history_notice = true;
         }
-        (Some(text), false) => model.entries.insert(0, UiEntry::ScrollNotice { text }),
+        (Some(text), false) => {
+            model.entries.insert(0, UiEntry::ScrollNotice { text });
+            model.history_notice = true;
+        }
         (None, true) => {
-            model.entries.remove(0);
+            if let Some(pos) = model.entries.iter().position(is_history_notice) {
+                model.entries.remove(pos);
+            }
+            model.history_notice = false;
         }
         (None, false) => {}
     }
@@ -106,7 +124,7 @@ fn apply_notice(model: &mut UiModel, text: Option<String>) {
 
 pub fn trim_to_window(model: &mut UiModel, has_earlier: bool) {
     model.has_earlier = has_earlier;
-    let notice_present = matches!(model.entries.first(), Some(UiEntry::ScrollNotice { .. }));
+    let notice_present = model.history_notice;
     let body_len = model.entries.len() - usize::from(notice_present);
 
     let drop = body_len.saturating_sub(HISTORY_WINDOW);
@@ -314,5 +332,51 @@ mod tests {
             "evicted older page must be reachable again"
         );
         assert_eq!(history.first_entry_id.as_deref(), Some("e0"));
+    }
+}
+
+#[cfg(test)]
+mod notice_state_tests {
+    use super::*;
+
+    fn user(text: &str) -> UiEntry {
+        UiEntry::User {
+            text: text.to_string(),
+        }
+    }
+
+    fn model_with(n: usize) -> UiModel {
+        let mut model = UiModel::default();
+        model.entries = (0..n).map(|i| user(&format!("m{i}"))).collect();
+        model
+    }
+
+    #[test]
+    fn notice_state_survives_prepended_entry() {
+        let mut model = model_with(3);
+        show_notice(&mut model, true);
+        assert!(model.history_notice);
+        model.entries.insert(0, user("prepended"));
+        show_notice(&mut model, true);
+        assert_eq!(
+            model
+                .entries
+                .iter()
+                .filter(|entry| matches!(entry, UiEntry::ScrollNotice { .. }))
+                .count(),
+            1,
+            "prepended entry MUST NOT be mistaken for the notice"
+        );
+        assert!(model.entries.iter().any(
+            |entry| matches!(entry, UiEntry::ScrollNotice { text } if *text == load_earlier_notice_text())
+        ));
+        trim_to_window(&mut model, false);
+        assert!(
+            !model
+                .entries
+                .iter()
+                .any(|entry| matches!(entry, UiEntry::ScrollNotice { .. }))
+        );
+        assert!(!model.history_notice);
     }
 }

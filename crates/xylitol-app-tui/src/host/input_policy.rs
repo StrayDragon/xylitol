@@ -25,11 +25,11 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub(super) fn try_suppress_stale_esc(&mut self, input: &InputEvent) -> bool {
-        if !self.suppress_idle_esc {
+        if !self.esc_window.borrow().suppress_idle {
             return false;
         }
         if self.is_busy() || self.busy.reload {
-            self.suppress_idle_esc = false;
+            self.esc_window.borrow_mut().suppress_idle = false;
             return false;
         }
         if self
@@ -40,14 +40,14 @@ impl<T: Terminal> HostSession<T> {
             return false;
         }
         let InputEvent::Key(key) = input else {
-            self.suppress_idle_esc = false;
+            self.esc_window.borrow_mut().suppress_idle = false;
             return false;
         };
         if matches_binding(key, "app.interrupt") {
             self.pending.abort = false;
             return true;
         }
-        self.suppress_idle_esc = false;
+        self.esc_window.borrow_mut().suppress_idle = false;
         false
     }
 

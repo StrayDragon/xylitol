@@ -10,7 +10,7 @@
 | 决策 | 内容 | 状态 |
 |---|---|---|
 | 链路相位 | LinkPhase { Connecting, Live, ResyncNeeded, FatalClosed { reason } } 单一字段（Mutex）承载，替换 subscribed_ok / resync_needed / fatal | 定稿 |
-| link_health | 由相位派生：Connecting / Live → Up；ResyncNeeded / FatalClosed → Down | 定稿 |
+| link_health | 由相位派生：**仅 Live → Up**；Connecting / ResyncNeeded / FatalClosed → Down（Connecting 也须 Down，断线宽限与 ath42 依赖此信号） | 定稿（复核修正） |
 | fatal 恢复 | 不自动重连；FatalClosed 保持可观测（Down + 原因滚动提示），恢复入口 = 用户下次提交 prompt（prompt() 见 FatalClosed 先清 fatal 并重启下行再等待订阅）。不新增键位/可点动作（通知条 API 无可点动作，新增键位超出本单范围） | 定稿（修正） |
 | http_ws | 死亡单一载体 PeerState { Alive, Dead(reason), Resetting }（Mutex）+ Notify 唤醒；stop 保留为控制句柄（非状态载体）；reset_mux / ensure_peer 换 peer 时旧 peer 置 Resetting 并清原因 | 定稿 |
 | turn_cancel | AgentEnd 与 prompt 流关闭 复位新 token；prompt 起手保留「已取消则换新」补偿 | 定稿 |

@@ -123,7 +123,7 @@ pub struct UiRoot {
     session_sidebar_drag_start_col: u16,
     session_sidebar_drag_start_width: usize,
     session_sidebar_layout_dirty: bool,
-    last_esc_at: Option<Instant>,
+
     bash_mode: bool,
     external_editor_invocations: u32,
     model_arg_catalog: Vec<(String, String)>,
@@ -271,7 +271,7 @@ impl UiRoot {
             session_sidebar_drag_start_col: 0,
             session_sidebar_drag_start_width: Self::SESSION_SIDEBAR_WIDTHS[0],
             session_sidebar_layout_dirty: false,
-            last_esc_at: None,
+
             bash_mode: false,
             external_editor_invocations: 0,
             model_arg_catalog: Vec::new(),
@@ -1805,6 +1805,7 @@ pub use mount::build_root;
 #[cfg(test)]
 pub(crate) use mount::sample_tree_nodes_for_test;
 pub use mount::{install_ui_root_key_listeners, shared_ui_root_rebuild};
+pub use slot_nav::EscWindow;
 
 #[cfg(test)]
 mod tests {
@@ -2278,7 +2279,7 @@ mod tests {
             root.pending.model_select.is_some(),
             "Enter must record the picker confirm"
         );
-        root.on_escape();
+        root.on_escape(&mut EscWindow::default());
         assert!(
             root.take_pending_model_select().is_none(),
             "Esc close must cancel the recorded model confirm"
@@ -2294,7 +2295,7 @@ mod tests {
             root.pending.theme_select.is_some(),
             "Enter must record the theme confirm"
         );
-        root.on_escape();
+        root.on_escape(&mut EscWindow::default());
         assert!(
             root.take_pending_theme_select().is_none(),
             "Esc close must cancel the recorded theme confirm"

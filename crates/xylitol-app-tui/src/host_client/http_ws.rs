@@ -1,14 +1,11 @@
 use std::collections::HashMap;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message, client::IntoClientRequest, http::HeaderValue},
@@ -44,29 +41,58 @@ enum Outgoing {
     Ping,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PeerState {
+    Alive,
+    Dead(String),
+    Resetting,
+}
+
 struct SharedWs {
     out: mpsc::Sender<Outgoing>,
     events: broadcast::Sender<Notification>,
     pending: Mutex<HashMap<String, oneshot::Sender<Result<RpcResult, HostClientError>>>>,
-    last_err: Mutex<Option<String>>,
-    closed: AtomicBool,
+    state: Mutex<PeerState>,
     stop: CancellationToken,
-    dead: watch::Sender<Option<String>>,
+    dead: tokio::sync::Notify,
 }
 
 impl SharedWs {
     fn new(out: mpsc::Sender<Outgoing>) -> Arc<Self> {
         let (events, _) = broadcast::channel(DOWNLINK_CAP);
-        let (dead, _) = watch::channel(None);
         Arc::new(Self {
             out,
             events,
             pending: Mutex::new(HashMap::new()),
-            last_err: Mutex::new(None),
-            closed: AtomicBool::new(false),
+            state: Mutex::new(PeerState::Alive),
             stop: CancellationToken::new(),
-            dead,
+            dead: tokio::sync::Notify::new(),
         })
+    }
+
+    fn is_alive(&self) -> bool {
+        matches!(
+            *self.state.lock().unwrap_or_else(|e| e.into_inner()),
+            PeerState::Alive
+        )
+    }
+
+    fn death_reason(&self) -> Option<String> {
+        match &*self.state.lock().unwrap_or_else(|e| e.into_inner()) {
+            PeerState::Alive => None,
+            PeerState::Dead(reason) => Some(reason.clone()),
+            PeerState::Resetting => Some("mux reset for session switch".into()),
+        }
+    }
+
+    fn mark_dead(&self, msg: &str) {
+        *self.state.lock().unwrap_or_else(|e| e.into_inner()) = PeerState::Dead(msg.to_string());
+        self.dead.notify_waiters();
+    }
+
+    fn mark_resetting(&self) {
+        *self.state.lock().unwrap_or_else(|e| e.into_inner()) = PeerState::Resetting;
+        self.dead.notify_waiters();
     }
 }
 
@@ -114,13 +140,13 @@ impl HttpWsClient {
     async fn ensure_peer(&self) -> Result<Arc<SharedWs>, HostClientError> {
         let mut slot = self.peer.lock().await;
         if let Some(peer) = slot.as_ref()
-            && !peer.closed.load(Ordering::SeqCst)
+            && peer.is_alive()
         {
             return Ok(peer.clone());
         }
         if let Some(old) = slot.take() {
             old.stop.cancel();
-            old.closed.store(true, Ordering::SeqCst);
+            old.mark_resetting();
         }
         let peer = self.connect_peer().await?;
         *slot = Some(peer.clone());
@@ -318,11 +344,7 @@ fn route_frame(peer: &SharedWs, frame: Message) -> Result<(), String> {
 }
 
 fn fail_peer(peer: &SharedWs, msg: &str) {
-    peer.closed.store(true, Ordering::SeqCst);
-    if let Ok(mut slot) = peer.last_err.lock() {
-        *slot = Some(msg.to_string());
-    }
-    let _ = peer.dead.send_replace(Some(msg.to_string()));
+    peer.mark_dead(msg);
     if let Ok(mut pending) = peer.pending.lock() {
         for (_, tx) in pending.drain() {
             let _ = tx.send(Err(HostClientError::transport(msg.to_string())));
@@ -363,29 +385,20 @@ impl HostClient for HttpWsClient {
         let mut slot = self.peer.lock().await;
         if let Some(old) = slot.take() {
             old.stop.cancel();
-            old.closed.store(true, Ordering::SeqCst);
-            let _ = old.dead.send(Some("mux reset for session switch".into()));
+            old.mark_resetting();
         }
         Ok(())
     }
 
     async fn mux(&self) -> Result<MuxStream, HostClientError> {
         let peer = self.ensure_peer().await?;
-        if peer.closed.load(Ordering::SeqCst) {
-            let msg = peer
-                .last_err
-                .lock()
-                .ok()
-                .and_then(|g| g.clone())
-                .unwrap_or_else(|| "mux closed".into());
+        if let Some(msg) = peer.death_reason() {
             return Err(HostClientError::transport(msg));
         }
         let mut rx = peer.events.subscribe();
-        let mut dead = peer.dead.subscribe();
         Ok(Box::pin(async_stream::stream! {
             loop {
-                let closed = dead.borrow().clone();
-                if closed.is_some() {
+                if let Some(msg) = peer.death_reason() {
                     match rx.try_recv() {
                         Ok(frame) => {
                             yield Ok(frame);
@@ -394,25 +407,18 @@ impl HostClient for HttpWsClient {
                         Err(broadcast::error::TryRecvError::Lagged(_)) => continue,
                         Err(broadcast::error::TryRecvError::Closed)
                         | Err(broadcast::error::TryRecvError::Empty) => {
-                            yield Err(HostClientError::transport(
-                                closed.unwrap_or_else(|| "mux closed".into()),
-                            ));
+                            yield Err(HostClientError::transport(msg));
                             break;
                         }
                     }
                 }
                 tokio::select! {
-                    changed = dead.changed() => {
-                        let _ = changed;
-                    }
+                    _ = peer.dead.notified() => {}
                     frame = rx.recv() => match frame {
                         Ok(frame) => yield Ok(frame),
                         Err(broadcast::error::RecvError::Lagged(_)) => continue,
                         Err(broadcast::error::RecvError::Closed) => {
-                            let msg = {
-                                let guard = dead.borrow();
-                                guard.clone().unwrap_or_else(|| "mux closed".into())
-                            };
+                            let msg = peer.death_reason().unwrap_or_else(|| "mux closed".into());
                             yield Err(HostClientError::transport(msg));
                             break;
                         }
@@ -656,5 +662,27 @@ mod tests {
         );
         negotiate(&peer).await.expect("matching describe accepted");
         responder.await.expect("responder joined");
+    }
+}
+
+#[cfg(test)]
+mod peer_state_tests {
+    use super::*;
+
+    #[test]
+    fn peer_state_is_single_death_source() {
+        let (tx, _rx) = mpsc::channel(1);
+        let peer = SharedWs::new(tx);
+        assert!(peer.is_alive());
+        assert!(peer.death_reason().is_none());
+        peer.mark_dead("boom");
+        assert!(!peer.is_alive());
+        assert_eq!(peer.death_reason().as_deref(), Some("boom"));
+        peer.mark_resetting();
+        assert!(!peer.is_alive());
+        assert_eq!(
+            peer.death_reason().as_deref(),
+            Some("mux reset for session switch")
+        );
     }
 }

@@ -95,7 +95,7 @@ pub struct HostSession<T: Terminal> {
     stream_sync_pending: bool,
     busy: HostBusy,
     reload_cancel: Option<tokio_util::sync::CancellationToken>,
-    suppress_idle_esc: bool,
+    esc_window: Rc<RefCell<crate::layout::EscWindow>>,
     suppress_xy_until_stream_end: bool,
     paint_dirty: bool,
     layout_cwd: String,
@@ -193,7 +193,7 @@ impl<T: Terminal> HostSession<T> {
             stream_sync_pending: false,
             busy: HostBusy::default(),
             reload_cancel: None,
-            suppress_idle_esc: false,
+            esc_window: Rc::new(RefCell::new(crate::layout::EscWindow::default())),
             suppress_xy_until_stream_end: false,
             paint_dirty: false,
             layout_cwd: display_cwd(),
@@ -383,7 +383,7 @@ impl<T: Terminal> HostSession<T> {
         session.keybindings = Some(keybindings);
         session._keybindings_scope = Some(keybindings_scope);
         session.push_keybinding_conflicts();
-        install_ui_root_key_listeners(&ui_root, &quit_flag, &mut session.tui);
+        install_ui_root_key_listeners(&ui_root, &quit_flag, &session.esc_window, &mut session.tui);
         if interaction_mode.is_application_owned() {
             session.sync_dock_rows();
             session.tui.begin_application_owned_session();
@@ -563,6 +563,11 @@ impl<T: Terminal> HostSession<T> {
     }
 
     #[cfg(test)]
+    pub(crate) fn esc_suppressed_for_test(&self) -> bool {
+        self.esc_window.borrow().suppress_idle
+    }
+
+    #[cfg(test)]
     pub fn set_keybindings_for_test(&mut self, user: xylitol_tui::KeybindingsConfig) {
         self.keybindings = Some(std::rc::Rc::new(std::cell::RefCell::new(
             super::keybindings::build_product_keybindings(user),
@@ -615,7 +620,7 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn begin_bash_exec(&mut self, command: &str, exclude_from_context: bool) {
         self.pending.abort = false;
-        self.suppress_idle_esc = false;
+        self.esc_window.borrow_mut().suppress_idle = false;
         self.busy.bash = true;
         self.ui_model
             .begin_bash_block(command, exclude_from_context);
@@ -636,7 +641,7 @@ impl<T: Terminal> HostSession<T> {
         self.recalc_busy();
         self.pending.abort = false;
         self.suppress_xy_until_stream_end = true;
-        self.suppress_idle_esc = true;
+        self.esc_window.borrow_mut().suppress_idle = true;
         self.sync_ui_root_from_model();
     }
 
@@ -646,7 +651,7 @@ impl<T: Terminal> HostSession<T> {
         self.recalc_busy();
         self.pending.abort = false;
         self.pending.bash_cancelled = true;
-        self.suppress_idle_esc = true;
+        self.esc_window.borrow_mut().suppress_idle = true;
         self.sync_ui_root_from_model();
     }
 
@@ -1001,7 +1006,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn on_turn_started(&mut self, prompt: &str) {
-        self.suppress_idle_esc = false;
+        self.esc_window.borrow_mut().suppress_idle = false;
         self.suppress_xy_until_stream_end = false;
         self.busy.agent_run = true;
         self.run_applied_token_settlement = false;

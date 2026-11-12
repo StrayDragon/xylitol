@@ -7215,3 +7215,18 @@ fn settlement_reason_enum_gates_applied_flag() {
     );
     assert!(!session.run_applied_settlement_for_test());
 }
+
+#[test]
+fn esc_suppression_is_host_owned() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.note_user_abort();
+    assert!(
+        session.esc_suppressed_for_test(),
+        "abort MUST arm the Esc suppression"
+    );
+    session.on_turn_started("next");
+    assert!(
+        !session.esc_suppressed_for_test(),
+        "a new turn MUST clear the Esc suppression"
+    );
+}

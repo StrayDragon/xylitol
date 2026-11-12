@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix TUI remote driver link state"
+branch: sdd/c3280-fix-tui-remote-link
+base_branch: main
+base_sha: fb7994149ac24a13ca5d1970421d6e8d355fb5b7
 ---
 
 # TUI 远程驱动链路状态修复

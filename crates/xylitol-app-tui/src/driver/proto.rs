@@ -18,6 +18,30 @@ pub enum LinkHealth {
     Down,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum LinkPhase {
+    #[default]
+    Connecting,
+    Live,
+    ResyncNeeded,
+    FatalClosed {
+        reason: String,
+    },
+}
+
+impl LinkPhase {
+    pub fn is_up(&self) -> bool {
+        matches!(self, Self::Live)
+    }
+
+    pub fn fatal_reason(&self) -> Option<&str> {
+        match self {
+            Self::FatalClosed { reason } => Some(reason.as_str()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AttachObserve {
     #[default]

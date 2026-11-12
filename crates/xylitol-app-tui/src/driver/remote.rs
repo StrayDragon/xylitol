@@ -127,12 +127,10 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     leaf_entry_id: Arc<std::sync::Mutex<Option<String>>>,
     last_seq: Arc<AtomicU64>,
     downlink_gen: Arc<AtomicU64>,
-    fatal: Arc<std::sync::Mutex<Option<String>>>,
+    phase: Arc<std::sync::Mutex<super::LinkPhase>>,
     tunings: Arc<LinkTunings>,
     reverse_rpc: Option<ReverseRpcNotify>,
     downlink: SharedDownlink,
-    resync_needed: Arc<AtomicBool>,
-    subscribed_ok: Arc<AtomicBool>,
     skip_cold_replay: Arc<AtomicBool>,
     attach_observe: Arc<std::sync::Mutex<AttachObserve>>,
     client_cwd: String,
@@ -167,8 +165,6 @@ struct DownlinkCtx<C> {
     reverse_rpc: Option<ReverseRpcNotify>,
     downlink: SharedDownlink,
     life: CancellationToken,
-    resync_needed: Arc<AtomicBool>,
-    subscribed_ok: Arc<AtomicBool>,
     skip_cold_replay: Arc<AtomicBool>,
     attach_observe: Arc<std::sync::Mutex<AttachObserve>>,
     cached_queue: Arc<std::sync::Mutex<QueueStats>>,
@@ -182,7 +178,8 @@ struct DownlinkCtx<C> {
     bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
     client_cwd: String,
     downlink_gen: Arc<AtomicU64>,
-    fatal: Arc<std::sync::Mutex<Option<String>>>,
+    phase: Arc<std::sync::Mutex<super::LinkPhase>>,
+    turn_cancel: Arc<std::sync::Mutex<CancellationToken>>,
     tunings: Arc<LinkTunings>,
     my_gen: u64,
 }
@@ -332,11 +329,15 @@ where
             {
                 return;
             }
-            if matches!(agent_event, XyEvent::AgentEnd { .. })
-                && let Ok(mut g) = ctx.attach_observe.lock()
-                && *g == AttachObserve::Inflight
-            {
-                *g = AttachObserve::Ended;
+            if matches!(agent_event, XyEvent::AgentEnd { .. }) {
+                if let Ok(mut g) = ctx.attach_observe.lock()
+                    && *g == AttachObserve::Inflight
+                {
+                    *g = AttachObserve::Ended;
+                }
+                if let Ok(mut token) = ctx.turn_cancel.lock() {
+                    *token = CancellationToken::new();
+                }
             }
             push_current(agent_event);
         }
@@ -389,7 +390,9 @@ where
         }
         Downlink::SessionResyncRequired(_) => {
             ctx.last_seq.store(0, Ordering::SeqCst);
-            ctx.resync_needed.store(true, Ordering::SeqCst);
+            if let Ok(mut phase) = ctx.phase.lock() {
+                *phase = super::LinkPhase::ResyncNeeded;
+            }
             let _ = ctx
                 .host
                 .unary(
@@ -466,6 +469,9 @@ where
         if ctx.life.is_cancelled() {
             break;
         }
+        if let Ok(mut phase) = ctx.phase.lock() {
+            *phase = super::LinkPhase::Connecting;
+        }
         let connected_at = tokio::time::Instant::now();
         match ctx.host.mux().await {
             Ok(mut mux) => {
@@ -485,7 +491,6 @@ where
                     .await
                 {
                     Err(_) => {
-                        ctx.subscribed_ok.store(false, Ordering::SeqCst);
                         match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff)
                             .await
                         {
@@ -498,9 +503,13 @@ where
                         apply_subscribe_result(&ctx, result.into_std().ok(), seq, &push_current);
                     }
                 }
-                ctx.subscribed_ok.store(true, Ordering::SeqCst);
+                if let Ok(mut phase) = ctx.phase.lock() {
+                    *phase = super::LinkPhase::Live;
+                }
                 pump_frames(&ctx, &mut mux, &push_current).await;
-                ctx.subscribed_ok.store(false, Ordering::SeqCst);
+                if let Ok(mut phase) = ctx.phase.lock() {
+                    *phase = super::LinkPhase::Connecting;
+                }
                 match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff).await {
                     Some(next) => backoff = next,
                     None => return,
@@ -508,14 +517,15 @@ where
             }
             Err(e) if e.is_fatal_mismatch() => {
                 let msg = e.to_string();
-                if let Ok(mut slot) = ctx.fatal.lock() {
-                    *slot = Some(msg.clone());
+                if let Ok(mut phase) = ctx.phase.lock() {
+                    *phase = super::LinkPhase::FatalClosed {
+                        reason: msg.clone(),
+                    };
                 }
                 push_current(XyEvent::error_msg(msg));
                 return;
             }
             Err(_) => {
-                ctx.subscribed_ok.store(false, Ordering::SeqCst);
                 match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff).await {
                     Some(next) => backoff = next,
                     None => return,
@@ -537,7 +547,9 @@ fn apply_subscribe_result<C>(
         .as_ref()
         .and_then(|value| value.get("inflight").and_then(Value::as_bool))
         .unwrap_or(false);
-    if let Ok(mut observe) = ctx.attach_observe.lock() {
+    if let Ok(mut observe) = ctx.attach_observe.lock()
+        && *observe != AttachObserve::Ended
+    {
         *observe = if inflight && seq == 0 {
             AttachObserve::Inflight
         } else {
@@ -595,12 +607,10 @@ where
             leaf_entry_id: Arc::new(std::sync::Mutex::new(None)),
             last_seq: Arc::new(AtomicU64::new(0)),
             downlink_gen: Arc::new(AtomicU64::new(0)),
-            fatal: Arc::new(std::sync::Mutex::new(None)),
+            phase: Arc::new(std::sync::Mutex::new(super::LinkPhase::Connecting)),
             tunings: Arc::new(LinkTunings::default()),
             reverse_rpc: None,
             downlink: SharedDownlink::new(),
-            resync_needed: Arc::new(AtomicBool::new(false)),
-            subscribed_ok: Arc::new(AtomicBool::new(false)),
             skip_cold_replay: Arc::new(AtomicBool::new(false)),
             attach_observe: Arc::new(std::sync::Mutex::new(AttachObserve::Live)),
             client_cwd: std::env::current_dir()
@@ -634,7 +644,9 @@ where
     }
 
     pub fn mark_subscribed_ok_for_test(&self) {
-        self.subscribed_ok.store(true, Ordering::SeqCst);
+        if let Ok(mut phase) = self.phase.lock() {
+            *phase = super::LinkPhase::Live;
+        }
     }
 
     fn cache_queue_from_value(&self, data: &Value) {
@@ -699,7 +711,12 @@ where
         self.downlink_gen.fetch_add(1, Ordering::SeqCst);
         self.session_life.cancel();
         self.session_life = CancellationToken::new();
-        self.subscribed_ok.store(false, Ordering::SeqCst);
+        if let Ok(mut phase) = self.phase.lock() {
+            *phase = super::LinkPhase::Connecting;
+        }
+        if let Ok(mut observe) = self.attach_observe.lock() {
+            *observe = super::AttachObserve::Live;
+        }
         self.downlink.started.store(false, Ordering::SeqCst);
         let _ = self.host.reset_mux().await;
         self.ensure_downlink();
@@ -720,8 +737,10 @@ where
             Ok(()) => Ok(()),
             Err(e) if e.is_fatal_mismatch() => {
                 let msg = e.to_string();
-                if let Ok(mut slot) = self.fatal.lock() {
-                    *slot = Some(msg.clone());
+                if let Ok(mut phase) = self.phase.lock() {
+                    *phase = super::LinkPhase::FatalClosed {
+                        reason: msg.clone(),
+                    };
                 }
                 self.downlink.push(XyEvent::error_msg(msg.clone()));
                 Err(XyDriverError::remote(msg))
@@ -737,8 +756,10 @@ where
         if self.downlink.started.swap(true, Ordering::SeqCst) {
             return;
         }
-        if let Ok(mut slot) = self.fatal.lock() {
-            *slot = None;
+        if let Ok(mut phase) = self.phase.lock()
+            && matches!(*phase, super::LinkPhase::FatalClosed { .. })
+        {
+            *phase = super::LinkPhase::Connecting;
         }
         tokio::spawn(downlink_loop(self.downlink_ctx()));
     }
@@ -751,8 +772,6 @@ where
             reverse_rpc: self.reverse_rpc.clone(),
             downlink: self.downlink.clone(),
             life: self.session_life.clone(),
-            resync_needed: self.resync_needed.clone(),
-            subscribed_ok: self.subscribed_ok.clone(),
             skip_cold_replay: self.skip_cold_replay.clone(),
             attach_observe: self.attach_observe.clone(),
             cached_queue: self.cached_queue.clone(),
@@ -766,7 +785,8 @@ where
             bash_run_sink: self.bash_run_sink.clone(),
             client_cwd: self.client_cwd.clone(),
             downlink_gen: self.downlink_gen.clone(),
-            fatal: self.fatal.clone(),
+            phase: self.phase.clone(),
+            turn_cancel: self.turn_cancel.clone(),
             tunings: self.tunings.clone(),
             my_gen: self.downlink_gen.load(Ordering::SeqCst),
         }
@@ -774,16 +794,20 @@ where
 
     async fn wait_subscribed(&self) -> Result<(), XyDriverError> {
         let wait_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-        while !self.subscribed_ok.load(Ordering::SeqCst) {
-            if let Some(msg) = self.fatal.lock().ok().and_then(|mut slot| slot.take()) {
-                return Err(XyDriverError::remote(msg));
+        loop {
+            let phase = self.phase.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            match phase {
+                super::LinkPhase::Live => return Ok(()),
+                super::LinkPhase::FatalClosed { reason } => {
+                    return Err(XyDriverError::remote(reason));
+                }
+                _ => {}
             }
             if tokio::time::Instant::now() > wait_deadline {
                 return Err(XyDriverError::remote("subscribe timed out"));
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        Ok(())
     }
 
     async fn refresh_fixed_zone_caches(&self) -> Result<(), XyDriverError> {
@@ -1027,7 +1051,8 @@ where
     }
 
     fn link_health(&self) -> super::LinkHealth {
-        if self.subscribed_ok.load(Ordering::SeqCst) {
+        let up = self.phase.lock().unwrap_or_else(|e| e.into_inner()).is_up();
+        if up {
             super::LinkHealth::Up
         } else {
             super::LinkHealth::Down
@@ -1042,7 +1067,13 @@ where
     }
 
     fn take_resync_rebuild(&mut self) -> bool {
-        self.resync_needed.swap(false, Ordering::SeqCst)
+        let mut phase = self.phase.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(*phase, super::LinkPhase::ResyncNeeded) {
+            *phase = super::LinkPhase::Connecting;
+            true
+        } else {
+            false
+        }
     }
 
     async fn run(&mut self, prompt: &str) -> EventStream {
@@ -1125,6 +1156,13 @@ where
         contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
     ) -> EventStream {
         self.ensure_downlink();
+        let fatal = matches!(
+            *self.phase.lock().unwrap_or_else(|e| e.into_inner()),
+            super::LinkPhase::FatalClosed { .. }
+        );
+        if fatal {
+            self.restart_downlink().await;
+        }
         if let Err(e) = self.wait_subscribed().await {
             let err = e.to_string();
             let stream = async_stream::stream! {

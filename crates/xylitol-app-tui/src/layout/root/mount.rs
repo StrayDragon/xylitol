@@ -105,10 +105,12 @@ pub fn shared_ui_root_rebuild(
 pub fn install_ui_root_key_listeners<T: Terminal>(
     root: &Rc<RefCell<UiRoot>>,
     quit_flag: &Arc<AtomicBool>,
+    esc_window: &Rc<RefCell<super::slot_nav::EscWindow>>,
     tui: &mut TUI<T>,
 ) {
     let root = root.clone();
     let quit_flag = quit_flag.clone();
+    let esc_window = esc_window.clone();
     tui.add_input_listener(move |event| {
         let InputEvent::Key(key) = &event else {
             return InputListenerResult::Continue;
@@ -118,7 +120,7 @@ pub fn install_ui_root_key_listeners<T: Terminal>(
             return InputListenerResult::Consumed;
         }
         if crate::keybindings::matches_binding(key, "app.interrupt")
-            && root.borrow_mut().on_escape()
+            && root.borrow_mut().on_escape(&mut esc_window.borrow_mut())
         {
             return InputListenerResult::Consumed;
         }
