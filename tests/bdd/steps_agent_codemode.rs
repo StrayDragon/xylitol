@@ -25,6 +25,7 @@ struct CodemodeState {
     catalog: Vec<XyToolDescriptor>,
     declarations: String,
     script: String,
+    result: Option<String>,
     fuel: u64,
     error: Option<CodemodeErrorKind>,
     calls: Arc<Mutex<Vec<String>>>,
@@ -294,6 +295,65 @@ fn _t_nested_dispatch(_ws: &Workspace) {
     assert!(calls.iter().any(|name| name == "write"), "{calls:?}");
     assert!(calls.iter().any(|name| name == "run_code"), "{calls:?}");
     assert_eq!(error, Some(CodemodeErrorKind::Script));
+}
+
+#[given("脚本顶层 await 调用工具并 return 汇总值")]
+fn _g_await_return(_ws: &Workspace) {
+    reset();
+    update(|state| {
+        state.script = "const r = await tools.write({ value: 1 }); return r;".into();
+    });
+}
+
+#[when("执行脚本并记录结果")]
+async fn _w_run_script_result(_ws: &Workspace) {
+    let (script, fuel) = read(|state| (state.script.clone(), state.fuel));
+    let runner = CodemodeRunner::new(CodemodeConfig {
+        enabled: true,
+        fuel,
+        timeout_ms: 5_000,
+        ..Default::default()
+    })
+    .expect("runner");
+    let ctx = XyToolCtx::new("bdd-result-call").with_dispatch(Arc::new(StubDispatch {
+        calls: Arc::new(Mutex::new(Vec::new())),
+    }));
+    match runner.run(&ctx, &script).await {
+        Ok(text) => update(|state| state.result = Some(text)),
+        Err(error) => update(|state| state.error = Some(error.kind)),
+    }
+}
+
+#[then("信封为 completed 且含 return 项")]
+fn _t_await_return(_ws: &Workspace) {
+    let result = read(|state| state.result.clone()).expect("result");
+    assert!(result.starts_with("Script completed in"), "{result}");
+    assert!(result.contains("return: "), "{result}");
+}
+
+#[given("脚本无 return 且无 text()/console")]
+fn _g_no_output(_ws: &Workspace) {
+    reset();
+    update(|state| state.script = "1 + 1;".into());
+}
+
+#[then("结果含显式无输出标识且非裸 null")]
+fn _t_no_output(_ws: &Workspace) {
+    let result = read(|state| state.result.clone()).expect("result");
+    assert_ne!(result, "null");
+    assert!(result.contains("(no output"), "{result}");
+}
+
+#[given("脚本调用 text(值)")]
+fn _g_text_call(_ws: &Workspace) {
+    reset();
+    update(|state| state.script = "text(\"hello\"); return 0;".into());
+}
+
+#[then("信封含该文本项")]
+fn _t_text_item(_ws: &Workspace) {
+    let result = read(|state| state.result.clone()).expect("result");
+    assert!(result.lines().any(|line| line == "hello"), "{result}");
 }
 
 #[given("run_code 执行无限循环或收到取消")]

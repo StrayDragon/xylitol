@@ -119,3 +119,22 @@
   @req:r3347
   规则: codemode-submission-isolation
     run_code 每次提交的取消与超时 须 相互隔离：一个提交超时或取消 不得 中断仍在执行的并发提交；中断结果 须 可归因到具体提交。由单测覆盖。
+
+  @req:r3353
+  规则: script-body-and-result
+    run_code 脚本 须以异步函数体执行（顶层 await 与 return 可用）；结果 须为完成信封（completed/failed + 耗时 + 有序输出项：return、text()、console）；顶层未 return 且无输出通道调用时 须显式无输出标识，不得产出裸 null；text() 须为输出通道。
+
+    场景: 顶层await与return可用
+      假如 脚本顶层 await 调用工具并 return 汇总值
+      当 执行脚本并记录结果
+      那么 信封为 completed 且含 return 项
+
+    场景: 未return不产出裸null
+      假如 脚本无 return 且无 text()/console
+      当 执行脚本并记录结果
+      那么 结果含显式无输出标识且非裸 null
+
+    场景: text发射输出项
+      假如 脚本调用 text(值)
+      当 执行脚本并记录结果
+      那么 信封含该文本项

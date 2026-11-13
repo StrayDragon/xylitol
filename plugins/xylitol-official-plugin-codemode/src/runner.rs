@@ -73,6 +73,24 @@ pub struct CodemodeRunner {
     settings: CodemodeConfig,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmissionKind {
+    Text,
+    Console,
+}
+
+impl EmissionKind {
+    fn from_code(code: u32) -> Self {
+        if code == 1 { Self::Console } else { Self::Text }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Emission {
+    kind: EmissionKind,
+    text: String,
+}
+
 struct HostState {
     wasi: WasiP1Ctx,
     dispatch: Arc<dyn XyToolDispatch>,
@@ -80,6 +98,7 @@ struct HostState {
     progress_tx: Option<mpsc::Sender<String>>,
     limits: StoreLimits,
     host_buffer: u32,
+    emissions: Vec<Emission>,
 }
 
 impl CodemodeRunner {
@@ -128,6 +147,30 @@ impl CodemodeRunner {
                 },
             )
             .map_err(to_anyhow)?;
+        linker
+            .func_wrap(
+                "env",
+                "host_emit",
+                |mut caller: Caller<'_, HostState>, kind: u32, ptr: u32, len: u32| {
+                    let Ok(memory) = memory_of(&mut caller) else {
+                        return;
+                    };
+                    let text = {
+                        let data = memory.data(&caller);
+                        let start = ptr as usize;
+                        let end = start.saturating_add(len as usize);
+                        if end > data.len() {
+                            return;
+                        }
+                        String::from_utf8_lossy(&data[start..end]).to_string()
+                    };
+                    caller.data_mut().emissions.push(Emission {
+                        kind: EmissionKind::from_code(kind),
+                        text,
+                    });
+                },
+            )
+            .map_err(to_anyhow)?;
         Ok(Self {
             engine,
             module,
@@ -167,7 +210,7 @@ impl CodemodeRunner {
         };
         let catalog = dispatch.catalog().snapshot();
         let preamble = preamble_for(&catalog);
-        let script = format!("{preamble}\nconst __result = (() => {{\n{code}\n}})();\n__result");
+        let script = format!("{preamble}\n(async () => {{\n{code}\n}})()\n");
 
         let limits = StoreLimitsBuilder::new()
             .memory_size(self.settings.max_memory_bytes)
@@ -179,6 +222,7 @@ impl CodemodeRunner {
             progress_tx: ctx.output_tx.clone(),
             limits,
             host_buffer: 0,
+            emissions: Vec::new(),
         };
         let interrupted = Arc::new(AtomicBool::new(false));
         let interrupted_for_callback = Arc::clone(&interrupted);
@@ -270,9 +314,12 @@ impl CodemodeRunner {
                 "guest result out of bounds",
             ));
         }
-        let mut text = String::from_utf8_lossy(&data[start..end]).to_string();
+        let text = String::from_utf8_lossy(&data[start..end]).to_string();
         if code == 1 {
-            return Err(CodemodeError::new(CodemodeErrorKind::Script, text));
+            return Err(CodemodeError::new(
+                CodemodeErrorKind::Script,
+                render_failure(&text, &store.data().emissions),
+            ));
         }
         if code == 2 {
             return Err(CodemodeError::new(CodemodeErrorKind::InvalidArgs, text));
@@ -280,6 +327,15 @@ impl CodemodeRunner {
         if code == 3 {
             return Err(CodemodeError::new(CodemodeErrorKind::Runtime, text));
         }
+        let completion: GuestCompletion = serde_json::from_str(&text).map_err(|err| {
+            CodemodeError::new(
+                CodemodeErrorKind::Runtime,
+                format!("guest completion decode failed: {err}"),
+            )
+        })?;
+        let elapsed_ms = started.elapsed().as_millis();
+        let emissions = store.data().emissions.clone();
+        let mut text = render_completed(elapsed_ms, &completion, &emissions);
         let output_bytes = text.len();
         let limit = self
             .settings
@@ -287,11 +343,16 @@ impl CodemodeRunner {
             .min(self.settings.max_output_tokens.saturating_mul(4));
         let mut truncated = false;
         if text.len() > limit {
-            let mut cut = limit;
-            while !text.is_char_boundary(cut) {
-                cut -= 1;
+            let first_line_end = text.find('\n').unwrap_or(text.len());
+            if first_line_end >= limit {
+                text.truncate(first_line_end);
+            } else {
+                let mut cut = limit;
+                while !text.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                text.truncate(cut);
             }
-            text.truncate(cut);
             text.push_str("\n[truncated]");
             truncated = true;
         }
@@ -302,13 +363,67 @@ impl CodemodeRunner {
             .unwrap_or_else(|| serde_json::json!([]));
         let details = serde_json::json!({
             "script_summary": script_summary,
-            "elapsed_ms": started.elapsed().as_millis(),
+            "elapsed_ms": elapsed_ms,
             "nested_calls": nested_calls,
             "truncated": truncated,
             "output_bytes": output_bytes,
         });
         Ok((text, details))
     }
+}
+
+#[derive(serde::Deserialize)]
+struct GuestCompletion {
+    returned: bool,
+    #[serde(default)]
+    value: Option<String>,
+}
+
+fn output_lines(return_value: Option<&str>, emissions: &[Emission]) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(value) = return_value {
+        lines.push(format!("return: {value}"));
+    }
+    for emission in emissions {
+        if emission.kind == EmissionKind::Text {
+            lines.push(emission.text.clone());
+        }
+    }
+    let console: Vec<&str> = emissions
+        .iter()
+        .filter(|emission| emission.kind == EmissionKind::Console)
+        .map(|emission| emission.text.as_str())
+        .collect();
+    if !console.is_empty() {
+        lines.push("<console_output>".to_string());
+        lines.push(console.join("\n"));
+        lines.push("</console_output>".to_string());
+    }
+    lines
+}
+
+fn render_completed(
+    elapsed_ms: u128,
+    completion: &GuestCompletion,
+    emissions: &[Emission],
+) -> String {
+    let return_value = completion
+        .returned
+        .then_some(completion.value.as_deref().unwrap_or("null"));
+    let mut lines = vec![format!("Script completed in {elapsed_ms}ms")];
+    let outputs = output_lines(return_value, emissions);
+    if outputs.is_empty() {
+        lines.push("(no output — no top-level return, no text()/console calls)".to_string());
+    } else {
+        lines.extend(outputs);
+    }
+    lines.join("\n")
+}
+
+fn render_failure(error: &str, emissions: &[Emission]) -> String {
+    let mut lines = vec![format!("Script failed: {error}")];
+    lines.extend(output_lines(None, emissions));
+    lines.join("\n")
 }
 
 fn summarize_script(code: &str) -> String {
@@ -346,12 +461,25 @@ function searchTools(query) {{
 function describeTool(name) {{
   return ALL_TOOLS.find(t => t.name === name || t.identifier === name) || null;
 }}
-function text(value) {{
+function __serialize(value) {{
   return typeof value === "string" ? value : JSON.stringify(value);
 }}
+function text(value) {{
+  const serialized = __serialize(value);
+  __emit(0, String(serialized));
+  return serialized;
+}}
 const console = {{
-  log: (...args) => __log(args.map(text).join(" ")),
-  error: (...args) => __log(args.map(text).join(" ")),
+  log: (...args) => {{
+    const line = args.map(__serialize).join(" ");
+    __emit(1, line);
+    __log(line);
+  }},
+  error: (...args) => {{
+    const line = args.map(__serialize).join(" ");
+    __emit(1, line);
+    __log(line);
+  }},
 }};"#
     )
 }
@@ -563,7 +691,8 @@ mod tests {
         let runner = CodemodeRunner::new(config()).expect("runner");
         let ctx = XyToolCtx::new("call-0").with_dispatch(Arc::new(StubDispatch));
         let result = runner.run(&ctx, "return 42;").await.expect("run");
-        assert_eq!(result, "42");
+        assert!(result.starts_with("Script completed in"), "{result}");
+        assert!(result.contains("return: 42"), "{result}");
     }
 
     #[tokio::test]
@@ -576,6 +705,138 @@ mod tests {
             .expect("run");
         assert!(result.contains("echo:"), "result: {result}");
         assert!(result.contains("parts"), "result: {result}");
+    }
+
+    #[tokio::test]
+    async fn top_level_await_then_return() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-await").with_dispatch(Arc::new(StubDispatch));
+        let result = runner
+            .run(&ctx, "const r = await tools.echo({ value: 1 }); return r;")
+            .await
+            .expect("run");
+        assert!(result.contains("echo:"), "result: {result}");
+    }
+
+    #[tokio::test]
+    async fn no_return_has_explicit_no_output() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-no-output").with_dispatch(Arc::new(StubDispatch));
+        let result = runner.run(&ctx, "1 + 1;").await.expect("run");
+        assert_ne!(result, "null");
+        assert!(result.starts_with("Script completed in"), "{result}");
+        assert!(result.contains("(no output"), "{result}");
+    }
+
+    #[tokio::test]
+    async fn returned_null_is_distinguishable() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-null").with_dispatch(Arc::new(StubDispatch));
+        let result = runner.run(&ctx, "return null;").await.expect("run");
+        assert!(result.contains("return: null"), "{result}");
+    }
+
+    #[tokio::test]
+    async fn undefined_return_has_no_output() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-undefined").with_dispatch(Arc::new(StubDispatch));
+        let result = runner.run(&ctx, "return undefined;").await.expect("run");
+        assert!(result.contains("(no output"), "{result}");
+    }
+
+    #[tokio::test]
+    async fn text_emits_output_items() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-text").with_dispatch(Arc::new(StubDispatch));
+        let result = runner
+            .run(&ctx, "text(1); text(\"hello\"); return 0;")
+            .await
+            .expect("run");
+        let lines: Vec<&str> = result.lines().collect();
+        assert!(lines.contains(&"1"), "{result}");
+        assert!(lines.contains(&"hello"), "{result}");
+    }
+
+    #[tokio::test]
+    async fn text_serialization_is_unchanged() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-text-return").with_dispatch(Arc::new(StubDispatch));
+        let result = runner
+            .run(&ctx, "return text({ a: 1 });")
+            .await
+            .expect("run");
+        assert!(result.lines().any(|line| line == "{\"a\":1}"), "{result}");
+        assert!(result.contains(r#"return: "{\"a\":1}""#), "{result}");
+    }
+
+    #[tokio::test]
+    async fn console_output_is_collected_in_block() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-console").with_dispatch(Arc::new(StubDispatch));
+        let result = runner
+            .run(&ctx, "console.log(\"hi\"); return 1;")
+            .await
+            .expect("run");
+        assert!(result.contains("<console_output>"), "{result}");
+        assert!(result.contains("hi"), "{result}");
+    }
+
+    #[tokio::test]
+    async fn failed_script_keeps_partial_output() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-partial").with_dispatch(Arc::new(StubDispatch));
+        let error = runner
+            .run(&ctx, "text(\"before\"); throw new Error('boom');")
+            .await
+            .expect_err("script");
+        assert_eq!(error.kind, CodemodeErrorKind::Script, "{error}");
+        assert!(error.message.starts_with("Script failed: "), "{error}");
+        assert!(error.message.contains("before"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn outputs_keep_order() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-order").with_dispatch(Arc::new(StubDispatch));
+        let result = runner
+            .run(
+                &ctx,
+                "text(\"first\"); console.log(\"console-line\"); text(\"second\"); return 1;",
+            )
+            .await
+            .expect("run");
+        let return_at = result.find("return: 1").expect("return item");
+        let first_at = result.find("first").expect("first text item");
+        let second_at = result.find("second").expect("second text item");
+        let console_at = result.find("<console_output>").expect("console block");
+        assert!(return_at < first_at, "{result}");
+        assert!(first_at < second_at, "{result}");
+        assert!(second_at < console_at, "{result}");
+    }
+
+    #[tokio::test]
+    async fn script_failure_uses_failed_envelope() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-failure").with_dispatch(Arc::new(StubDispatch));
+        let error = runner
+            .run(&ctx, "throw new Error('boom');")
+            .await
+            .expect_err("script");
+        assert_eq!(error.kind, CodemodeErrorKind::Script, "{error}");
+        assert!(error.message.starts_with("Script failed: "), "{error}");
+        assert!(error.message.contains("boom"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn unsettled_promise_is_script_failure() {
+        let runner = CodemodeRunner::new(config()).expect("runner");
+        let ctx = XyToolCtx::new("call-unsettled").with_dispatch(Arc::new(StubDispatch));
+        let error = runner
+            .run(&ctx, "await new Promise(() => {});")
+            .await
+            .expect_err("script");
+        assert_eq!(error.kind, CodemodeErrorKind::Script, "{error}");
+        assert!(error.message.contains("cannot settle"), "{error}");
     }
 
     #[tokio::test]
@@ -619,7 +880,7 @@ mod tests {
             .run(&ctx, "return 'x'.repeat(100);")
             .await
             .expect("run");
-        assert!(result.len() <= 16 + "\n[truncated]".len(), "{result}");
+        assert!(result.starts_with("Script completed in"), "{result}");
         assert!(result.ends_with("[truncated]"), "{result}");
     }
 
@@ -665,6 +926,6 @@ mod tests {
             slow_error.message
         );
         let fast_value = fast_result.expect("join").expect("fast MUST complete");
-        assert_eq!(fast_value, "7");
+        assert!(fast_value.contains("return: 7"), "{fast_value}");
     }
 }

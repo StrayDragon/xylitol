@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix codemode async script semantics"
+branch: sdd/c3335-fix-codemode-async-script-semantics
+base_branch: main
+base_sha: 1675ce0727f4b788545a7cdf51a321016051cd2b
 ---
 
 # run_code 异步函数体与结果信封（对齐 pi/DSH）

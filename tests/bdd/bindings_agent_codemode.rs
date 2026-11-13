@@ -90,3 +90,21 @@ fn test_missing_wasi_sdk(ws: Workspace) {}
     name = "空 catalog 声明为空"
 )]
 fn test_empty_catalog_declarations(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "顶层await与return可用"
+)]
+fn test_await_return(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "未return不产出裸null"
+)]
+fn test_no_output_not_null(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-codemode/agent-codemode.feature",
+    name = "text发射输出项"
+)]
+fn test_text_emits_output(ws: Workspace) {}

@@ -46,7 +46,7 @@ impl XyTool for RunCodeTool {
     }
 
     fn description(&self) -> &str {
-        "Run JavaScript in an isolated Wasmtime sandbox. Call tools through tools.<name>({...}); use ALL_TOOLS, searchTools(query), describeTool(name), and text(value). Return JSON-compatible values."
+        "Run JavaScript in an isolated Wasmtime sandbox. The code is the body of an async function: top-level await and return work. Call tools through tools.<name>({...}); use ALL_TOOLS, searchTools(query), describeTool(name). Output channels: return (JSON-compatible value), text(value) (emits a text item), console.log(...) (collected in a console block)."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -55,7 +55,7 @@ impl XyTool for RunCodeTool {
             "properties": {
                 "code": {
                     "type": "string",
-                    "description": "JavaScript source. Call tools through tools.<name>({...})."
+                    "description": "JavaScript source executed as the body of an async function. Top-level await and return work; output channels are return, text(value), and console.log(...)."
                 },
                 "description": {
                     "type": "string",
@@ -110,5 +110,26 @@ fn map_error(error: CodemodeError) -> XyToolError {
         CodemodeErrorKind::Cancelled => XyToolError::Aborted,
         CodemodeErrorKind::Timeout => XyToolError::Timeout(std::time::Duration::from_millis(0)),
         _ => XyToolError::ExecutionFailed(anyhow::anyhow!(error.message)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn description_documents_async_body_and_channels() {
+        let tool = RunCodeTool::new(CodemodeConfig::default());
+        let description = tool.description();
+        assert!(description.contains("body of an async function"));
+        assert!(description.contains("top-level await"));
+        assert!(description.contains("text(value)"));
+        assert!(description.contains("console.log"));
+        let schema = tool.parameters_schema();
+        let code = schema["properties"]["code"]["description"]
+            .as_str()
+            .expect("code description");
+        assert!(code.contains("async function"));
+        assert!(code.contains("await"));
     }
 }

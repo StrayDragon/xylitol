@@ -3,6 +3,11 @@ use xylitol_plugin_sdk::{XyToolDescriptor, XyToolExposure};
 pub fn render_declarations(catalog: &[XyToolDescriptor], budget: usize) -> String {
     let mut out = String::new();
     let mut deferred = Vec::new();
+    if !catalog.is_empty() {
+        out.push_str(
+            "run_code scripts run as the body of an async function: top-level await and return work; output channels are return, text(value), console.log(...).\n",
+        );
+    }
     for tool in catalog {
         if tool.exposure == XyToolExposure::Deferred {
             deferred.push(tool.name.as_str());
@@ -59,6 +64,15 @@ mod tests {
         assert!(text.contains("read"));
         assert!(!text.contains("- later"));
         assert!(text.contains("Deferred tools: later"));
+    }
+
+    #[test]
+    fn describes_async_script_body() {
+        let catalog = vec![descriptor("read", XyToolExposure::Direct)];
+        let text = render_declarations(&catalog, 10_000);
+        assert!(text.contains("body of an async function"), "{text}");
+        assert!(text.contains("top-level await"), "{text}");
+        assert!(text.contains("text(value)"), "{text}");
     }
 
     #[test]

@@ -1,7 +1,8 @@
 use std::slice;
 use std::sync::Mutex;
 
-use rquickjs::{Context, Function, Runtime, Value};
+use rquickjs::promise::PromiseState;
+use rquickjs::{Context, Ctx, Function, Runtime, Value};
 
 const HOST_BUFFER_BYTES: usize = 256 * 1024;
 
@@ -12,6 +13,7 @@ static mut HOST_BUFFER: [u8; HOST_BUFFER_BYTES] = [0; HOST_BUFFER_BYTES];
 extern "C" {
     fn host_tool_call(req_ptr: u32, req_len: u32) -> u32;
     fn host_log(ptr: u32, len: u32);
+    fn host_emit(kind: u32, ptr: u32, len: u32);
 }
 
 #[no_mangle]
@@ -91,17 +93,25 @@ fn run(script: &str) -> Result<String, RunError> {
         ctx.globals()
             .set("__log", log)
             .map_err(|err| RunError::Runtime(err.to_string()))?;
+        let emit = Function::new(ctx.clone(), |kind: u32, text: String| {
+            let bytes = text.as_bytes();
+            unsafe { host_emit(kind, bytes.as_ptr() as u32, bytes.len() as u32) };
+        })
+        .map_err(|err| RunError::Runtime(err.to_string()))?;
+        ctx.globals()
+            .set("__emit", emit)
+            .map_err(|err| RunError::Runtime(err.to_string()))?;
         let value: Value = match ctx.eval(script) {
             Ok(value) => value,
             Err(err) => {
                 let exception = ctx.catch();
-                let detail = exception
-                    .as_object()
-                    .and_then(|object| object.get::<_, String>("message").ok())
-                    .unwrap_or_else(|| format!("{exception:?}"));
-                return Err(RunError::Script(format!("{err}: {detail}")));
+                return Err(RunError::Script(format!(
+                    "{err}: {}",
+                    exception_message(&exception)
+                )));
             }
         };
+        let value = settle(&ctx, value)?;
         let json = ctx
             .json_stringify(value)
             .map_err(|err| RunError::Runtime(err.to_string()))?;
@@ -109,8 +119,43 @@ fn run(script: &str) -> Result<String, RunError> {
             .map(|value| value.to_string())
             .transpose()
             .map_err(|err| RunError::Runtime(err.to_string()))?;
-        Ok(json.unwrap_or_else(|| "null".to_string()))
+        Ok(serde_json::json!({
+            "returned": json.is_some(),
+            "value": json,
+        })
+        .to_string())
     })
+}
+
+fn settle<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Result<Value<'js>, RunError> {
+    if !value.is_promise() {
+        return Ok(value);
+    }
+    let promise = value.as_promise().expect("promise").clone();
+    while promise.state() == PromiseState::Pending {
+        if !ctx.execute_pending_job() {
+            return Err(RunError::Script(
+                "script suspended on a promise that cannot settle".to_string(),
+            ));
+        }
+    }
+    match promise.result::<Value>() {
+        Some(Ok(value)) => Ok(value),
+        Some(Err(_)) => {
+            let exception = ctx.catch();
+            Err(RunError::Script(exception_message(&exception)))
+        }
+        None => Err(RunError::Runtime(
+            "promise settled without a result".to_string(),
+        )),
+    }
+}
+
+fn exception_message(exception: &Value<'_>) -> String {
+    exception
+        .as_object()
+        .and_then(|object| object.get::<_, String>("message").ok())
+        .unwrap_or_else(|| format!("{exception:?}"))
 }
 
 fn host_call(name: &str, args: &str) -> Result<String, String> {
