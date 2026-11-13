@@ -242,6 +242,10 @@ impl<T: Terminal> TUI<T> {
         if !self.interaction_mode.is_application_owned() || self.application_session_active {
             return;
         }
+        self.begin_application_owned_frame(false);
+    }
+
+    fn begin_application_owned_frame(&mut self, preserve_runtime: bool) {
         self.terminal.enter_alternate_screen();
         self.terminal.clear_screen();
         self.enable_mouse_capture();
@@ -251,6 +255,10 @@ impl<T: Terminal> TUI<T> {
         runtime.set_scroll_gutter(self.scroll_gutter);
         runtime.set_extra_reserved_cols(self.extra_reserved_cols);
         self.application_owned = Some(runtime);
+        if preserve_runtime {
+            let preserved = self.application_owned.take();
+            self.application_owned = preserved;
+        }
         self.ao_components_stale = true;
         self.last_ao_wheel_render_at = None;
         self.previous_width = FORCE_SIZE_SENTINEL;
@@ -816,27 +824,12 @@ impl<T: Terminal> TUI<T> {
     pub fn with_terminal_suspended<R>(&mut self, f: impl FnOnce() -> R) -> R {
         let restore_application_owned = self.application_session_active;
         self.terminal.stop();
-        if restore_application_owned {
-            self.application_session_active = true;
-        }
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         self.terminal.hide_cursor();
         self.terminal.start();
         if restore_application_owned {
-            self.terminal.enter_alternate_screen();
-            self.terminal.clear_screen();
-            self.enable_mouse_capture();
-            if self.application_owned.is_none() {
-                let mut runtime = ApplicationOwnedRuntime::new(self.dock_rows);
-                runtime.set_copy_on_release(self.transcript_copy_on_release);
-                runtime.set_scroll_gutter(self.scroll_gutter);
-                runtime.set_extra_reserved_cols(self.extra_reserved_cols);
-                self.application_owned.replace(runtime);
-            }
-            self.previous_width = FORCE_SIZE_SENTINEL;
-            self.previous_height = FORCE_SIZE_SENTINEL;
-            self.previous_lines.clear();
-            self.previous_viewport_top = 0;
+            let preserve_runtime = self.application_owned.is_some();
+            self.begin_application_owned_frame(preserve_runtime);
         }
         self.terminal.refresh_size();
         self.request_render(restore_application_owned);

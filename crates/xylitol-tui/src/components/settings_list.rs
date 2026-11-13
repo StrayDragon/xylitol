@@ -32,6 +32,22 @@ pub struct SettingsListOptions {
     pub enable_search: bool,
 }
 
+pub struct SubmenuSession {
+    pub(crate) component: Box<dyn Component>,
+    pub(crate) item_index: usize,
+    pub(crate) close: Rc<RefCell<Option<String>>>,
+}
+
+impl SubmenuSession {
+    pub fn request_close(&mut self, value: Option<String>) {
+        *self.close.borrow_mut() = value;
+    }
+
+    pub(crate) fn take_close(&mut self) -> Option<String> {
+        self.close.borrow_mut().take()
+    }
+}
+
 #[allow(clippy::type_complexity)]
 pub struct SettingsList {
     items: Vec<SettingItem>,
@@ -45,9 +61,7 @@ pub struct SettingsList {
     search_input: Option<Input>,
     search_enabled: bool,
 
-    submenu: Option<Box<dyn Component>>,
-    submenu_close: Option<Rc<RefCell<Option<String>>>>,
-    submenu_item_index: Option<usize>,
+    submenu: Option<SubmenuSession>,
 }
 
 impl SettingsList {
@@ -76,8 +90,6 @@ impl SettingsList {
             },
             search_enabled,
             submenu: None,
-            submenu_close: None,
-            submenu_item_index: None,
         }
     }
 }
@@ -86,8 +98,8 @@ impl Component for SettingsList {
     fn render(&mut self, width: usize) -> Vec<String> {
         self.poll_submenu_close();
 
-        if let Some(ref mut sub) = self.submenu {
-            return sub.render(width);
+        if let Some(ref mut session) = self.submenu {
+            return session.component.render(width);
         }
 
         let mut search_lines: Vec<String> = Vec::new();
@@ -108,8 +120,8 @@ impl Component for SettingsList {
         use crate::tui::InputEvent;
         use crossterm::event::KeyCode;
 
-        if let Some(ref mut sub) = self.submenu {
-            sub.handle_input(event);
+        if let Some(ref mut session) = self.submenu {
+            session.component.handle_input(event);
             self.poll_submenu_close();
             return;
         }
@@ -168,8 +180,8 @@ impl Component for SettingsList {
 
     fn invalidate(&mut self) {
         self.poll_submenu_close();
-        if let Some(ref mut sub) = self.submenu {
-            sub.invalidate();
+        if let Some(ref mut session) = self.submenu {
+            session.component.invalidate();
         }
     }
 }
@@ -312,20 +324,20 @@ impl SettingsList {
     }
 
     fn poll_submenu_close(&mut self) {
-        let value = if let Some(ref signal) = self.submenu_close {
-            signal.borrow_mut().take()
-        } else {
-            None
+        let Some(session) = self.submenu.as_mut() else {
+            return;
         };
-        if let Some(v) = value {
-            self.close_submenu(Some(v));
+        if let Some(value) = session.take_close() {
+            self.close_submenu(Some(value));
         }
     }
 
     fn close_submenu(&mut self, selected_value: Option<String>) {
         if let Some(ref val) = selected_value {
             let idx = self
-                .submenu_item_index
+                .submenu
+                .as_ref()
+                .map(|session| session.item_index)
                 .and_then(|i| {
                     if self.search_enabled {
                         self.filtered_indices.get(i).copied()
@@ -340,10 +352,8 @@ impl SettingsList {
             }
         }
 
-        self.submenu = None;
-        self.submenu_close = None;
-        if let Some(i) = self.submenu_item_index.take() {
-            self.selected_index = i;
+        if let Some(session) = self.submenu.take() {
+            self.selected_index = session.item_index;
         }
     }
 
@@ -403,7 +413,7 @@ impl SettingsList {
 
     fn open_submenu(&mut self, item_idx: usize) {
         let current_val = self.items[item_idx].current_value.clone();
-        self.submenu_item_index = Some(self.selected_index);
+        let selected_index = self.selected_index;
 
         let signal: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
         let signal_clone = signal.clone();
@@ -414,8 +424,11 @@ impl SettingsList {
 
         let factory = self.items[item_idx].submenu.as_ref().unwrap();
         let component = factory(current_val, done);
-        self.submenu = Some(component);
-        self.submenu_close = Some(signal);
+        self.submenu = Some(SubmenuSession {
+            component,
+            item_index: selected_index,
+            close: signal,
+        });
     }
 }
 
@@ -602,8 +615,8 @@ mod tests {
         let lines = list.render(40);
         assert!(lines.iter().any(|l| l.contains("submenu content")));
 
-        if let Some(ref signal) = list.submenu_close {
-            *signal.borrow_mut() = Some("new".to_string());
+        if let Some(ref mut session) = list.submenu {
+            session.request_close(Some("new".to_string()));
         }
         list.render(40);
         assert!(list.submenu.is_none());

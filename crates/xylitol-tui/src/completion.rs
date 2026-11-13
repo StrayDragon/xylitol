@@ -153,8 +153,9 @@ impl CompletionRegistry {
         cursor_col: usize,
         item: &AutocompleteItem,
         prefix: &str,
-    ) -> (Vec<String>, usize, usize) {
-        self.sources[source_index].apply(lines, cursor_line, cursor_col, item, prefix)
+    ) -> Option<(Vec<String>, usize, usize)> {
+        let src = self.sources.get(source_index)?;
+        Some(src.apply(lines, cursor_line, cursor_col, item, prefix))
     }
 }
 
@@ -561,6 +562,18 @@ impl CompletionSource for AtPathSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apply_probed_out_of_bounds_is_noop() {
+        let reg = CompletionRegistry::new();
+        let lines = vec!["/he".to_string()];
+        let item = AutocompleteItem {
+            value: "help".into(),
+            label: "help".into(),
+            description: None,
+        };
+        assert!(reg.apply_probed(0, &lines, 0, 3, &item, "/").is_none());
+    }
 
     fn slash() -> SlashCommandSource {
         SlashCommandSource::new(vec![

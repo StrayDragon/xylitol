@@ -17,6 +17,7 @@ pub use types::{AutocompleteMode, VisualLine};
 
 use crate::clock::Clock;
 use crate::completion::CompletionRegistry;
+use crate::components::LastAction;
 use crate::components::select_list::{SelectList, SelectListTheme};
 use crate::keybindings::with_keybindings;
 use crate::keys::{matches_key_event, printable_from_key_event};
@@ -57,33 +58,53 @@ impl Default for EditorOptions {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JumpDir {
+    Forward,
+    Backward,
+}
+
+pub(crate) struct AutocompleteSession {
+    pub(crate) list: SelectList,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct LayoutSnapshot {
+    pub(crate) width: usize,
+    pub(crate) content_rows: usize,
+    pub(crate) paint_width: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct RenderDirty {
+    pub(crate) mouse: bool,
+    pub(crate) paste_burst_paint: bool,
+}
+
 pub struct Editor {
     state: EditorState,
     focused: bool,
     theme: EditorTheme,
     padding_x: usize,
     terminal_rows: usize,
-    last_width: usize,
-    last_content_rows: usize,
-    last_paint_width: usize,
+    last_layout: LayoutSnapshot,
     scroll_offset: usize,
     history: Vec<String>,
-    history_index: isize,
+    history_browsing: Option<usize>,
     history_draft: Option<EditorState>,
     kill_ring: KillRing,
-    last_action: Option<String>,
+    last_action: Option<LastAction>,
     undo_stack: UndoStack<EditorState>,
-    jump_mode: Option<bool>,
+    jump_mode: Option<JumpDir>,
     pastes: HashMap<usize, String>,
     paste_counter: usize,
     preferred_visual_col: Option<usize>,
     snapped_from_cursor_col: Option<usize>,
     paste_burst: PasteBurst,
-    paste_burst_needs_paint: bool,
+    dirty: RenderDirty,
     clock: Box<dyn Clock>,
     completion: CompletionRegistry,
-    autocomplete_list: Option<SelectList>,
-    autocomplete_state: Option<AutocompleteMode>,
+    autocomplete: Option<AutocompleteSession>,
     autocomplete_prefix: String,
     autocomplete_max_visible: usize,
     autocomplete_start_token: usize,
@@ -92,7 +113,6 @@ pub struct Editor {
     pending_clipboard: Vec<String>,
     screen_origin_row: u16,
     screen_origin_col: u16,
-    mouse_dirty: bool,
     pub on_submit: Option<Box<dyn FnMut(String)>>,
     pub on_change: Option<Box<dyn FnMut(&str)>>,
     pub disable_submit: bool,
@@ -106,12 +126,10 @@ impl Editor {
             theme,
             padding_x: opts.padding_x,
             terminal_rows: opts.terminal_rows,
-            last_width: 80,
-            last_content_rows: 1,
-            last_paint_width: 80,
+            last_layout: LayoutSnapshot::default(),
             scroll_offset: 0,
             history: Vec::new(),
-            history_index: -1,
+            history_browsing: None,
             history_draft: None,
             kill_ring: KillRing::new(),
             last_action: None,
@@ -122,11 +140,10 @@ impl Editor {
             preferred_visual_col: None,
             snapped_from_cursor_col: None,
             paste_burst: PasteBurst::new(),
-            paste_burst_needs_paint: false,
+            dirty: RenderDirty::default(),
             clock,
             completion: CompletionRegistry::new(),
-            autocomplete_list: None,
-            autocomplete_state: None,
+            autocomplete: None,
             autocomplete_prefix: String::new(),
             autocomplete_max_visible: 5,
             autocomplete_start_token: 0,
@@ -135,7 +152,6 @@ impl Editor {
             pending_clipboard: Vec::new(),
             screen_origin_row: 0,
             screen_origin_col: 0,
-            mouse_dirty: false,
             on_submit: None,
             on_change: None,
             disable_submit: false,
@@ -239,13 +255,18 @@ impl Editor {
     pub fn history_texts(&self) -> Vec<String> {
         self.history.clone()
     }
+    pub fn cancel_jump(&mut self) {
+        self.jump_mode = None;
+    }
+
     pub fn get_expanded_text(&self) -> String {
         expand_paste_markers(&self.state.lines.join("\n"), &self.pastes)
     }
     fn handle_key(&mut self, key: &crossterm::event::KeyEvent) {
         if let Some(dir) = self.jump_mode.take() {
             if let Some(s) = printable_from_key_event(key).and_then(|s| s.chars().next()) {
-                self.jump_to(s, dir);
+                let forward = matches!(dir, JumpDir::Forward);
+                self.jump_to(s, forward);
             }
             return;
         }
@@ -261,14 +282,14 @@ impl Editor {
             return;
         }
 
-        if self.autocomplete_state.is_some() && self.autocomplete_list.is_some() {
+        if self.autocomplete.is_some() {
             if k!("tui.select.cancel") {
                 self.cancel_autocomplete();
                 return;
             }
             if k!("tui.select.up") || k!("tui.select.down") {
-                if let Some(ref mut list) = self.autocomplete_list {
-                    list.handle_input(InputEvent::Key(*key));
+                if let Some(ref mut session) = self.autocomplete {
+                    session.list.handle_input(InputEvent::Key(*key));
                 }
                 return;
             }
@@ -325,14 +346,14 @@ impl Editor {
             self.word_right();
             self.handle_autocomplete_on_edit();
         } else if k!("tui.editor.jumpForward") {
-            self.jump_mode = Some(true);
+            self.jump_mode = Some(JumpDir::Forward);
         } else if k!("tui.editor.jumpBackward") {
-            self.jump_mode = Some(false);
+            self.jump_mode = Some(JumpDir::Backward);
         } else if k!("tui.editor.pageUp") {
             self.page_scroll(-1);
         } else if k!("tui.editor.pageDown") {
             self.page_scroll(1);
-        } else if k!("tui.input.tab") && self.autocomplete_state.is_none() {
+        } else if k!("tui.input.tab") && self.autocomplete.is_none() {
             self.handle_tab_completion();
         } else if k!("tui.input.newLine") {
             let now = self.clock.now();
@@ -367,7 +388,7 @@ impl Editor {
             }
         } else if k!("tui.editor.cursorUp") {
             if (self.is_on_first_visual_line() || self.state.cursor_col == 0)
-                && (self.is_editor_empty() || self.history_index > -1)
+                && (self.is_editor_empty() || self.history_browsing.is_some())
             {
                 self.navigate_history(-1);
             } else if self.is_on_first_visual_line() {
@@ -377,7 +398,7 @@ impl Editor {
                 self.handle_autocomplete_on_edit();
             }
         } else if k!("tui.editor.cursorDown") {
-            if self.history_index > -1 && self.is_on_last_visual_line() {
+            if self.history_browsing.is_some() && self.is_on_last_visual_line() {
                 self.navigate_history(1);
             } else if self.is_on_last_visual_line() {
                 self.line_end();
@@ -404,6 +425,9 @@ impl Editor {
 impl Focusable for Editor {
     fn set_focused(&mut self, f: bool) {
         self.focused = f;
+        if !f {
+            self.jump_mode = None;
+        }
     }
     fn is_focused(&self) -> bool {
         self.focused

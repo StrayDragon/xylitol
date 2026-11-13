@@ -121,7 +121,6 @@ pub fn drain_pending_input(max_ms: u64, idle_ms: u64) {
 pub struct CrosstermTerminal {
     columns: u16,
     rows: u16,
-    kitty_pushed: bool,
     modify_other_keys_active: bool,
     started: bool,
     mouse_capture_desired: bool,
@@ -141,7 +140,6 @@ impl CrosstermTerminal {
         Ok(Self {
             columns: cols,
             rows,
-            kitty_pushed: false,
             modify_other_keys_active: false,
             started: false,
             mouse_capture_desired: false,
@@ -166,7 +164,6 @@ impl CrosstermTerminal {
         );
         self.write_raw(KITTY_KEYBOARD_PROTOCOL_QUERY);
         set_kitty_protocol_active(true);
-        self.kitty_pushed = true;
     }
 
     fn rearm_keyboard_after_alt_screen(&mut self) {
@@ -177,7 +174,6 @@ impl CrosstermTerminal {
             ))
         );
         set_kitty_protocol_active(true);
-        self.kitty_pushed = true;
         self.write_raw(MODIFY_OTHER_KEYS_ENABLE);
         self.modify_other_keys_active = true;
     }
@@ -187,7 +183,6 @@ impl CrosstermTerminal {
         let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
         let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
         set_kitty_protocol_active(false);
-        self.kitty_pushed = false;
     }
 
     fn disable_modify_other_keys(&mut self) {

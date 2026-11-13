@@ -193,6 +193,9 @@ impl ApplicationOwnedRuntime {
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
         self.scroll.set_lines(content.to_vec());
+        if self.scroll.at_bottom() {
+            self.follow_bottom = true;
+        }
         self.paint_visible(viewport_h, term_height, term_cols)
     }
 
@@ -211,6 +214,9 @@ impl ApplicationOwnedRuntime {
             .min(term_height);
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
+        if self.scroll.at_bottom() {
+            self.follow_bottom = true;
+        }
         self.paint_visible(viewport_h, term_height, term_cols)
     }
 
@@ -478,6 +484,28 @@ mod tests {
             row,
             modifiers: KeyModifiers::NONE,
         }
+    }
+
+    #[test]
+    fn viewport_growth_still_follows_bottom() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
+        let _ = runtime.project_frame(&full, 8, 40);
+        runtime.scroll_home();
+        assert!(!runtime.follow_bottom, "scrolled away must stop following");
+        let _ = runtime.project_frame(&full, 8, 40);
+        assert!(
+            !runtime.follow_bottom,
+            "unchanged viewport must not re-follow"
+        );
+        let _ = runtime.project_frame(&full, 30, 40);
+        assert!(
+            runtime.follow_bottom,
+            "viewport growth that fits content must re-follow"
+        );
+        let paint = runtime.project_frame(&full, 30, 40);
+        assert_eq!(paint.first().map(String::as_str), Some("L0"));
+        assert_eq!(paint.last().map(String::as_str), Some("L19"));
     }
 
     #[test]

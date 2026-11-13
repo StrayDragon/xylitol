@@ -18,3 +18,10 @@ pub mod tabs;
 pub mod text;
 pub mod tree_selector;
 pub mod truncated_text;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LastAction {
+    Kill,
+    Yank,
+    TypeWord,
+}

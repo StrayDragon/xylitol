@@ -1,3 +1,4 @@
+use super::LastAction;
 use crate::keybindings::with_keybindings;
 use crate::keys::printable_from_key_event;
 use crate::kill_ring::{KillRing, KillRingOptions};
@@ -22,7 +23,7 @@ pub struct Input {
     pub on_escape: Option<Box<dyn Fn() + Send>>,
     focused: bool,
     kill_ring: KillRing,
-    last_action: Option<String>,
+    last_action: Option<LastAction>,
     undo_stack: UndoStack<InputState>,
 }
 
@@ -74,11 +75,11 @@ impl Input {
 
     fn insert_char(&mut self, ch: &str) {
         if is_whitespace_char(ch.chars().next().unwrap_or(' '))
-            || self.last_action.as_deref() != Some("type-word")
+            || self.last_action != Some(LastAction::TypeWord)
         {
             self.push_undo();
         }
-        self.last_action = Some("type-word".to_string());
+        self.last_action = Some(LastAction::TypeWord);
         let left = self.value[..self.cursor].to_string();
         let right = self.value[self.cursor..].to_string();
         self.value = format!("{}{}{}", left, ch, right);
@@ -120,7 +121,7 @@ impl Input {
         }
         self.push_undo();
         let deleted = self.value[..self.cursor].to_string();
-        let was_kill = self.last_action.as_deref() == Some("kill");
+        let was_kill = self.last_action == Some(LastAction::Kill);
         self.kill_ring.push(
             deleted,
             KillRingOptions {
@@ -128,7 +129,7 @@ impl Input {
                 accumulate: was_kill,
             },
         );
-        self.last_action = Some("kill".to_string());
+        self.last_action = Some(LastAction::Kill);
         self.value = self.value[self.cursor..].to_string();
         self.cursor = 0;
     }
@@ -139,7 +140,7 @@ impl Input {
         }
         self.push_undo();
         let deleted = self.value[self.cursor..].to_string();
-        let was_kill = self.last_action.as_deref() == Some("kill");
+        let was_kill = self.last_action == Some(LastAction::Kill);
         self.kill_ring.push(
             deleted,
             KillRingOptions {
@@ -147,7 +148,7 @@ impl Input {
                 accumulate: was_kill,
             },
         );
-        self.last_action = Some("kill".to_string());
+        self.last_action = Some(LastAction::Kill);
         self.value = self.value[..self.cursor].to_string();
     }
 
@@ -155,7 +156,7 @@ impl Input {
         if self.cursor == 0 {
             return;
         }
-        let was_kill = self.last_action.as_deref() == Some("kill");
+        let was_kill = self.last_action == Some(LastAction::Kill);
         self.push_undo();
         let old_cursor = self.cursor;
         self.move_word_backwards();
@@ -169,7 +170,7 @@ impl Input {
                 accumulate: was_kill,
             },
         );
-        self.last_action = Some("kill".to_string());
+        self.last_action = Some(LastAction::Kill);
         let left = self.value[..delete_from].to_string();
         let right = self.value[self.cursor..].to_string();
         self.value = format!("{}{}", left, right);
@@ -180,7 +181,7 @@ impl Input {
         if self.cursor >= self.value.len() {
             return;
         }
-        let was_kill = self.last_action.as_deref() == Some("kill");
+        let was_kill = self.last_action == Some(LastAction::Kill);
         self.push_undo();
         let old_cursor = self.cursor;
         self.move_word_forwards();
@@ -194,7 +195,7 @@ impl Input {
                 accumulate: was_kill,
             },
         );
-        self.last_action = Some("kill".to_string());
+        self.last_action = Some(LastAction::Kill);
         let left = self.value[..self.cursor].to_string();
         let right = self.value[delete_to..].to_string();
         self.value = format!("{}{}", left, right);
@@ -210,11 +211,11 @@ impl Input {
         let right = self.value[self.cursor..].to_string();
         self.value = format!("{}{}{}", left, text, right);
         self.cursor += text.len();
-        self.last_action = Some("yank".to_string());
+        self.last_action = Some(LastAction::Yank);
     }
 
     fn yank_pop(&mut self) {
-        if self.last_action.as_deref() != Some("yank") || self.kill_ring.len() <= 1 {
+        if self.last_action != Some(LastAction::Yank) || self.kill_ring.len() <= 1 {
             return;
         }
         self.push_undo();
@@ -233,7 +234,7 @@ impl Input {
         let right = self.value[self.cursor..].to_string();
         self.value = format!("{}{}{}", left, text, right);
         self.cursor += text.len();
-        self.last_action = Some("yank".to_string());
+        self.last_action = Some(LastAction::Yank);
     }
 
     fn push_undo(&mut self) {

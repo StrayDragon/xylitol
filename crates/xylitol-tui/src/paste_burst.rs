@@ -40,18 +40,10 @@ impl PasteBurst {
     }
 
     pub fn should_insert_newline_instead_of_submit(&self, now: Instant) -> bool {
-        if self.active_until.is_some_and(|t| now <= t)
-            || self.enter_suppress_until.is_some_and(|t| now <= t)
-        {
-            return true;
-        }
-        self.last_plain_char_at.is_some_and(|last| {
-            self.consecutive_plain_chars >= PASTE_BURST_MIN_CHARS
-                && now.duration_since(last) <= CHAR_INTERVAL
-        })
+        self.is_pasting(now)
     }
 
-    pub fn is_coalescing(&self, now: Instant) -> bool {
+    pub fn is_pasting(&self, now: Instant) -> bool {
         self.active_until.is_some_and(|t| now <= t)
             || self.enter_suppress_until.is_some_and(|t| now <= t)
             || self.last_plain_char_at.is_some_and(|last| {
@@ -82,16 +74,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn is_coalescing_expires_after_idle_even_with_high_consecutive() {
+    fn is_pasting_expires_after_idle_even_with_high_consecutive() {
         let mut burst = PasteBurst::new();
         let t0 = Instant::now();
         for _ in 0..PASTE_BURST_MIN_CHARS {
             burst.on_plain_char(t0);
         }
-        assert!(burst.is_coalescing(t0));
+        assert!(burst.is_pasting(t0));
         let later = t0 + ENTER_SUPPRESS_WINDOW + Duration::from_millis(1);
         assert!(
-            !burst.is_coalescing(later),
+            !burst.is_pasting(later),
             "must not stick forever after active/suppress windows expire"
         );
     }

@@ -228,7 +228,7 @@ impl super::Editor {
     pub(super) fn page_scroll(&mut self, direction: isize) {
         self.last_action = None;
         let page_size = (self.terminal_rows * 30 / 100).max(5) as isize;
-        let vls = self.build_visual_line_map(self.last_width);
+        let vls = self.build_visual_line_map(self.last_layout.width);
         let current = self.find_current_visual_line(&vls) as isize;
         let target = (current + direction * page_size)
             .clamp(0, vls.len() as isize - 1)
@@ -290,11 +290,11 @@ impl super::Editor {
     }
 
     pub(super) fn is_on_first_visual_line(&self) -> bool {
-        self.find_current_visual_line(&self.build_visual_line_map(self.last_width)) == 0
+        self.find_current_visual_line(&self.build_visual_line_map(self.last_layout.width)) == 0
     }
 
     pub(super) fn is_on_last_visual_line(&self) -> bool {
-        let vls = self.build_visual_line_map(self.last_width);
+        let vls = self.build_visual_line_map(self.last_layout.width);
         self.find_current_visual_line(&vls) == vls.len().saturating_sub(1)
     }
 
@@ -317,8 +317,8 @@ impl Component for super::Editor {
         let px = self.padding_x.min(max_pad);
         let cw = width.saturating_sub(px * 2).max(1);
         let lw = cw.saturating_sub(1).max(1);
-        self.last_width = lw;
-        self.last_paint_width = width;
+        self.last_layout.width = lw;
+        self.last_layout.paint_width = width;
         let layout = self.layout_text(lw);
         let max_vis = self.content_max_visible();
         let cur_idx = layout.iter().position(|l| l.has_cursor).unwrap_or(0);
@@ -330,7 +330,7 @@ impl Component for super::Editor {
         let ms = layout.len().saturating_sub(max_vis);
         self.scroll_offset = self.scroll_offset.min(ms);
         let visible = &layout[self.scroll_offset..(self.scroll_offset + max_vis).min(layout.len())];
-        self.last_content_rows = visible.len();
+        self.last_layout.content_rows = visible.len();
         let lp = " ".repeat(px);
         let rp = " ".repeat(px);
         let mut result = Vec::new();
@@ -405,9 +405,8 @@ impl Component for super::Editor {
             result.push((self.theme.border_color)(&bottom));
         }
 
-        if let Some(ref mut ac_list) = self.autocomplete_list
-            && self.autocomplete_state.is_some()
-        {
+        if let Some(ref mut session) = self.autocomplete {
+            let ac_list = &mut session.list;
             let reserved = self.autocomplete_max_visible.saturating_add(1);
             let ac_lines = ac_list.render(cw);
             let mut painted = 0usize;
@@ -438,7 +437,7 @@ impl Component for super::Editor {
         match event {
             InputEvent::Paste(content) => {
                 self.paste_burst.reset();
-                self.paste_burst_needs_paint = false;
+                self.dirty.paste_burst_paint = false;
                 self.selection.clear();
                 if !content.is_empty() {
                     self.paste(&content);
@@ -456,7 +455,7 @@ impl Component for super::Editor {
                     modifiers: mouse.modifiers,
                 };
                 let mut sink = DiscardClipboardSink;
-                self.mouse_dirty = self.handle_mouse_local(&local, &mut sink);
+                self.dirty.mouse = self.handle_mouse_local(&local, &mut sink);
             }
         }
     }
@@ -464,7 +463,7 @@ impl Component for super::Editor {
     fn input_wants_rerender(&self, event: &InputEvent) -> bool {
         match event {
             InputEvent::Mouse(_) => {
-                self.mouse_dirty || self.selection.core.dragging || self.selection.has_selection()
+                self.dirty.mouse || self.selection.core.dragging || self.selection.has_selection()
             }
             InputEvent::Key(_) if self.paste_burst_paint_suppressed() => false,
             _ => true,
@@ -484,13 +483,13 @@ impl Component for super::Editor {
             return false;
         }
         self.selection.clear();
-        self.mouse_dirty = true;
+        self.dirty.mouse = true;
         true
     }
 
     fn tick(&mut self) -> bool {
-        if self.paste_burst_needs_paint && !self.paste_burst_paint_suppressed() {
-            self.paste_burst_needs_paint = false;
+        if self.dirty.paste_burst_paint && !self.paste_burst_paint_suppressed() {
+            self.dirty.paste_burst_paint = false;
             return true;
         }
         false

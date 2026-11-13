@@ -2,6 +2,9 @@
 depends_on: []
 title: "Consolidate TUI engine component state"
 needs_specs_change: false
+branch: sdd/c3315-refactor-tui-engine-component-state
+base_branch: main
+base_sha: 3bc81dce04fb7c449822180422b6d92c1fe64785
 ---
 
 # TUI 引擎组件状态收敛（P2 草案）

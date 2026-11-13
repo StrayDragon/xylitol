@@ -1,4 +1,4 @@
-use super::types::AutocompleteMode;
+use super::AutocompleteSession;
 use crate::autocomplete::{AutocompleteItem, AutocompleteSuggestions};
 use crate::completion::{CompletionContext, CompletionSource};
 use crate::components::select_list::{
@@ -23,7 +23,7 @@ impl super::Editor {
     }
 
     pub fn is_showing_autocomplete(&self) -> bool {
-        self.autocomplete_state.is_some() && self.autocomplete_list.is_some()
+        self.autocomplete.is_some()
     }
 
     pub(super) fn handle_autocomplete_on_edit(&mut self) {
@@ -99,17 +99,23 @@ impl super::Editor {
                 if force && explicit_tab && s.items.len() == 1 {
                     let item = s.items[0].clone();
                     let prefix = s.prefix.clone();
-                    let source_index = self.completion.active_index().unwrap_or(0);
+                    let Some(source_index) = self.completion.active_index() else {
+                        self.cancel_autocomplete();
+                        return;
+                    };
                     self.push_undo();
                     self.last_action = None;
-                    let (new_lines, nl, nc) = self.completion.apply_probed(
+                    let Some((new_lines, nl, nc)) = self.completion.apply_probed(
                         source_index,
                         &self.state.lines,
                         self.state.cursor_line,
                         self.state.cursor_col,
                         &item,
                         &prefix,
-                    );
+                    ) else {
+                        self.cancel_autocomplete();
+                        return;
+                    };
                     self.state.lines = new_lines;
                     self.state.cursor_line = nl;
                     self.set_cursor_col(nc);
@@ -117,14 +123,7 @@ impl super::Editor {
                     self.on_changed();
                     self.handle_autocomplete_on_edit();
                 } else {
-                    self.apply_autocomplete_suggestions(
-                        s,
-                        if force {
-                            AutocompleteMode::Force
-                        } else {
-                            AutocompleteMode::Regular
-                        },
-                    );
+                    self.apply_autocomplete_suggestions(s);
                 }
             }
             _ => {
@@ -133,11 +132,7 @@ impl super::Editor {
         }
     }
 
-    pub(super) fn apply_autocomplete_suggestions(
-        &mut self,
-        suggestions: AutocompleteSuggestions,
-        mode: AutocompleteMode,
-    ) {
+    pub(super) fn apply_autocomplete_suggestions(&mut self, suggestions: AutocompleteSuggestions) {
         let prev_prefix = self.autocomplete_prefix.clone();
         self.autocomplete_prefix = suggestions.prefix.clone();
         let items: Vec<SelectItem> = suggestions
@@ -151,9 +146,9 @@ impl super::Editor {
             .collect();
 
         let prev_value = self
-            .autocomplete_list
+            .autocomplete
             .as_ref()
-            .and_then(|l| l.get_selected_item())
+            .and_then(|s| s.list.get_selected_item())
             .map(|i| i.value.clone());
         let best_idx = self.get_best_autocomplete_match_index(&items, &self.autocomplete_prefix);
         let selected_idx = if prev_prefix == self.autocomplete_prefix {
@@ -185,8 +180,7 @@ impl super::Editor {
         if selected_idx < sl.filtered_items.len() {
             sl.set_selected_index(selected_idx);
         }
-        self.autocomplete_list = Some(sl);
-        self.autocomplete_state = Some(mode);
+        self.autocomplete = Some(AutocompleteSession { list: sl });
     }
 
     pub(super) fn get_best_autocomplete_match_index(
@@ -225,8 +219,7 @@ impl super::Editor {
     }
 
     pub(super) fn clear_autocomplete_ui(&mut self) {
-        self.autocomplete_state = None;
-        self.autocomplete_list = None;
+        self.autocomplete = None;
         self.autocomplete_prefix.clear();
         self.completion.clear_active();
     }
@@ -241,7 +234,8 @@ impl super::Editor {
     }
 
     pub(super) fn apply_selected_autocomplete(&mut self, chain_next: bool) -> bool {
-        let apply_data = if let Some(ref list) = self.autocomplete_list {
+        let apply_data = if let Some(ref session) = self.autocomplete {
+            let list = &session.list;
             list.get_selected_item().map(|i| {
                 (
                     i.value.clone(),

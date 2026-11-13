@@ -11,6 +11,7 @@ pub struct ScrollRegion {
     content: Vec<String>,
     wrapped: Vec<String>,
     height: usize,
+    rendered: bool,
     last_width: usize,
     origin_col: u16,
     origin_row: u16,
@@ -25,6 +26,7 @@ impl ScrollRegion {
             content: Vec::new(),
             wrapped: Vec::new(),
             height,
+            rendered: false,
             last_width: 0,
             origin_col: 0,
             origin_row: 0,
@@ -99,14 +101,17 @@ impl ScrollRegion {
 impl Component for ScrollRegion {
     fn render(&mut self, width: usize) -> Vec<String> {
         if width == 0 {
+            self.rendered = false;
             self.last_width = 0;
             return Vec::new();
         }
         if self.height == 0 {
+            self.rendered = false;
             self.wrapped.clear();
             self.view.set_lines(Vec::new());
             return Vec::new();
         }
+        self.rendered = true;
         self.last_width = width;
         let full = self.wrapped_at(width);
         let gutter = gutter_active(full.len(), self.height, width);
@@ -154,6 +159,7 @@ impl Component for ScrollRegion {
     }
 
     fn invalidate(&mut self) {
+        self.rendered = false;
         self.wrapped.clear();
         self.view.set_lines(Vec::new());
     }
@@ -167,7 +173,7 @@ impl Component for ScrollRegion {
         let InputEvent::Mouse(mouse) = event else {
             return false;
         };
-        if self.height == 0 || self.last_width == 0 {
+        if !self.rendered || self.height == 0 || self.last_width == 0 {
             return false;
         }
         let bottom = self.origin_row.saturating_add(self.height as u16);

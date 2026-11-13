@@ -327,7 +327,7 @@ impl Component for Tabs {
                 }
             }
             InputEvent::Mouse(_) => {
-                let _ = Tabs::offer_pointer(self, &event);
+                self.pointer_changed = Tabs::offer_pointer(self, &event);
             }
             InputEvent::Paste(_) => {}
         }

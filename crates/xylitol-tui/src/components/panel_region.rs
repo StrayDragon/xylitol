@@ -91,6 +91,7 @@ impl PanelRegion {
         if self.last_rect.is_none() {
             return false;
         }
+        self.pending_scroll = None;
         self.view.scroll_by(delta)
     }
 
@@ -138,6 +139,7 @@ impl Component for PanelRegion {
                 self.view.visible_lines().to_vec()
             }
             PanelOverflow::Clip => {
+                self.pending_scroll = None;
                 let mut lines = child_lines;
                 lines.truncate(target_h);
                 lines
@@ -312,5 +314,47 @@ mod tests {
             PanelPlacement::FloatRight,
         );
         assert!(panel.render(0).is_empty());
+    }
+    #[test]
+    fn scroll_by_clears_pending_scroll() {
+        let mut panel = PanelRegion::new(
+            Box::new(Lines(20)),
+            bounds(24, 40, 3, 10, PanelOverflow::Scroll),
+            PanelPlacement::DockRight,
+        );
+        panel.set_available(ScreenRect {
+            row: 0,
+            col: 10,
+            height: 30,
+            width: 80,
+        });
+        panel.render(30);
+        assert!(panel.set_scroll(5));
+        assert_eq!(panel.scroll_top(), 5);
+        assert!(panel.scroll_by(2));
+        assert_eq!(panel.scroll_top(), 2, "scroll_by must clear pending_scroll");
+    }
+
+    #[test]
+    fn clip_mode_discards_pending_scroll_on_render() {
+        let mut panel = PanelRegion::new(
+            Box::new(Lines(20)),
+            bounds(24, 40, 3, 10, PanelOverflow::Clip),
+            PanelPlacement::DockRight,
+        );
+        panel.set_available(ScreenRect {
+            row: 0,
+            col: 10,
+            height: 30,
+            width: 80,
+        });
+        assert!(panel.set_scroll(5));
+        assert_eq!(panel.scroll_top(), 5);
+        panel.render(30);
+        assert_eq!(
+            panel.scroll_top(),
+            0,
+            "clip mode must discard pending scroll on render"
+        );
     }
 }

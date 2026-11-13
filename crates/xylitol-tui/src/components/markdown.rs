@@ -62,6 +62,8 @@ pub struct Markdown {
 
     cached_text: Option<String>,
     cached_width: Option<usize>,
+    cached_mermaid_mode: Option<MermaidFenceMode>,
+    cached_table_header_underline: Option<bool>,
     cached_lines: Option<Vec<String>>,
 }
 
@@ -84,6 +86,8 @@ impl Markdown {
             content_width: 0,
             cached_text: None,
             cached_width: None,
+            cached_mermaid_mode: None,
+            cached_table_header_underline: None,
             cached_lines: None,
         }
     }
@@ -421,6 +425,8 @@ impl Markdown {
     fn cache_result(&mut self, width: usize, lines: Vec<String>) {
         self.cached_text = Some(self.text.clone());
         self.cached_width = Some(width);
+        self.cached_mermaid_mode = Some(self.mermaid_mode);
+        self.cached_table_header_underline = Some(self.table_header_underline);
         self.cached_lines = Some(lines);
     }
 }
@@ -2225,5 +2231,21 @@ mod tests {
             "osc8 sequence missing: {out:?}"
         );
         assert!(out.contains("site"), "label missing: {out:?}");
+    }
+
+    #[test]
+    fn mermaid_mode_change_invalidates_cache() {
+        let mut base = Markdown::new(
+            "~~~mermaid\ngraph\n~~~".to_string(),
+            0,
+            0,
+            identity_theme(),
+            None,
+        )
+        .with_mermaid_mode(MermaidFenceMode::Off);
+        let off_lines = base.render(40);
+        let mut switched = base.with_mermaid_mode(MermaidFenceMode::Final);
+        let final_lines = switched.render(40);
+        assert_ne!(off_lines, final_lines, "mermaid mode change must re-render");
     }
 }

@@ -202,16 +202,16 @@ impl super::Editor {
     }
 
     pub(super) fn local_to_buffer(&self, col: usize, row: usize) -> Option<CellPoint> {
-        if self.last_content_rows == 0 || row == 0 || row > self.last_content_rows {
+        if self.last_layout.content_rows == 0 || row == 0 || row > self.last_layout.content_rows {
             return None;
         }
         let px = self
             .padding_x
-            .min(self.last_paint_width.saturating_sub(1) / 2);
+            .min(self.last_layout.paint_width.saturating_sub(1) / 2);
         if col < px {
             return None;
         }
-        let layout = self.layout_text(self.last_width);
+        let layout = self.layout_text(self.last_layout.width);
         let layout_idx = self.scroll_offset + (row - 1);
         let ll = layout.get(layout_idx)?;
         let content_col = col - px;
@@ -224,17 +224,17 @@ impl super::Editor {
     }
 
     pub(super) fn clamp_local_to_buffer(&self, _col: usize, row: usize) -> Option<CellPoint> {
-        if self.last_content_rows == 0 {
+        if self.last_layout.content_rows == 0 {
             return None;
         }
-        let layout = self.layout_text(self.last_width);
+        let layout = self.layout_text(self.last_layout.width);
         if layout.is_empty() {
             return None;
         }
         let content_row = if row == 0 {
             0
-        } else if row > self.last_content_rows {
-            self.last_content_rows - 1
+        } else if row > self.last_layout.content_rows {
+            self.last_layout.content_rows - 1
         } else {
             row - 1
         };

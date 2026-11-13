@@ -26,6 +26,9 @@ impl CancellableLoader {
     }
 
     pub fn tick(&mut self) {
+        if self.aborted {
+            return;
+        }
         self.loader.tick();
     }
 
@@ -40,6 +43,9 @@ impl CancellableLoader {
 
 impl Component for CancellableLoader {
     fn render(&mut self, width: usize) -> Vec<String> {
+        if self.aborted {
+            return Vec::new();
+        }
         self.loader.render(width)
     }
 
@@ -59,5 +65,37 @@ impl Component for CancellableLoader {
 
     fn invalidate(&mut self) {
         self.loader.invalidate();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::InputEvent;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn loader() -> CancellableLoader {
+        CancellableLoader::new(
+            Box::new(|s| s.to_string()),
+            Box::new(|s| s.to_string()),
+            "loading".into(),
+            None,
+        )
+    }
+
+    fn esc() -> InputEvent {
+        InputEvent::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+    }
+
+    #[test]
+    fn render_and_tick_are_gated_after_abort() {
+        let mut l = loader();
+        assert!(!l.render(40).is_empty());
+        assert!(!l.aborted());
+        l.handle_input(esc());
+        assert!(l.aborted());
+        assert!(l.render(40).is_empty(), "aborted loader must not paint");
+        l.tick();
+        assert!(l.render(40).is_empty(), "tick must stay gated after abort");
     }
 }

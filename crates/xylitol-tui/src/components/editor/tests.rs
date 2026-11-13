@@ -153,7 +153,7 @@ fn move_cursor_up_down_preserves_visual_col() {
         clk(),
     );
     e.set_text("aaaa\nbbbb\ncccc".to_string());
-    e.last_width = 80;
+    e.last_layout.width = 80;
     e.state.cursor_line = 2;
     e.state.cursor_col = 3;
     e.move_cursor(-1, 0);
@@ -165,7 +165,7 @@ fn move_cursor_up_down_preserves_visual_col() {
 fn preferred_visual_col_cleared_on_horizontal() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
     e.set_text("aaaa\nbbbb\ncccc".to_string());
-    e.last_width = 80;
+    e.last_layout.width = 80;
     e.state.cursor_line = 2;
     e.state.cursor_col = 3;
     e.move_cursor(-1, 0);
@@ -190,7 +190,7 @@ fn page_scroll_moves_by_page_size() {
     e.set_text(lines.join("\n"));
     e.state.cursor_line = 5;
     e.state.cursor_col = 0;
-    e.last_width = 80;
+    e.last_layout.width = 80;
     e.page_scroll(1);
     assert!(
         e.state.cursor_line >= 15,
@@ -321,9 +321,12 @@ fn exit_history_on_edit() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
     e.add_to_history("old".to_string());
     e.navigate_history(-1);
-    assert_eq!(e.history_index, 0);
+    assert_eq!(e.history_browsing, Some(0));
     e.insert_ch("x");
-    assert_eq!(e.history_index, -1, "edit should exit history browsing");
+    assert_eq!(
+        e.history_browsing, None,
+        "edit should exit history browsing"
+    );
 }
 
 #[test]
@@ -700,9 +703,9 @@ fn paste_burst_suppresses_mid_burst_rerender() {
         "mid-burst keys must suppress typewriter paints"
     );
     e.paste_burst.reset();
-    e.paste_burst_needs_paint = true;
+    e.dirty.paste_burst_paint = true;
     assert!(e.tick(), "idle tick must catch up one paint after burst");
-    assert!(!e.paste_burst_needs_paint);
+    assert!(!e.dirty.paste_burst_paint);
 }
 
 #[test]

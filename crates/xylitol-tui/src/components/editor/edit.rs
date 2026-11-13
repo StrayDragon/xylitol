@@ -1,4 +1,5 @@
 use super::types::{CursorPlacement, EditorState};
+use crate::components::LastAction;
 use crate::kill_ring::KillRingOptions;
 use crate::utils::is_whitespace_char;
 use crate::word_navigation::{find_word_backward, find_word_forward};
@@ -35,18 +36,19 @@ impl super::Editor {
         if self.history.is_empty() {
             return;
         }
-        let new = self.history_index - direction;
+        let current = self.history_browsing.map_or(-1, |i| i as isize);
+        let new = current - direction;
         if new < -1 || new >= self.history.len() as isize {
             return;
         }
 
-        if self.history_index == -1 && new >= 0 {
+        if current == -1 && new >= 0 {
             self.push_undo();
             self.history_draft = Some(self.state.clone());
         }
-        self.history_index = new;
 
-        if self.history_index == -1 {
+        if new == -1 {
+            self.history_browsing = None;
             if let Some(d) = self.history_draft.take() {
                 self.state = d;
                 self.preferred_visual_col = None;
@@ -57,20 +59,18 @@ impl super::Editor {
                 self.set_text_internal("", CursorPlacement::End);
             }
         } else {
+            self.history_browsing = Some(new as usize);
             let placement = if direction < 0 {
                 CursorPlacement::End
             } else {
                 CursorPlacement::Start
             };
-            self.set_text_internal(
-                &self.history[self.history_index as usize].clone(),
-                placement,
-            );
+            self.set_text_internal(&self.history[new as usize].clone(), placement);
         }
     }
 
     pub(super) fn exit_history_browsing(&mut self) {
-        self.history_index = -1;
+        self.history_browsing = None;
         self.history_draft = None;
     }
 
@@ -140,13 +140,13 @@ impl super::Editor {
         let now = self.clock.now();
         self.paste_burst.on_plain_char(now);
         if self.paste_burst.consecutive_plain_chars() >= crate::paste_burst::PASTE_BURST_MIN_CHARS {
-            self.paste_burst_needs_paint = true;
+            self.dirty.paste_burst_paint = true;
         }
 
-        if is_whitespace_char(first) || self.last_action.as_deref() != Some("type-word") {
+        if is_whitespace_char(first) || self.last_action != Some(LastAction::TypeWord) {
             self.push_undo();
         }
-        self.last_action = Some("type-word".into());
+        self.last_action = Some(LastAction::TypeWord);
         let line = self.state.lines[self.state.cursor_line].clone();
         let b = &line[..self.state.cursor_col];
         let a = &line[self.state.cursor_col..];
@@ -159,7 +159,7 @@ impl super::Editor {
     pub(super) fn paste_burst_paint_suppressed(&self) -> bool {
         let now = self.clock.now();
         self.paste_burst.consecutive_plain_chars() >= crate::paste_burst::PASTE_BURST_MIN_CHARS
-            && self.paste_burst.is_coalescing(now)
+            && self.paste_burst.is_pasting(now)
     }
     pub(super) fn backspace(&mut self) {
         self.exit_history_browsing();
@@ -227,7 +227,7 @@ impl super::Editor {
     pub(super) fn del_to_start(&mut self) {
         self.exit_history_browsing();
         let line = self.state.lines[self.state.cursor_line].clone();
-        let was = self.last_action.as_deref() == Some("kill");
+        let was = self.last_action == Some(LastAction::Kill);
         if self.state.cursor_col > 0 {
             self.push_undo();
             self.kill_ring.push(
@@ -237,7 +237,7 @@ impl super::Editor {
                     accumulate: was,
                 },
             );
-            self.last_action = Some("kill".into());
+            self.last_action = Some(LastAction::Kill);
             self.state.lines[self.state.cursor_line] = line[self.state.cursor_col..].to_string();
             self.set_cursor_col(0);
         } else if self.state.cursor_line > 0 {
@@ -249,7 +249,7 @@ impl super::Editor {
                     accumulate: was,
                 },
             );
-            self.last_action = Some("kill".into());
+            self.last_action = Some(LastAction::Kill);
             let cur = self.state.lines.remove(self.state.cursor_line);
             let pl = self.state.lines[self.state.cursor_line - 1].len();
             self.state.lines[self.state.cursor_line - 1].push_str(&cur);
@@ -261,7 +261,7 @@ impl super::Editor {
     pub(super) fn del_to_end(&mut self) {
         self.exit_history_browsing();
         let line = self.state.lines[self.state.cursor_line].clone();
-        let was = self.last_action.as_deref() == Some("kill");
+        let was = self.last_action == Some(LastAction::Kill);
         if self.state.cursor_col < line.len() {
             self.push_undo();
             self.kill_ring.push(
@@ -271,7 +271,7 @@ impl super::Editor {
                     accumulate: was,
                 },
             );
-            self.last_action = Some("kill".into());
+            self.last_action = Some(LastAction::Kill);
             self.state.lines[self.state.cursor_line] = line[..self.state.cursor_col].to_string();
         } else if self.state.cursor_line + 1 < self.state.lines.len() {
             self.push_undo();
@@ -282,7 +282,7 @@ impl super::Editor {
                     accumulate: was,
                 },
             );
-            self.last_action = Some("kill".into());
+            self.last_action = Some(LastAction::Kill);
             let n = self.state.lines.remove(self.state.cursor_line + 1);
             self.state.lines[self.state.cursor_line].push_str(&n);
         }
@@ -291,7 +291,7 @@ impl super::Editor {
     pub(super) fn del_word_back(&mut self) {
         self.exit_history_browsing();
         let line = self.state.lines[self.state.cursor_line].clone();
-        let was = self.last_action.as_deref() == Some("kill");
+        let was = self.last_action == Some(LastAction::Kill);
         if self.state.cursor_col == 0 {
             if self.state.cursor_line > 0 {
                 self.push_undo();
@@ -302,7 +302,7 @@ impl super::Editor {
                         accumulate: was,
                     },
                 );
-                self.last_action = Some("kill".into());
+                self.last_action = Some(LastAction::Kill);
                 let cur = self.state.lines.remove(self.state.cursor_line);
                 let pl = self.state.lines[self.state.cursor_line - 1].len();
                 self.state.lines[self.state.cursor_line - 1].push_str(&cur);
@@ -321,7 +321,7 @@ impl super::Editor {
                     accumulate: was,
                 },
             );
-            self.last_action = Some("kill".into());
+            self.last_action = Some(LastAction::Kill);
             self.state.lines[self.state.cursor_line] = format!("{}{}", &line[..back], &line[old..]);
             self.set_cursor_col(back);
         }
@@ -330,7 +330,7 @@ impl super::Editor {
     pub(super) fn del_word_fwd(&mut self) {
         self.exit_history_browsing();
         let line = self.state.lines[self.state.cursor_line].clone();
-        let was = self.last_action.as_deref() == Some("kill");
+        let was = self.last_action == Some(LastAction::Kill);
         if self.state.cursor_col >= line.len() {
             if self.state.cursor_line + 1 < self.state.lines.len() {
                 self.push_undo();
@@ -341,7 +341,7 @@ impl super::Editor {
                         accumulate: was,
                     },
                 );
-                self.last_action = Some("kill".into());
+                self.last_action = Some(LastAction::Kill);
                 let n = self.state.lines.remove(self.state.cursor_line + 1);
                 self.state.lines[self.state.cursor_line].push_str(&n);
             }
@@ -357,7 +357,7 @@ impl super::Editor {
                     accumulate: was,
                 },
             );
-            self.last_action = Some("kill".into());
+            self.last_action = Some(LastAction::Kill);
             self.state.lines[self.state.cursor_line] = format!("{}{}", &line[..old], &line[fwd..]);
         }
         self.on_changed();
@@ -370,10 +370,10 @@ impl super::Editor {
         self.push_undo();
         let t = self.kill_ring.peek().unwrap().to_string();
         self.insert_inner(&t);
-        self.last_action = Some("yank".into());
+        self.last_action = Some(LastAction::Yank);
     }
     pub(super) fn yank_pop(&mut self) {
-        if self.last_action.as_deref() != Some("yank") || self.kill_ring.len() <= 1 {
+        if self.last_action != Some(LastAction::Yank) || self.kill_ring.len() <= 1 {
             return;
         }
         self.exit_history_browsing();
@@ -400,7 +400,7 @@ impl super::Editor {
         self.kill_ring.rotate();
         let nt = self.kill_ring.peek().unwrap().to_string();
         self.insert_inner(&nt);
-        self.last_action = Some("yank".into());
+        self.last_action = Some(LastAction::Yank);
     }
     pub(super) fn submit(&mut self) {
         self.exit_history_browsing();
@@ -425,7 +425,7 @@ impl super::Editor {
     pub(super) fn move_cursor(&mut self, dl: isize, dc: isize) {
         self.last_action = None;
         if dl != 0 {
-            let vls = self.build_visual_line_map(self.last_width);
+            let vls = self.build_visual_line_map(self.last_layout.width);
             let cur = self.find_current_visual_line(&vls) as isize;
             let target = cur + dl;
             if target >= 0 && (target as usize) < vls.len() {
