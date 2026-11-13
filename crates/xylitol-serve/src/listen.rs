@@ -22,6 +22,8 @@ use crate::wire::{CONTENT_TYPE, MAX_BODY_BYTES, Reply};
 
 pub const MUX_CHAN_CAP: usize = 16_384;
 
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(30);
+
 const WS_UNSUPPORTED_DATA: u16 = 1003;
 const WS_MESSAGE_TOO_BIG: u16 = 1009;
 
@@ -62,11 +64,16 @@ pub struct RunningListener {
 }
 
 impl RunningListener {
-    pub fn shutdown(&self) {
-        if let Some(host) = self.gateway.host() {
-            host.mark_shutting_down();
+    fn finalize(&self, remove_file: bool) {
+        self.gateway.mark_shutting_down();
+        if remove_file && let Some(path) = &self.registration_path {
+            registration::remove_registration(path);
         }
-        self.handle.stop_graceful(Duration::from_secs(30));
+        self.handle.stop_graceful(SHUTDOWN_GRACE);
+    }
+
+    pub fn shutdown(&self) {
+        self.finalize(false);
     }
 
     pub fn set_lifecycle(&self, lifecycle: ServeLifecycle, idle_timeout: Duration) {
@@ -115,13 +122,7 @@ impl RunningListener {
 
 impl Drop for RunningListener {
     fn drop(&mut self) {
-        if let Some(host) = self.gateway.host() {
-            host.mark_shutting_down();
-        }
-        if let Some(path) = &self.registration_path {
-            registration::remove_registration(path);
-        }
-        self.handle.stop_graceful(Duration::from_secs(30));
+        self.finalize(true);
     }
 }
 
@@ -149,8 +150,9 @@ pub async fn bind_listen(
     let server = Server::new(acceptor);
     let handle = server.handle();
     let shutdown_handle = handle.clone();
+    let shutdown_gateway = gateway.clone();
     tokio::spawn(async move {
-        shutdown_signal(shutdown_handle).await;
+        shutdown_signal(shutdown_handle, shutdown_gateway).await;
     });
     tokio::spawn(async move {
         server.serve(router).await;
@@ -197,7 +199,7 @@ pub async fn serve_registered(
     Ok((running, port))
 }
 
-async fn shutdown_signal(handle: ServerHandle) {
+async fn shutdown_signal(handle: ServerHandle, gateway: Arc<Gateway>) {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -222,14 +224,42 @@ async fn shutdown_signal(handle: ServerHandle) {
         _ = ctrl_c => {}
         _ = terminate => {}
     }
-    handle.stop_graceful(Duration::from_secs(30));
+    gateway.mark_shutting_down();
+    handle.stop_graceful(SHUTDOWN_GRACE);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u8)]
 pub enum Phase {
-    Starting,
-    Ready,
-    Failed,
+    Starting = 0,
+    Ready = 1,
+    Stopping = 2,
+    Failed = 3,
+}
+
+impl Phase {
+    fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    fn from_u8(raw: u8) -> Phase {
+        match raw {
+            0 => Phase::Starting,
+            1 => Phase::Ready,
+            2 => Phase::Stopping,
+            3 => Phase::Failed,
+            _ => panic!("unknown gateway phase byte: {raw}"),
+        }
+    }
+
+    fn status_str(self) -> &'static str {
+        match self {
+            Phase::Starting => "starting",
+            Phase::Ready => "ok",
+            Phase::Stopping => "stopping",
+            Phase::Failed => "failed",
+        }
+    }
 }
 
 pub struct Gateway {
@@ -244,32 +274,22 @@ pub struct Gateway {
 }
 
 impl Gateway {
-    const STARTING: u8 = 0;
-    const READY: u8 = 1;
-    const FAILED: u8 = 2;
-    const LIFE_PERSISTENT: u8 = 0;
-    const LIFE_LAST_CLIENT: u8 = 1;
-
     pub fn starting() -> Arc<Self> {
         let (idle_tx, _) = tokio::sync::watch::channel(false);
         Arc::new(Self {
-            phase: AtomicU8::new(Self::STARTING),
+            phase: AtomicU8::new(Phase::Starting.as_u8()),
             host: OnceLock::new(),
             auth: OnceLock::new(),
             mux_clients: AtomicUsize::new(0),
             idle_gen: AtomicU64::new(0),
-            lifecycle: AtomicU8::new(Self::LIFE_PERSISTENT),
+            lifecycle: AtomicU8::new(ServeLifecycle::Persistent.as_u8()),
             idle_timeout_ms: AtomicU64::new(DEFAULT_IDLE_GRACE.as_millis() as u64),
             idle_tx,
         })
     }
 
     pub fn set_lifecycle(&self, lifecycle: ServeLifecycle, idle_timeout: Duration) {
-        let flag = match lifecycle {
-            ServeLifecycle::Persistent => Self::LIFE_PERSISTENT,
-            ServeLifecycle::LastClient => Self::LIFE_LAST_CLIENT,
-        };
-        self.lifecycle.store(flag, Ordering::SeqCst);
+        self.lifecycle.store(lifecycle.as_u8(), Ordering::SeqCst);
         self.idle_timeout_ms
             .store(idle_timeout.as_millis() as u64, Ordering::SeqCst);
         if lifecycle.is_persistent() {
@@ -278,10 +298,7 @@ impl Gateway {
     }
 
     pub fn lifecycle(&self) -> ServeLifecycle {
-        match self.lifecycle.load(Ordering::SeqCst) {
-            Self::LIFE_LAST_CLIENT => ServeLifecycle::LastClient,
-            _ => ServeLifecycle::Persistent,
-        }
+        ServeLifecycle::from_u8(self.lifecycle.load(Ordering::SeqCst))
     }
 
     pub fn subscribe_idle(&self) -> tokio::sync::watch::Receiver<bool> {
@@ -351,19 +368,22 @@ impl Gateway {
 
     pub fn set_host(&self, host: Arc<dyn OccupiedHost>) {
         let _ = self.host.set(host);
-        self.phase.store(Self::READY, Ordering::SeqCst);
+        self.phase.store(Phase::Ready.as_u8(), Ordering::SeqCst);
+    }
+
+    pub fn mark_shutting_down(&self) {
+        if let Some(host) = self.host() {
+            host.mark_shutting_down();
+        }
+        self.phase.store(Phase::Stopping.as_u8(), Ordering::SeqCst);
     }
 
     pub fn mark_failed(&self) {
-        self.phase.store(Self::FAILED, Ordering::SeqCst);
+        self.phase.store(Phase::Failed.as_u8(), Ordering::SeqCst);
     }
 
     pub fn phase(&self) -> Phase {
-        match self.phase.load(Ordering::SeqCst) {
-            Self::READY => Phase::Ready,
-            Self::FAILED => Phase::Failed,
-            _ => Phase::Starting,
-        }
+        Phase::from_u8(self.phase.load(Ordering::SeqCst))
     }
 
     pub fn host(&self) -> Option<Arc<dyn OccupiedHost>> {
@@ -380,11 +400,11 @@ fn render_unavailable(res: &mut Response, phase: Phase) {
     if phase == Phase::Starting {
         let _ = res.add_header("retry-after", "1", true);
         res.render(Json(serde_json::json!({
-            "status": "starting",
+            "status": phase.status_str(),
             "retry_after": 1,
         })));
     } else {
-        res.render(Json(serde_json::json!({ "status": "failed" })));
+        res.render(Json(serde_json::json!({ "status": phase.status_str() })));
     }
 }
 
@@ -402,7 +422,7 @@ impl Handler for GatewayHoop {
         depot.insert_typed(self.0.clone());
         let is_healthz = req.uri().path().trim_end_matches('/') == "/healthz";
         match self.0.phase() {
-            Phase::Ready => {
+            Phase::Ready | Phase::Stopping => {
                 ctrl.call_next(req, depot, res).await;
             }
             _ if is_healthz => {
@@ -507,28 +527,24 @@ async fn healthz(depot: &mut Depot, res: &mut Response) {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
-    match gateway.phase() {
+    let phase = gateway.phase();
+    let status = phase.status_str();
+    match phase {
         Phase::Starting => {
             res.status_code(StatusCode::SERVICE_UNAVAILABLE);
             let _ = res.add_header("retry-after", "1", true);
             res.render(Json(healthz_body(
-                "starting",
+                status,
                 serde_json::json!({ "retry_after": 1 }),
             )));
         }
-        Phase::Failed => {
-            res.status_code(StatusCode::SERVICE_UNAVAILABLE);
-            res.render(Json(healthz_body("failed", serde_json::json!({}))));
-        }
         Phase::Ready => {
-            let stopping = gateway.host().is_some_and(|h| h.is_shutting_down());
-            if stopping {
-                res.status_code(StatusCode::SERVICE_UNAVAILABLE);
-                res.render(Json(healthz_body("stopping", serde_json::json!({}))));
-            } else {
-                res.status_code(StatusCode::OK);
-                res.render(Json(healthz_body("ok", serde_json::json!({}))));
-            }
+            res.status_code(StatusCode::OK);
+            res.render(Json(healthz_body(status, serde_json::json!({}))));
+        }
+        Phase::Stopping | Phase::Failed => {
+            res.status_code(StatusCode::SERVICE_UNAVAILABLE);
+            res.render(Json(healthz_body(status, serde_json::json!({}))));
         }
     }
 }
@@ -866,6 +882,98 @@ mod tests {
             .send(&service)
             .await;
         assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
+    }
+
+    #[test]
+    fn phase_round_trips_through_the_byte_representation() {
+        for phase in [
+            Phase::Starting,
+            Phase::Ready,
+            Phase::Stopping,
+            Phase::Failed,
+        ] {
+            assert_eq!(Phase::from_u8(phase.as_u8()), phase);
+        }
+    }
+
+    #[tokio::test]
+    async fn dropping_listener_removes_the_registration_file() {
+        let dir = std::env::temp_dir().join(format!("xylitol-listen-{}", uuid::Uuid::new_v4()));
+        let path = dir.join("serve.json");
+        let config = ListenConfig {
+            port: 0,
+            ..Default::default()
+        };
+        let gateway = Gateway::starting();
+        gateway.set_host(Arc::new(FakeHost::default()));
+        let (mut running, _port) = bind_listen(&config, gateway)
+            .await
+            .expect("bind ephemeral listener");
+        running
+            .arm_registration(
+                "http://127.0.0.1:0".into(),
+                path.clone(),
+                Duration::from_secs(5),
+            )
+            .expect("arm registration");
+        assert!(path.exists());
+        drop(running);
+        assert!(
+            !path.exists(),
+            "registration file must be removed on shutdown"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn lifecycle_round_trips_through_the_byte_representation() {
+        for lifecycle in [ServeLifecycle::Persistent, ServeLifecycle::LastClient] {
+            assert_eq!(ServeLifecycle::from_u8(lifecycle.as_u8()), lifecycle);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown serve lifecycle byte")]
+    fn lifecycle_from_u8_rejects_unknown_bytes() {
+        let _ = ServeLifecycle::from_u8(7);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown gateway phase byte")]
+    fn phase_from_u8_rejects_unknown_bytes() {
+        let _ = Phase::from_u8(9);
+    }
+
+    #[test]
+    fn phase_status_strings_are_pinned() {
+        assert_eq!(Phase::Starting.status_str(), "starting");
+        assert_eq!(Phase::Ready.status_str(), "ok");
+        assert_eq!(Phase::Stopping.status_str(), "stopping");
+        assert_eq!(Phase::Failed.status_str(), "failed");
+    }
+
+    #[tokio::test]
+    async fn healthz_reports_stopping_after_shutdown_mark() {
+        let gateway = Gateway::starting();
+        gateway.set_host(Arc::new(FakeHost::default()));
+        let service = Service::new(router(gateway.clone()));
+        gateway.mark_shutting_down();
+        let mut resp = TestClient::get("http://127.0.0.1:0/healthz")
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = resp.take_string().await.unwrap();
+        assert!(body.contains("\"stopping\""), "{body}");
+    }
+
+    #[test]
+    fn mark_shutting_down_moves_phase_to_stopping() {
+        let gateway = Gateway::starting();
+        gateway.set_host(Arc::new(FakeHost::default()));
+        assert_eq!(gateway.phase(), Phase::Ready);
+        gateway.mark_shutting_down();
+        assert_eq!(gateway.phase(), Phase::Stopping);
+        assert!(gateway.host().is_some_and(|h| h.is_shutting_down()));
     }
 
     #[test]

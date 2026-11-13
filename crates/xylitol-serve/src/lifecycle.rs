@@ -6,13 +6,26 @@ pub const DEFAULT_IDLE_GRACE: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
+#[repr(u8)]
 pub enum ServeLifecycle {
     #[default]
-    Persistent,
-    LastClient,
+    Persistent = 0,
+    LastClient = 1,
 }
 
 impl ServeLifecycle {
+    pub fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    pub fn from_u8(raw: u8) -> Self {
+        match raw {
+            0 => Self::Persistent,
+            1 => Self::LastClient,
+            _ => panic!("unknown serve lifecycle byte: {raw}"),
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Persistent => "persistent",

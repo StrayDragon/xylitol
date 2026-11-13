@@ -2,6 +2,9 @@
 depends_on: []
 title: "Consolidate serve gateway phase encoding"
 needs_specs_change: false
+branch: sdd/c3325-refactor-serve-gateway-phase
+base_branch: main
+base_sha: 0728e6b109a7e603fc5906e95bf9708bc3212fd2
 ---
 
 # Serve 网关相位编码收敛（P2 草案）

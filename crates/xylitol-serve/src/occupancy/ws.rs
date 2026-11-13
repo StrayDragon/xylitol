@@ -108,7 +108,6 @@ pub enum ReverseRpcResult {
     Approved,
     Denied,
     Answered(String),
-    Timeout,
 }
 
 impl ReverseRpcGateway {

@@ -873,7 +873,7 @@ impl AskUserGateway for SlotAskGateway {
             Ok(Ok(ReverseRpcResult::Answered(s))) => Ok(s),
             Ok(Ok(ReverseRpcResult::Approved)) => Ok("{}".into()),
             Ok(Ok(ReverseRpcResult::Denied)) => Err(XyToolError::Aborted),
-            Ok(Ok(ReverseRpcResult::Timeout)) | Ok(Err(_)) | Err(_) => {
+            Ok(Err(_)) | Err(_) => {
                 self.slot.gateway.remove(&rpc_id);
                 Err(XyToolError::Timeout(
                     crate::occupancy::ws::REVERSE_RPC_TIMEOUT,
@@ -897,7 +897,7 @@ impl McpElicitationGateway for SlotAskGateway {
             Ok(Ok(ReverseRpcResult::Answered(s))) => s,
             Ok(Ok(ReverseRpcResult::Approved)) => "{}".into(),
             Ok(Ok(ReverseRpcResult::Denied)) => String::new(),
-            Ok(Ok(ReverseRpcResult::Timeout)) | Ok(Err(_)) | Err(_) => {
+            Ok(Err(_)) | Err(_) => {
                 self.slot.gateway.remove(&rpc_id);
                 String::new()
             }
