@@ -52,13 +52,13 @@ impl MiddlewareFault {
                 "loop middleware {} timed out after {:?} at {}",
                 self.id,
                 LOOP_MIDDLEWARE_TIMEOUT,
-                self.stage.as_str()
+                self.stage.as_ref()
             )
         } else {
             format!(
                 "loop middleware {} cancelled at {}",
                 self.id,
-                self.stage.as_str()
+                self.stage.as_ref()
             )
         }
     }
@@ -101,7 +101,7 @@ where
                 ("loop.middleware.id".to_string(), id_attr),
                 (
                     "loop.middleware.stage".to_string(),
-                    stage.as_str().to_string(),
+                    stage.as_ref().to_string(),
                 ),
                 ("loop.middleware.order".to_string(), order.to_string()),
                 (

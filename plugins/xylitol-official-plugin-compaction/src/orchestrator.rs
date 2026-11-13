@@ -4,7 +4,7 @@ use crate::overflow::{assistant_same_model, is_context_overflow_assistant};
 use crate::token_estimator::{EstimateOpts, FixedRequestContext};
 use crate::{CompactionError, CompactionSettings, compact_session, prepare_compaction};
 use xylitol_plugin_sdk::XyCompaction;
-use xylitol_plugin_sdk::lifecycle::XyEvent;
+use xylitol_plugin_sdk::lifecycle::{CompactionOutcome, XyEvent};
 use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage, XyStopReason};
 use xylitol_plugin_sdk::session::SessionEntry;
 use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
@@ -56,11 +56,11 @@ impl CompactionOrchestrator {
             export_skipped(&error_message, None, obs_session);
             event_sink
                 .emit(&XyEvent::CompactionEnd {
-                    result: None,
-                    aborted: false,
                     reason: "manual".into(),
-                    will_retry: false,
-                    error_message: Some(error_message),
+                    outcome: CompactionOutcome::Failed {
+                        error: Some(error_message),
+                        will_retry: false,
+                    },
                     summary: None,
                     tokens_before: None,
                     tokens_after: None,
@@ -102,14 +102,8 @@ impl CompactionOrchestrator {
             let pending = take_fallback_notice(summary, fallback_notice_emitted, None);
             event_sink
                 .emit(&XyEvent::CompactionEnd {
-                    result: result.as_ref().ok().map(|_| "ok".to_string()),
-                    aborted: false,
                     reason: reason.to_string(),
-                    will_retry: false,
-                    error_message: result
-                        .as_ref()
-                        .err()
-                        .map(|e| format!("compaction failed: {e}")),
+                    outcome: CompactionOutcome::Completed,
                     summary: result.as_ref().ok().map(|e| e.summary.clone()),
                     tokens_before: result.as_ref().ok().map(|e| e.tokens_before),
                     tokens_after: settled.as_ref().map(|s| s.estimate.tokens),
@@ -201,11 +195,11 @@ impl CompactionOrchestrator {
         if overflow_recovery_attempted {
             event_sink
                 .emit(&XyEvent::CompactionEnd {
-                    result: None,
-                    aborted: false,
                     reason: "overflow".into(),
-                    will_retry: false,
-                    error_message: Some(OVERFLOW_ONCE_MSG.into()),
+                    outcome: CompactionOutcome::Failed {
+                        error: Some(OVERFLOW_ONCE_MSG.into()),
+                        will_retry: false,
+                    },
                     summary: None,
                     tokens_before: None,
                     tokens_after: None,
@@ -421,13 +415,21 @@ impl CompactionOrchestrator {
         }
         let pending = take_fallback_notice(summary_binding, fallback_notice_emitted, floor_notice);
 
+        let outcome = match (ok_result, err_msg, will_retry_end) {
+            (Some(_), _, _) => CompactionOutcome::Completed,
+            (None, Some(err), retry) => CompactionOutcome::Failed {
+                error: Some(err),
+                will_retry: retry,
+            },
+            (None, None, retry) => CompactionOutcome::Failed {
+                error: None,
+                will_retry: retry,
+            },
+        };
         event_sink
             .emit(&XyEvent::CompactionEnd {
-                result: ok_result,
-                aborted: false,
                 reason: end_reason,
-                will_retry: will_retry_end,
-                error_message: err_msg,
+                outcome,
                 summary: summary_text,
                 tokens_before,
                 tokens_after,
@@ -510,7 +512,6 @@ async fn emit_settlement_event(
         .emit(&XyEvent::ContextTokenSettlement {
             estimate: settled.estimate.clone(),
             reason: settled.reason.as_str().to_string(),
-            generation: settled.generation,
         })
         .await;
 }

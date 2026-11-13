@@ -366,7 +366,6 @@ async fn fork_impl(
         from_id,
         summary,
         details: None,
-        from_hook: None,
     });
     append(store, child_id, &summary_entry, true).await?;
     let mut label_parent = store.get_leaf(child_id);

@@ -3372,24 +3372,20 @@ pub(crate) async fn w_c2998_capabilities_open(host_pump_bdd: &HostPumpBdd, cmd: 
             .take()
             .unwrap_or_else(fresh_pump);
         pump.driver.seed_capabilities(vec![
-            CapabilityEntry {
-                id: "tool:read".into(),
-                kind: CapabilityKind::Tool,
-                label: "read".into(),
-                profile_enabled: true,
-                session_disabled: false,
-                effective_enabled: true,
-                pending: false,
-            },
-            CapabilityEntry {
-                id: "mcp:github".into(),
-                kind: CapabilityKind::McpServer,
-                label: "github".into(),
-                profile_enabled: true,
-                session_disabled: false,
-                effective_enabled: true,
-                pending: false,
-            },
+            CapabilityEntry::new(
+                "tool:read".into(),
+                CapabilityKind::Tool,
+                "read".into(),
+                false,
+                false,
+            ),
+            CapabilityEntry::new(
+                "mcp:github".into(),
+                CapabilityKind::McpServer,
+                "github".into(),
+                false,
+                false,
+            ),
         ]);
         *host_pump_bdd.pump.borrow_mut() = Some(pump);
     }

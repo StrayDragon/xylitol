@@ -739,7 +739,7 @@ impl XyDriver for ScriptedDriver {
         self.capability_snapshot()
             .entries
             .iter()
-            .any(|entry| entry.pending)
+            .any(|entry| entry.pending())
     }
 
     fn set_capability(
@@ -752,14 +752,20 @@ impl XyDriver for ScriptedDriver {
             .expect("capability_calls")
             .push((id.to_string(), enabled));
         let mut snap = self.capability_snapshot();
-        let Some(entry) = snap.entries.iter_mut().find(|entry| entry.id == id) else {
+        let Some(position) = snap.entries.iter().position(|entry| entry.id == id) else {
             return Err(XyDriverError::invalid_input(format!(
                 "unknown capability `{id}`"
             )));
         };
-        entry.session_disabled = !enabled;
-        entry.effective_enabled = enabled;
-        entry.pending = true;
+        let entry = &snap.entries[position];
+        let updated = xylitol_plugin_sdk::session::CapabilityEntry::new(
+            entry.id.clone(),
+            entry.kind,
+            entry.label.clone(),
+            !enabled,
+            enabled,
+        );
+        snap.entries[position] = updated;
         snap.pending = true;
         *self
             .capability_snapshot
@@ -773,10 +779,15 @@ impl XyDriver for ScriptedDriver {
     ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
         self.clear_capabilities_calls.fetch_add(1, Ordering::SeqCst);
         let mut snap = self.capability_snapshot();
-        for entry in &mut snap.entries {
-            entry.session_disabled = false;
-            entry.effective_enabled = true;
-            entry.pending = false;
+        for entry in std::mem::take(&mut snap.entries) {
+            snap.entries
+                .push(xylitol_plugin_sdk::session::CapabilityEntry::new(
+                    entry.id,
+                    entry.kind,
+                    entry.label,
+                    false,
+                    false,
+                ));
         }
         snap.pending = false;
         *self
@@ -5204,11 +5215,8 @@ mod slice_tests {
         }));
         session
             .step(HostEvent::Xy(Box::new(XyEvent::CompactionEnd {
-                result: Some("ok".into()),
-                aborted: false,
                 reason: "manual".into(),
-                will_retry: false,
-                error_message: None,
+                outcome: xylitol_plugin_sdk::CompactionOutcome::Completed,
                 summary: Some("done".into()),
                 tokens_before: Some(100),
                 tokens_after: None,
@@ -5263,7 +5271,6 @@ mod slice_tests {
                     ..Default::default()
                 },
                 reason: "turn_settled".into(),
-                generation: 1,
             })))
             .unwrap();
         session
@@ -5371,7 +5378,6 @@ mod slice_tests {
                     ..Default::default()
                 },
                 reason: "turn_settled".into(),
-                generation: 7,
             })))
             .unwrap();
         let mut stream = None;

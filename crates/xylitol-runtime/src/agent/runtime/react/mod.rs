@@ -1230,7 +1230,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         tool_schemas: turn_tool_schemas.clone(),
                         tool_catalog: tool_catalog.clone(),
                         options: generate_options.clone(),
-                        todo: bar.todo.clone(),
+                        todo: bar.todo().cloned(),
                         session_id: Some(session_id.clone()),
                     };
                     match run_before_llm_request(&loop_chain, &cancel, iteration_parent, &obs_session, ctx).await {

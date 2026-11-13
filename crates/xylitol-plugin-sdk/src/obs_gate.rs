@@ -217,3 +217,43 @@ impl Drop for SpanCollectScope {
         SPAN_COLLECT_ACTIVE.fetch_sub(1, Ordering::SeqCst);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_write_without_scope_lands_in_global() {
+        set_provider_trace_active(true);
+        assert!(provider_trace_active());
+        set_provider_trace_active(false);
+        assert!(!provider_trace_active());
+        set_observation_io_tier(ObservationIoTier::Full);
+        assert_eq!(observation_io_tier(), ObservationIoTier::Full);
+        set_observation_io_tier(ObservationIoTier::None);
+    }
+
+    #[test]
+    fn scoped_write_does_not_reach_global_and_dies_with_scope() {
+        set_provider_trace_active(false);
+        set_observation_io_tier(ObservationIoTier::None);
+        set_tool_observation_io_tier(ObservationIoTier::None);
+        {
+            let _scope = ObsGateScope::enter(ObsGateState {
+                active: true,
+                observation_io: ObservationIoTier::Full,
+                tool_observation_io: ObservationIoTier::Truncated,
+            });
+            assert!(provider_trace_active());
+            assert_eq!(observation_io_tier(), ObservationIoTier::Full);
+            assert_eq!(tool_observation_io_tier(), ObservationIoTier::Truncated);
+            set_provider_trace_active(false);
+            set_observation_io_tier(ObservationIoTier::None);
+            assert!(!provider_trace_active());
+            assert_eq!(observation_io_tier(), ObservationIoTier::None);
+        }
+        assert!(!provider_trace_active());
+        assert_eq!(observation_io_tier(), ObservationIoTier::None);
+        assert_eq!(tool_observation_io_tier(), ObservationIoTier::None);
+    }
+}

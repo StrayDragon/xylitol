@@ -97,8 +97,8 @@ pub(crate) fn t_cap_session_b_unaffected(capability_bdd: &CapabilityBdd, id: Str
         .iter()
         .find(|entry| entry.id == id)
         .expect("capability entry");
-    assert!(entry.effective_enabled, "capability: 新会话不应继承禁用");
+    assert!(entry.effective_enabled(), "capability: 新会话不应继承禁用");
     assert!(!entry.session_disabled);
-    assert!(!entry.pending);
+    assert!(!entry.pending());
     assert!(!snapshot.pending);
 }

@@ -923,7 +923,7 @@ compaction:
         let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
         let codemode: xylitol_plugin_sdk::CodemodeConfig =
             cfg.section("codemode").expect("section").expect("present");
-        assert!(codemode.is_active());
+        assert!(codemode.enabled);
         assert_eq!(codemode.fuel, 42);
         assert_eq!(codemode.max_nested_calls, 100);
 

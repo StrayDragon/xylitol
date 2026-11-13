@@ -1,5 +1,6 @@
 use crate::bridge::{CompactionBlockStatus, UiEntry, UiModel, UiPhase, trailing_aborted_note};
 use crate::driver::XyEvent;
+use xylitol_plugin_sdk::CompactionOutcome;
 
 pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
@@ -16,45 +17,48 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             true
         }
         XyEvent::CompactionEnd {
-            aborted,
-            error_message,
+            outcome,
             summary,
             tokens_before,
             tokens_after,
             notice,
             ..
         } => {
-            if *aborted {
-                finish_compaction(
-                    model,
-                    CompactionBlockStatus::Aborted,
-                    String::new(),
-                    0,
-                    None,
-                    Some("compaction aborted".into()),
-                );
-            } else if let Some(err) = error_message {
-                finish_compaction(
-                    model,
-                    CompactionBlockStatus::Failed,
-                    String::new(),
-                    0,
-                    None,
-                    Some(err.clone()),
-                );
-            } else {
-                finish_compaction(
-                    model,
-                    CompactionBlockStatus::Complete,
-                    summary.clone().unwrap_or_default(),
-                    tokens_before.unwrap_or(0),
-                    *tokens_after,
-                    None,
-                );
-                if let Some(text) = notice {
-                    model
-                        .entries
-                        .push(UiEntry::ScrollNotice { text: text.clone() });
+            match outcome {
+                CompactionOutcome::Completed => {
+                    finish_compaction(
+                        model,
+                        CompactionBlockStatus::Complete,
+                        summary.clone().unwrap_or_default(),
+                        tokens_before.unwrap_or(0),
+                        *tokens_after,
+                        None,
+                    );
+                    if let Some(text) = notice {
+                        model
+                            .entries
+                            .push(UiEntry::ScrollNotice { text: text.clone() });
+                    }
+                }
+                CompactionOutcome::Failed { error, .. } => {
+                    finish_compaction(
+                        model,
+                        CompactionBlockStatus::Failed,
+                        String::new(),
+                        0,
+                        None,
+                        Some(error.clone().unwrap_or_else(|| "compaction aborted".into())),
+                    );
+                }
+                CompactionOutcome::Aborted => {
+                    finish_compaction(
+                        model,
+                        CompactionBlockStatus::Failed,
+                        String::new(),
+                        0,
+                        None,
+                        Some("compaction aborted".into()),
+                    );
                 }
             }
             if model.phase == UiPhase::Busy {

@@ -496,10 +496,13 @@ impl<T: Terminal> HostSession<T> {
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
             root.close_session_tree();
-            if let Some(ref text) = travel.editor_text {
-                root.set_editor_text(text.clone());
-            } else {
-                root.set_editor_text(String::new());
+            match travel.action() {
+                xylitol_plugin_sdk::session::TravelAction::Rewind { prefill } => {
+                    root.set_editor_text(prefill);
+                }
+                xylitol_plugin_sdk::session::TravelAction::View => {
+                    root.set_editor_text(String::new());
+                }
             }
         }
         self.sync_ui_root_from_model();

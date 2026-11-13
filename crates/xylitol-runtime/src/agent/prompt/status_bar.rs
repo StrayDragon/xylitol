@@ -17,13 +17,11 @@ mod tests {
     #[test]
     fn non_empty_todo_is_child_of_status_bar() {
         let history = vec![AgentMessage::user("hi")];
-        let bar = AgentStatusBar {
-            todo: Some(TodoList::new(vec![TodoItem {
-                id: "t_abcd1234".into(),
-                content: "a < b".into(),
-                status: TodoStatus::InProgress,
-            }])),
-        };
+        let bar = AgentStatusBar::with_todo(TodoList::new(vec![TodoItem {
+            id: "t_abcd1234".into(),
+            content: "a < b".into(),
+            status: TodoStatus::InProgress,
+        }]));
         let projected = project_outbound(&history, &bar);
         let text = projected.last().expect("tail").text();
         assert!(text.contains("<agent_status_bar>"), "{text}");

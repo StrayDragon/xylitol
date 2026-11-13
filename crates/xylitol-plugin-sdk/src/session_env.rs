@@ -19,6 +19,8 @@ fn xml_escape(s: &str) -> String {
 
 pub const CUSTOM_TYPE_SESSION_ENV: &str = "session_env";
 
+pub const CUSTOM_TYPE_CONTEXT_FINGERPRINT: &str = "context-fingerprint-snapshot";
+
 pub const SESSION_ENV_XML_ROOT: &str = "session_env";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,11 +129,25 @@ fn tag_value<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
     Some(text[start..end].trim())
 }
 
-pub fn should_append_session_env(history: &[AgentMessage], next: &SessionEnvSnapshot) -> bool {
-    match last_session_env(history) {
+pub fn should_append_on_state_change(
+    last: Option<(&str, &str, &str)>,
+    next: (&str, &str, &str),
+) -> bool {
+    match last {
         None => true,
-        Some(prev) => prev.date != next.date || prev.cwd != next.cwd,
+        Some((last_date, last_cwd, last_fingerprint)) => {
+            last_date != next.0 || last_cwd != next.1 || last_fingerprint != next.2
+        }
     }
+}
+
+pub fn should_append_session_env(history: &[AgentMessage], next: &SessionEnvSnapshot) -> bool {
+    let last = last_session_env(history);
+    should_append_on_state_change(
+        last.as_ref()
+            .map(|prev| (prev.date.as_str(), prev.cwd.as_str(), "")),
+        (next.date.as_str(), next.cwd.as_str(), ""),
+    )
 }
 
 pub fn ensure_session_env_in_history(

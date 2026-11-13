@@ -42,7 +42,7 @@ pub fn run(action: ConfigAction) -> Result<(), String> {
                 .section_or_default("tools")
                 .unwrap_or_default();
             let mut warnings = Vec::new();
-            if !codemode.is_active() && xylitol_plugin_sdk::run_code_selected(&tools) {
+            if !codemode.enabled && xylitol_plugin_sdk::run_code_selected(&tools) {
                 warnings.push("codemode disabled; run_code selection ignored".to_string());
             }
             for warning in &warnings {

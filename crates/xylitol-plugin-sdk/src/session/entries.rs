@@ -125,8 +125,6 @@ pub struct CompactionEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub from_hook: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub policy: Option<CompactionPolicySnapshot>,
 }
 
@@ -139,8 +137,6 @@ pub struct BranchSummaryEntry {
     pub summary: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub from_hook: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

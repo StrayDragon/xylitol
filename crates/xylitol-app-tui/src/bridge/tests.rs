@@ -1,4 +1,5 @@
 use super::*;
+use xylitol_plugin_sdk::CompactionOutcome;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_wire::{event_from_wire, event_to_wire};
 
@@ -993,11 +994,8 @@ fn compaction_end_restores_working() {
     apply_xy_event(
         &mut model,
         &XyEvent::CompactionEnd {
-            result: Some("ok".into()),
-            aborted: false,
             reason: "manual".into(),
-            will_retry: false,
-            error_message: None,
+            outcome: CompactionOutcome::Completed,
             summary: Some("session summary".into()),
             tokens_before: Some(42_000),
             tokens_after: None,
@@ -1032,11 +1030,8 @@ fn compaction_end_notice_tail_inserts_scroll_notice() {
     apply_xy_event(
         &mut model,
         &XyEvent::CompactionEnd {
-            result: Some("ok".into()),
-            aborted: false,
             reason: "threshold".into(),
-            will_retry: false,
-            error_message: None,
+            outcome: CompactionOutcome::Completed,
             summary: Some("s".into()),
             tokens_before: Some(35_840),
             tokens_after: Some(3_712),
@@ -1072,11 +1067,8 @@ fn compaction_end_aborted_restores_working() {
     apply_xy_event(
         &mut model,
         &XyEvent::CompactionEnd {
-            result: None,
-            aborted: true,
             reason: "manual".into(),
-            will_retry: false,
-            error_message: None,
+            outcome: CompactionOutcome::Aborted,
             summary: None,
             tokens_before: None,
             tokens_after: None,
@@ -1088,11 +1080,11 @@ fn compaction_end_aborted_restores_working() {
         model.entries.iter().any(|e| matches!(
             e,
             UiEntry::Compaction {
-                status: CompactionBlockStatus::Aborted,
+                status: CompactionBlockStatus::Failed,
                 ..
             }
         )),
-        "expected aborted compaction block, got {:?}",
+        "expected failed compaction block, got {:?}",
         model.entries
     );
 }

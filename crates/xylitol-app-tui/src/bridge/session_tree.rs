@@ -904,7 +904,6 @@ mod tests {
             first_kept_entry_id: "u2".into(),
             tokens_before: 186_842,
             details: None,
-            from_hook: None,
             policy: None,
         });
         let ui = session_entry_to_ui_entries(&entry);

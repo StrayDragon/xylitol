@@ -57,6 +57,7 @@ pub enum BootstrapWarning {
     ModelEntrySkipped(String),
     NoApiKey { provider: String },
     ProjectNotTrusted { reason: String },
+    CodemodeRunCodeIgnored,
     RestoringSession { session: String, path: String },
     ModelResolutionWarning(String),
     ModelResolutionFailed(String),
@@ -70,6 +71,7 @@ pub struct BootstrappedAgent {
     pub warnings: Vec<BootstrapWarning>,
     pub store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
     pub mcp_servers: Option<Vec<crate::mcp_spec::McpServerSpec>>,
+    pub project_trusted: bool,
     tool_features: crate::driver::ToolFeatures,
     driver_context: crate::driver::DriverContext,
     trust_audit: xylitol_runtime::TrustAuditConfig,
@@ -82,6 +84,7 @@ pub struct BootstrappedRuntime {
     pub session_id: String,
     pub warnings: Vec<BootstrapWarning>,
     pub mcp_servers: Option<Vec<crate::mcp_spec::McpServerSpec>>,
+    pub project_trusted: bool,
 }
 
 fn block_on_bootstrap_task<T>(
@@ -189,12 +192,17 @@ impl BootstrappedAgent {
             .as_ref()
             .map(|servers| servers.iter().map(|server| server.name.clone()).collect())
             .unwrap_or_default();
+        let codemode_ignored = !self.tool_features.codemode_enabled
+            && xylitol_plugin_sdk::run_code_selected(&self.tool_features.tool_selection);
         let mut driver = crate::driver::assemble_driver_with_features_and_context(
             self.agent,
             self.store,
             self.tool_features,
             self.driver_context,
         );
+        if codemode_ignored {
+            self.warnings.push(BootstrapWarning::CodemodeRunCodeIgnored);
+        }
         driver.set_mcp_server_ids(mcp_ids);
         driver.set_trust_audit_config(self.trust_audit);
         driver.set_session_profile(xylitol_plugin_sdk::session::SessionProfile {
@@ -212,6 +220,7 @@ impl BootstrappedAgent {
             session_id: self.session_id,
             warnings: self.warnings,
             mcp_servers: self.mcp_servers,
+            project_trusted: self.project_trusted,
         }
     }
 
@@ -814,6 +823,7 @@ pub fn bootstrap_with(
     let trust_audit = assembly.trust_audit.clone();
     let agent_profile = assembly.agent_profile.clone();
     let agent_profile_fingerprint = assembly.agent_profile_fingerprint.clone();
+    let project_trusted = assembly.project_trusted;
     let driver_context = crate::driver::DriverContext {
         project_root: std::path::PathBuf::from(&assembly.cwd),
         trusted: assembly.project_trusted,
@@ -868,6 +878,7 @@ pub fn bootstrap_with(
         warnings,
         store,
         mcp_servers,
+        project_trusted,
         tool_features,
         driver_context,
         trust_audit,

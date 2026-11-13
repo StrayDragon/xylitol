@@ -326,7 +326,6 @@ pub async fn compact_session(
             "readFiles": read_files,
             "modifiedFiles": modified_files,
         })),
-        from_hook: Some(false),
         policy: Some(
             xylitol_plugin_sdk::session::CompactionPolicySnapshot::current(
                 context_window,
@@ -432,6 +431,8 @@ fn state_entries(entries: &[SessionEntry], entries_before: &[SessionEntry]) -> V
         latest_todo_checkpoint, latest_workflow,
     };
 
+    use xylitol_plugin_sdk::session_env::CUSTOM_TYPE_CONTEXT_FINGERPRINT;
+
     let cut = build_context_entries(entries);
     let has_custom = |custom_type: &str| {
         cut.iter().any(|entry| {
@@ -439,24 +440,26 @@ fn state_entries(entries: &[SessionEntry], entries_before: &[SessionEntry]) -> V
         })
     };
 
-    let mut snapshots: Vec<SessionEntry> = Vec::new();
-    if !has_custom(CUSTOM_TYPE_WORKFLOW)
-        && let Some(workflow) = latest_workflow(entries_before)
-    {
-        snapshots.push(workflow.to_custom_entry_shell());
-    }
-    if !has_custom(CUSTOM_TYPE_TODO_CHECKPOINT)
-        && let Some(checkpoint) = latest_todo_checkpoint(entries_before)
-    {
-        snapshots.push(checkpoint.to_custom_entry_shell());
-    }
-    const CUSTOM_TYPE_CONTEXT_FINGERPRINT: &str = "context-fingerprint-snapshot";
-    if !has_custom(CUSTOM_TYPE_CONTEXT_FINGERPRINT)
-        && let Some(snapshot) = latest_custom_entry(entries_before, CUSTOM_TYPE_CONTEXT_FINGERPRINT)
-    {
-        snapshots.push(snapshot);
-    }
-    snapshots
+    let candidates: [(&str, Option<SessionEntry>); 3] = [
+        (
+            CUSTOM_TYPE_WORKFLOW,
+            latest_workflow(entries_before).map(|workflow| workflow.to_custom_entry_shell()),
+        ),
+        (
+            CUSTOM_TYPE_TODO_CHECKPOINT,
+            latest_todo_checkpoint(entries_before)
+                .map(|checkpoint| checkpoint.to_custom_entry_shell()),
+        ),
+        (
+            CUSTOM_TYPE_CONTEXT_FINGERPRINT,
+            latest_custom_entry(entries_before, CUSTOM_TYPE_CONTEXT_FINGERPRINT),
+        ),
+    ];
+    candidates
+        .into_iter()
+        .filter(|(custom_type, _)| !has_custom(custom_type))
+        .filter_map(|(_, snapshot)| snapshot)
+        .collect()
 }
 
 fn latest_custom_entry(entries: &[SessionEntry], custom_type: &str) -> Option<SessionEntry> {
@@ -647,7 +650,7 @@ mod tests {
                 parent_id: None,
                 timestamp: 0,
             },
-            custom_type: "context-fingerprint-snapshot".into(),
+            custom_type: xylitol_plugin_sdk::session_env::CUSTOM_TYPE_CONTEXT_FINGERPRINT.into(),
             data: serde_json::json!({ "skills": {}, "tools": null, "prepare": null }),
         })
     }
@@ -667,7 +670,7 @@ mod tests {
         for expected in [
             xylitol_plugin_sdk::session::CUSTOM_TYPE_WORKFLOW,
             xylitol_plugin_sdk::session::CUSTOM_TYPE_TODO_CHECKPOINT,
-            "context-fingerprint-snapshot",
+            xylitol_plugin_sdk::session_env::CUSTOM_TYPE_CONTEXT_FINGERPRINT,
         ] {
             assert!(types.contains(&expected.to_string()), "missing {expected}");
         }
@@ -683,7 +686,12 @@ mod tests {
         let fingerprint = appended
             .iter()
             .find(|entry| {
-                matches!(entry, SessionEntry::Custom(custom) if custom.custom_type == "context-fingerprint-snapshot")
+                matches!(
+                    entry,
+                    SessionEntry::Custom(custom)
+                        if custom.custom_type
+                            == xylitol_plugin_sdk::session_env::CUSTOM_TYPE_CONTEXT_FINGERPRINT
+                )
             })
             .expect("fingerprint snapshot MUST be appended");
         match fingerprint {
@@ -720,7 +728,6 @@ mod tests {
             first_kept_entry_id: first_kept.into(),
             tokens_before: 10,
             details: None,
-            from_hook: None,
             policy: None,
         })
     }

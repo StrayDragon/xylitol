@@ -96,7 +96,6 @@ pub(crate) async fn close_iteration(
         events.push(XyEvent::ContextTokenSettlement {
             estimate: s.estimate.clone(),
             reason: s.reason.as_str().to_string(),
-            generation: s.generation,
         });
     }
     events.push(XyEvent::StepEnd { step_index });

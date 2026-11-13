@@ -20,6 +20,23 @@ pub struct SessionTreeTravel {
     pub editor_text: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TravelAction {
+    Rewind { prefill: String },
+    View,
+}
+
+impl SessionTreeTravel {
+    pub fn action(&self) -> TravelAction {
+        match self.editor_text.as_deref() {
+            Some(prefill) => TravelAction::Rewind {
+                prefill: prefill.to_string(),
+            },
+            None => TravelAction::View,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionTreeNode {
     pub entry: SessionEntry,

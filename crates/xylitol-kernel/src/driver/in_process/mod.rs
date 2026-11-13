@@ -74,7 +74,7 @@ impl ToolFeatures {
             workflow_max_depth: workflow.max_depth,
             workflow_max_total_steps: workflow.max_total_steps,
             tool_selection,
-            codemode_enabled: codemode.is_active(),
+            codemode_enabled: codemode.enabled,
         }
     }
 }

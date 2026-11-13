@@ -123,12 +123,6 @@ impl Default for CodemodeConfig {
     }
 }
 
-impl CodemodeConfig {
-    pub fn is_active(&self) -> bool {
-        self.enabled
-    }
-}
-
 pub fn run_code_selected(tools: &[String]) -> bool {
     tools.iter().any(|entry| {
         let entry = entry.trim();

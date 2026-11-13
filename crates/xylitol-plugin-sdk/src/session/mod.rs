@@ -50,7 +50,7 @@ pub use todo::{
     latest_agent_todo, normalize_rewrite_items,
 };
 pub use tree::{
-    SessionTreeKind, SessionTreeNode, SessionTreeTravel, build_session_tree,
+    SessionTreeKind, SessionTreeNode, SessionTreeTravel, TravelAction, build_session_tree,
     plan_message_history_travel,
 };
 pub use workflow::{
@@ -391,7 +391,6 @@ mod session_tree_tests {
             first_kept_entry_id: first_kept.into(),
             tokens_before: 1000,
             details: None,
-            from_hook: None,
             policy: None,
         })
     }
@@ -582,7 +581,6 @@ mod as_agent_message_tests {
             first_kept_entry_id: "m1".into(),
             tokens_before: 100,
             details: None,
-            from_hook: None,
             policy: None,
         });
         let msg = e.as_agent_message().expect("compaction");

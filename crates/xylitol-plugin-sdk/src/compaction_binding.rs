@@ -32,6 +32,11 @@ impl CompactionModelAttribution {
                 "Compaction summary fell back to {} (could not use {})",
                 self.actual_model, requested
             ))
+        } else if self.thinking_rejected {
+            Some(format!(
+                "Compaction summary used {} without thinking (thinking rejected)",
+                self.actual_model
+            ))
         } else {
             None
         }
@@ -84,5 +89,27 @@ impl CompactionSummaryBinding {
                 thinking_rejected: false,
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thinking_rejected_emits_notice_through_same_pipeline() {
+        let mut attribution = CompactionModelAttribution {
+            requested_model: None,
+            actual_model: "small".into(),
+            fallback: false,
+            thinking_rejected: true,
+        };
+        let notice = attribution.notice_message().expect("thinking notice");
+        assert!(notice.contains("without thinking"), "{notice}");
+        attribution.thinking_rejected = false;
+        assert!(attribution.notice_message().is_none());
+        attribution.fallback = true;
+        let notice = attribution.notice_message().expect("fallback notice");
+        assert!(notice.contains("fell back"), "{notice}");
     }
 }

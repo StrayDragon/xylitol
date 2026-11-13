@@ -88,19 +88,55 @@ pub fn resume_hint_line(session_id: Option<&str>, listed: bool) -> Option<String
     listed.then(|| format!("Resume by $ xylitol tui --session {sid}"))
 }
 
-pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Option<String>) {
-    match command {
-        Some(CliCommand::Tui { .. }) => (true, false, None),
-        Some(CliCommand::Print {
-            prompt,
-            prompt_flag,
-            ..
-        }) => {
-            let merged =
-                merge_prompt_parts(prompt_flag.as_deref(), prompt.as_deref()).map(str::to_string);
-            (false, true, merged)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SurfaceIntent {
+    pub force_tui: bool,
+    pub explicit_print: bool,
+    pub one_shot_prompt: Option<String>,
+}
+
+impl SurfaceIntent {
+    pub fn from_command(command: Option<&CliCommand>) -> Self {
+        match command {
+            Some(CliCommand::Tui { .. }) => Self {
+                force_tui: true,
+                explicit_print: false,
+                one_shot_prompt: None,
+            },
+            Some(CliCommand::Print {
+                prompt,
+                prompt_flag,
+                ..
+            }) => Self {
+                force_tui: false,
+                explicit_print: true,
+                one_shot_prompt: merge_prompt_parts(prompt_flag.as_deref(), prompt.as_deref())
+                    .map(str::to_string),
+            },
+            None | Some(_) => Self {
+                force_tui: false,
+                explicit_print: false,
+                one_shot_prompt: None,
+            },
         }
-        None | Some(_) => (false, false, None),
+    }
+
+    pub fn wants_tui(&self, list_models: bool, stdin_is_tty: bool) -> bool {
+        !list_models && self.mode(stdin_is_tty) == SurfaceMode::Tui
+    }
+
+    pub fn mode(&self, stdin_is_tty: bool) -> SurfaceMode {
+        if self.force_tui {
+            return SurfaceMode::Tui;
+        }
+        if self.explicit_print || self.one_shot_prompt.is_some() {
+            return SurfaceMode::Print;
+        }
+        if stdin_is_tty {
+            SurfaceMode::Tui
+        } else {
+            SurfaceMode::Print
+        }
     }
 }
 
@@ -108,24 +144,6 @@ pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Opti
 pub enum SurfaceMode {
     Tui,
     Print,
-}
-
-pub fn select_surface_mode(
-    force_tui: bool,
-    explicit_print: bool,
-    has_one_shot_prompt: bool,
-    stdin_is_tty: bool,
-) -> SurfaceMode {
-    if force_tui {
-        return SurfaceMode::Tui;
-    }
-    if has_one_shot_prompt || explicit_print {
-        return SurfaceMode::Print;
-    }
-    if stdin_is_tty {
-        return SurfaceMode::Tui;
-    }
-    SurfaceMode::Print
 }
 
 #[derive(Debug, thiserror::Error)]

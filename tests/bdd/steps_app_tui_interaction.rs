@@ -356,11 +356,8 @@ fn when_mount_compaction(tui_interaction: &TuiInteraction) {
         reason: "threshold".into(),
     });
     fx.push_xy(XyEvent::CompactionEnd {
-        result: None,
-        aborted: false,
         reason: "threshold".into(),
-        will_retry: false,
-        error_message: None,
+        outcome: xylitol_plugin_sdk::CompactionOutcome::Completed,
         summary: Some("摘要完成".into()),
         tokens_before: Some(1200),
         tokens_after: None,
@@ -617,11 +614,8 @@ fn when_mount_compaction_and_long_output(tui_interaction: &TuiInteraction) {
         reason: "threshold".into(),
     });
     fx.push_xy(XyEvent::CompactionEnd {
-        result: None,
-        aborted: false,
         reason: "threshold".into(),
-        will_retry: false,
-        error_message: None,
+        outcome: xylitol_plugin_sdk::CompactionOutcome::Completed,
         summary: Some("压缩完成".into()),
         tokens_before: Some(900),
         tokens_after: None,

@@ -38,16 +38,13 @@ fn g_ce16_tty(surface_bdd: &SurfaceBdd) {
 #[when("xylitol tui")]
 fn w_ce16_tui(surface_bdd: &SurfaceBdd) {
     use clap::Parser;
-    use xylitol::cli::{CliArgs, resolve_surface_intent, select_surface_mode};
+    use xylitol::cli::{CliArgs, SurfaceIntent};
     assert!(surface_bdd.is_tty.get(), "given TTY must arm is_tty");
     let args = CliArgs::try_parse_from(["xylitol", "tui"]).expect("parse tui");
-    let (force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
-    surface_bdd.mode.set(Some(select_surface_mode(
-        force_tui,
-        print_flag,
-        one_shot.is_some(),
-        surface_bdd.is_tty.get(),
-    )));
+    let intent = SurfaceIntent::from_command(args.command.as_ref());
+    surface_bdd
+        .mode
+        .set(Some(intent.mode(surface_bdd.is_tty.get())));
 }
 
 #[then("进入产品 TUI")]
@@ -63,15 +60,20 @@ fn g_ce16_no_prompt(surface_bdd: &SurfaceBdd) {
 #[when("xylitol print")]
 fn w_ce16_print(surface_bdd: &SurfaceBdd) {
     use clap::Parser;
-    use xylitol::cli::{CliArgs, resolve_print_prompt, resolve_surface_intent};
+    use xylitol::cli::{CliArgs, SurfaceIntent, resolve_print_prompt};
     assert!(
         !surface_bdd.has_prompt.get(),
         "given 无 prompt must clear has_prompt"
     );
     let args = CliArgs::try_parse_from(["xylitol", "print"]).expect("parse print");
-    let (_force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
-    let err = resolve_print_prompt(one_shot.as_deref(), print_flag, true, || Ok(String::new()))
-        .expect_err("print without prompt must fail");
+    let intent = SurfaceIntent::from_command(args.command.as_ref());
+    let err = resolve_print_prompt(
+        intent.one_shot_prompt.as_deref(),
+        intent.explicit_print,
+        true,
+        || Ok(String::new()),
+    )
+    .expect_err("print without prompt must fail");
     surface_bdd.print_err.replace(err.to_string());
 }
 

@@ -68,7 +68,7 @@ pub use generate::{
     XyStructuredOutput, langfuse_observation_properties_from, langfuse_session_properties_from,
     xylitol_obs_lane_properties,
 };
-pub use lifecycle::{AgentEndReason, XyEvent, XyEventError};
+pub use lifecycle::{AgentEndReason, CompactionOutcome, XyEvent, XyEventError};
 pub use llm_project::project_for_llm;
 pub use loop_middleware::{
     AfterLlmResponseCtx, AfterStepCtx, AfterToolCtx, BeforeLlmRequestCtx, BeforeStepCtx,

@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 use async_trait::async_trait;
 use serde_json::Value;
+use strum::IntoEnumIterator;
 
 use crate::error::XyError;
 use crate::generate::XyGenerateOptions;
@@ -10,7 +11,10 @@ use crate::model::XyToolSchema;
 use crate::ports::XyToolDescriptor;
 use crate::session::TodoList;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::EnumString, strum::AsRefStr,
+)]
+#[strum(serialize_all = "snake_case")]
 pub enum LoopStage {
     BeforeStep,
     BeforeLlmRequest,
@@ -19,30 +23,6 @@ pub enum LoopStage {
     AfterTool,
     DecideContinue,
     AfterStep,
-}
-
-impl LoopStage {
-    pub const ALL: [LoopStage; 7] = [
-        LoopStage::BeforeStep,
-        LoopStage::BeforeLlmRequest,
-        LoopStage::AfterLlmResponse,
-        LoopStage::BeforeTool,
-        LoopStage::AfterTool,
-        LoopStage::DecideContinue,
-        LoopStage::AfterStep,
-    ];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            LoopStage::BeforeStep => "before_step",
-            LoopStage::BeforeLlmRequest => "before_llm_request",
-            LoopStage::AfterLlmResponse => "after_llm_response",
-            LoopStage::BeforeTool => "before_tool",
-            LoopStage::AfterTool => "after_tool",
-            LoopStage::DecideContinue => "decide_continue",
-            LoopStage::AfterStep => "after_step",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -430,9 +410,7 @@ impl LoopChain {
 
     pub fn is_empty(&self) -> bool {
         self.turn_injectors.is_empty()
-            && LoopStage::ALL
-                .iter()
-                .all(|stage| self.stage(*stage).is_empty())
+            && LoopStage::iter().all(|stage| self.stage(stage).is_empty())
     }
 }
 
@@ -624,8 +602,44 @@ mod tests {
         let step = StopAtTool.before_tool(ctx).await;
         assert_eq!(step.control, LoopControl::Stop);
         assert_eq!(LoopControl::Handoff.as_str(), "handoff");
-        assert_eq!(LoopStage::DecideContinue.as_str(), "decide_continue");
-        assert_eq!(LoopStage::ALL.len(), 7);
+        assert_eq!(LoopStage::DecideContinue.as_ref(), "decide_continue");
+        assert_eq!(LoopStage::iter().count(), 7);
+    }
+
+    #[tokio::test]
+    async fn declared_stages_reach_every_runtime_bucket() {
+        struct AllStages;
+
+        #[async_trait]
+        impl LoopMiddleware for AllStages {
+            fn id(&self) -> &str {
+                "all-stages"
+            }
+
+            fn stages(&self) -> &'static [LoopStage] {
+                &[
+                    LoopStage::BeforeStep,
+                    LoopStage::BeforeLlmRequest,
+                    LoopStage::AfterLlmResponse,
+                    LoopStage::BeforeTool,
+                    LoopStage::AfterTool,
+                    LoopStage::DecideContinue,
+                    LoopStage::AfterStep,
+                ]
+            }
+        }
+
+        let registry = LoopMiddlewareRegistry::default();
+        registry.register(Arc::new(AllStages)).expect("register");
+        let chain = registry.snapshot();
+        for stage in LoopStage::iter() {
+            assert_eq!(
+                chain.stage(stage).len(),
+                1,
+                "declared stage {stage:?} must land in its runtime bucket"
+            );
+        }
+        assert!(!chain.is_empty());
     }
 
     #[test]

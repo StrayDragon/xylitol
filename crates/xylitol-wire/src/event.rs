@@ -3,8 +3,8 @@ use serde_json::Value;
 
 use xylitol_plugin_sdk::session::TodoList as DomainTodoList;
 use xylitol_plugin_sdk::{
-    AgentEndReason, AgentMessage, ContextTokenEstimate, PromptCacheRead, TokenProvenance, XyEvent,
-    XyEventError,
+    AgentEndReason, AgentMessage, CompactionOutcome, ContextTokenEstimate, PromptCacheRead,
+    TokenProvenance, XyEvent, XyEventError,
 };
 use xylitol_protocol::{AgentEndReason as WireAgentEndReason, Event, TodoList as WireTodoList};
 
@@ -62,31 +62,33 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             reason: reason.clone(),
         }),
         XyEvent::CompactionEnd {
-            result,
-            aborted,
             reason,
-            will_retry,
-            error_message,
+            outcome,
             summary,
             tokens_before,
             tokens_after,
             notice,
-        } => Ok(Event::CompactionEnd {
-            result: result.clone(),
-            aborted: *aborted,
-            reason: reason.clone(),
-            will_retry: *will_retry,
-            error_message: error_message.clone(),
-            summary: summary.clone(),
-            tokens_before: *tokens_before,
-            tokens_after: *tokens_after,
-            notice: notice.clone(),
-        }),
-        XyEvent::ContextTokenSettlement {
-            estimate,
-            reason,
-            generation,
-        } => Ok(Event::ContextTokenSettlement {
+        } => {
+            let (result, aborted, will_retry, error_message) = match outcome {
+                CompactionOutcome::Completed => (Some("ok".to_string()), false, false, None),
+                CompactionOutcome::Failed { error, will_retry } => {
+                    (None, false, *will_retry, error.clone())
+                }
+                CompactionOutcome::Aborted => (None, true, false, None),
+            };
+            Ok(Event::CompactionEnd {
+                result,
+                aborted,
+                reason: reason.clone(),
+                will_retry,
+                error_message,
+                summary: summary.clone(),
+                tokens_before: *tokens_before,
+                tokens_after: *tokens_after,
+                notice: notice.clone(),
+            })
+        }
+        XyEvent::ContextTokenSettlement { estimate, reason } => Ok(Event::ContextTokenSettlement {
             tokens: estimate.tokens,
             provenance: estimate.provenance.as_str().to_string(),
             usage_tokens: estimate.usage_tokens,
@@ -95,7 +97,7 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             prompt_cache: prompt_cache_status(estimate.prompt_cache_read).to_string(),
             prompt_cache_tokens: prompt_cache_tokens(estimate.prompt_cache_read),
             reason: reason.clone(),
-            generation: *generation,
+            generation: 0,
         }),
         XyEvent::ModelSelect { provider, model_id } => Ok(Event::ModelSelect {
             provider: provider.clone(),
@@ -184,7 +186,6 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             reason: reason.clone(),
         }),
         Event::CompactionEnd {
-            result,
             aborted,
             reason,
             will_retry,
@@ -193,17 +194,27 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             tokens_before,
             tokens_after,
             notice,
-        } => Ok(XyEvent::CompactionEnd {
-            result: result.clone(),
-            aborted: *aborted,
-            reason: reason.clone(),
-            will_retry: *will_retry,
-            error_message: error_message.clone(),
-            summary: summary.clone(),
-            tokens_before: *tokens_before,
-            tokens_after: *tokens_after,
-            notice: notice.clone(),
-        }),
+            ..
+        } => {
+            let outcome = if *aborted {
+                CompactionOutcome::Aborted
+            } else if let Some(err) = error_message {
+                CompactionOutcome::Failed {
+                    error: Some(err.clone()),
+                    will_retry: *will_retry,
+                }
+            } else {
+                CompactionOutcome::Completed
+            };
+            Ok(XyEvent::CompactionEnd {
+                reason: reason.clone(),
+                outcome,
+                summary: summary.clone(),
+                tokens_before: *tokens_before,
+                tokens_after: *tokens_after,
+                notice: notice.clone(),
+            })
+        }
         Event::ContextTokenSettlement {
             tokens,
             provenance,
@@ -213,7 +224,7 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             prompt_cache,
             prompt_cache_tokens,
             reason,
-            generation,
+            ..
         } => Ok(XyEvent::ContextTokenSettlement {
             estimate: ContextTokenEstimate {
                 tokens: *tokens,
@@ -224,7 +235,6 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
                 prompt_cache_read: prompt_cache_from_wire(prompt_cache, *prompt_cache_tokens),
             },
             reason: reason.clone(),
-            generation: *generation,
         }),
         Event::ModelSelect { provider, model_id } => Ok(XyEvent::ModelSelect {
             provider: provider.clone(),
@@ -405,11 +415,11 @@ mod tests {
                 reason: "threshold".into(),
             },
             XyEvent::CompactionEnd {
-                result: Some("r".into()),
-                aborted: false,
                 reason: "threshold".into(),
-                will_retry: true,
-                error_message: None,
+                outcome: CompactionOutcome::Failed {
+                    error: Some("boom".into()),
+                    will_retry: true,
+                },
                 summary: Some("s".into()),
                 tokens_before: Some(100),
                 tokens_after: Some(40),
@@ -418,7 +428,6 @@ mod tests {
             XyEvent::ContextTokenSettlement {
                 estimate: sample_estimate(),
                 reason: "usage".into(),
-                generation: 9,
             },
             XyEvent::ModelSelect {
                 provider: "p".into(),
@@ -472,7 +481,6 @@ mod tests {
             let event = XyEvent::ContextTokenSettlement {
                 estimate,
                 reason: "turn_settled".into(),
-                generation: 1,
             };
             let wire = event_to_wire(&event).expect("to wire");
             match &wire {

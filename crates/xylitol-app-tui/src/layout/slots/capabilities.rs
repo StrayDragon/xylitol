@@ -39,7 +39,7 @@ impl CapabilitiesSlot {
         let enabled = self
             .entries
             .iter()
-            .filter(|entry| entry.effective_enabled)
+            .filter(|entry| entry.effective_enabled())
             .count();
         let mut summary = format!("{enabled}/{} enabled", self.entries.len());
         if self.pending {
@@ -57,8 +57,12 @@ impl CapabilitiesSlot {
                         CapabilityKind::McpServer => "mcp",
                         CapabilityKind::Tool => "tool",
                     };
-                    let state = if entry.effective_enabled { "on" } else { "off" };
-                    let pending = if entry.pending { "  pending" } else { "" };
+                    let state = if entry.effective_enabled() {
+                        "on"
+                    } else {
+                        "off"
+                    };
+                    let pending = if entry.pending() { "  pending" } else { "" };
                     SelectItem::new(
                         entry.id.clone(),
                         format!("{}  {}  {}{}", entry.id, kind, state, pending),
@@ -102,7 +106,7 @@ impl CapabilitiesSlot {
             };
             return CapabilitiesAction::Toggle {
                 id,
-                enabled: !entry.effective_enabled,
+                enabled: !entry.effective_enabled(),
             };
         }
         if super::is_select_nav_key(key) {
@@ -118,7 +122,7 @@ impl CapabilitiesSlot {
         let entry = self.entries.iter().find(|entry| entry.id == id)?;
         Some(CapabilitiesAction::Toggle {
             id,
-            enabled: !entry.effective_enabled,
+            enabled: !entry.effective_enabled(),
         })
     }
 

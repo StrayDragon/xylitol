@@ -93,11 +93,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     use std::io::IsTerminal;
     let stdin_is_tty = std::io::stdin().is_terminal();
-    let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
+    let surface_intent = SurfaceIntent::from_command(args.command.as_ref());
     #[cfg(feature = "tui")]
-    let want_tui = !surface.list_models
-        && select_surface_mode(force_tui, explicit_print, one_shot.is_some(), stdin_is_tty)
-            == SurfaceMode::Tui;
+    let want_tui = surface_intent.wants_tui(surface.list_models, stdin_is_tty);
     #[cfg(not(feature = "tui"))]
     let want_tui = false;
 
@@ -229,10 +227,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     render_warnings(&kernel.runtime.warnings);
     let runtime = kernel.runtime;
     let session_id = runtime.session_id;
-    let project_trusted = !runtime
-        .warnings
-        .iter()
-        .any(|w| matches!(w, BootstrapWarning::ProjectNotTrusted { .. }));
+    let project_trusted = runtime.project_trusted;
     let mut driver = runtime.driver;
     let cwd = std::env::current_dir().unwrap_or_default();
     let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
@@ -254,8 +249,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let prompt = match resolve_print_prompt(
-        one_shot.as_deref(),
-        explicit_print || one_shot.is_none(),
+        surface_intent.one_shot_prompt.as_deref(),
+        surface_intent.explicit_print || surface_intent.one_shot_prompt.is_none(),
         stdin_is_tty,
         || {
             use std::io::Read;
@@ -402,6 +397,9 @@ fn render_warnings(warnings: &[BootstrapWarning]) {
                     "Project not trusted ({reason}); skipping `.xylitol/` project resources."
                 );
             }
+            BootstrapWarning::CodemodeRunCodeIgnored => {
+                eprintln!("Warning: codemode disabled; run_code selection ignored");
+            }
             BootstrapWarning::RestoringSession { session, path } => {
                 eprintln!("Info: Restoring session '{session}' from {path}");
             }
@@ -425,34 +423,53 @@ mod tests {
 
     #[test]
     fn bare_tty_selects_tui() {
-        assert_eq!(
-            select_surface_mode(false, false, false, true),
-            SurfaceMode::Tui
-        );
+        let intent = SurfaceIntent {
+            force_tui: false,
+            explicit_print: false,
+            one_shot_prompt: None,
+        };
+        assert_eq!(intent.mode(true), SurfaceMode::Tui);
     }
 
     #[test]
     fn force_tui_wins_over_prompt() {
-        assert_eq!(
-            select_surface_mode(true, false, true, true),
-            SurfaceMode::Tui
-        );
+        let intent = SurfaceIntent {
+            force_tui: true,
+            explicit_print: false,
+            one_shot_prompt: Some("hi".into()),
+        };
+        assert_eq!(intent.mode(true), SurfaceMode::Tui);
     }
 
     #[test]
     fn prompt_selects_print() {
-        assert_eq!(
-            select_surface_mode(false, false, true, true),
-            SurfaceMode::Print
-        );
+        let intent = SurfaceIntent {
+            force_tui: false,
+            explicit_print: false,
+            one_shot_prompt: Some("hi".into()),
+        };
+        assert_eq!(intent.mode(true), SurfaceMode::Print);
     }
 
     #[test]
     fn explicit_print_selects_print() {
-        assert_eq!(
-            select_surface_mode(false, true, false, true),
-            SurfaceMode::Print
-        );
+        let intent = SurfaceIntent {
+            force_tui: false,
+            explicit_print: true,
+            one_shot_prompt: None,
+        };
+        assert_eq!(intent.mode(true), SurfaceMode::Print);
+    }
+
+    #[test]
+    fn list_models_suppresses_tui() {
+        let intent = SurfaceIntent {
+            force_tui: false,
+            explicit_print: false,
+            one_shot_prompt: None,
+        };
+        assert!(!intent.wants_tui(true, true));
+        assert!(intent.wants_tui(false, true));
     }
 
     #[test]
@@ -484,14 +501,11 @@ mod tests {
             args.command,
             Some(CliCommand::Tui { action: None, .. })
         ));
-        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
-        assert!(force_tui);
-        assert!(!explicit_print);
-        assert!(one_shot.is_none());
-        assert_eq!(
-            select_surface_mode(force_tui, explicit_print, one_shot.is_some(), true),
-            SurfaceMode::Tui
-        );
+        let intent = SurfaceIntent::from_command(args.command.as_ref());
+        assert!(intent.force_tui);
+        assert!(!intent.explicit_print);
+        assert!(intent.one_shot_prompt.is_none());
+        assert_eq!(intent.mode(true), SurfaceMode::Tui);
     }
 
     #[test]
@@ -645,25 +659,22 @@ mod tests {
     #[test]
     fn parses_cli_command_print_with_prompt() {
         let args = CliArgs::try_parse_from(["xylitol", "print", "hello"]).unwrap();
-        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
-        assert!(!force_tui);
-        assert!(explicit_print);
-        assert_eq!(one_shot.as_deref(), Some("hello"));
-        assert_eq!(
-            select_surface_mode(force_tui, explicit_print, one_shot.is_some(), true),
-            SurfaceMode::Print
-        );
+        let intent = SurfaceIntent::from_command(args.command.as_ref());
+        assert!(!intent.force_tui);
+        assert!(intent.explicit_print);
+        assert_eq!(intent.one_shot_prompt.as_deref(), Some("hello"));
+        assert_eq!(intent.mode(true), SurfaceMode::Print);
     }
 
     #[test]
     fn print_verb_without_prompt_selects_print() {
         let args = CliArgs::try_parse_from(["xylitol", "print"]).unwrap();
-        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
-        assert!(!force_tui);
-        assert!(explicit_print);
-        assert!(one_shot.is_none());
-        let err =
-            resolve_print_prompt(None, explicit_print, true, || Ok(String::new())).unwrap_err();
+        let intent = SurfaceIntent::from_command(args.command.as_ref());
+        assert!(!intent.force_tui);
+        assert!(intent.explicit_print);
+        assert!(intent.one_shot_prompt.is_none());
+        let err = resolve_print_prompt(None, intent.explicit_print, true, || Ok(String::new()))
+            .unwrap_err();
         assert!(!err.to_string().contains("Hello!"), "{err}");
     }
 
@@ -686,9 +697,9 @@ mod tests {
             "top-level positional prompt must not exist"
         );
         let args = CliArgs::try_parse_from(["xylitol", "print", "-p", "x"]).unwrap();
-        let (_, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
-        assert!(explicit_print);
-        assert_eq!(one_shot.as_deref(), Some("x"));
+        let intent = SurfaceIntent::from_command(args.command.as_ref());
+        assert!(intent.explicit_print);
+        assert_eq!(intent.one_shot_prompt.as_deref(), Some("x"));
     }
 
     #[test]

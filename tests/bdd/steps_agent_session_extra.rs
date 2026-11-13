@@ -94,7 +94,6 @@ pub(crate) async fn g_sess_bang(sess: &XySessionStore) {
         first_kept_entry_id: "bash-1".into(),
         tokens_before: 5000,
         details: None,
-        from_hook: None,
         policy: None,
     });
     let _ = mgr.append(sid, &compaction).await;

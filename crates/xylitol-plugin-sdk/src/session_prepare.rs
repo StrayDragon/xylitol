@@ -87,10 +87,12 @@ pub fn should_append_session_prepare(
     if next.fingerprint.is_empty() {
         return false;
     }
-    match last_session_prepare(history) {
-        None => true,
-        Some(prev) => prev.fingerprint != next.fingerprint,
-    }
+    let last = last_session_prepare(history);
+    crate::session_env::should_append_on_state_change(
+        last.as_ref()
+            .map(|prev| ("", "", prev.fingerprint.as_str())),
+        ("", "", next.fingerprint.as_str()),
+    )
 }
 
 pub fn ensure_session_prepare_in_history(

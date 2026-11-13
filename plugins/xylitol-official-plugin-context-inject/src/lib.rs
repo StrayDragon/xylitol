@@ -6,8 +6,9 @@ pub mod registry;
 
 pub use config::{ContextInjectConfig, DedupMode, InjectorConfig, InjectorPoint, Placement};
 pub use coordinator::ContextInjectMiddleware;
-pub use drift::{CUSTOM_TYPE_CONTEXT_FINGERPRINT, DriftInjector, FingerprintSnapshot};
+pub use drift::{DriftInjector, FingerprintSnapshot};
 pub use plugin::ContextInjectPlugin;
 pub use registry::{
     ContextInjector, ContextInjectorRegistry, InjectorContext, InjectorSource, NativeInjector,
 };
+pub use xylitol_plugin_sdk::session_env::CUSTOM_TYPE_CONTEXT_FINGERPRINT;

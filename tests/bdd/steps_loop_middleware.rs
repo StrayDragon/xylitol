@@ -1349,11 +1349,8 @@ impl xylitol_plugin_sdk::XyCompaction for RecordingCompaction {
             .await;
         event_sink
             .emit(&XyEvent::CompactionEnd {
-                result: Some("ok".into()),
-                aborted: false,
                 reason: reason.to_string(),
-                will_retry: false,
-                error_message: None,
+                outcome: xylitol_plugin_sdk::CompactionOutcome::Completed,
                 summary: Some("mw summary".into()),
                 tokens_before: Some(100),
                 tokens_after: Some(40),
@@ -1371,7 +1368,6 @@ impl xylitol_plugin_sdk::XyCompaction for RecordingCompaction {
                     ..Default::default()
                 },
                 reason: "after_compaction".into(),
-                generation: 7,
             })
             .await;
         Ok(())

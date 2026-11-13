@@ -842,7 +842,7 @@ pub(super) fn paint_compaction_block(
                 push_wrapped(&mut lines, &theme.paint_muted(summary), width);
             }
         }
-        CompactionBlockStatus::Aborted | CompactionBlockStatus::Failed => {
+        CompactionBlockStatus::Failed => {
             let text = detail.unwrap_or("compaction aborted");
             push_wrapped(
                 &mut lines,

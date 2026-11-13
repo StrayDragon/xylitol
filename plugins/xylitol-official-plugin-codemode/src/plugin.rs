@@ -67,7 +67,7 @@ impl Plugin for CodemodePlugin {
     }
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
-        if !self.config.is_active() {
+        if !self.config.enabled {
             return Ok(());
         }
         xylitol_plugin_sdk::set_codemode_max_nested_calls(self.config.max_nested_calls);

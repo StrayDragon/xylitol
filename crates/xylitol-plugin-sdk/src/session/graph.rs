@@ -25,6 +25,7 @@ pub struct EdgeRecord {
     pub to: String,
     #[serde(default)]
     pub order: u32,
+    // ~keep 删除语义：最新记录即当前态；追加同 id 且 enabled=false 的边为删除墓碑。生产写点（fork / parent 派生）恒 true。
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
@@ -325,7 +326,6 @@ mod tests {
                 first_kept_entry_id: "a".into(),
                 tokens_before: 10,
                 details: None,
-                from_hook: None,
                 policy: None,
             }),
             message("a", "first"),

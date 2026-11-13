@@ -136,7 +136,6 @@ impl AgentCapabilities {
                 &xylitol_plugin_sdk::lifecycle::XyEvent::ContextTokenSettlement {
                     estimate: settled.estimate,
                     reason: settled.reason.as_str().to_string(),
-                    generation: settled.generation,
                 },
             )
             .await;

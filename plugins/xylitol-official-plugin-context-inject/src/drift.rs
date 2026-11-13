@@ -7,12 +7,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use xylitol_plugin_sdk::session::{CustomEntry, EntryBase, SessionEntry};
+use xylitol_plugin_sdk::session_env::CUSTOM_TYPE_CONTEXT_FINGERPRINT;
 use xylitol_plugin_sdk::{ToolFingerprint, XySessionStore};
 
 use crate::config::{DedupMode, InjectorPoint, Placement};
 use crate::registry::{InjectorContext, NativeInjector};
-
-pub const CUSTOM_TYPE_CONTEXT_FINGERPRINT: &str = "context-fingerprint-snapshot";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct FingerprintSnapshot {

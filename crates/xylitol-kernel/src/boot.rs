@@ -362,7 +362,7 @@ fn optional_plugin_rows(
             write_tools: loop_policies.tool_exposure.write_tools.clone(),
         });
     }
-    if codemode.is_active() {
+    if codemode.enabled {
         rows.push(serde_json::json!({
             "id": "codemode",
             "name": "codemode",

@@ -175,12 +175,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
     let fallback_session = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone().unwrap_or_default();
     let default_model_id = assembly.default_profile_model.clone();
-    let project_trusted = !assembly.warnings.iter().any(|w| {
-        matches!(
-            w,
-            crate::bootstrap::BootstrapWarning::ProjectNotTrusted { .. }
-        )
-    });
+    let project_trusted = assembly.project_trusted;
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
     let trust_audit = assembly.trust_audit.clone();

@@ -280,11 +280,8 @@ fn w_atb5_end_ok(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::CompactionEnd {
-            result: None,
-            aborted: false,
             reason: "threshold".into(),
-            will_retry: false,
-            error_message: None,
+            outcome: xylitol_plugin_sdk::CompactionOutcome::Completed,
             summary: Some("已压缩".into()),
             tokens_before: Some(1200),
             tokens_after: None,
@@ -319,11 +316,11 @@ fn w_atb5_end_failed(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::CompactionEnd {
-            result: None,
-            aborted: false,
             reason: "threshold".into(),
-            will_retry: false,
-            error_message: Some("boom".into()),
+            outcome: xylitol_plugin_sdk::CompactionOutcome::Failed {
+                error: Some("boom".into()),
+                will_retry: false,
+            },
             summary: None,
             tokens_before: None,
             tokens_after: None,

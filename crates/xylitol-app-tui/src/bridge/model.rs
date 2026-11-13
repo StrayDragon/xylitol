@@ -84,7 +84,6 @@ pub enum AskPhase {
 pub enum CompactionBlockStatus {
     Pending,
     Complete,
-    Aborted,
     Failed,
 }
 
@@ -386,7 +385,7 @@ impl UiModel {
                             lines.push(summary.clone());
                         }
                     }
-                    CompactionBlockStatus::Aborted | CompactionBlockStatus::Failed => {
+                    CompactionBlockStatus::Failed => {
                         lines.push("[compaction]".into());
                         lines.push(
                             detail

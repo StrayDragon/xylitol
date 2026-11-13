@@ -70,6 +70,17 @@ impl std::fmt::Display for AgentEndReason {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CompactionOutcome {
+    Completed,
+    Failed {
+        error: Option<String>,
+        will_retry: bool,
+    },
+    Aborted,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, IntoStaticStr)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[strum(serialize_all = "snake_case")]
@@ -131,15 +142,9 @@ pub enum XyEvent {
         reason: String,
     },
     CompactionEnd {
-        result: Option<String>,
-        #[serde(default)]
-        aborted: bool,
         #[serde(default)]
         reason: String,
-        #[serde(default)]
-        will_retry: bool,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        error_message: Option<String>,
+        outcome: CompactionOutcome,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -153,7 +158,6 @@ pub enum XyEvent {
     ContextTokenSettlement {
         estimate: ContextTokenEstimate,
         reason: String,
-        generation: u64,
     },
 
     ModelSelect {
@@ -206,5 +210,28 @@ impl XyEvent {
 
     pub fn description(&self) -> &'static str {
         self.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compaction_outcome_vocabulary_has_no_hidden_variants() {
+        let known = |outcome: &CompactionOutcome| match outcome {
+            CompactionOutcome::Completed => "completed",
+            CompactionOutcome::Failed { .. } => "failed",
+            CompactionOutcome::Aborted => "aborted",
+        };
+        assert_eq!(known(&CompactionOutcome::Completed), "completed");
+        assert_eq!(
+            known(&CompactionOutcome::Failed {
+                error: Some("boom".into()),
+                will_retry: false,
+            }),
+            "failed"
+        );
+        assert_eq!(known(&CompactionOutcome::Aborted), "aborted");
     }
 }

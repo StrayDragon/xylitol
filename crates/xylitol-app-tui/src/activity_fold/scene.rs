@@ -204,11 +204,8 @@ impl SceneBuilder {
             reason: "threshold".into(),
         });
         self.push_xy(XyEvent::CompactionEnd {
-            result: Some("ok".into()),
-            aborted: false,
             reason: "threshold".into(),
-            will_retry: false,
-            error_message: None,
+            outcome: xylitol_plugin_sdk::CompactionOutcome::Completed,
             summary: Some(summary.into()),
             tokens_before: Some(tokens_before),
             tokens_after: None,

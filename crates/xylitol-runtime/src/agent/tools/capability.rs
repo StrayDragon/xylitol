@@ -47,16 +47,13 @@ pub fn capability_snapshot(
         let id = tool_capability_id(name);
         entries.insert(
             id.clone(),
-            CapabilityEntry {
+            CapabilityEntry::new(
                 id,
-                kind: CapabilityKind::Tool,
-                label: name.to_string(),
-                profile_enabled: true,
-                session_disabled: disabled.contains(&tool_capability_id(name)),
-                effective_enabled: !disabled.contains(&tool_capability_id(name)),
-                pending: disabled.contains(&tool_capability_id(name))
-                    != applied.contains(&tool_capability_id(name)),
-            },
+                CapabilityKind::Tool,
+                name.to_string(),
+                disabled.contains(&tool_capability_id(name)),
+                applied.contains(&tool_capability_id(name)),
+            ),
         );
     }
 
@@ -64,20 +61,18 @@ pub fn capability_snapshot(
         let id = mcp_capability_id(&server);
         entries.insert(
             id.clone(),
-            CapabilityEntry {
-                id: id.clone(),
-                kind: CapabilityKind::McpServer,
-                label: server,
-                profile_enabled: true,
-                session_disabled: disabled.contains(&id),
-                effective_enabled: !disabled.contains(&id),
-                pending: disabled.contains(&id) != applied.contains(&id),
-            },
+            CapabilityEntry::new(
+                id.clone(),
+                CapabilityKind::McpServer,
+                server,
+                disabled.contains(&id),
+                applied.contains(&id),
+            ),
         );
     }
 
     let entries: Vec<_> = entries.into_values().collect();
-    let pending = entries.iter().any(|entry| entry.pending);
+    let pending = entries.iter().any(|entry| entry.pending());
     CapabilitySnapshot { entries, pending }
 }
 
@@ -149,16 +144,16 @@ mod tests {
             .find(|entry| entry.id == "tool:read")
             .expect("read entry");
         assert!(read.session_disabled);
-        assert!(!read.effective_enabled);
-        assert!(read.pending);
+        assert!(!read.effective_enabled());
+        assert!(read.pending());
         let github = snap
             .entries
             .iter()
             .find(|entry| entry.id == "mcp:github")
             .expect("mcp entry");
         assert!(!github.session_disabled);
-        assert!(github.effective_enabled);
-        assert!(!github.pending);
+        assert!(github.effective_enabled());
+        assert!(!github.pending());
     }
 
     #[test]

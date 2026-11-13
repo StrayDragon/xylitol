@@ -632,7 +632,6 @@ async fn compaction_reemits_kept_tail() {
         first_kept_entry_id: "u2".into(),
         tokens_before: 10,
         details: None,
-        from_hook: None,
         policy: None,
     });
     store

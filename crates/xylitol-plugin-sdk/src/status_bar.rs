@@ -6,7 +6,7 @@ pub const STATUS_BAR_XML_ROOT: &str = "agent_status_bar";
 
 #[derive(Debug, Clone, Default)]
 pub struct AgentStatusBar {
-    pub todo: Option<TodoList>,
+    todo: Option<TodoList>,
 }
 
 impl AgentStatusBar {
@@ -16,15 +16,22 @@ impl AgentStatusBar {
         }
     }
 
+    pub fn with_todo(list: TodoList) -> Self {
+        Self {
+            todo: (!list.is_empty()).then_some(list),
+        }
+    }
+
+    pub fn todo(&self) -> Option<&TodoList> {
+        self.todo.as_ref()
+    }
+
     pub fn render(&self) -> Option<String> {
-        let todo_xml = match &self.todo {
-            None => return None,
-            Some(list) if list.is_empty() => return None,
-            Some(list) => render_todo(list),
-        };
+        let list = self.todo.as_ref()?;
         Some(format!(
             "<{root}>\n{todo_xml}</{root}>",
-            root = STATUS_BAR_XML_ROOT
+            root = STATUS_BAR_XML_ROOT,
+            todo_xml = render_todo(list),
         ))
     }
 }

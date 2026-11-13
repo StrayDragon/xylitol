@@ -2,6 +2,9 @@
 depends_on: []
 title: "Consolidate SDK and CLI state vocabulary"
 needs_specs_change: false
+branch: sdd/c3305-refactor-sdk-cli-state-vocabulary
+base_branch: main
+base_sha: 6ca95255396775ca40f3ff0c5aec2f9720dc4317
 ---
 
 # SDK 与 CLI 状态词表收敛（P2 草案）
