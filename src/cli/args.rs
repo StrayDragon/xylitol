@@ -56,9 +56,9 @@ pub struct TuiSurfaceArgs {
     pub list_models: bool,
     #[arg(long)]
     pub no_color: bool,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "no_trust")]
     pub trust: bool,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "trust")]
     pub no_trust: bool,
     #[arg(long)]
     pub attach: Option<String>,
@@ -90,9 +90,9 @@ pub struct PrintSurfaceArgs {
     pub config: Option<String>,
     #[arg(long)]
     pub no_color: bool,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "no_trust")]
     pub trust: bool,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "trust")]
     pub no_trust: bool,
 }
 

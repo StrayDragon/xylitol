@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix trust flag conflict rejection"
+branch: sdd/c3331-fix-trust-flag-conflict
+base_branch: main
+base_sha: 3a295d22aa5264cbab6a33aa2d9577a424613acd
 ---
 
 # --trust / --no-trust 同传显式报错（F8 拆出项）

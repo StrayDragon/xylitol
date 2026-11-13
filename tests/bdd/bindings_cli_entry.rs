@@ -1,7 +1,8 @@
 use crate::bdd::fixtures::{AgentState, Workspace, agent, ws};
 use crate::bdd::steps_cli_surface::{
-    AttachBdd, CliEntryBdd, CliHelpBdd, ProgressBdd, SurfaceBdd, SurfaceFlagsBdd, attach_bdd,
-    cli_entry_bdd, cli_help_bdd, progress_bdd, surface_bdd, surface_flags_bdd,
+    AttachBdd, CliEntryBdd, CliHelpBdd, ProgressBdd, SurfaceBdd, SurfaceFlagsBdd,
+    TrustFlagConflictBdd, attach_bdd, cli_entry_bdd, cli_help_bdd, progress_bdd, surface_bdd,
+    surface_flags_bdd, trust_flag_conflict_bdd,
 };
 use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
@@ -233,3 +234,9 @@ fn test_ce_unpersisted_no_hint(surface_flags_bdd: SurfaceFlagsBdd) {}
     name = "已配置缺省显示"
 )]
 async fn test_ce_c2841_configured_default_shown(agent: AgentState, cli_entry_bdd: CliEntryBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "同传信任标志硬失败"
+)]
+fn test_ce_trust_flags_conflict(trust_flag_conflict_bdd: TrustFlagConflictBdd) {}

@@ -340,7 +340,7 @@ fn w_ce19_tui_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
         "--trust",
     ])
     .expect("parse tui flags");
-    let s = surface_from_command(args.command.as_ref());
+    let s = surface_from_command(args.command.as_ref()).expect("surface flags");
     surface_flags_bdd.parse_ok.set(true);
     surface_flags_bdd.session.replace(s.session);
     assert_eq!(s.model.as_deref(), Some("m"));
@@ -362,7 +362,7 @@ fn w_ce19_tui_run_session(surface_flags_bdd: &SurfaceFlagsBdd) {
     use xylitol::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from(["xylitol", "tui", "run", "--session", "sid"])
         .expect("parse tui run --session");
-    let s = surface_from_command(args.command.as_ref());
+    let s = surface_from_command(args.command.as_ref()).expect("surface flags");
     surface_flags_bdd.parse_ok.set(true);
     surface_flags_bdd.session.replace(s.session);
 }
@@ -386,7 +386,7 @@ fn w_ce19_tui_attach(surface_flags_bdd: &SurfaceFlagsBdd) {
         "11",
     ])
     .expect("parse tui --attach/--port");
-    let s = surface_from_command(args.command.as_ref());
+    let s = surface_from_command(args.command.as_ref()).expect("surface flags");
     let url = xylitol::resolve_attach_url(s.attach.as_deref(), s.port);
     assert_eq!(url, "http://127.0.0.1:9");
     surface_flags_bdd.parse_ok.set(true);
@@ -421,7 +421,7 @@ fn w_ce19_print_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
         "hi",
     ])
     .expect("parse print --trust");
-    let s = surface_from_command(args.command.as_ref());
+    let s = surface_from_command(args.command.as_ref()).expect("surface flags");
     surface_flags_bdd.parse_ok.set(true);
     surface_flags_bdd.session.replace(s.session);
     assert_eq!(s.model.as_deref(), Some("m"));
@@ -435,7 +435,7 @@ fn w_ce19_tui_no_ensure(surface_flags_bdd: &SurfaceFlagsBdd) {
     use xylitol::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from(["xylitol", "tui", "--no-ensure-host"])
         .expect("parse tui --no-ensure-host");
-    let s = surface_from_command(args.command.as_ref());
+    let s = surface_from_command(args.command.as_ref()).expect("surface flags");
     surface_flags_bdd.parse_ok.set(true);
     assert!(s.no_ensure_host);
 }
@@ -447,7 +447,7 @@ fn w_ce19_print_no_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
     let args =
         CliArgs::try_parse_from(["xylitol", "print", "--session", "sid", "--no-trust", "hi"])
             .expect("parse print --no-trust");
-    let s = surface_from_command(args.command.as_ref());
+    let s = surface_from_command(args.command.as_ref()).expect("surface flags");
     surface_flags_bdd.parse_ok.set(true);
     surface_flags_bdd.session.replace(s.session);
     assert!(s.no_trust);
@@ -1017,6 +1017,73 @@ fn model_display_name(model: Option<&xylitol_kernel::driver::ModelInfo>) -> Stri
             }
         }
         None => xylitol_kernel::bootstrap::UNSET_MODEL_DISPLAY.to_string(),
+    }
+}
+
+pub struct TrustFlagConflictBdd {
+    pub(crate) runs: RefCell<Vec<(String, i32, String, String)>>,
+}
+
+impl TrustFlagConflictBdd {
+    fn new() -> Self {
+        Self {
+            runs: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+#[fixture]
+pub fn trust_flag_conflict_bdd() -> TrustFlagConflictBdd {
+    TrustFlagConflictBdd::new()
+}
+
+#[when("命令行同传 --trust 与 --no-trust")]
+fn w_trust_flags_conflict(trust_flag_conflict_bdd: &TrustFlagConflictBdd) {
+    let bin = env!("CARGO_BIN_EXE_xylitol");
+    let cases: [&[&str]; 4] = [
+        &["tui", "--trust", "--no-trust"],
+        &["tui", "--trust", "run", "--no-trust"],
+        &["tui", "--no-trust", "run", "--trust"],
+        &["print", "--trust", "--no-trust", "hi"],
+    ];
+    let mut runs = Vec::new();
+    for args in cases {
+        let out = std::process::Command::new(bin)
+            .args(args)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("spawn xylitol with conflicting trust flags");
+        runs.push((
+            args.join(" "),
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        ));
+    }
+    trust_flag_conflict_bdd.runs.replace(runs);
+}
+
+#[then("报错退出且未进入 trust 门禁")]
+fn t_trust_flags_conflict(trust_flag_conflict_bdd: &TrustFlagConflictBdd) {
+    let runs = trust_flag_conflict_bdd.runs.borrow();
+    assert_eq!(runs.len(), 4, "all conflict shapes must be exercised");
+    for (argv, code, stdout, stderr) in runs.iter() {
+        assert!(*code != 0, "xylitol {argv} must exit non-zero: {stderr}");
+        assert!(stderr.contains("--trust"), "{argv} stderr: {stderr}");
+        assert!(stderr.contains("--no-trust"), "{argv} stderr: {stderr}");
+        assert!(
+            stderr.contains("cannot be used with") || stderr.contains("must not be combined"),
+            "{argv} must report the flag conflict: {stderr}"
+        );
+        assert!(
+            !stderr.contains("Trust project folder"),
+            "{argv} must not reach the trust gate: {stderr}"
+        );
+        assert!(
+            !stderr.contains("Starting host") && !stderr.contains("Resume by"),
+            "{argv} must not start the TUI: {stderr}"
+        );
+        assert!(stdout.is_empty(), "{argv} must not start print: {stdout}");
     }
 }
 

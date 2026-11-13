@@ -28,7 +28,7 @@ use xylitol_kernel::timing;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
-    let surface = surface_from_command(args.command.as_ref());
+    let surface = surface_from_command(args.command.as_ref())?;
 
     let paths = xylitol_kernel::config::paths::ConfigPaths::discover();
     let _ = xylitol_kernel::config::secret_env::load_secret_env_files(&paths);
@@ -85,11 +85,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     timing::reset_timings();
 
-    let trust_override = match (surface.trust, surface.no_trust) {
-        (true, _) => Some(true),
-        (_, true) => Some(false),
-        _ => None,
-    };
+    let trust_override = resolve_trust_override(surface.trust, surface.no_trust)?;
 
     use std::io::IsTerminal;
     let stdin_is_tty = std::io::stdin().is_terminal();
@@ -547,7 +543,7 @@ mod tests {
         let trusted =
             CliArgs::try_parse_from(["xylitol", "tui", "--trust", "--port", "9", "designing"])
                 .unwrap();
-        let surface = surface_from_command(trusted.command.as_ref());
+        let surface = surface_from_command(trusted.command.as_ref()).expect("surface");
         assert!(surface.trust, "tui --trust designing must set trust");
         assert_eq!(surface.port, Some(9));
         let mut cmd = CliArgs::command();
@@ -572,11 +568,11 @@ mod tests {
     #[test]
     fn tui_surface_flags_on_parent_or_run() {
         let a = CliArgs::try_parse_from(["xylitol", "tui", "--session", "abc"]).unwrap();
-        let s = surface_from_command(a.command.as_ref());
+        let s = surface_from_command(a.command.as_ref()).expect("surface");
         assert_eq!(s.session.as_deref(), Some("abc"));
 
         let b = CliArgs::try_parse_from(["xylitol", "tui", "run", "--session", "def"]).unwrap();
-        let s = surface_from_command(b.command.as_ref());
+        let s = surface_from_command(b.command.as_ref()).expect("surface");
         assert_eq!(s.session.as_deref(), Some("def"));
 
         let c = CliArgs::try_parse_from([
@@ -589,7 +585,7 @@ mod tests {
             "--list-models",
         ])
         .unwrap();
-        let s = surface_from_command(c.command.as_ref());
+        let s = surface_from_command(c.command.as_ref()).expect("surface");
         assert_eq!(s.model.as_deref(), Some("m1"));
         assert!(s.trust);
         assert!(s.list_models);
@@ -608,7 +604,7 @@ mod tests {
             "hi",
         ])
         .unwrap();
-        let s = surface_from_command(a.command.as_ref());
+        let s = surface_from_command(a.command.as_ref()).expect("surface");
         assert_eq!(s.session.as_deref(), Some("s1"));
         assert_eq!(s.model.as_deref(), Some("m"));
         assert!(s.no_color);
@@ -626,14 +622,14 @@ mod tests {
             "hi",
         ])
         .unwrap();
-        let s = surface_from_command(trusted.command.as_ref());
+        let s = surface_from_command(trusted.command.as_ref()).expect("surface");
         assert!(s.trust);
         assert!(!s.no_trust);
 
         let denied =
             CliArgs::try_parse_from(["xylitol", "print", "--session", "s1", "--no-trust", "hi"])
                 .unwrap();
-        let s = surface_from_command(denied.command.as_ref());
+        let s = surface_from_command(denied.command.as_ref()).expect("surface");
         assert!(s.no_trust);
         assert!(!s.trust);
 
@@ -654,6 +650,64 @@ mod tests {
                 bad
             );
         }
+    }
+
+    #[test]
+    fn same_command_trust_flags_are_rejected_by_clap() {
+        for argv in [
+            &["xylitol", "tui", "--trust", "--no-trust"][..],
+            &["xylitol", "tui", "run", "--trust", "--no-trust"][..],
+            &["xylitol", "tui", "--no-trust", "--trust"][..],
+            &["xylitol", "print", "--trust", "--no-trust", "hi"][..],
+            &["xylitol", "print", "--no-trust", "--trust", "hi"][..],
+        ] {
+            let err = CliArgs::try_parse_from(argv).expect_err("conflicting trust flags parse");
+            assert!(
+                matches!(err.kind(), clap::error::ErrorKind::ArgumentConflict),
+                "{argv:?} must report an argument conflict, got {:?}",
+                err.kind()
+            );
+        }
+    }
+
+    #[test]
+    fn single_trust_flag_still_parses() {
+        for argv in [
+            &["xylitol", "tui", "--trust"][..],
+            &["xylitol", "tui", "--no-trust"][..],
+            &["xylitol", "tui", "run", "--trust"][..],
+            &["xylitol", "print", "--trust", "hi"][..],
+            &["xylitol", "print", "--no-trust", "hi"][..],
+        ] {
+            let args = CliArgs::try_parse_from(argv).expect("single trust flag parses");
+            let s =
+                surface_from_command(args.command.as_ref()).expect("single flag is not a conflict");
+            assert!(s.trust ^ s.no_trust, "{argv:?} must set exactly one side");
+        }
+    }
+
+    #[test]
+    fn cross_layer_trust_flags_are_rejected_at_merge_point() {
+        let args = CliArgs::try_parse_from(["xylitol", "tui", "--trust", "run", "--no-trust"])
+            .expect("clap cannot see the parent/child pair");
+        let err =
+            surface_from_command(args.command.as_ref()).expect_err("merged double-true must fail");
+        let msg = err.to_string();
+        assert!(msg.contains("--trust"), "{msg}");
+        assert!(msg.contains("--no-trust"), "{msg}");
+        assert!(msg.contains("parent"), "{msg}");
+        assert!(msg.contains("run"), "{msg}");
+    }
+
+    #[test]
+    fn trust_override_matrix_rejects_double_true() {
+        assert_eq!(resolve_trust_override(false, false).unwrap(), None);
+        assert_eq!(resolve_trust_override(true, false).unwrap(), Some(true));
+        assert_eq!(resolve_trust_override(false, true).unwrap(), Some(false));
+        let err = resolve_trust_override(true, true).expect_err("double true must be rejected");
+        let msg = err.to_string();
+        assert!(msg.contains("--trust"), "{msg}");
+        assert!(msg.contains("--no-trust"), "{msg}");
     }
 
     #[test]
@@ -847,11 +901,11 @@ mod tests {
     fn tui_attach_flags_and_print_rejects_them() {
         let a =
             CliArgs::try_parse_from(["xylitol", "tui", "--attach", "http://127.0.0.1:9"]).unwrap();
-        let s = surface_from_command(a.command.as_ref());
+        let s = surface_from_command(a.command.as_ref()).expect("surface");
         assert_eq!(s.attach.as_deref(), Some("http://127.0.0.1:9"));
 
         let b = CliArgs::try_parse_from(["xylitol", "tui", "--port", "9"]).unwrap();
-        let s = surface_from_command(b.command.as_ref());
+        let s = surface_from_command(b.command.as_ref()).expect("surface");
         assert_eq!(s.port, Some(9));
         assert_eq!(
             xylitol_kernel::attach::resolve_attach_url(s.attach.as_deref(), s.port),
@@ -867,14 +921,14 @@ mod tests {
             "http://127.0.0.1:77",
         ])
         .unwrap();
-        let s = surface_from_command(c.command.as_ref());
+        let s = surface_from_command(c.command.as_ref()).expect("surface");
         assert_eq!(
             xylitol_kernel::attach::resolve_attach_url(s.attach.as_deref(), s.port),
             "http://127.0.0.1:77"
         );
 
         let d = CliArgs::try_parse_from(["xylitol", "tui", "run", "--port", "11"]).unwrap();
-        let s = surface_from_command(d.command.as_ref());
+        let s = surface_from_command(d.command.as_ref()).expect("surface");
         assert_eq!(s.port, Some(11));
 
         assert!(
@@ -887,7 +941,7 @@ mod tests {
         assert!(CliArgs::try_parse_from(["xylitol", "--port", "9"]).is_err());
 
         let e = CliArgs::try_parse_from(["xylitol", "tui", "--no-ensure-host"]).unwrap();
-        let s = surface_from_command(e.command.as_ref());
+        let s = surface_from_command(e.command.as_ref()).expect("surface");
         assert!(s.no_ensure_host);
     }
 }
