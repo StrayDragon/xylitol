@@ -21,11 +21,11 @@ use xylitol_tui::{InputEvent, InputReaction, PointerClickPhase, RenderError, TUI
 
 use crate::activity_fold::{SegmentClock, partition_segments};
 use crate::driver::{XyDriver, XyDriverError, XyEvent};
-use xylitol_plugin_sdk::XyBashResult;
+use xylitol_plugin_sdk::{AgentEndReason, XyBashResult};
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
-use stage_name::{StageNameContext, StageNamePolicy};
+use stage_name::{StageNamePhase, StageNamePolicy};
 
 pub use super::commands::{PendingBash, PendingSlash, bash_block_status, bash_output_body};
 
@@ -488,11 +488,7 @@ impl<T: Terminal> HostSession<T> {
             return;
         };
         self.ui_model.phase = UiPhase::Busy;
-        let stale = matches!(
-            self.ui_model.status.as_deref(),
-            None | Some("Working") | Some("Running") | Some("Reloading")
-        );
-        if stale {
+        if self.ui_model.status_is_placeholder() {
             self.ui_model.status = Some(label.to_string());
         }
     }
@@ -509,7 +505,7 @@ impl<T: Terminal> HostSession<T> {
         let cancel = tokio_util::sync::CancellationToken::new();
         self.reload_cancel = Some(cancel);
         self.busy.reload = true;
-        self.ui_model.set_busy_status("Reloading");
+        self.ui_model.set_busy_placeholder("Reloading");
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().set_suppress_status_right_cue(true);
         }
@@ -674,12 +670,17 @@ impl<T: Terminal> HostSession<T> {
         prompt: String,
         attachments: crate::mcp_attach::PendingMcpAttachments,
     ) {
-        self.pending.gated_submit = Some(prompt);
-        self.pending.gated_attachments = attachments;
+        self.pending.submit = Some(crate::host::pending::PendingSubmit {
+            prompt,
+            attachments,
+            gated: true,
+        });
     }
 
-    pub fn take_submit_attachments(&mut self) -> crate::mcp_attach::PendingMcpAttachments {
-        self.pending.take_submit_attachments()
+    pub fn take_submit_with_attachments(
+        &mut self,
+    ) -> Option<(String, crate::mcp_attach::PendingMcpAttachments)> {
+        self.pending.take_submit_with_attachments()
     }
 
     pub fn mcp_tray_add(&mut self, server: &str, uri: &str) -> bool {
@@ -1265,7 +1266,7 @@ impl<T: Terminal> HostSession<T> {
                     let mut root = root.borrow_mut();
                     if !root.take_session_sidebar_drag_moved() {
                         root.session_sidebar_width_cycle();
-                        root.take_session_sidebar_layout_dirty();
+                        root.clear_session_sidebar_layout_dirty();
                     }
                 }
                 self.sync_session_sidebar_reserve();
@@ -1340,7 +1341,7 @@ impl<T: Terminal> HostSession<T> {
                 ) {
                     self.persist_sidebar_layout();
                     if let Some(root) = self.ui_root.as_ref() {
-                        root.borrow_mut().take_session_sidebar_layout_dirty();
+                        root.borrow_mut().clear_session_sidebar_layout_dirty();
                     }
                 }
                 self.tui.request_render(false);
@@ -1377,8 +1378,11 @@ impl<T: Terminal> HostSession<T> {
             let dirty = self
                 .ui_root
                 .as_ref()
-                .is_some_and(|root| root.borrow_mut().take_session_sidebar_layout_dirty());
+                .is_some_and(|root| root.borrow().session_sidebar_layout_dirty());
             if dirty {
+                if let Some(root) = self.ui_root.as_ref() {
+                    root.borrow_mut().clear_session_sidebar_layout_dirty();
+                }
                 self.persist_sidebar_layout();
             }
         }
@@ -1500,7 +1504,7 @@ impl<T: Terminal> HostSession<T> {
                 self.busy.agent_run = true;
                 self.agent_started_at = Some(OffsetDateTime::now_utc());
             }
-            XyEvent::AgentEnd { .. } => {
+            XyEvent::AgentEnd { reason, .. } => {
                 self.busy.agent_run = false;
                 self.recalc_busy();
                 self.completed_turns = self.completed_turns.saturating_add(1);
@@ -1519,13 +1523,13 @@ impl<T: Terminal> HostSession<T> {
                     );
                     root.touch_activity();
                 }
-                let context = StageNameContext {
-                    attempted: self.stage_name_attempted,
-                    has_name: self.ui_model.stage_name.is_some(),
-                    aborted: crate::trailing_aborted_note(&self.ui_model.entries),
-                    completed_turns: self.completed_turns,
+                let phase = match reason {
+                    Some(AgentEndReason::UserCancel) => StageNamePhase::Aborted,
+                    _ if self.ui_model.stage_name.is_some() => StageNamePhase::Named,
+                    _ if self.stage_name_attempted => StageNamePhase::Requested,
+                    _ => StageNamePhase::NotStarted,
                 };
-                if self.stage_name_policy.should_request(context) {
+                if self.stage_name_policy.should_request(phase) {
                     self.request_stage_name();
                 }
             }

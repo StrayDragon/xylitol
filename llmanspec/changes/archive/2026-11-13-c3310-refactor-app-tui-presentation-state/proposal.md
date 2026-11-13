@@ -2,6 +2,9 @@
 depends_on: []
 title: "Consolidate app-tui presentation state"
 needs_specs_change: false
+branch: sdd/c3310-refactor-app-tui-presentation-state
+base_branch: main
+base_sha: 35f49edfee5662acff6f8cded8a70c71d89a0560
 ---
 
 # app-tui 呈现层状态收敛（P2 草案）

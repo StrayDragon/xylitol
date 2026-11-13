@@ -4658,8 +4658,8 @@ mod slice_tests {
             root.borrow().activity().settings.display_level,
             DisplayLevel::Full
         );
-        assert!(root.borrow().fold_view().thinking_visible);
-        assert!(root.borrow().fold_view().tool_output_visible);
+        assert!(root.borrow().fold_view().defaults.thinking_visible);
+        assert!(root.borrow().fold_view().defaults.tool_output_visible);
 
         root.borrow_mut().set_editor_text("/fold quiet");
         session.step(HostEvent::Input(enter_event())).unwrap();
@@ -4670,8 +4670,8 @@ mod slice_tests {
             root.borrow().activity().settings.display_level,
             DisplayLevel::Quiet
         );
-        assert!(!root.borrow().fold_view().thinking_visible);
-        assert!(!root.borrow().fold_view().tool_header_visible);
+        assert!(!root.borrow().fold_view().defaults.thinking_visible);
+        assert!(!root.borrow().fold_view().defaults.tool_header_visible);
 
         root.borrow_mut().set_editor_text("/fold");
         session.step(HostEvent::Input(enter_event())).unwrap();

@@ -403,22 +403,22 @@ impl UiRoot {
     }
 
     pub fn toggle_thinking_default(&mut self) {
-        self.fold.thinking_expanded = !self.fold.thinking_expanded;
+        self.fold.defaults.thinking_expanded = !self.fold.defaults.thinking_expanded;
         self.fold.clear_thinking_overrides();
         self.scrollback_paint.invalidate();
         self.bump_upper_gen();
     }
 
     pub fn reset_tools_blocks(&mut self) {
-        self.fold.tools_expanded = !self.fold.tools_expanded;
-        self.fold.compaction_expanded = !self.fold.compaction_expanded;
+        self.fold.defaults.tools_expanded = !self.fold.defaults.tools_expanded;
+        self.fold.defaults.compaction_expanded = !self.fold.defaults.compaction_expanded;
         self.fold.clear_tools_overrides();
         self.scrollback_paint.invalidate();
         self.bump_upper_gen();
     }
 
     pub fn toggle_tools_output_default(&mut self) {
-        self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
+        self.fold.defaults.tools_output_expanded = !self.fold.defaults.tools_output_expanded;
         self.fold.clear_output_overrides();
         self.bump_upper_gen();
     }

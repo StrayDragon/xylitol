@@ -48,21 +48,25 @@ async fn append_compaction_from_session<T: Terminal>(
         matches!(
             e,
             UiEntry::Compaction {
+                id,
                 status: CompactionBlockStatus::Complete,
-                tokens_before,
+                summary,
                 ..
-            } if *tokens_before == comp.tokens_before
+            } if *id == format!("compaction-{}", comp.base.id) || *summary == comp.summary
         )
     });
     if already {
         return;
     }
-    session.ui_model_mut().entries.push(UiEntry::Compaction {
-        status: CompactionBlockStatus::Complete,
-        summary: comp.summary.clone(),
-        tokens_before: comp.tokens_before,
-        detail: None,
-        tokens_after: None,
-    });
+    session
+        .ui_model_mut()
+        .upsert_compaction_block(UiEntry::Compaction {
+            id: format!("compaction-{}", comp.base.id),
+            status: CompactionBlockStatus::Complete,
+            summary: comp.summary.clone(),
+            tokens_before: comp.tokens_before,
+            detail: None,
+            tokens_after: None,
+        });
     session.sync_ui_root_from_model();
 }

@@ -35,6 +35,8 @@ use super::dollar_skill_source::DollarSkillSource;
 use super::mcp_source::{McpPickSink, McpResourceSource};
 use super::models_picker::PendingModelChoice;
 use super::slash_catalog::slash_commands_for_editor;
+use crate::UiPhase;
+use crate::driver::{CAPABILITY_PENDING_CUE, MCP_PENDING_CUE};
 
 use super::session_tree::FilterMode;
 use super::slots::{AskSlot, EditorSlot, EditorSlotKind, ImportSlot, ThemesSlot, TreeSlot};
@@ -85,6 +87,31 @@ struct TrayChipHit {
     index: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum StatusNextTurnCue {
+    McpPending,
+    CapabilityOverlay,
+    Other(String),
+}
+
+impl StatusNextTurnCue {
+    fn from_raw(raw: &str) -> Self {
+        match raw {
+            MCP_PENDING_CUE => Self::McpPending,
+            CAPABILITY_PENDING_CUE => Self::CapabilityOverlay,
+            other => Self::Other(other.to_string()),
+        }
+    }
+
+    fn raw(&self) -> &str {
+        match self {
+            Self::McpPending => MCP_PENDING_CUE,
+            Self::CapabilityOverlay => CAPABILITY_PENDING_CUE,
+            Self::Other(text) => text,
+        }
+    }
+}
+
 pub struct UiRoot {
     loaded_resources: LoadedResourcesSnapshot,
     ui_model: UiModel,
@@ -105,7 +132,7 @@ pub struct UiRoot {
     footer_token: Option<String>,
     thinking_level: String,
     footer_omit_thinking: bool,
-    status_next_turn_cue: Option<String>,
+    status_next_turn_cue: Option<StatusNextTurnCue>,
     suppress_status_right_cue: bool,
     toast_notice: Option<(String, Instant, ToastKind)>,
     slot: EditorSlot,
@@ -510,24 +537,27 @@ impl UiRoot {
     }
 
     pub fn refresh_mcp_short_cue(&mut self) {
-        use crate::driver::MCP_PENDING_CUE;
         if self.suppress_status_right_cue {
             self.status_next_turn_cue = None;
             return;
         }
         if self.loaded_resources.mcp_tools_pending() {
-            if self.status_busy && self.status_next_turn_cue.is_some() {
-                let cue = self.status_next_turn_cue.as_deref().unwrap_or("");
-                if cue.starts_with("Next turn") {
-                    return;
-                }
+            if self.status_busy
+                && self.status_next_turn_cue.as_ref().is_some_and(|cue| {
+                    matches!(cue, StatusNextTurnCue::CapabilityOverlay)
+                        || matches!(
+                            cue,
+                            StatusNextTurnCue::Other(text) if text.starts_with("Next turn")
+                        )
+                })
+            {
+                return;
             }
-            self.status_next_turn_cue = Some(MCP_PENDING_CUE.to_string());
-        } else if self
-            .status_next_turn_cue
-            .as_deref()
-            .is_some_and(|c| c == MCP_PENDING_CUE)
-        {
+            self.status_next_turn_cue = Some(StatusNextTurnCue::McpPending);
+        } else if matches!(
+            self.status_next_turn_cue,
+            Some(StatusNextTurnCue::McpPending)
+        ) {
             self.status_next_turn_cue = None;
         }
     }
@@ -568,9 +598,9 @@ impl UiRoot {
             settings.display_level,
             crate::activity_fold::DisplayLevel::Recent | crate::activity_fold::DisplayLevel::Full
         );
-        self.fold.apply_visible_items(settings.visible_items);
-        self.fold.thinking_expanded = thinking_full;
-        self.fold.streaming_thinking_expanded = thinking_full;
+        self.fold.apply_visible_items(settings.visible_items());
+        self.fold.defaults.thinking_expanded = thinking_full;
+        self.fold.defaults.streaming_thinking_expanded = thinking_full;
         self.activity.settings = settings;
     }
 
@@ -582,7 +612,7 @@ impl UiRoot {
     }
 
     pub fn toggle_args_default(&mut self) {
-        self.fold.args_expanded = match self.fold.args_expanded {
+        self.fold.defaults.args_expanded = match self.fold.defaults.args_expanded {
             crate::widgets::ArgsMode::Hidden => crate::widgets::ArgsMode::Preview,
             crate::widgets::ArgsMode::Preview => crate::widgets::ArgsMode::Full,
             crate::widgets::ArgsMode::Full => crate::widgets::ArgsMode::Hidden,
@@ -700,7 +730,7 @@ impl UiRoot {
                 self.fold.toggle_user(&id);
             }
             FoldTarget::Compaction => {
-                self.fold.compaction_expanded = !self.fold.compaction_expanded;
+                self.fold.defaults.compaction_expanded = !self.fold.defaults.compaction_expanded;
             }
             FoldTarget::OutputViewport(id) => {
                 self.fold.toggle_output(&id);
@@ -1005,8 +1035,12 @@ impl UiRoot {
         self.session_sidebar_height_cap
     }
 
-    pub fn take_session_sidebar_layout_dirty(&mut self) -> bool {
-        std::mem::take(&mut self.session_sidebar_layout_dirty)
+    pub fn session_sidebar_layout_dirty(&self) -> bool {
+        self.session_sidebar_layout_dirty
+    }
+
+    pub fn clear_session_sidebar_layout_dirty(&mut self) {
+        self.session_sidebar_layout_dirty = false;
     }
 
     pub fn take_session_sidebar_drag_moved(&mut self) -> bool {
@@ -1516,14 +1550,9 @@ impl UiRoot {
             self.promote_streaming_think_fold();
         }
 
-        match model.status.as_ref() {
-            Some(s) if !s.is_empty() => {
-                self.status_loader.set_message(s.clone());
-                self.status_busy = true;
-            }
-            _ => {
-                self.status_busy = false;
-            }
+        self.status_busy = model.phase == UiPhase::Busy;
+        if let Some(s) = model.status.as_ref().filter(|s| !s.is_empty()) {
+            self.status_loader.set_message(s.clone());
         }
         self.refresh_mcp_short_cue();
 
@@ -1531,7 +1560,7 @@ impl UiRoot {
     }
 
     fn promote_streaming_think_fold(&mut self) {
-        let Some(expanded) = self.fold.thinking_overrides.remove(STREAMING_THINK_ID) else {
+        let Some(expanded) = self.fold.overrides.thinking.remove(STREAMING_THINK_ID) else {
             return;
         };
         let Some(id) = self.ui_model.entries.iter().rev().find_map(|e| match e {
@@ -1540,7 +1569,7 @@ impl UiRoot {
         }) else {
             return;
         };
-        self.fold.thinking_overrides.insert(id, expanded);
+        self.fold.overrides.thinking.insert(id, expanded);
         if expanded {
             let segs = partition_segments(&self.ui_model.entries);
             if let Some(seg) = segs.last()
@@ -1586,7 +1615,9 @@ impl UiRoot {
     }
 
     pub fn set_status_next_turn_cue(&mut self, cue: Option<String>) {
-        self.status_next_turn_cue = cue.filter(|s| !s.is_empty());
+        self.status_next_turn_cue = cue
+            .filter(|s| !s.is_empty())
+            .map(|raw| StatusNextTurnCue::from_raw(&raw));
         if self.status_next_turn_cue.is_none() {
             self.refresh_mcp_short_cue();
         }
@@ -1953,7 +1984,7 @@ mod tests {
         let plain = xylitol_tui::utils::strip_ansi_codes(line);
         let col = xylitol_tui::visible_width(&plain[..plain.find("[步骤显示级别: 摘要]").unwrap()]);
         assert!(root.try_right_click_summary(col, line));
-        assert!(root.fold().tools_overrides.is_empty());
+        assert!(root.fold().overrides.tools.is_empty());
         assert!(
             root.client_notices
                 .iter()
@@ -2362,6 +2393,7 @@ mod tests {
         use xylitol_tui::utils::strip_ansi_codes;
         let mut root = UiRoot::new();
         let mut model = UiModel::new();
+        model.phase = UiPhase::Busy;
         model.status = Some("working".into());
         root.apply_ui_model(&model);
         let first = root
@@ -2662,7 +2694,7 @@ mod tests {
             settings.apply_display_level(level);
             root.set_activity_settings(settings);
             assert_eq!(
-                root.fold_view().thinking_expanded,
+                root.fold_view().defaults.thinking_expanded,
                 expected,
                 "level {level:?} thinking expansion"
             );

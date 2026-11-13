@@ -29,7 +29,7 @@ pub(super) fn paint_envelope_header_row(
     if *need_spacer {
         lines.push(inter_block_spacer(width));
     }
-    let expanded = activity.effective_level(&seg.id) != SegmentLevel::L3;
+    let expanded = activity.level_of(&seg.id) != SegmentLevel::L3;
     let dur = activity.duration_for(&seg.id);
     let plain = format_envelope_line(glyphs, dur.as_deref(), expanded);
     let painted = theme.paint_muted(&plain);
@@ -135,7 +135,7 @@ pub(super) fn paint_folded_streaming_thought(
     theme: LayoutTheme,
     width: usize,
 ) {
-    if !fold.thinking_visible {
+    if !fold.defaults.thinking_visible {
         return;
     }
     let expanded = fold.thinking_effective(STREAMING_THINK_ID);

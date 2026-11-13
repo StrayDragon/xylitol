@@ -144,12 +144,13 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             tokens_before,
             tokens_after: _,
             detail,
+            ..
         } => {
             status.hash(&mut h);
             summary.hash(&mut h);
             tokens_before.hash(&mut h);
             detail.hash(&mut h);
-            fold.compaction_expanded.hash(&mut h);
+            fold.defaults.compaction_expanded.hash(&mut h);
         }
     }
     h.finish()

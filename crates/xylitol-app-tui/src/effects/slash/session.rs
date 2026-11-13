@@ -1,5 +1,6 @@
 use xylitol_tui::Terminal;
 
+use crate::activity_fold::VisibleItemKind;
 use crate::commands::{FoldAction, FoldItem, StageNameAction};
 use crate::dispatch::{DispatchOutcome, dispatch};
 use crate::driver::XyDriver;
@@ -257,13 +258,14 @@ pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction
         match action {
             FoldAction::View => {
                 let settings = &root.activity().settings;
+                let items = settings.visible_items();
                 notice = format!(
                     "display level: {:?}; thinking={} tools={} output={} diff={}",
                     settings.display_level,
-                    settings.visible_items.thinking,
-                    settings.visible_items.tool_header,
-                    settings.visible_items.tool_output,
-                    settings.visible_items.diff,
+                    items.thinking,
+                    items.tool_header,
+                    items.tool_output,
+                    items.diff,
                 );
             }
             FoldAction::Set(level) => {
@@ -278,27 +280,27 @@ pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction
             }
             FoldAction::Toggle(FoldItem::Args) => {
                 root.toggle_args_default();
-                let mode = root.fold_view().args_expanded;
+                let mode = root.fold_view().defaults.args_expanded;
                 notice = format!("fold args: {mode:?}");
             }
             FoldAction::Toggle(item) => {
                 let mut settings = root.activity().settings.clone();
-                let field = match item {
-                    FoldItem::Thinking => &mut settings.visible_items.thinking,
-                    FoldItem::Tools => &mut settings.visible_items.tool_header,
-                    FoldItem::Output => &mut settings.visible_items.tool_output,
-                    FoldItem::Diff => &mut settings.visible_items.diff,
+                let (kind, label) = match item {
+                    FoldItem::Thinking => (VisibleItemKind::Thinking, "thinking"),
+                    FoldItem::Tools => (VisibleItemKind::ToolHeader, "tools"),
+                    FoldItem::Output => (VisibleItemKind::ToolOutput, "output"),
+                    FoldItem::Diff => (VisibleItemKind::Diff, "diff"),
                     FoldItem::Args => unreachable!("args handled above"),
                 };
-                *field = !*field;
-                let label = match item {
-                    FoldItem::Thinking => "thinking",
-                    FoldItem::Tools => "tools",
-                    FoldItem::Output => "output",
-                    FoldItem::Diff => "diff",
-                    FoldItem::Args => "args",
+                let current = settings.visible_items();
+                let value = match kind {
+                    VisibleItemKind::Thinking => !current.thinking,
+                    VisibleItemKind::ToolHeader => !current.tool_header,
+                    VisibleItemKind::ToolOutput => !current.tool_output,
+                    VisibleItemKind::Diff => !current.diff,
                 };
-                notice = format!("fold {label}: {}", if *field { "on" } else { "off" });
+                settings.set_visible_item(kind, value);
+                notice = format!("fold {label}: {}", if value { "on" } else { "off" });
                 root.set_activity_settings(settings);
             }
         }

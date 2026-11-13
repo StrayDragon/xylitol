@@ -972,6 +972,7 @@ fn compaction_start_sets_status_and_placeholder() {
         model.entries.iter().any(|e| matches!(
             e,
             UiEntry::Compaction {
+                id: _,
                 status: CompactionBlockStatus::Pending,
                 ..
             }
@@ -1007,6 +1008,7 @@ fn compaction_end_restores_working() {
         model.entries.iter().any(|e| matches!(
             e,
             UiEntry::Compaction {
+                id: _,
                 status: CompactionBlockStatus::Complete,
                 tokens_before: 42_000,
                 ..
@@ -1080,6 +1082,7 @@ fn compaction_end_aborted_restores_working() {
         model.entries.iter().any(|e| matches!(
             e,
             UiEntry::Compaction {
+                id: _,
                 status: CompactionBlockStatus::Failed,
                 ..
             }

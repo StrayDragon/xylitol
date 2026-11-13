@@ -240,6 +240,7 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
         }
         SessionEntry::CustomMessage(_) => Vec::new(),
         SessionEntry::Compaction(c) => vec![UiEntry::Compaction {
+            id: format!("compaction-{}", c.base.id),
             status: CompactionBlockStatus::Complete,
             summary: c.summary.clone(),
             tokens_before: c.tokens_before,
@@ -911,6 +912,7 @@ mod tests {
             matches!(
                 ui.as_slice(),
                 [UiEntry::Compaction {
+                    id: _,
                     status: CompactionBlockStatus::Complete,
                     tokens_before: 186_842,
                     tokens_after: None,

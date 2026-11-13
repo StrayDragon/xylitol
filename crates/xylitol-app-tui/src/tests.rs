@@ -1150,7 +1150,7 @@ fn harness_app_thinking_toggle_action_unbound_by_default() {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    assert!(!root.borrow().fold().thinking_expanded);
+    assert!(!root.borrow().fold().defaults.thinking_expanded);
     session
         .step(HostEvent::Input(InputEvent::Key(KeyEvent {
             code: KeyCode::Char('t'),
@@ -1160,7 +1160,7 @@ fn harness_app_thinking_toggle_action_unbound_by_default() {
         })))
         .unwrap();
     assert!(
-        !root.borrow().fold().thinking_expanded,
+        !root.borrow().fold().defaults.thinking_expanded,
         "ctrl+t default chord is contracted (mat32)"
     );
 }
@@ -2301,7 +2301,7 @@ fn scrollback_bash_ctrl_o_viewport_keeps_rail() {
     );
 
     root.toggle_tools_output_default();
-    assert!(root.fold().tools_output_expanded);
+    assert!(root.fold().defaults.tools_output_expanded);
     let expanded = root.render(160).join("\n");
     assert!(
         !strip_ansi(&expanded).contains("click to expand"),
@@ -2433,14 +2433,14 @@ fn tools_per_block_override_and_reset_action_clears() {
     root.toggle_fold_target(FoldTarget::Tool("t1".into()));
     assert!(!root.fold().tools_effective("t1"));
     assert!(root.fold().tools_effective("t2"));
-    assert_eq!(root.fold().tools_overrides.len(), 1);
+    assert_eq!(root.fold().overrides.tools.len(), 1);
 
     assert!(
-        !root.fold().tools_overrides.is_empty(),
+        !root.fold().overrides.tools.is_empty(),
         "alt+e default chord is contracted (mat32)"
     );
     root.reset_tools_blocks();
-    assert!(root.fold().tools_overrides.is_empty());
+    assert!(root.fold().overrides.tools.is_empty());
     assert!(!root.fold().tools_effective("t1"));
     assert!(!root.fold().tools_effective("t2"));
 }
@@ -2475,11 +2475,11 @@ fn thinking_per_id_override_and_default_action_clears() {
     assert!(!root.fold().thinking_effective(&id2));
 
     assert!(
-        !root.fold().thinking_overrides.is_empty(),
+        !root.fold().overrides.thinking.is_empty(),
         "ctrl+t default chord is contracted (mat32)"
     );
     root.toggle_thinking_default();
-    assert!(root.fold().thinking_overrides.is_empty());
+    assert!(root.fold().overrides.thinking.is_empty());
     assert!(root.fold().thinking_effective(&id1));
     assert!(root.fold().thinking_effective(&id2));
 }
@@ -3249,6 +3249,7 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
             done: true,
         });
         model.entries.push(super::bridge::UiEntry::Compaction {
+            id: "compaction-test".into(),
             status: CompactionBlockStatus::Complete,
             summary: "compaction-summary-body".into(),
             tokens_before: 12_345,
@@ -3266,8 +3267,8 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
     root.borrow_mut()
         .toggle_fold_target(FoldTarget::Tool("keep-override".into()));
     assert!(!root.borrow().fold().tools_effective("keep-override"));
-    let overrides_before = root.borrow().fold().tools_overrides.len();
-    assert!(!root.borrow().fold().compaction_expanded);
+    let overrides_before = root.borrow().fold().overrides.tools.len();
+    assert!(!root.borrow().fold().defaults.compaction_expanded);
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
 
@@ -3290,11 +3291,11 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
     step_left_click(&mut session, region.col_start as u16, screen_row);
     assert!(
-        root.borrow().fold().compaction_expanded,
+        root.borrow().fold().defaults.compaction_expanded,
         "Compaction triangle must flip compaction_expanded"
     );
     assert_eq!(
-        root.borrow().fold().tools_overrides.len(),
+        root.borrow().fold().overrides.tools.len(),
         overrides_before,
         "Compaction click MUST NOT clear tools overrides"
     );
@@ -3334,7 +3335,7 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
         screen_row_expanded,
     );
     assert!(
-        !root.borrow().fold().compaction_expanded,
+        !root.borrow().fold().defaults.compaction_expanded,
         "Compaction triangle must collapse after a second click"
     );
     session.tui.request_render(true);
@@ -3350,18 +3351,18 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
         region_expanded.col_start as u16,
         screen_row_expanded,
     );
-    assert!(root.borrow().fold().compaction_expanded);
+    assert!(root.borrow().fold().defaults.compaction_expanded);
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
 
-    let before = root.borrow().fold().compaction_expanded;
+    let before = root.borrow().fold().defaults.compaction_expanded;
     step_left_click(
         &mut session,
         (region_expanded.col_end + 4) as u16,
         screen_row_expanded,
     );
     assert_eq!(
-        root.borrow().fold().compaction_expanded,
+        root.borrow().fold().defaults.compaction_expanded,
         before,
         "non-triangle Compaction body must not toggle"
     );
@@ -3421,7 +3422,7 @@ fn harness_mouse_hint_toggles_output_viewport() {
             .map(|reg| (reg.content_row, reg.col_start))
             .unwrap_or_else(|| panic!("expected OutputViewport band for {id}"))
     };
-    assert!(!root.borrow().fold().tools_output_expanded);
+    assert!(!root.borrow().fold().defaults.tools_output_expanded);
     assert!(!root.borrow().fold().output_effective("bash-a"));
 
     let (hint_row, hint_col) = locate_band("bash-a");
@@ -3436,7 +3437,7 @@ fn harness_mouse_hint_toggles_output_viewport() {
         "sibling block must stay collapsed"
     );
     assert!(
-        !root.borrow().fold().tools_output_expanded,
+        !root.borrow().fold().defaults.tools_output_expanded,
         "hint click must not flip the global default"
     );
     session.tui.request_render(true);
@@ -3458,7 +3459,7 @@ fn harness_mouse_hint_toggles_output_viewport() {
 
     root.borrow_mut().toggle_tools_output_default();
     assert!(
-        root.borrow().fold().tools_output_expanded,
+        root.borrow().fold().defaults.tools_output_expanded,
         "viewport default action flips the global default"
     );
     root.borrow_mut()
@@ -3467,11 +3468,11 @@ fn harness_mouse_hint_toggles_output_viewport() {
             KeyModifiers::CONTROL,
         )));
     assert!(
-        root.borrow().fold().tools_output_expanded,
+        root.borrow().fold().defaults.tools_output_expanded,
         "ctrl+o default chord is contracted (mat32)"
     );
     root.borrow_mut().toggle_tools_output_default();
-    assert!(!root.borrow().fold().tools_output_expanded);
+    assert!(!root.borrow().fold().defaults.tools_output_expanded);
 }
 
 #[test]
@@ -3696,6 +3697,7 @@ fn compaction_and_viewport_toggle_miss_bound() {
         });
     }
     model.entries.push(super::bridge::UiEntry::Compaction {
+        id: "compaction-test".into(),
         status: CompactionBlockStatus::Complete,
         summary: "sum".into(),
         tokens_before: 100,
@@ -4168,12 +4170,12 @@ fn streaming_paint_does_not_break_bash_ctrl_o_viewport() {
     root.apply_ui_model(&model);
     let _ = root.render(100);
     assert!(
-        !root.fold().tools_output_expanded,
+        !root.fold().defaults.tools_output_expanded,
         "default viewport collapsed"
     );
     root.toggle_tools_output_default();
     assert!(
-        root.fold().tools_output_expanded,
+        root.fold().defaults.tools_output_expanded,
         "output viewport default action must expand while assistant streams"
     );
     let expanded = root.render(100);
@@ -5855,6 +5857,7 @@ fn activity_fold_compaction_only_has_no_explored_header() {
         text: "cool 总结下".into(),
     });
     model.entries.push(super::bridge::UiEntry::Compaction {
+        id: "compaction-test".into(),
         status: CompactionBlockStatus::Complete,
         summary: "sum".into(),
         tokens_before: 101_494,

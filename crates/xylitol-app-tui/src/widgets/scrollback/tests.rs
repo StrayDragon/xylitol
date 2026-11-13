@@ -22,8 +22,11 @@ fn ask_header_paints_accent_ask_and_keeps_full_body() {
     });
     let theme = LayoutTheme::product_dark();
     let fold = ScrollbackFold {
-        tools_expanded: true,
-        ..ScrollbackFold::default()
+        defaults: ScrollbackFoldDefaults {
+            tools_expanded: true,
+            ..Default::default()
+        },
+        ..Default::default()
     };
     let lines = render_scrollback(
         &model,
@@ -73,6 +76,7 @@ fn todo_checklist_defaults_to_summary_line() {
 fn compaction_block_defaults_collapsed() {
     let mut model = UiModel::default();
     model.entries.push(UiEntry::Compaction {
+        id: "compaction-test".into(),
         status: CompactionBlockStatus::Complete,
         summary: "long summary body that should stay hidden".into(),
         tokens_before: 186_842,
@@ -113,6 +117,7 @@ fn compaction_block_defaults_collapsed() {
 fn compaction_block_shows_n_to_m_word_form() {
     let mut model = UiModel::default();
     model.entries.push(UiEntry::Compaction {
+        id: "compaction-test".into(),
         status: CompactionBlockStatus::Complete,
         summary: String::new(),
         tokens_before: 35_840,
@@ -145,6 +150,7 @@ fn compaction_block_shows_n_to_m_word_form() {
 fn compaction_block_expands_with_fold() {
     let mut model = UiModel::default();
     model.entries.push(UiEntry::Compaction {
+        id: "compaction-test".into(),
         status: CompactionBlockStatus::Complete,
         summary: "visible summary body".into(),
         tokens_before: 1_000,
@@ -158,8 +164,11 @@ fn compaction_block_expands_with_fold() {
         GlyphSet::from_env(),
         theme,
         &ScrollbackFold {
-            compaction_expanded: true,
-            ..ScrollbackFold::default()
+            defaults: ScrollbackFoldDefaults {
+                compaction_expanded: true,
+                ..Default::default()
+            },
+            ..Default::default()
         },
         &mut crate::activity_fold::ActivityFoldState::default(),
         100,
@@ -445,8 +454,11 @@ fn bash_full_output_footer_uses_warning_fg() {
         GlyphSet::from_env(),
         theme,
         &ScrollbackFold {
-            tools_output_expanded: true,
-            ..ScrollbackFold::default()
+            defaults: ScrollbackFoldDefaults {
+                tools_output_expanded: true,
+                ..Default::default()
+            },
+            ..Default::default()
         },
         &mut crate::activity_fold::ActivityFoldState::default(),
         120,
@@ -740,8 +752,11 @@ fn tool_args_preview_caps_at_five_lines() {
         timeout_secs: None,
     });
     let mut fold = ScrollbackFold {
-        args_expanded: ArgsMode::Preview,
-        ..ScrollbackFold::default()
+        defaults: ScrollbackFoldDefaults {
+            args_expanded: ArgsMode::Preview,
+            ..Default::default()
+        },
+        ..Default::default()
     };
     let theme = LayoutTheme::product_dark();
     let mut cache = ScrollbackPaintCache::default();
@@ -762,7 +777,7 @@ fn tool_args_preview_caps_at_five_lines() {
     assert!(plain.contains("arg 4"), "{plain}");
     assert!(!plain.contains("arg 6"), "preview caps at 5: {plain}");
     assert!(plain.contains("click to expand"), "{plain}");
-    fold.args_expanded = ArgsMode::Full;
+    fold.defaults.args_expanded = ArgsMode::Full;
     let plain = strip_ansi_codes(&render(&fold, &mut cache).join("\n"));
     assert!(plain.contains("arg 6"), "full shows all: {plain}");
 }

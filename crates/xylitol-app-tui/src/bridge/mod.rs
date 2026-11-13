@@ -5,7 +5,7 @@ pub(crate) mod session_tree;
 
 pub use model::trailing_aborted_note;
 pub use model::{
-    AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID,
+    AskOutcome, AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID,
     StreamingTailKind, UiEntry, UiModel, UiPhase, allocate_thinking_id,
 };
 pub(crate) use model::{CUSTOM_TYPE_CONTEXT_REMINDER, system_reminder_body, user_entry};

@@ -307,11 +307,14 @@ impl<T: Terminal> HostSession<T> {
         root.set_editor_text(String::new());
         drop(root);
         self.persist_client_history(&cleaned);
-        self.pending.submit = Some(cleaned);
-        self.pending.submit_attachments = crate::mcp_attach::PendingMcpAttachments {
-            tray: tray_refs,
-            tokens: parsed.refs,
-        };
+        self.pending.submit = Some(crate::host::pending::PendingSubmit {
+            prompt: cleaned,
+            attachments: crate::mcp_attach::PendingMcpAttachments {
+                tray: tray_refs,
+                tokens: parsed.refs,
+            },
+            gated: false,
+        });
         true
     }
 

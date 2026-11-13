@@ -432,7 +432,7 @@ pub(super) fn paint_thinking_block(
     } = ctx;
     let mut lines = Vec::new();
     let mut block_hits = Vec::new();
-    if !fold.thinking_visible {
+    if !fold.defaults.thinking_visible {
         return (lines, block_hits);
     }
     if thought_only {
@@ -492,7 +492,7 @@ pub(super) fn paint_tool_block(
     } else {
         args_full
     };
-    if !fold.tool_header_visible {
+    if !fold.defaults.tool_header_visible {
         return (Vec::new(), Vec::new());
     }
     let expanded = fold.tools_effective(id);
@@ -571,7 +571,7 @@ pub(super) fn paint_tool_block(
             );
         }
 
-        if fold.tool_output_visible && !output.is_empty() {
+        if fold.defaults.tool_output_visible && !output.is_empty() {
             let painted = paint_output_with_full_footer(output, theme, is_error);
             let hard = output_is_hard_truncated(output);
             let opts = ExpandableOutputOptions {
@@ -599,7 +599,7 @@ pub(super) fn paint_tool_block(
             );
         }
 
-        if fold.diff_visible
+        if fold.defaults.diff_visible
             && let Some(diff) = display_diff
             && !diff.is_empty()
         {
@@ -643,7 +643,7 @@ pub(super) fn paint_diff_block(
         width,
     } = ctx;
     let inner = rail_inner_width(width);
-    if !fold.diff_visible {
+    if !fold.defaults.diff_visible {
         return (Vec::new(), Vec::new());
     }
     let key = diff_fold_key(summary, display_diff);
@@ -817,7 +817,7 @@ pub(super) fn paint_compaction_block(
         }
         CompactionBlockStatus::Complete => {
             let n = format_token_count(tokens_before);
-            let marker = if fold.compaction_expanded {
+            let marker = if fold.defaults.compaction_expanded {
                 glyphs.unfold()
             } else {
                 glyphs.fold()
@@ -837,7 +837,7 @@ pub(super) fn paint_compaction_block(
                 height: 1,
                 target: FoldTarget::Compaction,
             });
-            if fold.compaction_expanded && !summary.is_empty() {
+            if fold.defaults.compaction_expanded && !summary.is_empty() {
                 lines.push(String::new());
                 push_wrapped(&mut lines, &theme.paint_muted(summary), width);
             }

@@ -28,6 +28,12 @@ pub enum SessionResumeAction {
     None,
 }
 
+enum PanelSubstate {
+    Normal,
+    Rename { id: String, input: Input },
+    ConfirmDelete(String),
+}
+
 pub struct SessionResumePanel {
     all_entries: Vec<SessionListEntry>,
     scope: SessionScope,
@@ -37,8 +43,7 @@ pub struct SessionResumePanel {
     show_id: bool,
     selected: usize,
     folded_parents: HashSet<String>,
-    rename: Option<(String, Input)>,
-    confirming_delete: Option<String>,
+    substate: PanelSubstate,
     filter: Input,
     loading: bool,
     current_session_id: Option<String>,
@@ -59,8 +64,7 @@ impl SessionResumePanel {
             show_id: false,
             selected: 0,
             folded_parents: HashSet::new(),
-            rename: None,
-            confirming_delete: None,
+            substate: PanelSubstate::Normal,
             filter: Input::new(),
             loading: false,
             current_session_id: None,
@@ -90,8 +94,7 @@ impl SessionResumePanel {
         self.loading = false;
         self.selected = 0;
         self.folded_parents.clear();
-        self.rename = None;
-        self.confirming_delete = None;
+        self.substate = PanelSubstate::Normal;
         self.status_line = None;
         self.filter.set_value(String::new());
         self.clamp_selection();
@@ -100,6 +103,7 @@ impl SessionResumePanel {
     pub fn set_loading(&mut self, loaded: usize, total: usize) {
         self.loading = true;
         self.all_entries.clear();
+        self.substate = PanelSubstate::Normal;
         self.status_line = Some(if total == 0 {
             "Loading sessions…".into()
         } else {
@@ -131,13 +135,11 @@ impl SessionResumePanel {
     }
 
     pub fn cancel_substate(&mut self) -> bool {
-        if self.rename.take().is_some() {
-            return true;
+        if matches!(self.substate, PanelSubstate::Normal) {
+            return false;
         }
-        if self.confirming_delete.take().is_some() {
-            return true;
-        }
-        false
+        self.substate = PanelSubstate::Normal;
+        true
     }
 
     fn visible_rows(&self) -> Vec<SessionListEntry> {
@@ -195,10 +197,11 @@ impl SessionResumePanel {
         if self.loading {
             return if self.status_line.is_some() { 1 } else { 0 };
         }
-        if self.rename.is_some() {
+        if matches!(self.substate, PanelSubstate::Rename { .. }) {
             return 2;
         }
-        4 + usize::from(self.confirming_delete.is_some()) + usize::from(self.status_line.is_some())
+        4 + usize::from(matches!(self.substate, PanelSubstate::ConfirmDelete(_)))
+            + usize::from(self.status_line.is_some())
     }
 
     pub fn row_index_at(&self, list_row: usize) -> Option<usize> {
@@ -275,7 +278,7 @@ impl SessionResumePanel {
         };
         lines.push(truncate_to_width(&filter_line, w, "…", true));
 
-        if let Some((id, input)) = &self.rename {
+        if let PanelSubstate::Rename { id, input } = &self.substate {
             lines.push(self.theme.paint_muted(&truncate_to_width(
                 &format!("Rename {id}: (Enter save, Esc cancel)"),
                 w,
@@ -291,7 +294,7 @@ impl SessionResumePanel {
             return lines;
         }
 
-        if let Some(id) = &self.confirming_delete {
+        if let PanelSubstate::ConfirmDelete(id) = &self.substate {
             lines.push(self.theme.paint_muted(&truncate_to_width(
                 &format!("Delete session {id}? Enter confirm · Esc cancel"),
                 w,
@@ -417,39 +420,45 @@ impl SessionResumePanel {
             return SessionResumeAction::None;
         };
 
-        if let Some((id, input)) = &mut self.rename {
-            if matches_binding(key, "tui.select.confirm") {
-                let id = id.clone();
-                let name = input.value().trim().to_string();
-                self.rename = None;
-                if name.is_empty() {
-                    self.status_line = Some("Name cannot be empty".into());
+        match &mut self.substate {
+            PanelSubstate::Rename { id, input } => {
+                if matches_binding(key, "tui.select.confirm") {
+                    let id = id.clone();
+                    let name = input.value().trim().to_string();
+                    self.substate = PanelSubstate::Normal;
+                    if name.is_empty() {
+                        self.status_line = Some("Name cannot be empty".into());
+                        return SessionResumeAction::None;
+                    }
+                    return SessionResumeAction::Rename { id, name };
+                }
+                if matches_binding(key, "app.interrupt") {
+                    self.substate = PanelSubstate::Normal;
                     return SessionResumeAction::None;
                 }
-                return SessionResumeAction::Rename { id, name };
-            }
-            if matches_binding(key, "app.interrupt") {
-                self.rename = None;
+                input.handle_input(event);
                 return SessionResumeAction::None;
             }
-            input.handle_input(event);
-            return SessionResumeAction::None;
-        }
-
-        if self.confirming_delete.is_some() {
-            if matches_binding(key, "tui.select.confirm") {
-                let id = self.confirming_delete.take().unwrap();
-                if self.current_session_id.as_deref() == Some(id.as_str()) {
-                    self.status_line = Some("Cannot delete the active session".into());
+            PanelSubstate::ConfirmDelete(_) => {
+                if matches_binding(key, "tui.select.confirm") {
+                    let PanelSubstate::ConfirmDelete(id) =
+                        std::mem::replace(&mut self.substate, PanelSubstate::Normal)
+                    else {
+                        unreachable!("matched ConfirmDelete above");
+                    };
+                    if self.current_session_id.as_deref() == Some(id.as_str()) {
+                        self.status_line = Some("Cannot delete the active session".into());
+                        return SessionResumeAction::None;
+                    }
+                    return SessionResumeAction::Delete(id);
+                }
+                if matches_binding(key, "app.interrupt") {
+                    self.substate = PanelSubstate::Normal;
                     return SessionResumeAction::None;
                 }
-                return SessionResumeAction::Delete(id);
-            }
-            if matches_binding(key, "app.interrupt") {
-                self.confirming_delete = None;
                 return SessionResumeAction::None;
             }
-            return SessionResumeAction::None;
+            PanelSubstate::Normal => {}
         }
 
         if matches_binding(key, "tui.input.tab") {
@@ -484,7 +493,10 @@ impl SessionResumePanel {
                 if let Some(name) = &entry.name {
                     input.set_value(name.clone());
                 }
-                self.rename = Some((entry.id, input));
+                self.substate = PanelSubstate::Rename {
+                    id: entry.id,
+                    input,
+                };
             }
             return SessionResumeAction::None;
         }
@@ -493,7 +505,7 @@ impl SessionResumePanel {
                 if self.current_session_id.as_deref() == Some(entry.id.as_str()) {
                     self.status_line = Some("Cannot delete the active session".into());
                 } else {
-                    self.confirming_delete = Some(entry.id);
+                    self.substate = PanelSubstate::ConfirmDelete(entry.id);
                 }
             }
             return SessionResumeAction::None;
@@ -839,15 +851,18 @@ mod tests {
         panel.scope = SessionScope::All;
         assert_eq!(panel.header_rows(80), 4, "entries do not change the header");
 
-        panel.rename = Some(("s0".into(), Input::new()));
+        panel.substate = PanelSubstate::Rename {
+            id: "s0".into(),
+            input: Input::new(),
+        };
         assert_eq!(
             panel.header_rows(80),
             2,
             "rename collapses the header to two rows"
         );
-        panel.rename = None;
+        panel.substate = PanelSubstate::Normal;
 
-        panel.confirming_delete = Some("s1".into());
+        panel.substate = PanelSubstate::ConfirmDelete("s1".into());
         assert_eq!(panel.header_rows(80), 5, "confirming delete adds one row");
         panel.set_status("boom");
         assert_eq!(
@@ -855,7 +870,7 @@ mod tests {
             6,
             "confirm and status stack to six rows"
         );
-        panel.confirming_delete = None;
+        panel.substate = PanelSubstate::Normal;
         assert_eq!(panel.header_rows(80), 5, "status line alone adds one row");
     }
 

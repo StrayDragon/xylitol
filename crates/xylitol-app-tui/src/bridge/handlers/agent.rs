@@ -4,7 +4,7 @@ use crate::driver::XyEvent;
 pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
         XyEvent::AgentStart { .. } => {
-            model.set_busy_status("Working");
+            model.set_busy_placeholder("Working");
             true
         }
         XyEvent::AgentEnd { reason, .. } => {
@@ -41,7 +41,7 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     }
                 }
                 if model.phase == UiPhase::Busy {
-                    model.set_busy_status("Working");
+                    model.set_busy_placeholder("Working");
                 }
             }
             true

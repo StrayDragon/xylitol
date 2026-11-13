@@ -63,6 +63,22 @@ pub struct VisibleItems {
     pub diff: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct VisibleItemsOverrides {
+    pub thinking: Option<bool>,
+    pub tool_header: Option<bool>,
+    pub tool_output: Option<bool>,
+    pub diff: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisibleItemKind {
+    Thinking,
+    ToolHeader,
+    ToolOutput,
+    Diff,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivityFoldSettings {
     pub enabled: bool,
@@ -71,7 +87,7 @@ pub struct ActivityFoldSettings {
     pub auto_on_turn_end: bool,
     pub collapse_floor: SegmentLevel,
     pub display_level: DisplayLevel,
-    pub visible_items: VisibleItems,
+    pub visible_overrides: VisibleItemsOverrides,
 }
 
 impl Default for ActivityFoldSettings {
@@ -83,7 +99,7 @@ impl Default for ActivityFoldSettings {
             auto_on_turn_end: true,
             collapse_floor: SegmentLevel::L3,
             display_level: DisplayLevel::Summary,
-            visible_items: DisplayLevel::Summary.visible_items(),
+            visible_overrides: VisibleItemsOverrides::default(),
         }
     }
 }
@@ -93,9 +109,29 @@ impl ActivityFoldSettings {
         self.enabled && self.collapse_floor == SegmentLevel::L3
     }
 
+    pub fn visible_items(&self) -> VisibleItems {
+        let base = self.display_level.visible_items();
+        let o = self.visible_overrides;
+        VisibleItems {
+            thinking: o.thinking.unwrap_or(base.thinking),
+            tool_header: o.tool_header.unwrap_or(base.tool_header),
+            tool_output: o.tool_output.unwrap_or(base.tool_output),
+            diff: o.diff.unwrap_or(base.diff),
+        }
+    }
+
+    pub fn set_visible_item(&mut self, item: VisibleItemKind, value: bool) {
+        match item {
+            VisibleItemKind::Thinking => self.visible_overrides.thinking = Some(value),
+            VisibleItemKind::ToolHeader => self.visible_overrides.tool_header = Some(value),
+            VisibleItemKind::ToolOutput => self.visible_overrides.tool_output = Some(value),
+            VisibleItemKind::Diff => self.visible_overrides.diff = Some(value),
+        }
+    }
+
     pub fn apply_display_level(&mut self, level: DisplayLevel) {
         self.display_level = level;
-        self.visible_items = level.visible_items();
+        self.visible_overrides = VisibleItemsOverrides::default();
         self.keep_recent_turns = level.keep_recent_turns();
     }
 }
@@ -108,20 +144,22 @@ mod tests {
     fn default_is_summary() {
         let settings = ActivityFoldSettings::default();
         assert_eq!(settings.display_level, DisplayLevel::Summary);
-        assert!(settings.visible_items.thinking);
-        assert!(settings.visible_items.tool_header);
-        assert!(!settings.visible_items.tool_output);
-        assert!(!settings.visible_items.diff);
+        let items = settings.visible_items();
+        assert!(items.thinking);
+        assert!(items.tool_header);
+        assert!(!items.tool_output);
+        assert!(!items.diff);
     }
 
     #[test]
     fn full_expands_everything() {
         let mut settings = ActivityFoldSettings::default();
         settings.apply_display_level(DisplayLevel::Full);
-        assert!(settings.visible_items.thinking);
-        assert!(settings.visible_items.tool_header);
-        assert!(settings.visible_items.tool_output);
-        assert!(settings.visible_items.diff);
+        let items = settings.visible_items();
+        assert!(items.thinking);
+        assert!(items.tool_header);
+        assert!(items.tool_output);
+        assert!(items.diff);
     }
 
     #[test]
@@ -136,9 +174,10 @@ mod tests {
     fn quiet_hides_everything() {
         let mut settings = ActivityFoldSettings::default();
         settings.apply_display_level(DisplayLevel::Quiet);
-        assert!(!settings.visible_items.thinking);
-        assert!(!settings.visible_items.tool_header);
-        assert!(!settings.visible_items.tool_output);
-        assert!(!settings.visible_items.diff);
+        let items = settings.visible_items();
+        assert!(!items.thinking);
+        assert!(!items.tool_header);
+        assert!(!items.tool_output);
+        assert!(!items.diff);
     }
 }

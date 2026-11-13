@@ -1,12 +1,16 @@
 use super::super::commands::{PendingBash, PendingSlash};
 use super::super::mcp_attach::{McpPromptTarget, PendingMcpAttachments};
 
+#[derive(Debug)]
+pub struct PendingSubmit {
+    pub prompt: String,
+    pub attachments: PendingMcpAttachments,
+    pub gated: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct PendingOps {
-    pub submit: Option<String>,
-    pub gated_submit: Option<String>,
-    pub submit_attachments: PendingMcpAttachments,
-    pub gated_attachments: PendingMcpAttachments,
+    pub submit: Option<PendingSubmit>,
     pub mcp_prompt_args_result: Option<(McpPromptTarget, String)>,
     pub steer: Option<String>,
     pub follow_up: Option<String>,
@@ -22,25 +26,45 @@ pub struct PendingOps {
 
 impl PendingOps {
     pub fn take_submit(&mut self) -> Option<String> {
-        self.submit.take()
+        match self.submit.take() {
+            Some(entry) if !entry.gated => Some(entry.prompt),
+            other => {
+                self.submit = other;
+                None
+            }
+        }
     }
-    pub fn take_submit_attachments(&mut self) -> PendingMcpAttachments {
-        std::mem::take(&mut self.submit_attachments)
+    pub fn take_submit_with_attachments(&mut self) -> Option<(String, PendingMcpAttachments)> {
+        match self.submit.take() {
+            Some(entry) if !entry.gated => Some((entry.prompt, entry.attachments)),
+            other => {
+                self.submit = other;
+                None
+            }
+        }
     }
     pub fn take_gated_submit(&mut self) -> Option<String> {
-        let prompt = self.gated_submit.take();
-        self.gated_attachments = PendingMcpAttachments::default();
-        prompt
+        match self.submit.take() {
+            Some(entry) if entry.gated => Some(entry.prompt),
+            other => {
+                self.submit = other;
+                None
+            }
+        }
     }
     pub fn take_gated_submit_with_attachments(
         &mut self,
     ) -> Option<(String, PendingMcpAttachments)> {
-        let prompt = self.gated_submit.take()?;
-        let attachments = std::mem::take(&mut self.gated_attachments);
-        Some((prompt, attachments))
+        match self.submit.take() {
+            Some(entry) if entry.gated => Some((entry.prompt, entry.attachments)),
+            other => {
+                self.submit = other;
+                None
+            }
+        }
     }
     pub fn peek_gated_submit(&self) -> bool {
-        self.gated_submit.is_some()
+        self.submit.as_ref().is_some_and(|entry| entry.gated)
     }
     pub fn take_steer(&mut self) -> Option<String> {
         self.steer.take()

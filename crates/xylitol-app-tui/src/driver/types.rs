@@ -107,33 +107,198 @@ pub struct McpServerSnapshot {
 pub const MCP_PENDING_CUE: &str = "mcp pending (see /mcp)";
 pub const CAPABILITY_PENDING_CUE: &str = "Next turn: capability overlay";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpReadyState {
+    NotConfigured,
+    Connecting,
+    BootstrapPending,
+    Frozen,
+    Arming,
+    Ready,
+}
+
 impl LoadedResourcesSnapshot {
-    pub fn mcp_tools_pending(&self) -> bool {
+    pub fn mcp_ready_state(&self) -> McpReadyState {
         if self.mcp_configured == 0 {
-            return false;
+            return McpReadyState::NotConfigured;
         }
         if self.mcp_bootstrap_complete && self.tools_table_frozen {
-            return false;
+            return McpReadyState::Frozen;
         }
-        if self.mcp_connecting_label.is_some() {
-            return true;
+        if self.mcp_connecting_label.is_some()
+            || self
+                .mcp_servers
+                .iter()
+                .any(|s| s.phase == McpServerPhase::Connecting)
+        {
+            return McpReadyState::Connecting;
+        }
+        if self.tools_table_frozen {
+            return McpReadyState::Frozen;
+        }
+        if !self.mcp_bootstrap_complete {
+            return McpReadyState::BootstrapPending;
         }
         if self
             .mcp_servers
             .iter()
-            .any(|s| s.phase == McpServerPhase::Connecting)
-        {
-            return true;
-        }
-        if self.tools_table_frozen {
-            return false;
-        }
-        if !self.mcp_bootstrap_complete {
-            return true;
-        }
-        self.mcp_servers
-            .iter()
             .any(|s| s.phase == McpServerPhase::Connected && !s.tools_armed)
+        {
+            return McpReadyState::Arming;
+        }
+        McpReadyState::Ready
+    }
+
+    pub fn mcp_tools_pending(&self) -> bool {
+        !matches!(
+            self.mcp_ready_state(),
+            McpReadyState::NotConfigured | McpReadyState::Frozen | McpReadyState::Ready
+        )
+    }
+}
+
+#[cfg(test)]
+mod mcp_ready_state_tests {
+    use super::*;
+
+    #[derive(Clone)]
+    struct Case {
+        configured: usize,
+        bootstrap: bool,
+        frozen: bool,
+        label: Option<String>,
+        any_connecting: bool,
+        any_connected_unarmed: bool,
+    }
+
+    impl Case {
+        fn snapshot(&self) -> LoadedResourcesSnapshot {
+            let mut connecting = Vec::new();
+            if self.any_connecting {
+                connecting.push(McpServerSnapshot {
+                    id: "s-connecting".into(),
+                    phase: McpServerPhase::Connecting,
+                    tools_armed: false,
+                    tool_count: 1,
+                });
+            }
+            if self.any_connected_unarmed {
+                connecting.push(McpServerSnapshot {
+                    id: "s-connected".into(),
+                    phase: McpServerPhase::Connected,
+                    tools_armed: false,
+                    tool_count: 1,
+                });
+            }
+            LoadedResourcesSnapshot {
+                mcp_configured: self.configured,
+                mcp_bootstrap_complete: self.bootstrap,
+                tools_table_frozen: self.frozen,
+                mcp_connecting_label: self.label.clone(),
+                mcp_servers: connecting,
+                ..Default::default()
+            }
+        }
+
+        fn legacy_pending(&self) -> bool {
+            if self.configured == 0 {
+                return false;
+            }
+            if self.bootstrap && self.frozen {
+                return false;
+            }
+            if self.label.is_some() {
+                return true;
+            }
+            if self.any_connecting {
+                return true;
+            }
+            if self.frozen {
+                return false;
+            }
+            if !self.bootstrap {
+                return true;
+            }
+            self.any_connected_unarmed
+        }
+    }
+
+    #[test]
+    fn ready_state_matches_the_legacy_pending_truth_table() {
+        for configured in [0usize, 2] {
+            for bootstrap in [false, true] {
+                for frozen in [false, true] {
+                    for label in [None, Some("connecting".to_string())] {
+                        for any_connecting in [false, true] {
+                            for any_connected_unarmed in [false, true] {
+                                let case = Case {
+                                    configured,
+                                    bootstrap,
+                                    frozen,
+                                    label: label.clone(),
+                                    any_connecting,
+                                    any_connected_unarmed,
+                                };
+                                let snap = case.snapshot();
+                                assert_eq!(
+                                    snap.mcp_tools_pending(),
+                                    case.legacy_pending(),
+                                    "configured={configured} bootstrap={bootstrap} frozen={frozen} label={label:?} connecting={any_connecting} unarmed={any_connected_unarmed}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ready_state_decomposition_covers_all_states() {
+        let base = Case {
+            configured: 2,
+            bootstrap: true,
+            frozen: false,
+            label: None,
+            any_connecting: false,
+            any_connected_unarmed: false,
+        };
+        assert_eq!(base.snapshot().mcp_ready_state(), McpReadyState::Ready);
+        let not_configured = Case {
+            configured: 0,
+            ..base.clone()
+        };
+        assert_eq!(
+            not_configured.snapshot().mcp_ready_state(),
+            McpReadyState::NotConfigured
+        );
+        let connecting = Case {
+            any_connecting: true,
+            ..base.clone()
+        };
+        assert_eq!(
+            connecting.snapshot().mcp_ready_state(),
+            McpReadyState::Connecting
+        );
+        let bootstrap_pending = Case {
+            bootstrap: false,
+            ..base.clone()
+        };
+        assert_eq!(
+            bootstrap_pending.snapshot().mcp_ready_state(),
+            McpReadyState::BootstrapPending
+        );
+        let frozen = Case {
+            bootstrap: false,
+            frozen: true,
+            ..base.clone()
+        };
+        assert_eq!(frozen.snapshot().mcp_ready_state(), McpReadyState::Frozen);
+        let arming = Case {
+            any_connected_unarmed: true,
+            ..base.clone()
+        };
+        assert_eq!(arming.snapshot().mcp_ready_state(), McpReadyState::Arming);
     }
 }
 

@@ -116,9 +116,9 @@ fn t_mat31_pointer_reaches_all(tui_interaction: &TuiInteraction, host_pump_bdd: 
             !fx.tools_effective("t-read"),
             "mat31: 左键点三角须可收起单个工具块"
         );
-        assert_eq!(fx.fold().tools_overrides.len(), 1, "仅该块入覆盖表");
+        assert_eq!(fx.fold().overrides.tools.len(), 1, "仅该块入覆盖表");
         assert_eq!(
-            fx.fold().thinking_overrides.len(),
+            fx.fold().overrides.thinking.len(),
             1,
             "mat31: 左键点三角须可翻转思维块"
         );
@@ -189,10 +189,16 @@ fn t_mat32_chords_inert(tui_interaction: &TuiInteraction) {
         let frame = fx.render_plain(80);
         (fold, frame)
     };
-    assert!(!fold.thinking_expanded, "mat32: Ctrl+T 不得再触发思维折叠");
-    assert!(fold.tools_expanded, "mat32: Alt+E 不得再触发工具族折叠");
     assert!(
-        !fold.tools_output_expanded,
+        !fold.defaults.thinking_expanded,
+        "mat32: Ctrl+T 不得再触发思维折叠"
+    );
+    assert!(
+        fold.defaults.tools_expanded,
+        "mat32: Alt+E 不得再触发工具族折叠"
+    );
+    assert!(
+        !fold.defaults.tools_output_expanded,
         "mat32: Ctrl+O 不得再触发输出视口全局默认"
     );
     assert!(

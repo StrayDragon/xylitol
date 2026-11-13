@@ -19,7 +19,7 @@ pub use segment::ActivityCluster;
 pub use segment::{
     ActivitySegment, SegmentLevel, cluster_middle_indices, middle_entry_indices, partition_segments,
 };
-pub use settings::{ActivityFoldSettings, DisplayLevel, VisibleItems};
+pub use settings::{ActivityFoldSettings, DisplayLevel, VisibleItemKind, VisibleItems};
 pub use state::{ActivityFoldState, SegmentClock};
 pub use summary::{
     cluster_is_thought_only, cluster_omits_header, count_cluster, format_cluster_header,

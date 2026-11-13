@@ -17,6 +17,10 @@ pub fn request_exit() {
     EXIT_REQUESTED.store(true, Ordering::SeqCst);
 }
 
+pub fn reset_exit_requested() {
+    EXIT_REQUESTED.store(false, Ordering::SeqCst);
+}
+
 pub fn install_lifecycle_hooks() {
     HOOKS_INSTALLED.call_once(|| {
         install_panic_hook();
@@ -101,5 +105,17 @@ impl Drop for TerminalGuard {
         if let Some(mut term) = self.terminal.take() {
             term.stop();
         }
+        reset_exit_requested();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reset_clears_the_sticky_exit_flag() {
+        super::request_exit();
+        assert!(super::exit_requested());
+        super::reset_exit_requested();
+        assert!(!super::exit_requested());
     }
 }

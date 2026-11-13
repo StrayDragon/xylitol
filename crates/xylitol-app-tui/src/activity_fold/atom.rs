@@ -262,6 +262,7 @@ mod tests {
         );
         assert_atom(
             UiEntry::Compaction {
+                id: "c".into(),
                 status: CompactionBlockStatus::Complete,
                 summary: "c".into(),
                 tokens_before: 1,

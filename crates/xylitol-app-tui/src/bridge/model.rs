@@ -80,6 +80,13 @@ pub enum AskPhase {
     Skipped,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AskOutcome {
+    Answered,
+    Skipped,
+    Unknown,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompactionBlockStatus {
     Pending,
@@ -132,6 +139,7 @@ pub enum UiEntry {
         exclude_from_context: bool,
     },
     Compaction {
+        id: String,
         status: CompactionBlockStatus,
         summary: String,
         tokens_before: u64,
@@ -211,6 +219,7 @@ pub struct UiModel {
     pub pending_steer: Vec<String>,
     pub pending_follow_up: Vec<String>,
     pub status: Option<String>,
+    status_placeholder: bool,
     pub streaming_assistant: String,
     pub(crate) streaming_thinking: String,
     pub(crate) streaming_think_id: Option<String>,
@@ -238,6 +247,7 @@ impl UiModel {
             pending_steer: Vec::new(),
             pending_follow_up: Vec::new(),
             status: None,
+            status_placeholder: false,
             streaming_assistant: String::new(),
             streaming_thinking: String::new(),
             streaming_think_id: None,
@@ -305,8 +315,7 @@ impl UiModel {
                 text: trimmed.to_string(),
             });
         }
-        self.phase = UiPhase::Busy;
-        self.status = Some("Working".into());
+        self.set_busy_placeholder("Working");
     }
 
     pub fn scrollback_lines(&self) -> Vec<String> {
@@ -362,6 +371,7 @@ impl UiModel {
                     }
                 }
                 UiEntry::Compaction {
+                    id: _,
                     status,
                     summary,
                     tokens_before,
@@ -509,8 +519,7 @@ impl UiModel {
             exclude_from_context,
         });
         self.bash_utf8_pending.clear();
-        self.phase = UiPhase::Busy;
-        self.status = Some("Running".into());
+        self.set_busy_placeholder("Running");
     }
 
     pub fn bash_block_id_from_command(prior: &[UiEntry], command: &str) -> String {
@@ -548,12 +557,28 @@ impl UiModel {
                 status: st, output, ..
             } = entry
             {
-                if *st == BashBlockStatus::Pending || status == BashBlockStatus::Cancelled {
+                if *st == BashBlockStatus::Pending {
                     *st = status;
                     *output = body;
                 }
                 break;
             }
+        }
+    }
+
+    pub fn upsert_compaction_block(&mut self, entry: UiEntry) {
+        let UiEntry::Compaction { id, .. } = &entry else {
+            return;
+        };
+        let id = id.clone();
+        if let Some(slot) = self
+            .entries
+            .iter_mut()
+            .find(|e| matches!(e, UiEntry::Compaction { id: existing, .. } if *existing == id))
+        {
+            *slot = entry;
+        } else {
+            self.entries.push(entry);
         }
     }
 
@@ -602,8 +627,18 @@ impl UiModel {
     }
 
     pub fn set_busy_status(&mut self, status: impl Into<String>) {
+        self.set_busy_placeholder(status);
+        self.status_placeholder = false;
+    }
+
+    pub fn set_busy_placeholder(&mut self, status: impl Into<String>) {
         self.phase = UiPhase::Busy;
         self.status = Some(status.into());
+        self.status_placeholder = true;
+    }
+
+    pub fn status_is_placeholder(&self) -> bool {
+        self.status_placeholder || self.status.is_none()
     }
 
     pub(crate) fn maybe_idle_after_agent_end(&mut self) {

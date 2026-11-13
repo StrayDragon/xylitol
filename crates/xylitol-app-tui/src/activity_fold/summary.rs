@@ -391,6 +391,7 @@ mod tests {
 
     fn compaction() -> UiEntry {
         UiEntry::Compaction {
+            id: "c".into(),
             status: crate::bridge::CompactionBlockStatus::Complete,
             summary: "c".into(),
             tokens_before: 101_494,

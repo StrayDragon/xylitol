@@ -280,9 +280,7 @@ pub async fn drain_pending<T: Terminal>(
 
     let next_submit = match converted_submit {
         Some(prompt) => Some((prompt, crate::mcp_attach::PendingMcpAttachments::default())),
-        None => session
-            .take_submit()
-            .map(|prompt| (prompt, session.take_submit_attachments())),
+        None => session.take_submit_with_attachments(),
     };
     if agent_stream.is_none()
         && let Some((prompt, attachments)) = next_submit

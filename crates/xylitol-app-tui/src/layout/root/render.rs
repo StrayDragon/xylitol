@@ -285,8 +285,8 @@ impl UiRoot {
         if !self.status_busy {
             let cue = self
                 .status_next_turn_cue
-                .as_deref()
-                .map(|cue| paint_cue_line(&self.theme, cue, width))
+                .as_ref()
+                .map(|cue| paint_cue_line(&self.theme, cue.raw(), width))
                 .unwrap_or_default();
             return vec![cue];
         }
@@ -294,9 +294,9 @@ impl UiRoot {
         if lines.first().is_some_and(|line| line.is_empty()) {
             lines.remove(0);
         }
-        if let Some(cue) = self.status_next_turn_cue.as_deref() {
+        if let Some(cue) = self.status_next_turn_cue.as_ref() {
             if let Some(content) = lines.last_mut() {
-                let cue_paint = self.theme.paint_muted(cue);
+                let cue_paint = self.theme.paint_muted(cue.raw());
                 let lead = content.trim_end_matches(' ');
                 let lead_w = xylitol_tui::visible_width(lead);
                 let cue_w = xylitol_tui::visible_width(&cue_paint);
@@ -313,7 +313,7 @@ impl UiRoot {
                     }
                 }
             } else {
-                lines.push(paint_cue_line(&self.theme, cue, width));
+                lines.push(paint_cue_line(&self.theme, cue.raw(), width));
             }
         }
         lines
@@ -365,20 +365,33 @@ impl UiRoot {
 }
 
 impl UiRoot {
+    pub(crate) fn cancel_sidebar_drag(&mut self) {
+        self.session_sidebar_dragging = false;
+        self.session_sidebar_drag_moved = false;
+    }
+
     pub(crate) fn handle_sidebar_drag_pointer(
         &mut self,
         mouse: &crossterm::event::MouseEvent,
     ) -> bool {
         use crossterm::event::{MouseButton, MouseEventKind};
 
+        if self.slot.is_overlay() {
+            self.cancel_sidebar_drag();
+            return false;
+        }
         let (placement, panel_w, content_w, panel_h) = self.session_sidebar_layout(self.term_cols);
         let Some(placement) = placement else {
+            self.cancel_sidebar_drag();
             return false;
         };
         let (separator, separator_height) = match placement {
             PanelPlacement::DockRight => (content_w, self.transcript_rows()),
             PanelPlacement::FloatRight => (self.term_cols.saturating_sub(panel_w), panel_h),
-            _ => return false,
+            _ => {
+                self.cancel_sidebar_drag();
+                return false;
+            }
         };
         let in_separator =
             mouse.column as usize == separator && (mouse.row as usize) < separator_height;

@@ -16,7 +16,9 @@ impl UiRoot {
 
     #[cfg(test)]
     pub fn status_next_turn_cue_for_test(&self) -> Option<String> {
-        self.status_next_turn_cue.clone()
+        self.status_next_turn_cue
+            .as_ref()
+            .map(|cue| cue.raw().to_string())
     }
 
     pub fn mount_mcp_panel(&mut self, snap: &LoadedResourcesSnapshot) {

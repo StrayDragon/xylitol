@@ -12,6 +12,10 @@ pub struct EscWindow {
 
 impl UiRoot {
     pub fn on_escape(&mut self, esc: &mut EscWindow) -> bool {
+        if self.session_sidebar_dragging {
+            self.cancel_sidebar_drag();
+            return true;
+        }
         if matches!(&self.slot, EditorSlot::Tree(_)) {
             let stay = if let EditorSlot::Tree(tree) = &mut self.slot {
                 tree.cancel_label_edit() || tree.clear_search_if_any()

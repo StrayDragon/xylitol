@@ -276,7 +276,7 @@ fn then_only_clicked_override(tui_interaction: &TuiInteraction) {
         .expect("a block was clicked");
     let fx = tui_interaction.fx.borrow();
     let fx = fx.as_ref().expect("fixture mounted");
-    assert_eq!(fx.fold().tools_overrides.len(), 1);
+    assert_eq!(fx.fold().overrides.tools.len(), 1);
     assert_eq!(
         fx.tools_effective(&id),
         false,
@@ -316,7 +316,7 @@ fn then_one_thinking_override(tui_interaction: &TuiInteraction) {
     let fx = tui_interaction.fx.borrow();
     let fx = fx.as_ref().expect("fixture mounted");
     assert_eq!(
-        fx.fold().thinking_overrides.len(),
+        fx.fold().overrides.thinking.len(),
         1,
         "exactly one per-id override"
     );
@@ -408,7 +408,7 @@ fn then_compaction_global_toggled(tui_interaction: &TuiInteraction) {
     let fx = tui_interaction.fx.borrow();
     let fx = fx.as_ref().expect("fixture mounted");
     assert!(
-        fx.fold().compaction_expanded,
+        fx.fold().defaults.compaction_expanded,
         "one click on the compaction triangle expands the global state"
     );
 }
@@ -418,7 +418,7 @@ fn then_compaction_global_unchanged(tui_interaction: &TuiInteraction) {
     let fx = tui_interaction.fx.borrow();
     let fx = fx.as_ref().expect("fixture mounted");
     assert!(
-        !fx.fold().compaction_expanded,
+        !fx.fold().defaults.compaction_expanded,
         "summary-column click must leave compaction collapsed"
     );
 }
@@ -427,8 +427,11 @@ fn then_compaction_global_unchanged(tui_interaction: &TuiInteraction) {
 fn then_tools_family_untouched(tui_interaction: &TuiInteraction) {
     let fx = tui_interaction.fx.borrow();
     let fx = fx.as_ref().expect("fixture mounted");
-    assert!(fx.fold().tools_overrides.is_empty());
-    assert!(fx.fold().tools_expanded, "tools default stays open");
+    assert!(fx.fold().overrides.tools.is_empty());
+    assert!(
+        fx.fold().defaults.tools_expanded,
+        "tools default stays open"
+    );
 }
 
 fn long_output(lines: usize) -> String {
@@ -481,22 +484,22 @@ fn then_hint_click_per_block_ctrl_o_global(tui_interaction: &TuiInteraction) {
         "hint-band click expands the clicked block"
     );
     assert!(
-        !fx.fold().tools_output_expanded,
+        !fx.fold().defaults.tools_output_expanded,
         "per-block click must not flip the global default"
     );
     fx.toggle_tools_output_default();
     assert!(
-        fx.fold().tools_output_expanded,
+        fx.fold().defaults.tools_output_expanded,
         "viewport default action flips the global default"
     );
     assert!(
-        fx.fold().output_overrides.is_empty(),
+        fx.fold().overrides.output.is_empty(),
         "Ctrl+O clears per-block overrides, got {:?}",
-        fx.fold().output_overrides
+        fx.fold().overrides.output
     );
     assert!(fx.fold().output_effective("t-log"));
     fx.toggle_tools_output_default();
-    assert!(!fx.fold().tools_output_expanded);
+    assert!(!fx.fold().defaults.tools_output_expanded);
     assert!(
         !fx.fold().output_effective("t-log"),
         "global collapse applies to the block again"
@@ -571,7 +574,7 @@ fn then_per_block_expand_and_fold_band(tui_interaction: &TuiInteraction) {
         "sibling block stays collapsed"
     );
     assert!(
-        !fx.fold().tools_output_expanded,
+        !fx.fold().defaults.tools_output_expanded,
         "global default untouched by per-block click"
     );
     let _ = fx.render_plain(80);
@@ -673,11 +676,11 @@ fn then_tools_default_flipped_overrides_cleared(tui_interaction: &TuiInteraction
     let fx = fx.as_ref().expect("fixture mounted");
     let fold = fx.fold();
     assert!(
-        fold.tools_overrides.is_empty(),
+        fold.overrides.tools.is_empty(),
         "Alt+E clears family overrides, got {:?}",
-        fold.tools_overrides
+        fold.overrides.tools
     );
-    assert_eq!(fold.tools_expanded, false);
+    assert_eq!(fold.defaults.tools_expanded, false);
     assert_eq!(fx.tools_effective("t-read"), false);
     assert_eq!(fx.tools_effective("t-edit"), false);
 }
@@ -688,11 +691,11 @@ fn then_thinking_default_flipped_overrides_cleared(tui_interaction: &TuiInteract
     let fx = fx.as_ref().expect("fixture mounted");
     let fold = fx.fold();
     assert!(
-        fold.thinking_overrides.is_empty(),
+        fold.overrides.thinking.is_empty(),
         "Ctrl+T clears all thinking overrides, got {:?}",
-        fold.thinking_overrides
+        fold.overrides.thinking
     );
-    assert_eq!(fold.thinking_expanded, true);
+    assert_eq!(fold.defaults.thinking_expanded, true);
 }
 
 #[then("渲染帧与动作前逐字一致")]
@@ -808,8 +811,8 @@ fn then_filter_mode_is(tui_interaction: &TuiInteraction, mode: String) {
 fn then_thinking_default_untouched_by_tree_keys(tui_interaction: &TuiInteraction) {
     let fx = tui_interaction.fx.borrow();
     let fx = fx.as_ref().expect("fixture mounted");
-    assert!(!fx.fold().thinking_expanded);
-    assert!(fx.fold().thinking_overrides.is_empty());
+    assert!(!fx.fold().defaults.thinking_expanded);
+    assert!(fx.fold().overrides.thinking.is_empty());
 }
 
 #[then("该节点子会话行被收起")]
@@ -894,10 +897,10 @@ fn then_thinking_flipped_no_models_panel(tui_interaction: &TuiInteraction) {
     let (frame, expanded, before) = {
         let mut fx = tui_interaction.fx.borrow_mut();
         let fx = fx.as_mut().expect("fixture mounted");
-        let before = fx.fold().thinking_expanded;
+        let before = fx.fold().defaults.thinking_expanded;
         fx.toggle_thinking_default();
         let frame = fx.render_plain(80);
-        (frame, fx.fold().thinking_expanded, before)
+        (frame, fx.fold().defaults.thinking_expanded, before)
     };
     assert_ne!(expanded, before, "thinking toggle action flips the default");
     assert!(

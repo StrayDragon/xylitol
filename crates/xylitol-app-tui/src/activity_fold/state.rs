@@ -61,10 +61,6 @@ impl ActivityFoldState {
         self.levels.get(id).copied().unwrap_or(SegmentLevel::L0)
     }
 
-    pub fn effective_level(&self, id: &str) -> SegmentLevel {
-        self.level_of(id)
-    }
-
     pub fn set_level(&mut self, id: &str, level: SegmentLevel) -> bool {
         let prev = self.level_of(id);
         if prev == level && self.levels.contains_key(id) {

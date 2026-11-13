@@ -43,7 +43,7 @@ pub enum ArgsMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ScrollbackFold {
+pub struct ScrollbackFoldDefaults {
     pub thinking_expanded: bool,
     pub thinking_visible: bool,
     pub streaming_thinking_expanded: bool,
@@ -54,15 +54,25 @@ pub struct ScrollbackFold {
     pub diff_visible: bool,
     pub args_expanded: ArgsMode,
     pub user_expanded: bool,
-    pub output_overrides: HashMap<String, bool>,
-    pub args_overrides: HashMap<String, ArgsMode>,
-    pub user_overrides: HashMap<String, bool>,
     pub compaction_expanded: bool,
-    pub tools_overrides: HashMap<String, bool>,
-    pub thinking_overrides: HashMap<String, bool>,
 }
 
-impl Default for ScrollbackFold {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ScrollbackFoldOverrides {
+    pub output: HashMap<String, bool>,
+    pub args: HashMap<String, ArgsMode>,
+    pub user: HashMap<String, bool>,
+    pub tools: HashMap<String, bool>,
+    pub thinking: HashMap<String, bool>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ScrollbackFold {
+    pub defaults: ScrollbackFoldDefaults,
+    pub overrides: ScrollbackFoldOverrides,
+}
+
+impl Default for ScrollbackFoldDefaults {
     fn default() -> Self {
         Self {
             thinking_expanded: false,
@@ -75,12 +85,7 @@ impl Default for ScrollbackFold {
             diff_visible: true,
             args_expanded: ArgsMode::Hidden,
             user_expanded: false,
-            output_overrides: HashMap::new(),
-            args_overrides: HashMap::new(),
-            user_overrides: HashMap::new(),
             compaction_expanded: false,
-            tools_overrides: HashMap::new(),
-            thinking_overrides: HashMap::new(),
         }
     }
 }
@@ -90,76 +95,79 @@ pub type ScrollbackFoldDefaultsKey = (bool, bool, ArgsMode, bool);
 impl ScrollbackFold {
     pub fn defaults_key(&self) -> ScrollbackFoldDefaultsKey {
         (
-            self.thinking_expanded,
-            self.tools_expanded,
-            self.args_expanded,
-            self.user_expanded,
+            self.defaults.thinking_expanded,
+            self.defaults.tools_expanded,
+            self.defaults.args_expanded,
+            self.defaults.user_expanded,
         )
     }
 
     pub fn tools_effective(&self, id: &str) -> bool {
-        self.tools_overrides
+        self.overrides
+            .tools
             .get(id)
             .copied()
-            .unwrap_or(self.tools_expanded)
+            .unwrap_or(self.defaults.tools_expanded)
     }
 
     pub fn thinking_effective(&self, id: &str) -> bool {
-        self.thinking_visible
-            && self.thinking_overrides.get(id).copied().unwrap_or_else(|| {
+        self.defaults.thinking_visible
+            && self.overrides.thinking.get(id).copied().unwrap_or_else(|| {
                 if id == STREAMING_THINK_ID {
-                    self.streaming_thinking_expanded
+                    self.defaults.streaming_thinking_expanded
                 } else {
-                    self.thinking_expanded
+                    self.defaults.thinking_expanded
                 }
             })
     }
 
     pub fn toggle_tools(&mut self, id: &str) {
         let next = !self.tools_effective(id);
-        self.tools_overrides.insert(id.to_string(), next);
+        self.overrides.tools.insert(id.to_string(), next);
     }
 
     pub fn toggle_thinking(&mut self, id: &str) {
         let next = !self.thinking_effective(id);
-        self.thinking_overrides.insert(id.to_string(), next);
+        self.overrides.thinking.insert(id.to_string(), next);
     }
 
     pub fn output_effective(&self, id: &str) -> bool {
-        self.tool_output_visible
+        self.defaults.tool_output_visible
             && self
-                .output_overrides
+                .overrides
+                .output
                 .get(id)
                 .copied()
-                .unwrap_or(self.tools_output_expanded)
+                .unwrap_or(self.defaults.tools_output_expanded)
     }
 
     pub fn apply_visible_items(&mut self, items: VisibleItems) {
-        self.thinking_visible = items.thinking;
-        self.tool_header_visible = items.tool_header;
-        self.tool_output_visible = items.tool_output;
-        self.diff_visible = items.diff;
-        self.thinking_expanded = items.tool_output;
-        self.streaming_thinking_expanded = items.tool_output;
-        self.tools_expanded = items.tool_output;
-        self.args_expanded = if items.tool_output {
+        self.defaults.thinking_visible = items.thinking;
+        self.defaults.tool_header_visible = items.tool_header;
+        self.defaults.tool_output_visible = items.tool_output;
+        self.defaults.diff_visible = items.diff;
+        self.defaults.thinking_expanded = items.tool_output;
+        self.defaults.streaming_thinking_expanded = items.tool_output;
+        self.defaults.tools_expanded = items.tool_output;
+        self.defaults.args_expanded = if items.tool_output {
             ArgsMode::Full
         } else {
             ArgsMode::Hidden
         };
-        self.user_expanded = items.tool_output;
+        self.defaults.user_expanded = items.tool_output;
     }
 
     pub fn toggle_output(&mut self, id: &str) {
         let next = !self.output_effective(id);
-        self.output_overrides.insert(id.to_string(), next);
+        self.overrides.output.insert(id.to_string(), next);
     }
 
     pub fn args_effective(&self, id: &str) -> ArgsMode {
-        self.args_overrides
+        self.overrides
+            .args
             .get(id)
             .copied()
-            .unwrap_or(self.args_expanded)
+            .unwrap_or(self.defaults.args_expanded)
     }
 
     pub fn toggle_args(&mut self, id: &str) {
@@ -168,39 +176,40 @@ impl ScrollbackFold {
             ArgsMode::Preview => ArgsMode::Full,
             ArgsMode::Full => ArgsMode::Hidden,
         };
-        self.args_overrides.insert(id.to_string(), next);
+        self.overrides.args.insert(id.to_string(), next);
     }
 
     pub fn user_effective(&self, id: &str) -> bool {
-        self.user_overrides
+        self.overrides
+            .user
             .get(id)
             .copied()
-            .unwrap_or(self.user_expanded)
+            .unwrap_or(self.defaults.user_expanded)
     }
 
     pub fn toggle_user(&mut self, id: &str) {
         let next = !self.user_effective(id);
-        self.user_overrides.insert(id.to_string(), next);
+        self.overrides.user.insert(id.to_string(), next);
     }
 
     pub fn clear_args_overrides(&mut self) {
-        self.args_overrides.clear();
+        self.overrides.args.clear();
     }
 
     pub fn clear_user_overrides(&mut self) {
-        self.user_overrides.clear();
+        self.overrides.user.clear();
     }
 
     pub fn clear_output_overrides(&mut self) {
-        self.output_overrides.clear();
+        self.overrides.output.clear();
     }
 
     pub fn clear_tools_overrides(&mut self) {
-        self.tools_overrides.clear();
+        self.overrides.tools.clear();
     }
 
     pub fn clear_thinking_overrides(&mut self) {
-        self.thinking_overrides.clear();
+        self.overrides.thinking.clear();
     }
 }
 
@@ -233,7 +242,7 @@ fn plan_segments(
     };
     for (si, seg) in segments.iter().enumerate() {
         let live_seg = live_seg_idx == Some(si);
-        let level = activity.effective_level(&seg.id);
+        let level = activity.level_of(&seg.id);
         if activity.settings.paints_envelope_header() && !live_seg && level != SegmentLevel::L0 {
             let mids = middle_entry_indices(&model.entries, seg);
             if let Some(&first) = mids.first() {
@@ -348,7 +357,7 @@ pub fn render_scrollback(
                 width,
                 &mut need_spacer,
             );
-            if activity.effective_level(&segments[si].id) == SegmentLevel::L3 {
+            if activity.level_of(&segments[si].id) == SegmentLevel::L3 {
                 continue;
             }
         }
@@ -464,6 +473,7 @@ pub fn render_scrollback(
                 ..
             } => paint_ask_block(id, summary, detail_lines, *phase, paint_ctx),
             UiEntry::Compaction {
+                id: _,
                 status,
                 summary,
                 tokens_before,

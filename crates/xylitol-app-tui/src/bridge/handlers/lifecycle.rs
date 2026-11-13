@@ -147,14 +147,24 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
 }
 
 fn push_compaction_pending(model: &mut UiModel) {
-    if let Some(UiEntry::Compaction {
-        status: CompactionBlockStatus::Pending,
-        ..
-    }) = model.entries.last()
-    {
+    if model.entries.iter().any(|e| {
+        matches!(
+            e,
+            UiEntry::Compaction {
+                status: CompactionBlockStatus::Pending,
+                ..
+            }
+        )
+    }) {
         return;
     }
-    model.entries.push(UiEntry::Compaction {
+    let ordinal = model
+        .entries
+        .iter()
+        .filter(|e| matches!(e, UiEntry::Compaction { .. }))
+        .count();
+    model.upsert_compaction_block(UiEntry::Compaction {
+        id: format!("compaction-{ordinal}"),
         status: CompactionBlockStatus::Pending,
         summary: String::new(),
         tokens_before: 0,
@@ -172,29 +182,21 @@ fn finish_compaction(
     tokens_after: Option<u64>,
     detail: Option<String>,
 ) {
-    if let Some(UiEntry::Compaction {
-        status: slot_status,
-        summary: slot_summary,
-        tokens_before: slot_tokens,
-        tokens_after: slot_tokens_after,
-        detail: slot_detail,
-    }) = model.entries.iter_mut().rev().find(|e| {
-        matches!(
-            e,
-            UiEntry::Compaction {
-                status: CompactionBlockStatus::Pending,
-                ..
-            }
-        )
-    }) {
-        *slot_status = status;
-        *slot_summary = summary;
-        *slot_tokens = tokens_before;
-        *slot_tokens_after = tokens_after;
-        *slot_detail = detail;
-        return;
-    }
-    model.entries.push(UiEntry::Compaction {
+    let id = model.entries.iter().rev().find_map(|e| match e {
+        UiEntry::Compaction {
+            id,
+            status: CompactionBlockStatus::Pending,
+            ..
+        } => Some(id.clone()),
+        _ => None,
+    });
+    let ordinal = model
+        .entries
+        .iter()
+        .filter(|e| matches!(e, UiEntry::Compaction { .. }))
+        .count();
+    model.upsert_compaction_block(UiEntry::Compaction {
+        id: id.unwrap_or_else(|| format!("compaction-{ordinal}")),
         status,
         summary,
         tokens_before,

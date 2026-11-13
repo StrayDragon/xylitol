@@ -259,11 +259,23 @@ pub(crate) fn humanize_tool_result_for_tui(
     }
 }
 
+pub(crate) fn ask_outcome_from_result(result: &str) -> crate::bridge::AskOutcome {
+    use crate::bridge::AskOutcome;
+    let Ok(value) = serde_json::from_str::<Value>(result.trim()) else {
+        return AskOutcome::Unknown;
+    };
+    match value.get("status").and_then(Value::as_str).unwrap_or("") {
+        "skipped" => AskOutcome::Skipped,
+        "answered" => AskOutcome::Answered,
+        _ => AskOutcome::Unknown,
+    }
+}
+
 pub(crate) fn humanize_ask_result(
     result: &str,
     is_error: bool,
 ) -> (crate::bridge::AskPhase, String, Vec<String>) {
-    use crate::bridge::AskPhase;
+    use crate::bridge::{AskOutcome, AskPhase};
     if is_error {
         return (
             AskPhase::Skipped,
@@ -271,8 +283,18 @@ pub(crate) fn humanize_ask_result(
             vec![result.trim().to_string()],
         );
     }
+    let unknown = || {
+        (
+            AskPhase::Answered,
+            "Ask · 未知结果".into(),
+            vec![result.trim().to_string()],
+        )
+    };
+    if ask_outcome_from_result(result) == AskOutcome::Unknown {
+        return unknown();
+    }
     let Ok(value) = serde_json::from_str::<Value>(result.trim()) else {
-        return (AskPhase::Answered, "Ask · 已答".into(), vec![]);
+        return unknown();
     };
     let status = value.get("status").and_then(Value::as_str).unwrap_or("");
     match status {
@@ -328,7 +350,7 @@ pub(crate) fn humanize_ask_result(
             };
             (AskPhase::Answered, summary, detail_lines)
         }
-        _ => (AskPhase::Answered, "Ask · 已答".into(), vec![]),
+        _ => unknown(),
     }
 }
 
@@ -1397,6 +1419,35 @@ mod tests {
             );
             assert!(!output_looks_like_machine_json("src/a.rs\nsrc/b.rs\n"));
         }
+    }
+
+    #[test]
+    fn ask_outcome_maps_non_json_and_unknown_status_to_unknown() {
+        use crate::bridge::AskOutcome;
+        assert_eq!(
+            ask_outcome_from_result(r#"{"status":"answered","answers":[]}"#),
+            AskOutcome::Answered
+        );
+        assert_eq!(
+            ask_outcome_from_result(r#"{"status":"skipped"}"#),
+            AskOutcome::Skipped
+        );
+        assert_eq!(
+            ask_outcome_from_result("plain text reply"),
+            AskOutcome::Unknown
+        );
+        assert_eq!(
+            ask_outcome_from_result(r#"{"status":"mystery"}"#),
+            AskOutcome::Unknown
+        );
+
+        let (phase, summary, details) = humanize_ask_result("plain text reply", false);
+        assert_eq!(
+            summary, "Ask · 未知结果",
+            "non-JSON must not claim answered"
+        );
+        assert_eq!(details, vec!["plain text reply"]);
+        assert_eq!(phase, crate::bridge::AskPhase::Answered);
     }
 
     #[test]
