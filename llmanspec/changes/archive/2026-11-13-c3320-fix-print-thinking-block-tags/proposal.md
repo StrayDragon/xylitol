@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Fix print thinking block tag pairing"
+branch: sdd/c3320-fix-print-thinking-block-tags
+base_branch: main
+base_sha: 31b844dde4773a4039ef4b38900900d2accfc868
 ---
 
 # Print 思考块标签配对修复

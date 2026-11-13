@@ -7,6 +7,12 @@ use xylitol_runtime::XyEvent;
 
 pub type EventStream = Pin<Box<dyn futures::Stream<Item = XyEvent> + Send>>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ThinkBlockPhase {
+    Outside,
+    Inside { model_open: bool, model_close: bool },
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PrintError {
     #[error("{0}")]
@@ -19,27 +25,33 @@ where
 {
     let stdout = io::stdout();
     let mut handle = stdout.lock();
+    let stderr = io::stderr();
+    let mut err_handle = stderr.lock();
 
-    render_stream(stream, &mut handle).await
+    render_stream(stream, &mut handle, &mut err_handle).await
 }
 
-pub async fn render_stream<S, W: Write>(stream: &mut S, writer: &mut W) -> Result<(), PrintError>
+pub async fn render_stream<S, W: Write, E: Write>(
+    stream: &mut S,
+    writer: &mut W,
+    err: &mut E,
+) -> Result<(), PrintError>
 where
     S: futures::Stream<Item = XyEvent> + Unpin,
 {
-    let mut in_thinking_block = false;
-    let mut thinking_has_tags = false;
+    let mut thinking = ThinkBlockPhase::Outside;
 
-    let close_thinking_block = |in_thinking_block: &mut bool, thinking_has_tags: &mut bool| {
-        if *in_thinking_block {
-            if !*thinking_has_tags {
-                let _ = write!(io::stderr(), "</think>");
-                let _ = io::stderr().flush();
-            }
-            *in_thinking_block = false;
-            *thinking_has_tags = false;
+    fn close_thinking_block<E: Write>(err: &mut E, thinking: &mut ThinkBlockPhase) {
+        if let ThinkBlockPhase::Inside {
+            model_open: _,
+            model_close: false,
+        } = *thinking
+        {
+            let _ = write!(err, "</think>");
+            let _ = err.flush();
         }
-    };
+        *thinking = ThinkBlockPhase::Outside;
+    }
 
     while let Some(event) = stream.next().await {
         match event {
@@ -50,27 +62,34 @@ where
                 eprintln!("\n[Turn {step_index} end]");
             }
             XyEvent::MessageStart { .. } => {
-                in_thinking_block = false;
-                thinking_has_tags = false;
+                close_thinking_block(err, &mut thinking);
             }
             XyEvent::MessageEnd { .. } => {
-                close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
+                close_thinking_block(err, &mut thinking);
             }
             XyEvent::TextDelta(text) => {
-                close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
+                close_thinking_block(err, &mut thinking);
                 let _ = write!(writer, "{text}");
                 let _ = writer.flush();
             }
             XyEvent::ThinkingDelta(text) => {
-                if !in_thinking_block {
-                    thinking_has_tags = text.contains("<think>");
-                    if !thinking_has_tags {
-                        let _ = write!(io::stderr(), "<think>");
+                match &mut thinking {
+                    ThinkBlockPhase::Outside => {
+                        let model_open = text.contains("<think>");
+                        if !model_open {
+                            let _ = write!(err, "<think>");
+                        }
+                        thinking = ThinkBlockPhase::Inside {
+                            model_open,
+                            model_close: text.contains("</think>"),
+                        };
                     }
-                    in_thinking_block = true;
+                    ThinkBlockPhase::Inside { model_close, .. } => {
+                        *model_close |= text.contains("</think>");
+                    }
                 }
-                let _ = write!(io::stderr(), "{text}");
-                let _ = io::stderr().flush();
+                let _ = write!(err, "{text}");
+                let _ = err.flush();
             }
             XyEvent::MessageUpdate { .. } => {}
             XyEvent::ToolExecutionStart { name, args, .. } => {
@@ -85,10 +104,10 @@ where
             XyEvent::ToolExecutionEnd { name, result, .. } => {
                 eprintln!("{}", format_tool_end_line(&name, &result));
             }
-            XyEvent::Error(err) => {
-                let msg = &err.message;
+            XyEvent::Error(event_err) => {
+                let msg = &event_err.message;
                 eprintln!("\n[Error] {msg}");
-                close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
+                close_thinking_block(err, &mut thinking);
                 return Err(PrintError::Message(msg.clone()));
             }
             XyEvent::CompactionStart { reason } => {
@@ -118,7 +137,7 @@ where
             }
         }
     }
-    close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
+    close_thinking_block(err, &mut thinking);
     let _ = writeln!(writer);
     Ok(())
 }
@@ -174,8 +193,11 @@ mod tests {
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
+        let mut err_buf: Vec<u8> = Vec::new();
 
-        render_stream(&mut stream, &mut buf).await.unwrap();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         assert_eq!(output, "Hello! How\n");
@@ -198,8 +220,11 @@ mod tests {
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
+        let mut err_buf: Vec<u8> = Vec::new();
 
-        render_stream(&mut stream, &mut buf).await.unwrap();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         assert_eq!(output, "Hi\n");
@@ -223,11 +248,116 @@ mod tests {
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
+        let mut err_buf: Vec<u8> = Vec::new();
 
-        render_stream(&mut stream, &mut buf).await.unwrap();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         assert_eq!(output, "Hi\n");
+    }
+
+    #[tokio::test]
+    async fn thinking_block_writes_exactly_one_tag_pair_to_err() {
+        let events = vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta("pondering".into()),
+            XyEvent::TextDelta("ANSWER".into()),
+            XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+        let mut err_buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
+        let err_text = String::from_utf8(err_buf).unwrap();
+        assert_eq!(err_text.matches("<think>").count(), 1, "{err_text}");
+        assert_eq!(err_text.matches("</think>").count(), 1, "{err_text}");
+        assert!(err_text.contains("pondering"), "{err_text}");
+        assert_eq!(String::from_utf8(buf).unwrap(), "ANSWER\n");
+    }
+
+    #[tokio::test]
+    async fn message_start_interrupting_an_open_block_closes_it_first() {
+        let events = vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta("first".into()),
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta("second".into()),
+            XyEvent::TextDelta("ANSWER".into()),
+            XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+        let mut err_buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
+        let err_text = String::from_utf8(err_buf).unwrap();
+        assert_eq!(err_text.matches("<think>").count(), 2, "{err_text}");
+        assert_eq!(err_text.matches("</think>").count(), 2, "{err_text}");
+    }
+
+    #[tokio::test]
+    async fn late_closing_tag_fragment_does_not_double_close() {
+        let events = vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta("reasoning".into()),
+            XyEvent::ThinkingDelta("</think>".into()),
+            XyEvent::TextDelta("ANSWER".into()),
+            XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+        let mut err_buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
+        let err_text = String::from_utf8(err_buf).unwrap();
+        assert_eq!(err_text.matches("</think>").count(), 1, "{err_text}");
+    }
+
+    #[tokio::test]
+    async fn stream_end_closes_an_unclosed_thinking_block() {
+        let events = vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta("cut short".into()),
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+        let mut err_buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
+        let err_text = String::from_utf8(err_buf).unwrap();
+        assert_eq!(err_text.matches("<think>").count(), 1, "{err_text}");
+        assert_eq!(err_text.matches("</think>").count(), 1, "{err_text}");
     }
 
     #[tokio::test]
@@ -242,7 +372,8 @@ mod tests {
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
-        let err = render_stream(&mut stream, &mut buf)
+        let mut err_buf: Vec<u8> = Vec::new();
+        let err = render_stream(&mut stream, &mut buf, &mut err_buf)
             .await
             .expect_err("Error event must fail the print stream");
         assert!(err.to_string().contains("provider blew up"), "got {err}");
@@ -260,7 +391,10 @@ mod tests {
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
-        render_stream(&mut stream, &mut buf).await.unwrap();
+        let mut err_buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
         assert_eq!(String::from_utf8(buf).unwrap(), "done\n");
     }
 
@@ -288,7 +422,10 @@ mod tests {
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
-        render_stream(&mut stream, &mut buf).await.unwrap();
+        let mut err_buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
         let out = String::from_utf8(buf).unwrap();
         assert!(out.contains("first"), "{out}");
         assert!(out.contains("second"), "{out}");
@@ -316,7 +453,10 @@ mod tests {
         ];
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
-        render_stream(&mut stream, &mut buf).await.unwrap();
+        let mut err_buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf, &mut err_buf)
+            .await
+            .unwrap();
         assert_eq!(String::from_utf8(buf).unwrap(), "\n");
     }
 

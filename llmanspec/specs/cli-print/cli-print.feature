@@ -24,6 +24,14 @@
     场景: 思考流至stderr仅
       当 以 thinking 与自带标签两种流分别渲染 print 输出
       那么 stdout 仅含正文且标签包裹只此一份
+
+    场景: 新消息打断未闭合思考块
+      当 以含未闭合思考块的多消息流渲染 print 输出
+      那么 stderr 标签开闭配对且 stdout 仅正文
+
+    场景: 闭合标签跨片只写一份
+      当 以闭合标签跨片的思考流渲染 print 输出
+      那么 stderr 闭合标签只出现一份
   @req:r52
   规则: message-dedup
     Print 模式下 System 须仅将增量 TextDelta 写入 stdout，不得将累积 MessageUpdate payload 写入 stdout，以避免前缀重复输出。

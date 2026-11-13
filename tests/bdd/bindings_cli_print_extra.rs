@@ -30,3 +30,15 @@ async fn test_cp_error(t4_print_bdd: T4PrintBdd) {}
     name = "思考流至stderr仅"
 )]
 fn test_cp_thinking_stderr(t4_print_bdd: T4PrintBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-print/cli-print.feature",
+    name = "新消息打断未闭合思考块"
+)]
+fn test_cp_thinking_message_interrupt(t4_print_bdd: T4PrintBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-print/cli-print.feature",
+    name = "闭合标签跨片只写一份"
+)]
+fn test_cp_thinking_split_close(t4_print_bdd: T4PrintBdd) {}

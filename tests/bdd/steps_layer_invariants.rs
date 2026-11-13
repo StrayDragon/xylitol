@@ -276,8 +276,9 @@ pub(crate) fn t_default_template_shape() {
 pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
     use xylitol_runtime::agent::runtime::XyEvent;
     let mut out: Vec<u8> = Vec::new();
+    let mut err_out: Vec<u8> = Vec::new();
     let open = String::from("<") + "think" + ">";
-    let close = String::from("<") + "think" + ">";
+    let close = String::from("</") + "think" + ">";
     let tagged = open.clone() + "tagged" + &close;
     for thinking in ["plain reasoning".to_string(), tagged] {
         let mut stream = t4_stream(vec![
@@ -293,14 +294,17 @@ pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
             },
         ]);
         let mut buf: Vec<u8> = Vec::new();
-        xylitol::cli::render_stream(&mut stream, &mut buf)
+        let mut err_buf: Vec<u8> = Vec::new();
+        xylitol::cli::render_stream(&mut stream, &mut buf, &mut err_buf)
             .await
             .expect("render 成功");
         let text = String::from_utf8(buf).unwrap();
         assert_eq!(text.trim(), "ANSWER", "{thinking}");
         out.extend(text.as_bytes());
+        err_out.extend(err_buf);
     }
     *t4_print_bdd.out.borrow_mut() = out;
+    *t4_print_bdd.err.borrow_mut() = err_out;
     *t4_print_bdd.result.borrow_mut() = Some(Ok(()));
 }
 
@@ -312,6 +316,18 @@ pub(crate) fn t_thinking_single_wrap(t4_print_bdd: &T4PrintBdd) {
         parts,
         vec!["ANSWER", "ANSWER"],
         "stdout MUST 只含正文（thinking 走 stderr）"
+    );
+    let err_text = String::from_utf8(t4_print_bdd.err.borrow().clone()).unwrap();
+    assert!(!out.contains("<think>"), "stdout MUST 不含思考标签：{out}");
+    assert_eq!(
+        err_text.matches("<think>").count(),
+        2,
+        "两次渲染各一对开标签：{err_text}"
+    );
+    assert_eq!(
+        err_text.matches("</think>").count(),
+        2,
+        "两次渲染各一对闭标签：{err_text}"
     );
     assert_layer_invariants();
 }

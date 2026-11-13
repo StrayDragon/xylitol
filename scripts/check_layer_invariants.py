@@ -179,11 +179,11 @@ def check_tests_tmp(errors: list[str]) -> None:
 
 def check_print_thinking_wrap(errors: list[str]) -> None:
     src = read("crates/xylitol-app-print/src/print.rs")
-    if src.count('write!(io::stderr(), "<think>"') != 1:
-        errors.append("print.rs must write <think> to stderr exactly once")
-    if src.count('write!(io::stderr(), "</think>"') != 1:
-        errors.append("print.rs must write </think> to stderr exactly once")
-    if "thinking_has_tags" not in src:
+    if src.count('write!(err, "<think>")') != 1:
+        errors.append("print.rs must write <think> to the err sink exactly once")
+    if src.count('write!(err, "</think>")') != 1:
+        errors.append("print.rs must write </think> to the err sink exactly once")
+    if "ThinkBlockPhase" not in src:
         errors.append("print.rs must guard tagged thinking")
 
 
