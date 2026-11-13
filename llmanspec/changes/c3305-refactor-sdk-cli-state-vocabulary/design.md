@@ -21,20 +21,20 @@
 
 | 项 | 方向 |
 |---|---|
-| F6 | CompactionEnd 收紧：aborted/will_retry 与 summary 矛盾组合不可构造（构造器断言或类型分叉）；TUI 死分支删除 |
+| F6 | CompactionEnd 枚举化 `Completed / Failed{error, will_retry} / Aborted`（sdk lifecycle + wire 映射 + compaction 插件 + TUI handler 同步）；TUI 死分支删除 |
 | F7 | SurfaceIntent 显式结构；select_surface_mode 与 cli.rs 判据合一 |
 | F8（本单部分） | project_trusted 去 warnings 反推；冲突报错拆独立 fix change |
-| F9 | obs_gate span_sink 与 ACTIVE 计数单一结构；作用域 set_* 改记录待生效（触发面现仅测试） |
-| F10 | sdk 提供 is_current 谓词；消费端显式忽略需注释豁免或改用谓词 |
-| F14 | 4 处并列声明收敛为一；声明-覆写注册期校验（未覆写不再静默 no-op） |
-| F15 | 3 个派生 bool 去字段，快照函数统一产出；测试 harness 走正式构造 |
-| F16 | Option 群收敛 + 魔法串常量单声明（context-inject / compaction 共用 sdk 常量）；根 AGENTS 插件清单补 context-inject（文档直改） |
+| F9 | obs_gate set_* 命中 scope 时 debug_assert/warn 或拆显式 scoped_set；先以单测钉死现语义（scope 内写不落全局、随 scope 丢弃）；触发面现仅测试 |
+| F10 | 倾向 per-session 槽内单调号 + driver 暴露 current_generation，消费端可判陈旧；或有人消费前删事件字段 |
+| F14 | 枚举 strum 化（EnumIter/EnumString）替代 ALL+as_str；SDK 提供作者侧七阶段全声明探针测试（runtime 验证各桶命中）；默认实现保留 |
+| F15 | 序列化形状不动；唯一构造 `CapabilityEntry::new(id,kind,label,session_disabled,applied)` 内部派生三 bool；harness 复用同构造；SDK 恒等式单测 |
+| F16 | SDK 补 `CUSTOM_TYPE_CONTEXT_FINGERPRINT` 常量（双插件共用）；reason 改 CompactionReason 枚举（wire 文本不变）；快照校验构造；根 AGENTS 插件清单补 context-inject |
 | F17 | thinking_rejected 补通知分支（与 fallback 同管线） |
-| F20 | codemode 双闸 is_active≡enabled 收敛（codemode.rs:126-129），kernel 侧 warn 保留 |
+| F20 | is_active≡enabled 收敛；冲突至少升格 BootstrapWarning（现仅日志可见）；硬报错/自动启用属产品行为变更，超出本单 |
 | F21 | 图边删除语义显式（墓碑 enum 或 enabled 语义注释收紧；生产写点仅 fork 恒 true） |
-| F22 | 树旅行动作改显式枚举，端侧停止组合推断 |
+| F22 | `TravelAction{Rewind{prefill}, View}` 枚举（wire 文本不变）；端侧 session_ops 停止组合推断 |
 | F23 | 状态栏类型收窄为单一表示（去防御双臂） |
-| F24 | from_hook 死三态收敛或删除零读者分支 |
+| F24 | from_hook 双字段全仓只写 None/Some(false) 且零读者——删除或 serde default 兼容收窄；保留三态须先有消费语义 |
 | F25 | env/prepare 追加判据合一（date+cwd+fingerprint 单谓词） |
 
 ## 3. 实施顺序
