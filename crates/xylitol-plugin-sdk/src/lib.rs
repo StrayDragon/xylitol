@@ -107,7 +107,7 @@ pub use overflow::{
 pub use plugin_config::EmptyPluginConfig;
 pub use plugin_events::{
     AgentPreStep, HttpBeforeRequest, SessionPrepare, SessionPrepareReason, SessionPrepareResult,
-    ToolPostExecute, ToolPreExecute, TrustPreLoad,
+    ToolPostExecute, ToolPreExecute,
 };
 pub use ports::{
     AgentTodoGateway, AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway,

@@ -47,16 +47,6 @@ impl Event for HttpBeforeRequest {
     type Value = Value;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrustPreLoad {
-    pub cwd: String,
-}
-
-impl Event for TrustPreLoad {
-    const NAME: &'static str = "trust/pre-load";
-    type Value = Option<String>;
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionPrepareReason {
