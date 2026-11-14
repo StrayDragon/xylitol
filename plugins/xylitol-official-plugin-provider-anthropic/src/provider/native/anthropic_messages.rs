@@ -356,6 +356,8 @@ impl AnthropicMessagesAdapter {
     }
 }
 
+const SSE_CORRUPT_FRAME_LIMIT: u32 = 3;
+
 fn anthropic_stream(
     response: reqwest::Response,
     trace: Option<crate::provider::trace::ProviderRequestTrace>,
@@ -372,6 +374,7 @@ fn anthropic_stream(
         let mut current_block_index: Option<usize> = None;
         let mut usage_fields: serde_json::Map<String, Value> = serde_json::Map::new();
         let mut done_emitted = false;
+        let mut corrupt_streak = 0u32;
 
         'sse: loop {
             let event_result = tokio::time::timeout(
@@ -389,14 +392,37 @@ fn anthropic_stream(
                 break 'sse;
             };
             if event_result.is_err() {
+                corrupt_streak += 1;
+                log::warn!(
+                    target: "xylitol::provider::anthropic",
+                    "SSE frame parse failed (streak {corrupt_streak})"
+                );
+                if corrupt_streak >= SSE_CORRUPT_FRAME_LIMIT {
+                    Err(XyError::Provider(anyhow::anyhow!(
+                        "Anthropic SSE corrupt frame streak reached {SSE_CORRUPT_FRAME_LIMIT}"
+                    )))?;
+                }
                 continue 'sse;
             }
             let event = event_result.expect("parse-error arm continued above");
             let event_type = event.event.as_str();
             let data: Value = match serde_json::from_str(&event.data) {
                 Ok(v) => v,
-                Err(_) => continue 'sse,
+                Err(_) => {
+                    corrupt_streak += 1;
+                    log::warn!(
+                        target: "xylitol::provider::anthropic",
+                        "SSE data JSON parse failed (streak {corrupt_streak})"
+                    );
+                    if corrupt_streak >= SSE_CORRUPT_FRAME_LIMIT {
+                        Err(XyError::Provider(anyhow::anyhow!(
+                            "Anthropic SSE corrupt frame streak reached {SSE_CORRUPT_FRAME_LIMIT}"
+                        )))?;
+                    }
+                    continue 'sse;
+                }
             };
+            corrupt_streak = 0;
 
             if let Some(t) = &trace {
                 let snippet = data
@@ -1643,6 +1669,47 @@ mod tests {
             .filter_map(|item| item.as_ref().ok())
             .find(|chunk| matches!(chunk, XyChunk::Done { .. }))
             .expect("Done chunk")
+    }
+
+    #[tokio::test]
+    async fn consecutive_corrupt_sse_frames_terminate_stream() {
+        let sse = concat!(
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":0}}}\n\n",
+            "event: content_block_start\ndata: not-json-at-all\n\n",
+            "event: content_block_delta\ndata: also-not-json\n\n",
+            "event: content_block_stop\ndata: still-not-json\n\n",
+        );
+        let items = run_sse(sse).await;
+        let err = items
+            .iter()
+            .find_map(|item| item.as_ref().err())
+            .expect("corrupt streak must terminate with a provider error");
+        assert!(
+            err.to_string().contains("corrupt frame streak"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn isolated_corrupt_sse_frame_is_skipped_and_stream_completes() {
+        let sse = concat!(
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":0}}}\n\n",
+            "event: content_block_start\ndata: not-json-once\n\n",
+            "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n",
+            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+        );
+        let items = run_sse(sse).await;
+        assert!(
+            matches!(done_of(&items), XyChunk::Done { .. }),
+            "a single corrupt frame must not kill the stream: {items:?}"
+        );
+        assert!(
+            !items.iter().any(|item| item
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.to_string().contains("corrupt frame streak"))),
+            "isolated corruption must not trip the streak limit: {items:?}"
+        );
     }
 
     #[tokio::test]

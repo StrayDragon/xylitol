@@ -98,6 +98,9 @@
   规则: anthropic-stream-terminal-events
     Anthropic Messages 流式方言 必须 把 SSE `error` 事件转为错误：携带 `error.type` 与 `error.message` 返回 `XyError::Provider`，不得 静默结束流。`message_stop` 必须 兜底发出 `Done`，且 不得 重复发出；异常 EOF（未见终止事件）必须 返回错误，不得 静默当作完成。由插件单测（wiremock 回放）覆盖。
   @req:r3013
+  规则: anthropic-sse-corrupt-frame-guard
+    Anthropic Messages 流式方言 对坏帧（SSE 帧解析失败或 data JSON 解析失败）不得 无条件静默丢弃：须 计数并告警；连续 3 帧解析失败 必须 以 `XyError::Provider` 终断流，成功解析 须 归零计数；散发的单帧坏帧 须 跳过续流。终态约束（Done 恰一次等）仍由 chunk_stream_check 状态机覆盖。由插件单测（wiremock 回放）覆盖。
+  @req:r3354
   规则: anthropic-stop-reason-mapping
     Anthropic Messages 方言 必须 完整映射 `stop_reason`：`max_tokens` 与 `model_context_window_exceeded` 映射为长度截断并进入上下文溢出路径，`tool_use` 映射为工具调用，`refusal` 与 `sensitive` 映射为错误，`pause_turn` 映射为正常结束并注明自动重发为未实现语义。流式与非流式 必须 使用同一映射。由插件单测覆盖。
   @req:r3014
