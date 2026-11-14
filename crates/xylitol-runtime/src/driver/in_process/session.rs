@@ -47,12 +47,13 @@ impl super::XyInProcessDriver {
         self.agent.script_hook_observe(ty, phase, ctx).await;
         migrate_legacy_before_switch(self.store.as_ref(), session_id).await;
         let context = self.store.build_session_context(session_id).await?;
-        if let Some(previous) = self.agent.session_id().map(str::to_string)
+        let previous = self.agent.session_id().map(str::to_string);
+        bind_session_or_err(&mut self.agent, session_id.to_string())?;
+        if let Some(previous) = previous
             && let Some(hub) = &self.prepare_hub
         {
             hub.release_session(&previous);
         }
-        bind_session_or_err(&mut self.agent, session_id.to_string())?;
         self.bind_todo_session(Some(session_id)).await;
         let stored_profile = self.store.session_profile(session_id).await?;
         if stored_profile.fingerprint.is_some()
@@ -251,12 +252,13 @@ impl super::XyInProcessDriver {
                 .await
                 .map_err(XyDriverError::from)?;
         }
-        if let Some(previous) = self.agent.session_id().map(str::to_string)
+        let previous = self.agent.session_id().map(str::to_string);
+        bind_session_or_err(&mut self.agent, session_id.clone())?;
+        if let Some(previous) = previous
             && let Some(hub) = &self.prepare_hub
         {
             hub.release_session(&previous);
         }
-        bind_session_or_err(&mut self.agent, session_id.clone())?;
         self.bind_todo_session(Some(&session_id)).await;
         self.agent.clear_tool_freeze();
         self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
@@ -313,5 +315,215 @@ async fn migrate_legacy_before_switch(
             target: "xylitol::session",
             "legacy custom-type migration skipped on switch: {error}"
         );
+    }
+}
+
+#[cfg(test)]
+mod switch_hub_release_tests {
+    use crate::agent::runtime::baseline::RuntimeBaseline;
+    use crate::driver::in_process::XyInProcessDriver;
+    use crate::test_support::{MemoryStore, NoopSink};
+    use async_trait::async_trait;
+    use futures::StreamExt;
+    use std::sync::Arc;
+    use std::sync::Mutex as StdMutex;
+    use xylitol_plugin_sdk::plugin_events::SessionPrepareResult;
+    use xylitol_plugin_sdk::{SessionPrepareHub, SessionPrepareView, XySessionStore};
+
+    struct RecordingHub {
+        released: StdMutex<Vec<String>>,
+    }
+
+    impl RecordingHub {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                released: StdMutex::new(Vec::new()),
+            })
+        }
+
+        fn released(&self) -> Vec<String> {
+            self.released.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl SessionPrepareHub for RecordingHub {
+        fn fire(&self) {}
+
+        async fn reset_join(&self) {}
+
+        async fn ensure(&self) -> SessionPrepareResult {
+            SessionPrepareResult::default()
+        }
+
+        async fn wait(&self, _timeout: std::time::Duration) -> SessionPrepareResult {
+            SessionPrepareResult::default()
+        }
+
+        fn view(&self) -> SessionPrepareView {
+            SessionPrepareView::default()
+        }
+
+        fn take_notice(&self) -> Option<String> {
+            None
+        }
+
+        fn tools(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
+            Vec::new()
+        }
+
+        fn release_session(&self, session_id: &str) {
+            self.released.lock().unwrap().push(session_id.to_string());
+        }
+    }
+
+    struct HoldModel {
+        gate: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl xylitol_plugin_sdk::XyModel for HoldModel {
+        fn name(&self) -> &str {
+            "release-test-hold"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            self.gate.notified().await;
+            Err(xylitol_plugin_sdk::error::XyError::provider(
+                xylitol_plugin_sdk::error::XyProviderError {
+                    message: "hold gate never opened".into(),
+                    ..Default::default()
+                },
+            ))
+        }
+    }
+
+    fn release_test_driver(
+        hub: Arc<dyn SessionPrepareHub>,
+        model: Arc<dyn xylitol_plugin_sdk::XyModel>,
+    ) -> XyInProcessDriver {
+        let store: Arc<dyn XySessionStore> = Arc::new(MemoryStore::new());
+        let baseline = RuntimeBaseline {
+            store: store.clone(),
+            sink: Arc::new(NoopSink),
+            permission: crate::permission::allow_all_permission(),
+            hook_bus: None,
+            model_registry: crate::agent::ModelRegistry::new(),
+            model_builder: Arc::new(move |_| model.clone()),
+            cwd: ".".into(),
+            steering_mode: crate::agent::capabilities::QueueMode::default(),
+            follow_up_mode: crate::agent::capabilities::QueueMode::default(),
+            compaction_settings: None,
+            compaction_factory: xylitol_plugin_sdk::noop_compaction_factory(),
+            tools: crate::agent::tools::ToolSet::empty(),
+            system_prompt: None,
+            context_files: Vec::new(),
+            append_system_prompt: Vec::new(),
+            skills: Vec::new(),
+            batch_mode: xylitol_plugin_sdk::XyBatchMode::Sequential,
+        };
+        let mut driver = XyInProcessDriver::new(baseline.materialize_runtime(), store);
+        driver.set_prepare_hub(hub);
+        driver
+    }
+
+    #[tokio::test]
+    async fn switch_session_busy_reject_keeps_previous_hub() {
+        let hub = RecordingHub::new();
+        let model: Arc<dyn xylitol_plugin_sdk::XyModel> = Arc::new(HoldModel {
+            gate: Arc::new(tokio::sync::Notify::new()),
+        });
+        let mut driver = release_test_driver(hub.clone(), model);
+        driver
+            .store
+            .create("b", None, None)
+            .await
+            .expect("seed b");
+        driver.agent.bind_session("a").expect("bind a");
+
+        use crate::driver::proto::XyDriver as _;
+        let mut stream = driver.run("p").await;
+        let first = stream.next().await.expect("turn must start");
+        assert!(
+            matches!(first, crate::agent::runtime::XyEvent::AgentStart { .. }),
+            "the turn must be in flight before switching: {first:?}"
+        );
+
+        let switched = driver.switch_session("b").await;
+        assert!(
+            switched.is_err(),
+            "an active turn must reject the switch: {switched:?}"
+        );
+        assert!(
+            hub.released().is_empty(),
+            "a rejected switch must not release the previous session's hub: {:?}",
+            hub.released()
+        );
+        driver.abort();
+        drop(stream);
+    }
+
+    #[tokio::test]
+    async fn switch_session_success_releases_previous_hub() {
+        let hub = RecordingHub::new();
+        let model: Arc<dyn xylitol_plugin_sdk::XyModel> = Arc::new(HoldModel {
+            gate: Arc::new(tokio::sync::Notify::new()),
+        });
+        let mut driver = release_test_driver(hub.clone(), model);
+        driver
+            .store
+            .create("b", None, None)
+            .await
+            .expect("seed b");
+        driver.agent.bind_session("a").expect("bind a");
+        let switched = driver.switch_session("b").await;
+        assert!(switched.is_ok(), "idle switch must succeed: {switched:?}");
+        assert_eq!(hub.released(), vec!["a".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn new_session_busy_reject_keeps_previous_hub() {
+        let hub = RecordingHub::new();
+        let model: Arc<dyn xylitol_plugin_sdk::XyModel> = Arc::new(HoldModel {
+            gate: Arc::new(tokio::sync::Notify::new()),
+        });
+        let mut driver = release_test_driver(hub.clone(), model);
+        driver.agent.bind_session("a").expect("bind a");
+
+        use crate::driver::proto::XyDriver as _;
+        let mut stream = driver.run("p").await;
+        let first = stream.next().await.expect("turn must start");
+        assert!(
+            matches!(first, crate::agent::runtime::XyEvent::AgentStart { .. }),
+            "the turn must be in flight before creating a session: {first:?}"
+        );
+
+        assert!(driver.new_session().await.is_err());
+        assert!(
+            hub.released().is_empty(),
+            "a rejected new_session must not release the previous session's hub: {:?}",
+            hub.released()
+        );
+        driver.abort();
+        drop(stream);
+    }
+
+    #[tokio::test]
+    async fn new_session_success_releases_previous_hub() {
+        let hub = RecordingHub::new();
+        let model: Arc<dyn xylitol_plugin_sdk::XyModel> = Arc::new(HoldModel {
+            gate: Arc::new(tokio::sync::Notify::new()),
+        });
+        let mut driver = release_test_driver(hub.clone(), model);
+        driver.agent.bind_session("a").expect("bind a");
+        let created = driver.new_session().await;
+        assert!(created.is_ok(), "idle new_session must succeed: {created:?}");
+        assert_eq!(hub.released(), vec!["a".to_string()]);
     }
 }
