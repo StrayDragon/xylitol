@@ -1917,6 +1917,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         Ok(reloaded) => {
                                             history = reloaded;
                                             pending = next_pending;
+                                            turn += 1;
+                                            settle_count += 1;
                                             if let Some((steer_count, follow_up_count)) = queue_update {
                                                 yield XyEvent::QueueUpdate {
                                                     steer_count,
@@ -2698,17 +2700,7 @@ mod loop_middleware_tests {
         XyEventSink,
     };
 
-    struct CompactAtSettle {
-        compacted: std::sync::atomic::AtomicBool,
-    }
-
-    impl CompactAtSettle {
-        fn new() -> Self {
-            Self {
-                compacted: std::sync::atomic::AtomicBool::new(false),
-            }
-        }
-    }
+    struct CompactAtSettle;
 
     #[async_trait::async_trait]
     impl LoopMiddleware for CompactAtSettle {
@@ -2721,10 +2713,7 @@ mod loop_middleware_tests {
         }
 
         async fn decide_continue(&self, mut ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
-            if !self
-                .compacted
-                .swap(true, std::sync::atomic::Ordering::SeqCst)
-            {
+            if ctx.settle_count == 0 {
                 ctx.compact = Some(CompactRequest::default());
                 LoopStep {
                     ctx,
@@ -2880,15 +2869,14 @@ mod loop_middleware_tests {
         });
         let mut runtime = base.materialize_runtime();
         let chain = registry();
-        chain
-            .register(Arc::new(CompactAtSettle::new()))
-            .expect("register");
+        chain.register(Arc::new(CompactAtSettle)).expect("register");
         runtime.set_loop_middleware(Some(chain));
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-compact").expect("bind");
 
         let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
         let mut steered = false;
+        let mut events = Vec::new();
         while let Some(event) = stream.next().await {
             if !steered
                 && matches!(
@@ -2899,18 +2887,30 @@ mod loop_middleware_tests {
                 runtime.steer("mid steer");
                 steered = true;
             }
+            events.push(event);
         }
         assert!(steered);
         let calls = calls.lock().unwrap();
         assert_eq!(
             calls.len(),
             2,
-            "compact must continue the loop into a second step"
+            "compact must continue the loop into a second step (settle_count must advance after compact): {events:?}"
         );
         assert!(
             calls[1].contains("mid steer"),
             "the drained steer must reach the model call after compaction: {}",
             calls[1]
+        );
+        let step_indices: Vec<u32> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::agent::runtime::XyEvent::StepStart { step_index, .. } => Some(*step_index),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            step_indices, vec![0, 1],
+            "the post-compact step must advance step_index instead of repeating it"
         );
     }
 
@@ -2923,9 +2923,7 @@ mod loop_middleware_tests {
             Arc::new(|settings| Arc::new(FailingCompaction { settings }) as Arc<dyn XyCompaction>);
         let mut runtime = base.materialize_runtime();
         let chain = registry();
-        chain
-            .register(Arc::new(CompactAtSettle::new()))
-            .expect("register");
+        chain.register(Arc::new(CompactAtSettle)).expect("register");
         runtime.set_loop_middleware(Some(chain));
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-compact-fail").expect("bind");
