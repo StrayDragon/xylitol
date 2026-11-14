@@ -52,6 +52,7 @@ pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dy
 pub fn new(mode: QueueMode) -> Self
 pub fn new(steering_mode: QueueMode, follow_up_mode: QueueMode) -> Self
 pub fn notify_queue_update(&self)
+pub fn pop_one(&mut self) -> Option<AgentMessage>
 pub fn prompt_opts(&self) -> SystemPromptOpts
 pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
