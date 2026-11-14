@@ -86,9 +86,6 @@ pub struct SessionSlot {
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
     observing: Mutex<HashSet<u64>>,
     linger_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
-    /// Serializes linger/clean eviction against subscribe binding: eviction
-    /// re-checks turn flags and subscriber count under this gate, and a
-    /// subscribe binds (or re-resolves a freshly evicted slot) under it.
     eviction_gate: Mutex<()>,
     pub gateway: Arc<ReverseRpcGateway>,
     pub in_process_downlink: broadcast::Sender<Notification>,
@@ -1518,9 +1515,6 @@ async fn release_and_evict(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
     host.evict_slot(slot).await;
 }
 
-/// Linger expiry: under the eviction gate, re-check turn flags and
-/// subscribers before releasing the write lock and dropping the slot, so a
-/// subscribe that raced the timer can never be orphaned or lose its lock.
 async fn linger_evict_if_idle(host: Arc<HostState>, slot: Arc<SessionSlot>) {
     let _gate = slot.eviction_gate.lock().await;
     if slot.turn_inflight_active() {
@@ -1533,10 +1527,6 @@ async fn linger_evict_if_idle(host: Arc<HostState>, slot: Arc<SessionSlot>) {
     host.evict_slot(&slot).await;
 }
 
-/// Subscribe critical section: under the eviction gate, re-resolve the slot
-/// (a raced eviction hands us a fresh slot carrying the preserved watermark),
-/// then cancel linger, take the write lock, materialize and bind. Binding and
-/// eviction can therefore never interleave.
 async fn gated_subscribe(
     host: &Arc<HostState>,
     slot: Arc<SessionSlot>,
@@ -3080,7 +3070,6 @@ mod tests {
             .expect("subscribe-style lock");
         host.clone().arm_test_linger();
 
-        // Hold the gate so the armed linger task parks on it after waking.
         let gate = slot.eviction_gate.lock().await;
         on_last_subscriber_gone(&host, &slot, false).await;
         for _ in 0..16 {
