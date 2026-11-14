@@ -6,9 +6,9 @@ use crate::agent::capabilities::ActiveTurnBinding;
 use xylitol_plugin_sdk::message::AgentPart;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RunId(u64);
+pub struct TurnId(u64);
 
-impl RunId {
+impl TurnId {
     #[cfg(test)]
     pub(crate) fn from_raw_for_test(raw: u64) -> Self {
         Self(raw)
@@ -37,9 +37,9 @@ impl RuntimeControlError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimePhase {
     Idle,
-    Starting(RunId),
-    Streaming(RunId),
-    Cancelling(RunId),
+    Starting(TurnId),
+    Streaming(TurnId),
+    Cancelling(TurnId),
 }
 
 impl RuntimePhase {
@@ -47,7 +47,7 @@ impl RuntimePhase {
         matches!(self, Self::Idle)
     }
 
-    pub fn active_run_id(self) -> Option<RunId> {
+    pub fn active_turn_id(self) -> Option<TurnId> {
         match self {
             Self::Idle => None,
             Self::Starting(id) | Self::Streaming(id) | Self::Cancelling(id) => Some(id),
@@ -74,22 +74,22 @@ pub struct FrozenRootConfig {
 }
 
 struct ActiveTurnSlot {
-    run_id: RunId,
+    turn_id: TurnId,
     binding: ActiveTurnBinding,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunEvent {
+pub enum TurnEvent {
     Begin,
-    StreamStarted(RunId),
+    StreamStarted(TurnId),
     Cancel,
-    Finish(RunId),
+    Finish(TurnId),
 }
 
 #[derive(Clone)]
-pub enum RunTransition {
+pub enum TurnTransition {
     Began {
-        run_id: RunId,
+        turn_id: TurnId,
         cancel: CancellationToken,
     },
     Streaming,
@@ -98,21 +98,21 @@ pub enum RunTransition {
     Rejected,
 }
 
-pub struct RunCoordinator {
+pub struct TurnCoordinator {
     next_id: u64,
     phase: RuntimePhase,
-    cancel: Option<(RunId, CancellationToken)>,
+    cancel: Option<(TurnId, CancellationToken)>,
     active_turn: Option<ActiveTurnSlot>,
     turn_in_flight: bool,
 }
 
-impl Default for RunCoordinator {
+impl Default for TurnCoordinator {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RunCoordinator {
+impl TurnCoordinator {
     pub fn new() -> Self {
         Self {
             next_id: 1,
@@ -127,92 +127,95 @@ impl RunCoordinator {
         self.phase
     }
 
-    pub fn has_active_run(&self) -> bool {
+    pub fn is_executing(&self) -> bool {
         !self.phase.is_idle()
     }
 
     pub fn has_work(&self) -> bool {
-        self.has_active_run()
+        self.is_executing()
     }
 
-    pub fn allocate_run_id(&mut self) -> RunId {
-        let id = RunId(self.next_id);
+    pub fn allocate_turn_id(&mut self) -> TurnId {
+        let id = TurnId(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
         id
     }
 
-    pub fn transition(&mut self, event: RunEvent) -> RunTransition {
+    pub fn transition(&mut self, event: TurnEvent) -> TurnTransition {
         match event {
-            RunEvent::Begin => {
+            TurnEvent::Begin => {
                 if !self.phase.is_idle() {
-                    return RunTransition::Rejected;
+                    return TurnTransition::Rejected;
                 }
-                let run_id = self.allocate_run_id();
+                let turn_id = self.allocate_turn_id();
                 let token = CancellationToken::new();
-                self.phase = RuntimePhase::Starting(run_id);
-                self.cancel = Some((run_id, token.clone()));
+                self.phase = RuntimePhase::Starting(turn_id);
+                self.cancel = Some((turn_id, token.clone()));
                 self.turn_in_flight = false;
-                RunTransition::Began {
-                    run_id,
+                TurnTransition::Began {
+                    turn_id,
                     cancel: token,
                 }
             }
-            RunEvent::StreamStarted(run_id) => match self.phase {
+            TurnEvent::StreamStarted(turn_id) => match self.phase {
                 RuntimePhase::Starting(active) | RuntimePhase::Streaming(active)
-                    if active == run_id =>
+                    if active == turn_id =>
                 {
-                    self.phase = RuntimePhase::Streaming(run_id);
-                    RunTransition::Streaming
+                    self.phase = RuntimePhase::Streaming(turn_id);
+                    TurnTransition::Streaming
                 }
-                _ => RunTransition::Rejected,
+                _ => TurnTransition::Rejected,
             },
-            RunEvent::Cancel => {
-                let Some((run_id, token)) = self.cancel.as_ref() else {
-                    return RunTransition::Rejected;
+            TurnEvent::Cancel => {
+                let Some((turn_id, token)) = self.cancel.as_ref() else {
+                    return TurnTransition::Rejected;
                 };
-                let run_id = *run_id;
+                let turn_id = *turn_id;
                 match self.phase {
                     RuntimePhase::Starting(active) | RuntimePhase::Streaming(active)
-                        if active == run_id =>
+                        if active == turn_id =>
                     {
                         token.cancel();
-                        self.phase = RuntimePhase::Cancelling(run_id);
-                        RunTransition::Cancelling
+                        self.phase = RuntimePhase::Cancelling(turn_id);
+                        TurnTransition::Cancelling
                     }
-                    RuntimePhase::Cancelling(active) if active == run_id => {
+                    RuntimePhase::Cancelling(active) if active == turn_id => {
                         token.cancel();
-                        RunTransition::Cancelling
+                        TurnTransition::Cancelling
                     }
-                    _ => RunTransition::Rejected,
+                    _ => TurnTransition::Rejected,
                 }
             }
-            RunEvent::Finish(run_id) => {
-                if self.phase.active_run_id() != Some(run_id) {
-                    return RunTransition::Finished;
+            TurnEvent::Finish(turn_id) => {
+                if self.phase.active_turn_id() != Some(turn_id) {
+                    return TurnTransition::Finished;
                 }
-                self.clear_active_turn_if(run_id);
-                if self.cancel.as_ref().is_some_and(|(id, _)| *id == run_id) {
+                self.clear_active_turn_if(turn_id);
+                if self.cancel.as_ref().is_some_and(|(id, _)| *id == turn_id) {
                     self.cancel = None;
                 }
                 self.phase = RuntimePhase::Idle;
-                RunTransition::Finished
+                TurnTransition::Finished
             }
         }
     }
 
-    pub fn try_begin_immediate(&mut self) -> Option<(RunId, CancellationToken)> {
-        match self.transition(RunEvent::Begin) {
-            RunTransition::Began { run_id, cancel } => Some((run_id, cancel)),
+    pub fn try_begin_immediate(&mut self) -> Option<(TurnId, CancellationToken)> {
+        match self.transition(TurnEvent::Begin) {
+            TurnTransition::Began { turn_id, cancel } => Some((turn_id, cancel)),
             _ => None,
         }
     }
 
-    pub fn mark_streaming(&mut self, run_id: RunId) {
-        let _ = self.transition(RunEvent::StreamStarted(run_id));
+    pub fn mark_streaming(&mut self, turn_id: TurnId) {
+        let _ = self.transition(TurnEvent::StreamStarted(turn_id));
     }
 
     pub fn cancel_active(&mut self) -> bool {
-        matches!(self.transition(RunEvent::Cancel), RunTransition::Cancelling)
+        matches!(
+            self.transition(TurnEvent::Cancel),
+            TurnTransition::Cancelling
+        )
     }
 
     pub fn set_turn_in_flight(&mut self, in_flight: bool) {
@@ -223,14 +226,14 @@ impl RunCoordinator {
         self.turn_in_flight
     }
 
-    pub fn rearm_cancel_after_abort(&mut self, run_id: RunId) -> Option<CancellationToken> {
-        if self.phase.active_run_id() != Some(run_id) {
+    pub fn rearm_cancel_after_abort(&mut self, turn_id: TurnId) -> Option<CancellationToken> {
+        if self.phase.active_turn_id() != Some(turn_id) {
             return None;
         }
         let token = CancellationToken::new();
-        self.cancel = Some((run_id, token.clone()));
+        self.cancel = Some((turn_id, token.clone()));
         if matches!(self.phase, RuntimePhase::Cancelling(_)) {
-            self.phase = RuntimePhase::Streaming(run_id);
+            self.phase = RuntimePhase::Streaming(turn_id);
         }
         Some(token)
     }
@@ -242,17 +245,17 @@ impl RunCoordinator {
             .unwrap_or_default()
     }
 
-    pub fn set_active_turn(&mut self, run_id: RunId, binding: ActiveTurnBinding) {
-        if self.phase.active_run_id() == Some(run_id) {
-            self.active_turn = Some(ActiveTurnSlot { run_id, binding });
+    pub fn set_active_turn(&mut self, turn_id: TurnId, binding: ActiveTurnBinding) {
+        if self.phase.active_turn_id() == Some(turn_id) {
+            self.active_turn = Some(ActiveTurnSlot { turn_id, binding });
         }
     }
 
-    pub fn clear_active_turn_if(&mut self, run_id: RunId) {
+    pub fn clear_active_turn_if(&mut self, turn_id: TurnId) {
         if self
             .active_turn
             .as_ref()
-            .is_some_and(|s| s.run_id == run_id)
+            .is_some_and(|s| s.turn_id == turn_id)
         {
             self.active_turn = None;
         }
@@ -266,30 +269,30 @@ impl RunCoordinator {
         self.active_turn.is_some()
     }
 
-    pub fn finish_run(&mut self, run_id: RunId) -> bool {
-        if self.phase.active_run_id() != Some(run_id) {
+    pub fn finish_turn(&mut self, turn_id: TurnId) -> bool {
+        if self.phase.active_turn_id() != Some(turn_id) {
             return false;
         }
         matches!(
-            self.transition(RunEvent::Finish(run_id)),
-            RunTransition::Finished
+            self.transition(TurnEvent::Finish(turn_id)),
+            TurnTransition::Finished
         )
     }
 }
 
 #[derive(Clone, Default)]
-pub struct SharedRunCoordinator {
-    inner: Arc<Mutex<RunCoordinator>>,
+pub struct SharedTurnCoordinator {
+    inner: Arc<Mutex<TurnCoordinator>>,
 }
 
-impl SharedRunCoordinator {
+impl SharedTurnCoordinator {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(Mutex::new(RunCoordinator::new())),
+            inner: Arc::new(Mutex::new(TurnCoordinator::new())),
         }
     }
 
-    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, RunCoordinator> {
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, TurnCoordinator> {
         crate::utils::lock_mutex(&self.inner)
     }
 
@@ -297,31 +300,31 @@ impl SharedRunCoordinator {
         self.with(|c| c.phase())
     }
 
-    pub fn with<R>(&self, f: impl FnOnce(&RunCoordinator) -> R) -> R {
+    pub fn with<R>(&self, f: impl FnOnce(&TurnCoordinator) -> R) -> R {
         f(&self.lock())
     }
 
-    pub fn with_mut<R>(&self, f: impl FnOnce(&mut RunCoordinator) -> R) -> R {
+    pub fn with_mut<R>(&self, f: impl FnOnce(&mut TurnCoordinator) -> R) -> R {
         f(&mut self.lock())
     }
 }
 
-pub struct RunLease {
-    coordinator: SharedRunCoordinator,
-    run_id: RunId,
+pub struct TurnLease {
+    coordinator: SharedTurnCoordinator,
+    turn_id: TurnId,
     queues: Option<std::sync::Arc<crate::agent::capabilities::AsyncQueueRuntime>>,
     finished: bool,
 }
 
-impl RunLease {
+impl TurnLease {
     pub fn new(
-        coordinator: SharedRunCoordinator,
-        run_id: RunId,
+        coordinator: SharedTurnCoordinator,
+        turn_id: TurnId,
         queues: Option<std::sync::Arc<crate::agent::capabilities::AsyncQueueRuntime>>,
     ) -> Self {
         Self {
             coordinator,
-            run_id,
+            turn_id,
             queues,
             finished: false,
         }
@@ -333,17 +336,17 @@ impl RunLease {
         }
         self.finished = true;
         if let Some(queues) = &self.queues {
-            queues.unbind_event_tx(self.run_id);
+            queues.unbind_event_tx(self.turn_id);
         }
-        let _activated = self.coordinator.with_mut(|c| c.finish_run(self.run_id));
+        let _activated = self.coordinator.with_mut(|c| c.finish_turn(self.turn_id));
     }
 }
 
-impl Drop for RunLease {
+impl Drop for TurnLease {
     fn drop(&mut self) {
         if !self.finished {
-            let phase_id = self.coordinator.with(|c| c.phase().active_run_id());
-            if phase_id != Some(self.run_id) {
+            let phase_id = self.coordinator.with(|c| c.phase().active_turn_id());
+            if phase_id != Some(self.turn_id) {
                 self.finished = true;
                 return;
             }
@@ -358,18 +361,18 @@ mod tests {
 
     #[test]
     fn reject_path_try_begin_only_when_idle() {
-        let mut c = RunCoordinator::new();
+        let mut c = TurnCoordinator::new();
         let (id, _) = c.try_begin_immediate().expect("first");
         assert!(c.try_begin_immediate().is_none());
-        assert_eq!(c.phase().active_run_id(), Some(id));
-        assert!(c.finish_run(id));
+        assert_eq!(c.phase().active_turn_id(), Some(id));
+        assert!(c.finish_turn(id));
         assert!(!c.has_work());
         assert!(c.try_begin_immediate().is_some());
     }
 
     #[test]
     fn mark_streaming_does_not_overwrite_cancelling() {
-        let mut c = RunCoordinator::new();
+        let mut c = TurnCoordinator::new();
         let (id, _) = c.try_begin_immediate().expect("idle begin");
         c.mark_streaming(id);
         assert!(c.cancel_active());
@@ -380,42 +383,42 @@ mod tests {
             RuntimePhase::Cancelling(id),
             "mark_streaming must not overwrite Cancelling"
         );
-        assert!(c.finish_run(id));
+        assert!(c.finish_turn(id));
         assert_eq!(c.phase(), RuntimePhase::Idle);
     }
 
     #[test]
     fn transition_closed_set_guards_stale_and_busy() {
-        let mut c = RunCoordinator::new();
-        let stale = RunId::from_raw_for_test(99);
+        let mut c = TurnCoordinator::new();
+        let stale = TurnId::from_raw_for_test(99);
         assert!(matches!(
-            c.transition(RunEvent::StreamStarted(stale)),
-            RunTransition::Rejected
+            c.transition(TurnEvent::StreamStarted(stale)),
+            TurnTransition::Rejected
         ));
         assert!(matches!(
-            c.transition(RunEvent::Cancel),
-            RunTransition::Rejected
+            c.transition(TurnEvent::Cancel),
+            TurnTransition::Rejected
         ));
         let (id, _) = c.try_begin_immediate().expect("idle begin");
         assert_eq!(c.phase(), RuntimePhase::Starting(id));
         assert!(c.try_begin_immediate().is_none(), "busy begin rejected");
         assert!(matches!(
-            c.transition(RunEvent::StreamStarted(stale)),
-            RunTransition::Rejected
+            c.transition(TurnEvent::StreamStarted(stale)),
+            TurnTransition::Rejected
         ));
         c.mark_streaming(id);
         assert_eq!(c.phase(), RuntimePhase::Streaming(id));
         c.mark_streaming(id);
         assert_eq!(c.phase(), RuntimePhase::Streaming(id));
-        assert!(!c.finish_run(stale));
+        assert!(!c.finish_turn(stale));
         assert_eq!(c.phase(), RuntimePhase::Streaming(id));
-        assert!(c.finish_run(id));
+        assert!(c.finish_turn(id));
         assert_eq!(c.phase(), RuntimePhase::Idle);
     }
 
     #[test]
     fn rearm_after_abort_issues_fresh_token_and_restores_streaming() {
-        let mut c = RunCoordinator::new();
+        let mut c = TurnCoordinator::new();
         let (id, token) = c.try_begin_immediate().unwrap();
         c.mark_streaming(id);
         assert!(c.cancel_active());
@@ -426,14 +429,14 @@ mod tests {
         assert!(!c.cancel_token().is_cancelled());
         c.cancel_active();
         assert!(fresh.is_cancelled());
-        c.finish_run(id);
+        c.finish_turn(id);
         assert!(c.rearm_cancel_after_abort(id).is_none());
         assert_eq!(c.phase(), RuntimePhase::Idle);
     }
 
     #[test]
     fn turn_in_flight_resets_on_begin_and_tracks_probe() {
-        let mut c = RunCoordinator::new();
+        let mut c = TurnCoordinator::new();
         assert!(!c.turn_in_flight());
         c.set_turn_in_flight(true);
         assert!(c.turn_in_flight());
@@ -442,7 +445,7 @@ mod tests {
             !c.turn_in_flight(),
             "a fresh begin starts with no turn in flight"
         );
-        c.finish_run(id);
+        c.finish_turn(id);
         c.set_turn_in_flight(true);
         c.set_turn_in_flight(false);
         assert!(!c.turn_in_flight());
@@ -450,10 +453,10 @@ mod tests {
 
     #[test]
     fn stale_finish_does_not_clear_newer_run() {
-        let mut c = RunCoordinator::new();
+        let mut c = TurnCoordinator::new();
         let (old, _) = c.try_begin_immediate().unwrap();
         assert!(c.cancel_active());
-        assert!(c.finish_run(old));
+        assert!(c.finish_turn(old));
         let (new, _) = c.try_begin_immediate().unwrap();
         c.set_active_turn(
             new,
@@ -464,8 +467,8 @@ mod tests {
                 omit_thinking: true,
             },
         );
-        assert!(!c.finish_run(old));
+        assert!(!c.finish_turn(old));
         assert!(c.has_active_turn());
-        assert_eq!(c.phase().active_run_id(), Some(new));
+        assert_eq!(c.phase().active_turn_id(), Some(new));
     }
 }

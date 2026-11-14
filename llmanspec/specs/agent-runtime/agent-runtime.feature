@@ -324,7 +324,7 @@
 
   @req:r2905
   规则: runtime-phase-transition-table
-    RunCoordinator 的 RuntimePhase（Idle/Starting/Streaming/Cancelling）转移 须受守卫约束：仅 Idle 可 try_begin_immediate 入 Starting；mark_streaming 与 finish_run 仅对活动 run_id（或按 stale 语义相不变/降级）生效；cancel_active 自 Starting/Streaming 入 Cancelling；finish_run 匹配 run_id 后归 Idle。守卫失败相 须保持原相不变形。转移闭集 须以场景大纲固定并经状态流转校验（E1-E4）。
+    TurnCoordinator 的 RuntimePhase（Idle/Starting/Streaming/Cancelling）转移 须受守卫约束：仅 Idle 可 try_begin_immediate 入 Starting；mark_streaming 与 finish_turn 仅对活动 turn_id（或按 stale 语义相不变/降级）生效；cancel_active 自 Starting/Streaming 入 Cancelling；finish_turn 匹配 turn_id 后归 Idle。守卫失败相 须保持原相不变形。转移闭集 须以场景大纲固定并经状态流转校验（E1-E4）。
 
     场景大纲: 阶段转换矩阵
       假如 运行协调器处于 "<from>" 阶段
@@ -334,16 +334,16 @@
       例子:
         | from      | event  | guard        | to        |
         | idle      | begin  | phase_idle   | starting  |
-        | starting  | stream | run_id_match | streaming |
+        | starting  | stream | turn_id_match | streaming |
         | starting  | cancel | always       | cancelling |
         | streaming | cancel | always       | cancelling |
         | streaming | begin  | phase_busy   | streaming |
-        | starting  | finish | run_id_match | idle      |
-        | streaming | finish | run_id_match | idle      |
-        | cancelling | finish | run_id_match | idle     |
-        | cancelling | stream | run_id_match | cancelling |
-        | streaming  | finish | run_id_stale | starting  |
-        | starting   | finish | run_id_stale | starting  |
+        | starting  | finish | turn_id_match | idle      |
+        | streaming | finish | turn_id_match | idle      |
+        | cancelling | finish | turn_id_match | idle     |
+        | cancelling | stream | turn_id_match | cancelling |
+        | streaming  | finish | turn_id_stale | starting  |
+        | starting   | finish | turn_id_stale | starting  |
 
   @req:r2920
   规则: loop-middleware-spi

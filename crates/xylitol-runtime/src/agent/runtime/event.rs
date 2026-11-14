@@ -5,12 +5,12 @@ use futures::Stream;
 
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 
-use super::state::RunLease;
+use super::state::TurnLease;
 
 pub struct XyEventStream {
     pub(crate) inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>>,
     pub(crate) done: bool,
-    pub(crate) lease: Option<RunLease>,
+    pub(crate) lease: Option<TurnLease>,
 }
 
 impl XyEventStream {
@@ -35,7 +35,7 @@ impl XyEventStream {
 
     pub(crate) fn with_lease(
         inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>>,
-        lease: RunLease,
+        lease: TurnLease,
     ) -> Self {
         Self {
             inner,

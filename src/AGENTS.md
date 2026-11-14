@@ -8,7 +8,7 @@
 
 共享概念词汇（文档叙事主语）：**session（会话）⊃ turn（问答轮：一条用户输入到最终答复）⊃ step（一次模型调用周期 + 工具批）**。事件 / 字段载体：`StepStart` / `StepEnd` / `step_index`；Settle 是 turn 的收尾动作（发生在末个 step）。
 
-**run 已退役为历史实现命名**（仅存于标识符：`RunCoordinator` / `RunId` / `run_inflight` / `RunLease`；语义 = 单个 turn 的执行与串行化机器），概念层与文档叙事零使用。提交边界一律写 turn（= 一次提交 = 一对 `AgentStart` / `AgentEnd`）或「每次提交」；旧稿若把「run 边界」「同 run」当概念，按三层版修订。
+提交边界一律写 turn（= 一次提交 = 一对 `AgentStart` / `AgentEnd`）或「每次提交」；旧稿若把「run 边界」「同 run」当概念，按三层版修订。
 
 ## 目标 crate 图（normative）
 
@@ -146,7 +146,7 @@ flowchart TB
 
 静态工具源（含外进程插件工具）须经 `HostRegistries.tools` 注册；`compose_tools` 以注册表快照为基座（空则回落 `core_tools()`）。模型可见集 须由配置 `tools` 列表（`+name` / `-name`）与 `XyTool::replaces()` 解析：替换工具胜出、同类只留一个、未知名告警。内核 不得为单个工具插件写特判；session 专属工具（todo / workflow / ask）仍由装配层注入。
 
-测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
+测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`TurnId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
 每个 crate 内部仍守依赖方向（runtime ↛ 官方插件、↛ 信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。占用（session slot / linger / 单写者）在 `xylitol-serve`：槽在最后订阅消失后**释放**：干净断开（收到 Close 帧）立即驱逐，非干净断开经宽限到期驱逐（先清 driver 断开 `slot ↔ SlotAskGateway` 环，再从会话表移除），事件序号水位**保留**并在同会话重建时续接（空 journal 不发 resync，重置 seq 会让 `last_seq` 重连永久错位）。journal **只存事实事件**（生命周期 / 消息 / 工具边界与状态变更）；流式 tape（`TextDelta` / `ThinkingDelta` / `MessageUpdate` / `ToolExecutionUpdate`）**不写 journal、不消耗 seq**，仅实时下发并在 `latest_tape` 仅保留最新 `MessageUpdate.message` 快照供中段重连经 `subscribe.partial` 补齐（`TextDelta` / `ThinkingDelta` / `ToolExecutionUpdate` 不进快照）。`seq` 不变量（同一 seq 永久指向同一内容）不可破坏——**不得**用覆盖式槽位换 O(1) 内存。监听在 `xylitol-serve`；`XyEvent` ↔ wire 映射在 `xylitol-wire`。
 
@@ -178,7 +178,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 | 一 runtime 绑一 session；单写者 | 同一 runtime 按 session id 多路复用 |
 | busy 时只用 steer / follow-up 改向 | 忙碌中塞第二次根提交 |
 | 子 agent 另建隔离 runtime | 子 agent 挤进现有 runtime 共享状态 |
-| `RunId` 仅运行时内部 | `RunId` 进 `XyEvent` / 信封 |
+| `TurnId` 仅运行时内部 | `TurnId` 进 `XyEvent` / 信封 |
 
 开箱主线 vs 配置后置见根 `AGENTS.md`。库嵌入：`xylitol::embed`。
 

@@ -90,7 +90,7 @@ pub struct SessionSlot {
     pub in_process_downlink: broadcast::Sender<Notification>,
     next_conn: AtomicU64,
     resync_offered: AtomicBool,
-    run_inflight: AtomicBool,
+    turn_inflight: AtomicBool,
     pending_model: std::sync::Mutex<Option<String>>,
     pending_thinking: std::sync::Mutex<Option<String>>,
     pub latest_tape: std::sync::Mutex<Option<xylitol_plugin_sdk::message::AgentMessage>>,
@@ -235,7 +235,7 @@ impl HostState {
             None => self.bind_all_unbound_muxes(slot).await,
         };
         Self::cancel_write_linger(slot).await;
-        let inflight = slot.run_inflight_active();
+        let inflight = slot.turn_inflight_active();
         let observe = inflight && last_seq == 0;
         if observe {
             slot.observe(bound.iter().copied()).await;
@@ -423,7 +423,7 @@ pub struct RunInflightGuard {
 impl RunInflightGuard {
     pub fn try_acquire(slot: &Arc<SessionSlot>) -> Option<Self> {
         if slot
-            .run_inflight
+            .turn_inflight
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()
         {
@@ -440,7 +440,7 @@ impl RunInflightGuard {
 impl Drop for RunInflightGuard {
     fn drop(&mut self) {
         if self.active {
-            self.slot.run_inflight.store(false, Ordering::SeqCst);
+            self.slot.turn_inflight.store(false, Ordering::SeqCst);
         }
     }
 }
@@ -475,7 +475,7 @@ impl SessionSlot {
             in_process_downlink,
             next_conn: AtomicU64::new(1),
             resync_offered: AtomicBool::new(false),
-            run_inflight: AtomicBool::new(false),
+            turn_inflight: AtomicBool::new(false),
             pending_model: std::sync::Mutex::new(None),
             pending_thinking: std::sync::Mutex::new(None),
             latest_tape: std::sync::Mutex::new(None),
@@ -489,8 +489,8 @@ impl SessionSlot {
         })
     }
 
-    pub fn run_inflight_active(&self) -> bool {
-        self.run_inflight.load(Ordering::SeqCst)
+    pub fn turn_inflight_active(&self) -> bool {
+        self.turn_inflight.load(Ordering::SeqCst)
     }
 
     pub async fn add_subscriber(&self, tx: MuxSink) -> u64 {
@@ -531,7 +531,7 @@ impl SessionSlot {
     }
 
     pub fn mark_run_inflight_for_test(&self, on: bool) {
-        self.run_inflight.store(on, Ordering::SeqCst);
+        self.turn_inflight.store(on, Ordering::SeqCst);
     }
 
     pub async fn flush_pending_runtime_for_test(&self) {
@@ -1281,7 +1281,7 @@ async fn automation_loop(slot: Arc<SessionSlot>, engine: Arc<Mutex<AutomationEng
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     loop {
         interval.tick().await;
-        let busy = slot.run_inflight_active();
+        let busy = slot.turn_inflight_active();
         let permission_required = HostState::live_subscriber_count(&slot).await == 0;
         let actions = {
             let mut guard = engine.lock().await;
@@ -1495,7 +1495,7 @@ pub async fn prune_mux_and_maybe_release(host: &Arc<HostState>, clean: bool) {
 }
 
 async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>, clean: bool) {
-    if slot.run_inflight_active() {
+    if slot.turn_inflight_active() {
         return;
     }
     HostState::cancel_write_linger(slot).await;
@@ -1521,7 +1521,7 @@ async fn schedule_linger_eviction(
     let slot_wait = slot.clone();
     let task = tokio::spawn(async move {
         tokio::time::sleep(linger).await;
-        if slot_wait.run_inflight_active() {
+        if slot_wait.turn_inflight_active() {
             return;
         }
         if HostState::live_subscriber_count(&slot_wait).await == 0 {
@@ -1563,7 +1563,7 @@ pub async fn handle_unary(
         let Some(slot) = host.existing_slot(&session_id).await else {
             return RpcResult::ok_value(json!({ "detached": true }));
         };
-        if slot.run_inflight_active() {
+        if slot.turn_inflight_active() {
             return RpcResult::ok_value(json!({
                 "detached": false,
                 "reason": "session busy"
@@ -1882,7 +1882,7 @@ async fn dispatch_writer_unary(
     if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
         return *e;
     }
-    if slot.run_inflight_active()
+    if slot.turn_inflight_active()
         && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
     {
         return defer_runtime_setting(slot, method, &payload).await;
@@ -2124,10 +2124,10 @@ mod tests {
     async fn inflight_guard_drop_resets_slot() {
         let slot = test_slot("guard-drop");
         let guard = RunInflightGuard::try_acquire(&slot).expect("acquire");
-        assert!(slot.run_inflight_active());
+        assert!(slot.turn_inflight_active());
         assert!(RunInflightGuard::try_acquire(&slot).is_none());
         drop(guard);
-        assert!(!slot.run_inflight_active());
+        assert!(!slot.turn_inflight_active());
         assert!(RunInflightGuard::try_acquire(&slot).is_some());
     }
 
@@ -2141,7 +2141,7 @@ mod tests {
         });
         assert!(handle.await.is_err(), "task must unwind");
         assert!(
-            !slot.run_inflight_active(),
+            !slot.turn_inflight_active(),
             "panic must release the in-flight slot"
         );
     }
@@ -2151,7 +2151,7 @@ mod tests {
         let slot = test_slot("guard-early");
         let guard = RunInflightGuard::try_acquire(&slot).expect("acquire");
         drop(guard);
-        assert!(!slot.run_inflight_active());
+        assert!(!slot.turn_inflight_active());
     }
 
     #[test]

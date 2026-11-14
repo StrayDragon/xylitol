@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use crate::agent::runtime::state::RunId;
+use crate::agent::runtime::state::TurnId;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::AgentMessage;
 
@@ -65,7 +65,7 @@ impl PendingMessageQueue {
 pub struct AsyncQueueRuntime {
     pub steer: Arc<Mutex<PendingMessageQueue>>,
     pub follow_up: Arc<Mutex<PendingMessageQueue>>,
-    event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>,
+    event_tx: Arc<Mutex<Option<(TurnId, EventTx)>>>,
 }
 
 impl AsyncQueueRuntime {
@@ -86,13 +86,13 @@ impl AsyncQueueRuntime {
         }
     }
 
-    pub fn bind_event_tx(&self, run_id: RunId, tx: EventTx) {
-        *crate::utils::lock_mutex(&self.event_tx) = Some((run_id, tx));
+    pub fn bind_event_tx(&self, turn_id: TurnId, tx: EventTx) {
+        *crate::utils::lock_mutex(&self.event_tx) = Some((turn_id, tx));
     }
 
-    pub fn unbind_event_tx(&self, run_id: RunId) {
+    pub fn unbind_event_tx(&self, turn_id: TurnId) {
         let mut guard = crate::utils::lock_mutex(&self.event_tx);
-        if guard.as_ref().is_some_and(|(id, _)| *id == run_id) {
+        if guard.as_ref().is_some_and(|(id, _)| *id == turn_id) {
             *guard = None;
         }
     }
@@ -175,7 +175,7 @@ mod tests {
     fn concurrent_enqueue_via_runtime() {
         let rt = AsyncQueueRuntime::new(QueueMode::All, QueueMode::All);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let run = RunId::from_raw_for_test(1);
+        let run = TurnId::from_raw_for_test(1);
         rt.bind_event_tx(run, tx);
         {
             let mut q = rt.steer.lock().unwrap();
@@ -195,7 +195,7 @@ mod tests {
             other => panic!("unexpected {other:?}"),
         }
         let (tx2, mut rx2) = tokio::sync::mpsc::unbounded_channel();
-        let run2 = RunId::from_raw_for_test(2);
+        let run2 = TurnId::from_raw_for_test(2);
         rt.bind_event_tx(run2, tx2);
         rt.unbind_event_tx(run);
         rt.notify_queue_update();

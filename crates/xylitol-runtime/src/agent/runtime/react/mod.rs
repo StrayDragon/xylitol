@@ -30,7 +30,9 @@ use super::middleware::{
     run_after_step, run_before_llm_request, run_before_step, run_decide_continue,
 };
 use super::retry::{RetryState, is_retryable_xy_error};
-use super::state::{FrozenRootConfig, RunId, RunLease, RuntimeControlError, SharedRunCoordinator};
+use super::state::{
+    FrozenRootConfig, RuntimeControlError, SharedTurnCoordinator, TurnId, TurnLease,
+};
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::compaction::CompactionError;
@@ -49,17 +51,17 @@ use xylitol_plugin_sdk::{
 
 pub struct AgentRuntime {
     inner: AgentCapabilities,
-    coordinator: SharedRunCoordinator,
+    coordinator: SharedTurnCoordinator,
     pending_prepare: std::sync::Mutex<Option<xylitol_plugin_sdk::SessionPrepareSnapshot>>,
 }
 
 impl AgentRuntime {
     pub fn new(mut inner: AgentCapabilities) -> Self {
-        let coordinator = SharedRunCoordinator::new();
+        let coordinator = SharedTurnCoordinator::new();
         let midturn_coord = coordinator.clone();
         let turn_flight_coord = coordinator.clone();
         inner.set_midturn_active_probe(Arc::new(move || {
-            midturn_coord.with(|c| c.has_active_run() || c.has_active_turn())
+            midturn_coord.with(|c| c.is_executing() || c.has_active_turn())
         }));
         inner.set_turn_in_flight_probe(Arc::new(move || {
             turn_flight_coord.with(|c| c.turn_in_flight())
@@ -114,7 +116,7 @@ impl AgentRuntime {
     pub fn abort(&self) {
         self.coordinator.with_mut(|c| {
             c.cancel_active();
-            if let Some(id) = c.phase().active_run_id() {
+            if let Some(id) = c.phase().active_turn_id() {
                 c.clear_active_turn_if(id);
             }
         });
@@ -402,7 +404,7 @@ impl AgentRuntime {
 
     pub fn has_active_turn(&self) -> bool {
         self.coordinator
-            .with(|c| c.has_active_turn() || c.has_active_run())
+            .with(|c| c.has_active_turn() || c.is_executing())
     }
 
     pub fn active_turn_binding(&self) -> Option<crate::agent::capabilities::ActiveTurnBinding> {
@@ -466,7 +468,7 @@ impl AgentRuntime {
 
         enum Admit {
             Immediate {
-                run_id: RunId,
+                turn_id: TurnId,
                 cancel: CancellationToken,
             },
             Busy,
@@ -474,16 +476,16 @@ impl AgentRuntime {
 
         let admit = self.coordinator.with_mut(|c| {
             if c.phase().is_idle() {
-                let (run_id, cancel) = c.try_begin_immediate().expect("idle begin");
-                return Admit::Immediate { run_id, cancel };
+                let (turn_id, cancel) = c.try_begin_immediate().expect("idle begin");
+                return Admit::Immediate { turn_id, cancel };
             }
             Admit::Busy
         });
 
         match admit {
             Admit::Busy => XyEventStream::busy(),
-            Admit::Immediate { run_id, cancel } => {
-                self.start_root_stream(session_id, run_id, cancel, frozen)
+            Admit::Immediate { turn_id, cancel } => {
+                self.start_root_stream(session_id, turn_id, cancel, frozen)
                     .await
             }
         }
@@ -511,14 +513,14 @@ impl AgentRuntime {
     async fn start_root_stream(
         &self,
         session_id: String,
-        run_id: RunId,
+        turn_id: TurnId,
         cancel: CancellationToken,
         frozen: FrozenRootConfig,
     ) -> XyEventStream {
         let t_ensure = std::time::Instant::now();
         if let Err(e) = self.inner.ensure_session(&session_id, None).await {
             self.coordinator.with_mut(|c| {
-                let _ = c.finish_run(run_id);
+                let _ = c.finish_turn(turn_id);
             });
             return XyEventStream::error(xylitol_plugin_sdk::lifecycle::XyEventError::from_xy(&e));
         }
@@ -536,7 +538,7 @@ impl AgentRuntime {
             Ok(h) => h,
             Err(e) => {
                 self.coordinator.with_mut(|c| {
-                    let _ = c.finish_run(run_id);
+                    let _ = c.finish_turn(turn_id);
                 });
                 return XyEventStream::error(xylitol_plugin_sdk::lifecycle::XyEventError::from_xy(
                     &e,
@@ -554,9 +556,9 @@ impl AgentRuntime {
         }
 
         let queues = self.inner.queues();
-        let lease = RunLease::new(self.coordinator.clone(), run_id, Some(queues.clone()));
+        let lease = TurnLease::new(self.coordinator.clone(), turn_id, Some(queues.clone()));
         let stream = build_live_react_stream(LiveReactArgs {
-            run_id,
+            turn_id,
             coordinator: self.coordinator.clone(),
             cancel,
             frozen,
@@ -568,14 +570,14 @@ impl AgentRuntime {
             event_sink_inner: self.inner.event_sink(),
             obs_session_name: self.inner.session_name().map(str::to_string),
         });
-        self.coordinator.with_mut(|c| c.mark_streaming(run_id));
+        self.coordinator.with_mut(|c| c.mark_streaming(turn_id));
         XyEventStream::with_lease(Box::pin(stream), lease)
     }
 }
 
 struct LiveReactArgs {
-    run_id: RunId,
-    coordinator: SharedRunCoordinator,
+    turn_id: TurnId,
+    coordinator: SharedTurnCoordinator,
     cancel: CancellationToken,
     frozen: FrozenRootConfig,
     model_manager: Arc<Mutex<crate::agent::model::manager::ModelManager>>,
@@ -589,7 +591,7 @@ struct LiveReactArgs {
 
 fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> + Send {
     let LiveReactArgs {
-        run_id,
+        turn_id,
         coordinator,
         cancel,
         frozen,
@@ -661,10 +663,10 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
     });
 
     let (queue_tx, queue_rx) = tokio::sync::mpsc::unbounded_channel();
-    queues.bind_event_tx(run_id, queue_tx);
+    queues.bind_event_tx(turn_id, queue_tx);
 
     let react = Box::pin(run_react_loop(ReActConfig {
-        run_id,
+        turn_id,
         coordinator,
         model_manager,
         system_prompt,
@@ -766,8 +768,8 @@ impl xylitol_plugin_sdk::XyEventSink for CompactionStreamTee {
 }
 
 struct ReActConfig {
-    run_id: RunId,
-    coordinator: SharedRunCoordinator,
+    turn_id: TurnId,
+    coordinator: SharedTurnCoordinator,
     model_manager: Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     system_prompt: Option<String>,
     tools: ToolSet,
@@ -867,7 +869,7 @@ async fn run_turn_injection(
 
 fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
     let ReActConfig {
-        run_id,
+        turn_id,
         coordinator,
         model_manager,
         system_prompt,
@@ -902,7 +904,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
     async_stream::stream! {
         let _clear_active = ClearActiveTurn {
             coordinator: coordinator.clone(),
-            run_id,
+            turn_id,
         };
 
         if let Some(bus) = &hook_bus {
@@ -1059,7 +1061,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let iteration_parent = super::tool_exec::capture_iteration_parent(
                     iteration_span.as_ref().map(|s| s.span()),
                 );
-                let turn_id = iteration_span
+                let obs_turn_id = iteration_span
                     .as_ref()
                     .map(|t| t.turn_id().to_string())
                     .or_else(|| agent_turn_span.as_ref().map(|t| t.turn_id().to_string()));
@@ -1109,7 +1111,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let (model, mut generate_options) = match prepare_turn_binding(
                     &model_manager,
                     &coordinator,
-                    run_id,
+                    turn_id,
                     &turn_system_prompt,
                     &mut run_model,
                 ) {
@@ -1217,7 +1219,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     target: "xylitol::react",
                                     "model.generate_stream retrying error.kind={} turn_id={} error={e}",
                                     e.kind(),
-                                    turn_id.as_deref().unwrap_or("")
+                                    obs_turn_id.as_deref().unwrap_or("")
                                 );
                                 let delay = retry_state
                                     .next_delay_with_hint(e.provider_detail().and_then(|d| d.retry_after));
@@ -1235,7 +1237,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             super::obs::record_xy_error(
                                 "model.generate_stream",
                                 &e,
-                                turn_id.as_deref(),
+                                obs_turn_id.as_deref(),
                                 generate_options.obs_parent,
                                 &obs_session,
                             );
@@ -1475,7 +1477,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             super::obs::record_xy_error(
                                 "model.stream",
                                 &e,
-                                turn_id.as_deref(),
+                                obs_turn_id.as_deref(),
                                 iteration_parent,
                                 &obs_session,
                             );
@@ -1920,7 +1922,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     hook_bus: &hook_bus,
                     permission_check: &permission_check,
                     cancel: &cancel,
-                    turn_id: turn_id.as_deref(),
+                    turn_id: obs_turn_id.as_deref(),
                     batch_mode,
                     workspace: &cwd,
                     workspaces: &workspaces,
@@ -2173,7 +2175,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             if turn_reason.is_some() {
                 // NOTE: abort 只针对被取消的 turn；后续 turn 换发全新取消令牌，流继续弹出下一条
                 cancel = coordinator
-                    .with_mut(|c| c.rearm_cancel_after_abort(run_id))
+                    .with_mut(|c| c.rearm_cancel_after_abort(turn_id))
                     .unwrap_or_else(CancellationToken::new);
             }
             if let Some(bus) = &hook_bus {

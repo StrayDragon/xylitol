@@ -21,7 +21,7 @@ pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
 pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>)
 pub fn begin_tool_gating(&mut self)
-pub fn bind_event_tx(&self, run_id: RunId, tx: EventTx)
+pub fn bind_event_tx(&self, turn_id: TurnId, tx: EventTx)
 pub fn clear(&mut self)
 pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
 pub fn clear_steer_queue(&self)
@@ -76,11 +76,11 @@ pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>)
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> String
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
-pub fn unbind_event_tx(&self, run_id: RunId)
+pub fn unbind_event_tx(&self, turn_id: TurnId)
 pub fn workspaces(&self) -> &[String]
 pub model_id: String, pub display_name: String, pub thinking: String, pub omit_thinking: bool, } impl ActiveTurnBinding
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
-pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>, } impl AsyncQueueRuntime
+pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<(TurnId, EventTx)>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub struct ActiveTurnBinding
 pub struct AgentCapabilities

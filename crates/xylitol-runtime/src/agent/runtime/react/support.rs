@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::Stream;
 
-use super::super::state::{RunId, SharedRunCoordinator};
+use super::super::state::{SharedTurnCoordinator, TurnId};
 use crate::utils::StreamNodeClock;
 use xylitol_plugin_sdk::error::XyError;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
@@ -17,8 +17,8 @@ fn output_budget_from_meta(meta: &xylitol_plugin_sdk::XyModelMeta) -> Option<u32
 
 pub(crate) fn prepare_turn_binding(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
-    coordinator: &SharedRunCoordinator,
-    run_id: RunId,
+    coordinator: &SharedTurnCoordinator,
+    turn_id: TurnId,
     system_prompt: &Option<String>,
     run_model: &mut Option<(String, Arc<dyn XyModel>)>,
 ) -> Result<(Arc<dyn XyModel>, xylitol_plugin_sdk::XyGenerateOptions), XyError> {
@@ -49,7 +49,7 @@ pub(crate) fn prepare_turn_binding(
         }
     };
     drop(mm);
-    coordinator.with_mut(|c| c.set_active_turn(run_id, binding));
+    coordinator.with_mut(|c| c.set_active_turn(turn_id, binding));
     Ok((model, generate_options))
 }
 
@@ -75,14 +75,14 @@ pub(crate) fn current_model_modality_support(
 }
 
 pub(crate) struct ClearActiveTurn {
-    pub(crate) coordinator: SharedRunCoordinator,
-    pub(crate) run_id: RunId,
+    pub(crate) coordinator: SharedTurnCoordinator,
+    pub(crate) turn_id: TurnId,
 }
 
 impl Drop for ClearActiveTurn {
     fn drop(&mut self) {
         self.coordinator.with_mut(|c| {
-            c.clear_active_turn_if(self.run_id);
+            c.clear_active_turn_if(self.turn_id);
             c.set_turn_in_flight(false);
         });
     }

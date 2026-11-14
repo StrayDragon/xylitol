@@ -1576,12 +1576,12 @@ pub(crate) fn t_c2826_two_iterations_one_settlement(agent: &AgentState) {
 }
 
 thread_local! {
-        static COORD_STATE: RefCell<Option<(xylitol_runtime::agent::runtime::SharedRunCoordinator, u64, u64)>> =
+        static COORD_STATE: RefCell<Option<(xylitol_runtime::agent::runtime::SharedTurnCoordinator, u64, u64)>> =
         const { RefCell::new(None) };
 }
 
 fn coord_take() -> (
-    xylitol_runtime::agent::runtime::SharedRunCoordinator,
+    xylitol_runtime::agent::runtime::SharedTurnCoordinator,
     u64,
     u64,
 ) {
@@ -1590,7 +1590,7 @@ fn coord_take() -> (
         .expect("协调器已预置")
 }
 
-fn coord_put(c: xylitol_runtime::agent::runtime::SharedRunCoordinator, r1: u64, r2: u64) {
+fn coord_put(c: xylitol_runtime::agent::runtime::SharedTurnCoordinator, r1: u64, r2: u64) {
     COORD_STATE.with(|s| *s.borrow_mut() = Some((c, r1, r2)));
 }
 
@@ -1606,12 +1606,12 @@ fn phase_name(p: xylitol_runtime::agent::runtime::RuntimePhase) -> &'static str 
 fn coord_seed(
     phase: &str,
 ) -> (
-    xylitol_runtime::agent::runtime::SharedRunCoordinator,
+    xylitol_runtime::agent::runtime::SharedTurnCoordinator,
     u64,
     u64,
 ) {
-    use xylitol_runtime::agent::runtime::SharedRunCoordinator;
-    let c = SharedRunCoordinator::new();
+    use xylitol_runtime::agent::runtime::SharedTurnCoordinator;
+    let c = SharedTurnCoordinator::new();
     let (r1, r2) = (1_u64, 2_u64);
     match phase {
         "idle" => {}
@@ -1646,35 +1646,35 @@ pub(crate) fn _w_coord_transition(event: String, guard: String) {
             let began = c.with_mut(|co| co.try_begin_immediate());
             assert!(began.is_none(), "busy coordinator must refuse begin");
         }
-        ("stream", "run_id_match") => {
-            let active = c.with(|co| co.phase().active_run_id());
+        ("stream", "turn_id_match") => {
+            let active = c.with(|co| co.phase().active_turn_id());
             if let Some(id) = active {
                 c.with_mut(|co| co.mark_streaming(id));
             }
         }
-        ("stream", "run_id_stale") => {
-            let stale_id = c.with(|co| co.phase().active_run_id());
+        ("stream", "turn_id_stale") => {
+            let stale_id = c.with(|co| co.phase().active_turn_id());
             if let Some(id) = stale_id {
-                c.with_mut(|co| co.finish_run(id));
+                c.with_mut(|co| co.finish_turn(id));
                 c.with_mut(|co| co.mark_streaming(id));
             }
         }
         ("cancel", "always") => {
             c.with_mut(|co| co.cancel_active());
         }
-        ("finish", "run_id_match") => {
-            let active = c.with(|co| co.phase().active_run_id());
+        ("finish", "turn_id_match") => {
+            let active = c.with(|co| co.phase().active_turn_id());
             if let Some(id) = active {
-                c.with_mut(|co| co.finish_run(id));
+                c.with_mut(|co| co.finish_turn(id));
             }
         }
-        ("finish", "run_id_stale") => {
-            let old = c.with(|co| co.phase().active_run_id());
+        ("finish", "turn_id_stale") => {
+            let old = c.with(|co| co.phase().active_turn_id());
             if let Some(old) = old {
                 c.with_mut(|co| co.cancel_active());
-                c.with_mut(|co| co.finish_run(old));
+                c.with_mut(|co| co.finish_turn(old));
                 let (_new, _) = c.with_mut(|co| co.try_begin_immediate().expect("begin r2"));
-                let r = c.with_mut(|co| co.finish_run(old));
+                let r = c.with_mut(|co| co.finish_turn(old));
                 assert!(!r, "stale finish must be ignored");
             }
         }
