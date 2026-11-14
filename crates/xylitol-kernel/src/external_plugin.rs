@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -78,10 +78,13 @@ struct ClientState {
     stdout: BufReader<ChildStdout>,
 }
 
+const EXTERNAL_PLUGIN_DESYNC_LIMIT: u32 = 2;
+
 pub struct ExternalClient {
     state: Mutex<Option<ClientState>>,
     dead_reason: Mutex<Option<String>>,
     next_id: AtomicU64,
+    desync_streak: AtomicU32,
 }
 
 impl ExternalClient {
@@ -117,6 +120,7 @@ impl ExternalClient {
             })),
             dead_reason: Mutex::new(None),
             next_id: AtomicU64::new(1),
+            desync_streak: AtomicU32::new(0),
         })
     }
 
@@ -194,11 +198,26 @@ impl ExternalClient {
             if trimmed.is_empty() {
                 continue;
             }
-            let response: Value = serde_json::from_str(trimmed)
-                .map_err(|e| format!("invalid external plugin response: {e}"))?;
-            if response.get("id").and_then(Value::as_u64) != Some(id) {
+            let response: Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    if let Some(unavailable) = self.note_desync(&mut guard).await {
+                        return Err(unavailable);
+                    }
+                    return Err(format!("invalid external plugin response: {e}"));
+                }
+            };
+            let response_id = response.get("id").and_then(Value::as_u64);
+            if response_id.is_none() {
                 continue;
             }
+            if response_id != Some(id) {
+                if let Some(unavailable) = self.note_desync(&mut guard).await {
+                    return Err(unavailable);
+                }
+                return Err("external plugin response stream desynced".to_string());
+            }
+            self.desync_streak.store(0, Ordering::SeqCst);
             if let Some(error) = response.get("error") {
                 return Err(format!("external plugin error: {error}"));
             }
@@ -207,6 +226,19 @@ impl ExternalClient {
                 .cloned()
                 .ok_or_else(|| "external plugin response missing result".to_string());
         }
+    }
+
+    async fn note_desync(&self, guard: &mut Option<ClientState>) -> Option<String> {
+        let streak = self.desync_streak.fetch_add(1, Ordering::SeqCst) + 1;
+        if streak < EXTERNAL_PLUGIN_DESYNC_LIMIT {
+            return None;
+        }
+        guard.take();
+        let reason = format!(
+            "response stream desynced after {streak} malformed or mismatched lines"
+        );
+        *self.dead_reason.lock().await = Some(reason.clone());
+        Some(format!("external plugin unavailable: {reason}"))
     }
 
     pub async fn shutdown(&self) {
@@ -543,6 +575,37 @@ for line in sys.stdin:
         .to_string()
     }
 
+    fn desync_fixture() -> String {
+        r#"
+import json, sys
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    request = json.loads(line)
+    method = request.get("method")
+    if method == "initialize":
+        result = {
+            "protocol_version": 1,
+            "name": "desync-fixture",
+            "version": "0.1.0",
+            "capabilities": [],
+            "tools": [],
+        }
+        print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}), flush=True)
+    elif method == "tools/call":
+        name = request.get("params", {}).get("name", "")
+        if name == "garbage1":
+            print("this is not json at all", flush=True)
+        elif name == "garbage2":
+            print(json.dumps({"jsonrpc": "2.0", "id": request["id"] + 100, "result": {}}), flush=True)
+        else:
+            print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {}}), flush=True)
+"#
+        .to_string()
+    }
+
     fn fixture_config(script: &std::path::Path) -> ExternalPluginConfig {
         ExternalPluginConfig {
             name: "fixture".into(),
@@ -581,6 +644,44 @@ for line in sys.stdin:
             .await
             .expect("tools/call");
         assert_eq!(result["content"], "hello");
+        client.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn desync_streak_marks_client_dead_after_two_corrupt_lines() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("desync_plugin.py");
+        let mut file = std::fs::File::create(&script).expect("fixture file");
+        file.write_all(desync_fixture().as_bytes())
+            .expect("write fixture");
+        let client = ExternalClient::spawn(&fixture_config(&script))
+            .await
+            .expect("spawn desync fixture");
+        client.initialize("desync-fixture").await.expect("initialize");
+
+        let first = client
+            .request("tools/call", json!({"name": "garbage1"}))
+            .await;
+        assert!(
+            first.as_ref().err().is_some_and(|e| e.contains("invalid external plugin response")),
+            "first malformed line must fail the request without killing the client: {first:?}"
+        );
+
+        let second = client
+            .request("tools/call", json!({"name": "garbage2"}))
+            .await;
+        assert!(
+            second.as_ref().err().is_some_and(|e| e.contains("response stream desynced")),
+            "the second strike must mark the client dead: {second:?}"
+        );
+
+        let third = client
+            .request("tools/call", json!({"name": "anything"}))
+            .await;
+        assert!(
+            third.as_ref().err().is_some_and(|e| e.contains("external plugin unavailable")),
+            "a dead client must fail fast: {third:?}"
+        );
         client.shutdown().await;
     }
 
