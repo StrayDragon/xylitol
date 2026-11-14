@@ -949,7 +949,6 @@ mod tests {
             "first keepalive tick must send a ping: {ping:?}"
         );
 
-        // traffic inside the threshold refreshes liveness
         harness
             .to_server
             .unbounded_send(Ok(Message::text(describe_request("k1"))))
@@ -981,8 +980,6 @@ mod tests {
             reply.is_text(),
             "a describe reply must arrive without any ping: {reply:?}"
         );
-        // keepalive disabled: the only frames are replies to our own requests.
-        // No ping frame can appear while the connection stays otherwise idle.
         harness
             .to_server
             .unbounded_send(Ok(Message::ping(vec![1u8])))
