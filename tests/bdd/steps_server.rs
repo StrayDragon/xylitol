@@ -4318,6 +4318,8 @@ fn t_capability_methods_registered(server_test: &ServerTest) {
 pub struct LifecycleBdd {
     pub running: RefCell<Option<RunningServer>>,
     pub port: Cell<u16>,
+    pub pid: Cell<u32>,
+    pub child: RefCell<Option<std::process::Child>>,
     pub path: RefCell<Option<std::path::PathBuf>>,
     pub _dir: RefCell<Option<tempfile::TempDir>>,
     pub still_up: Cell<bool>,
@@ -4329,6 +4331,8 @@ impl LifecycleBdd {
         Self {
             running: RefCell::new(None),
             port: Cell::new(0),
+            pid: Cell::new(0),
+            child: RefCell::new(None),
             path: RefCell::new(None),
             _dir: RefCell::new(None),
             still_up: Cell::new(false),
@@ -4486,9 +4490,9 @@ async fn g_life_stop_target(lifecycle_bdd: &LifecycleBdd) {
     write_registration(&path, &reg).expect("write");
     lifecycle_bdd.path.replace(Some(path));
     lifecycle_bdd._dir.replace(Some(dir));
-    lifecycle_bdd.port.set(pid as u16);
+    lifecycle_bdd.pid.set(pid);
+    lifecycle_bdd.child.replace(Some(child));
     lifecycle_bdd.running.replace(None);
-    let _ = child;
 }
 
 #[when("执行 serve stop")]
@@ -4503,6 +4507,10 @@ async fn w_life_stop(lifecycle_bdd: &LifecycleBdd) {
 fn t_life_stopped(lifecycle_bdd: &LifecycleBdd) {
     let path = lifecycle_bdd.path.borrow().clone().expect("path");
     assert!(!path.exists());
-    let pid = u32::from(lifecycle_bdd.port.get());
+    let pid = lifecycle_bdd.pid.get();
     assert!(!xylitol_kernel::attach::pid_alive(pid) || pid == 0);
+    let child = lifecycle_bdd.child.borrow_mut().take();
+    if let Some(mut child) = child {
+        child.wait().expect("reap");
+    }
 }
