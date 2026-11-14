@@ -468,7 +468,7 @@ pub(crate) async fn _t_ar10_queue_semantics() {
         .iter()
         .filter_map(|event| match event {
             XyEvent::AgentStart { .. } => Some(("start", None)),
-            XyEvent::AgentEnd { reason, .. } => Some(("end", reason.clone())),
+            XyEvent::AgentEnd { reason, .. } => Some(("end", *reason)),
             _ => None,
         })
         .collect();

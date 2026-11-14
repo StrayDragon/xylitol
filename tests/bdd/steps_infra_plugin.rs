@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::bdd::fixtures::Workspace;
 use rstest::fixture;
@@ -77,7 +77,7 @@ fn write_script(ws: &Workspace, name: &str, body: &str) -> PathBuf {
     path
 }
 
-fn write_config(ws: &Workspace, trusted: bool, name: &str, command: &str, script: &PathBuf) {
+fn write_config(ws: &Workspace, trusted: bool, name: &str, command: &str, script: &Path) {
     let path = PathBuf::from(ws.ws("config.yaml"));
     let config = format!(
         "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\nexternal_plugins:\n  - name: \"{name}\"\n    command: \"{command}\"\n    args: [\"-u\", \"{}\"]\n    trusted: {trusted}\n    timeout_ms: 5000\n",
@@ -208,7 +208,7 @@ fn g_bad_protocol_fixture(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
     infra_plugin_bdd.script_path.replace(Some(script));
 }
 
-fn fixture_config(script: &PathBuf, name: &str) -> ExternalPluginConfig {
+fn fixture_config(script: &Path, name: &str) -> ExternalPluginConfig {
     ExternalPluginConfig {
         name: name.into(),
         command: "python3".into(),

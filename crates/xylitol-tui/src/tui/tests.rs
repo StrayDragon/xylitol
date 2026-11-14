@@ -402,7 +402,7 @@ fn overlay_clip_intersects_and_records_rect() {
         }
     }
     assert!(found, "overlay must be composited inside clip");
-    for row in 0..clip.row as usize {
-        assert!(!tui.previous_lines[row].contains("OVERLAY"));
+    for line in tui.previous_lines.iter().take(clip.row as usize) {
+        assert!(!line.contains("OVERLAY"));
     }
 }
