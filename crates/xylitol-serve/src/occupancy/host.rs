@@ -86,6 +86,10 @@ pub struct SessionSlot {
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
     observing: Mutex<HashSet<u64>>,
     linger_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Serializes linger/clean eviction against subscribe binding: eviction
+    /// re-checks turn flags and subscriber count under this gate, and a
+    /// subscribe binds (or re-resolves a freshly evicted slot) under it.
+    eviction_gate: Mutex<()>,
     pub gateway: Arc<ReverseRpcGateway>,
     pub in_process_downlink: broadcast::Sender<Notification>,
     next_conn: AtomicU64,
@@ -471,6 +475,7 @@ impl SessionSlot {
             subscribers: Mutex::new(HashMap::new()),
             observing: Mutex::new(HashSet::new()),
             linger_task: Mutex::new(None),
+            eviction_gate: Mutex::new(()),
             gateway: Arc::new(ReverseRpcGateway::new()),
             in_process_downlink,
             next_conn: AtomicU64::new(1),
@@ -1508,8 +1513,64 @@ async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>,
 }
 
 async fn release_and_evict(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
+    let _gate = slot.eviction_gate.lock().await;
     host.ports.store.release_write_lock(&slot.session_id);
     host.evict_slot(slot).await;
+}
+
+/// Linger expiry: under the eviction gate, re-check turn flags and
+/// subscribers before releasing the write lock and dropping the slot, so a
+/// subscribe that raced the timer can never be orphaned or lose its lock.
+async fn linger_evict_if_idle(host: Arc<HostState>, slot: Arc<SessionSlot>) {
+    let _gate = slot.eviction_gate.lock().await;
+    if slot.turn_inflight_active() {
+        return;
+    }
+    if HostState::live_subscriber_count(&slot).await > 0 {
+        return;
+    }
+    host.ports.store.release_write_lock(&slot.session_id);
+    host.evict_slot(&slot).await;
+}
+
+/// Subscribe critical section: under the eviction gate, re-resolve the slot
+/// (a raced eviction hands us a fresh slot carrying the preserved watermark),
+/// then cancel linger, take the write lock, materialize and bind. Binding and
+/// eviction can therefore never interleave.
+async fn gated_subscribe(
+    host: &Arc<HostState>,
+    slot: Arc<SessionSlot>,
+    session_id: &str,
+    last_seq: u64,
+    mux_id: Option<u64>,
+    workspace_set: WorkspaceSet,
+) -> RpcResult {
+    let _gate = slot.eviction_gate.lock().await;
+    let same = host
+        .existing_slot(session_id)
+        .await
+        .is_some_and(|current| Arc::ptr_eq(&current, &slot));
+    let slot = if same {
+        slot.clone()
+    } else {
+        host.slot(session_id).await
+    };
+    HostState::cancel_write_linger(&slot).await;
+    if let Err(e) = host.ports.store.try_acquire_write_lock(session_id)
+        && matches!(e, XySessionStoreError::WriteHeld { .. })
+    {
+        return occupancy_err(e);
+    }
+    if let Ok(mut guard) = slot.workspaces.lock() {
+        *guard = workspace_set.clone();
+    }
+    if let Err(e) = materialize_writer_at(host, &slot, &workspace_set.primary).await {
+        log::warn!(
+            target: "xylitol::host",
+            "subscribe materialize_writer failed: {e}"
+        );
+    }
+    host.bind_mux_to_session(&slot, last_seq, mux_id).await
 }
 
 async fn schedule_linger_eviction(
@@ -1521,13 +1582,7 @@ async fn schedule_linger_eviction(
     let slot_wait = slot.clone();
     let task = tokio::spawn(async move {
         tokio::time::sleep(linger).await;
-        if slot_wait.turn_inflight_active() {
-            return;
-        }
-        if HostState::live_subscriber_count(&slot_wait).await == 0 {
-            host.ports.store.release_write_lock(&slot_wait.session_id);
-            host.evict_slot(&slot_wait).await;
-        }
+        linger_evict_if_idle(host, slot_wait).await;
     });
     *slot.linger_task.lock().await = Some(task);
 }
@@ -1651,23 +1706,16 @@ async fn dispatch_session_unary(
             .get("last_seq")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        HostState::cancel_write_linger(slot).await;
-        if let Err(e) = host.ports.store.try_acquire_write_lock(session_id)
-            && matches!(e, XySessionStoreError::WriteHeld { .. })
-        {
-            return occupancy_err(e);
-        }
         let workspace_set = resolve_workspace_set(host, session_id, &payload).await;
-        if let Ok(mut guard) = slot.workspaces.lock() {
-            *guard = workspace_set.clone();
-        }
-        if let Err(e) = materialize_writer_at(host, slot, &workspace_set.primary).await {
-            log::warn!(
-                target: "xylitol::host",
-                "subscribe materialize_writer failed: {e}"
-            );
-        }
-        return host.bind_mux_to_session(slot, last_seq, mux_id).await;
+        return gated_subscribe(
+            host,
+            slot.clone(),
+            session_id,
+            last_seq,
+            mux_id,
+            workspace_set,
+        )
+        .await;
     }
 
     if method == METHOD_PROMPT {
@@ -2915,6 +2963,192 @@ mod tests {
                 "created_at": created_at
             }),
         })
+    }
+
+    struct GateSink;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyEventSink for GateSink {
+        async fn emit(&self, _event: &XyEvent) {}
+    }
+
+    struct GateNoopModel;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for GateNoopModel {
+        fn name(&self) -> &str {
+            "gate-noop"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            Err(xylitol_plugin_sdk::error::XyError::provider(
+                xylitol_plugin_sdk::error::XyProviderError {
+                    message: "gate fixture model is not callable".into(),
+                    ..Default::default()
+                },
+            ))
+        }
+    }
+
+    struct StubFactoryForGate;
+
+    impl OccupancyFactory for StubFactoryForGate {
+        fn new_driver_at(&self, _workspace: &Path) -> Box<dyn OccupancyEngine> {
+            Box::new(ScriptedEngine {
+                runs: Arc::new(StdMutex::new(Vec::new())),
+            })
+        }
+
+        fn project_trusted(&self, _workspace: &Path) -> bool {
+            true
+        }
+
+        fn default_model_id(&self) -> Option<String> {
+            None
+        }
+
+        fn cwd(&self) -> PathBuf {
+            PathBuf::from(".")
+        }
+
+        fn agent_dir(&self) -> PathBuf {
+            PathBuf::from(".")
+        }
+    }
+
+    fn gate_host() -> Arc<HostState> {
+        let store: Arc<dyn XySessionStore> = Arc::new(MemStore::new());
+        let ports = RuntimeBaseline {
+            store,
+            sink: Arc::new(GateSink),
+            permission: xylitol_runtime::permission::allow_all_permission(),
+            hook_bus: None,
+            model_registry: xylitol_runtime::agent::ModelRegistry::new(),
+            model_builder: Arc::new(|_| {
+                Arc::new(GateNoopModel) as Arc<dyn xylitol_plugin_sdk::XyModel>
+            }),
+            cwd: ".".into(),
+            steering_mode: xylitol_runtime::agent::capabilities::QueueMode::default(),
+            follow_up_mode: xylitol_runtime::agent::capabilities::QueueMode::default(),
+            compaction_settings: None,
+            compaction_factory: xylitol_plugin_sdk::noop_compaction_factory(),
+            tools: xylitol_runtime::agent::tools::ToolSet::empty(),
+            system_prompt: None,
+            context_files: Vec::new(),
+            append_system_prompt: Vec::new(),
+            skills: Vec::new(),
+            batch_mode: xylitol_plugin_sdk::XyBatchMode::Sequential,
+        };
+        HostState::new(
+            ports,
+            ReloadBaseline {
+                cwd: PathBuf::from("."),
+                agent_dir: PathBuf::from("."),
+                project_trusted: true,
+                default_model_id: None,
+                trust_audit: xylitol_runtime::TrustAuditConfig::default(),
+            },
+            Arc::new(StubFactoryForGate),
+            "gate-fallback".into(),
+        )
+    }
+
+    async fn spin_until(condition: impl Fn() -> bool) {
+        for _ in 0..64 {
+            tokio::time::advance(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
+            if condition() {
+                return;
+            }
+        }
+        panic!("condition not reached under paused time");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn linger_eviction_aborts_when_subscriber_binds_under_gate() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        host.ports
+            .store
+            .try_acquire_write_lock("s1")
+            .expect("subscribe-style lock");
+        host.clone().arm_test_linger();
+
+        // Hold the gate so the armed linger task parks on it after waking.
+        let gate = slot.eviction_gate.lock().await;
+        on_last_subscriber_gone(&host, &slot, false).await;
+        for _ in 0..16 {
+            tokio::task::yield_now().await;
+        }
+
+        let (_id, _rx) = subscribe(&slot).await;
+        drop(gate);
+        for _ in 0..32 {
+            tokio::task::yield_now().await;
+        }
+
+        assert!(
+            host.existing_slot("s1").await.is_some(),
+            "a subscriber bound under the gate must abort linger eviction"
+        );
+        assert_eq!(HostState::live_subscriber_count(&slot).await, 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn late_subscribe_after_linger_eviction_gets_fresh_watermarked_slot() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        for _ in 0..5 {
+            slot.journal
+                .lock()
+                .await
+                .append(xylitol_protocol::Event::TextDelta { text: "x".into() });
+        }
+        host.ports
+            .store
+            .try_acquire_write_lock("s1")
+            .expect("subscribe-style lock");
+        host.clone().arm_test_linger();
+        on_last_subscriber_gone(&host, &slot, false).await;
+        spin_until(|| {
+            futures::executor::block_on(async { host.existing_slot("s1").await.is_none() })
+        })
+        .await;
+
+        let (mux_tx, mux_rx) = mpsc::channel(32);
+        let mux_id = host.register_unbound_mux(mux_tx).await;
+        let result = gated_subscribe(
+            &host,
+            slot.clone(),
+            "s1",
+            0,
+            Some(mux_id),
+            WorkspaceSet::default(),
+        )
+        .await;
+        assert!(result.ok, "late subscribe must succeed: {result:?}");
+
+        let fresh = host.existing_slot("s1").await.expect("recreated slot");
+        assert!(
+            !Arc::ptr_eq(&fresh, &slot),
+            "late subscribe must bind the recreated slot, never the evicted one"
+        );
+        assert!(
+            fresh.subscribers.lock().await.contains_key(&mux_id),
+            "the mux must be bound on the fresh slot"
+        );
+        assert_eq!(
+            fresh.journal.lock().await.next_seq(),
+            6,
+            "the fresh slot must resume from the preserved watermark"
+        );
+        drop(mux_rx);
     }
 
     #[tokio::test(start_paused = true)]
