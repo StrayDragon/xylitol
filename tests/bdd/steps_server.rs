@@ -4362,6 +4362,7 @@ async fn boot_lifecycle(
             registration_path: Some(path.clone()),
             lifecycle,
             idle_timeout: idle,
+            ws_keepalive: Some(Duration::from_secs(20)),
         },
         host,
         path.clone(),

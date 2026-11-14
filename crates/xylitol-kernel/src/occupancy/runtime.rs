@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use xylitol_serve::{
-    DEFAULT_IDLE_GRACE, Gateway, ListenConfig, OccupiedHost, RunningListener, ServeLifecycle,
+    DEFAULT_IDLE_GRACE, DEFAULT_WS_KEEPALIVE, Gateway, ListenConfig, OccupiedHost, RunningListener,
+    ServeLifecycle,
 };
 
 use crate::boot::{BootOptions, Profile, boot_ctx};
@@ -21,6 +22,7 @@ pub struct ServerConfig {
     pub registration_path: Option<PathBuf>,
     pub lifecycle: ServeLifecycle,
     pub idle_timeout: Duration,
+    pub ws_keepalive: Option<Duration>,
 }
 
 impl Default for ServerConfig {
@@ -32,6 +34,7 @@ impl Default for ServerConfig {
             registration_path: None,
             lifecycle: ServeLifecycle::Persistent,
             idle_timeout: DEFAULT_IDLE_GRACE,
+            ws_keepalive: Some(DEFAULT_WS_KEEPALIVE),
         }
     }
 }
@@ -73,6 +76,7 @@ async fn finish_start(
         Ok(host) => {
             gateway.set_host(occupy(host));
             running.set_lifecycle(config.lifecycle, config.idle_timeout);
+            gateway.set_ws_keepalive(config.ws_keepalive);
             let registration_path = config
                 .registration_path
                 .clone()
@@ -218,6 +222,7 @@ pub async fn serve(
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let (running, port) = xylitol_serve::serve(config.listen(), occupy(host)).await?;
     running.set_lifecycle(config.lifecycle, config.idle_timeout);
+    running.set_ws_keepalive(config.ws_keepalive);
     Ok((running, port))
 }
 
@@ -229,6 +234,7 @@ pub async fn serve_registered(
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let (mut running, port) = xylitol_serve::serve(config.listen(), occupy(host)).await?;
     running.set_lifecycle(config.lifecycle, config.idle_timeout);
+    running.set_ws_keepalive(config.ws_keepalive);
     running
         .arm_registration(
             format!("http://{}:{port}", config.host),

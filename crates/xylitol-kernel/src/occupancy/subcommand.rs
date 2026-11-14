@@ -16,6 +16,7 @@ pub async fn run(
     port: u16,
     lifecycle: Option<String>,
     idle_timeout: Option<String>,
+    ws_keepalive_ms: Option<u64>,
     action: Option<ServeAction>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match action {
@@ -25,6 +26,9 @@ pub async fn run(
             let config = crate::occupancy::runtime::ServerConfig {
                 host: host.clone(),
                 port,
+                ws_keepalive: ws_keepalive_ms
+                    .map(|ms| (ms > 0).then(|| std::time::Duration::from_millis(ms)))
+                    .unwrap_or(Some(std::time::Duration::from_secs(20))),
                 lifecycle,
                 idle_timeout,
                 ..Default::default()

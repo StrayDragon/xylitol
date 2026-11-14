@@ -749,10 +749,8 @@ mod nested_tests {
 
     #[test]
     fn blocked_instruction_notes_restart_non_persistence() {
-        let text = WorkflowMiddleware::blocked_instruction(&leaf(
-            "s9",
-            WorkflowTaskStatus::Blocked,
-        ));
+        let text =
+            WorkflowMiddleware::blocked_instruction(&leaf("s9", WorkflowTaskStatus::Blocked));
         assert!(
             text.contains("the next user message approves it once"),
             "the one-time approval contract must stay: {text}"

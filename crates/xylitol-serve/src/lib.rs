@@ -15,6 +15,7 @@ pub mod wire;
 pub use credential::{CREDENTIAL_FILE_NAME, default_credential_path, load_or_create_credential};
 #[cfg(feature = "listen")]
 pub use lifecycle::{DEFAULT_IDLE_GRACE, ServeLifecycle, format_idle_timeout, parse_idle_duration};
+pub use listen::DEFAULT_WS_KEEPALIVE;
 #[cfg(feature = "listen")]
 pub use listen::{
     Gateway, ListenConfig, MUX_CHAN_CAP, MuxSink, OccupiedHost, Phase, RunningListener,

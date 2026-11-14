@@ -1520,6 +1520,10 @@
         "lifecycle": {
           "$ref": "#/$defs/serve_ServeLifecycleConfig",
           "default": "last-client"
+        },
+        "ws_keepalive": {
+          "$ref": "#/$defs/serve_ServeIdleTimeout",
+          "default": "20s"
         }
       },
       "title": "ServeConfig",

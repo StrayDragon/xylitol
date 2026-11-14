@@ -69,6 +69,7 @@ impl Default for ServeIdleTimeout {
 pub struct ServeConfig {
     pub lifecycle: ServeLifecycleConfig,
     pub idle_timeout: ServeIdleTimeout,
+    pub ws_keepalive: ServeIdleTimeout,
 }
 
 impl Default for ServeConfig {
@@ -76,6 +77,7 @@ impl Default for ServeConfig {
         Self {
             lifecycle: ServeLifecycleConfig::LastClient,
             idle_timeout: ServeIdleTimeout::default(),
+            ws_keepalive: ServeIdleTimeout::Spec("20s".into()),
         }
     }
 }
@@ -94,6 +96,16 @@ impl ServeConfig {
                 parse_serve_idle(raw).unwrap_or(std::time::Duration::from_secs(30))
             }
             ServeIdleTimeout::Flag(_) => std::time::Duration::from_secs(30),
+        }
+    }
+
+    pub fn ws_keepalive_duration(&self) -> Option<std::time::Duration> {
+        match &self.ws_keepalive {
+            ServeIdleTimeout::Flag(false) => None,
+            ServeIdleTimeout::Flag(true) => Some(std::time::Duration::from_secs(20)),
+            ServeIdleTimeout::Spec(raw) => {
+                Some(parse_serve_idle(raw).unwrap_or(std::time::Duration::from_secs(20)))
+            }
         }
     }
 }

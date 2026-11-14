@@ -234,9 +234,8 @@ impl ExternalClient {
             return None;
         }
         guard.take();
-        let reason = format!(
-            "response stream desynced after {streak} malformed or mismatched lines"
-        );
+        let reason =
+            format!("response stream desynced after {streak} malformed or mismatched lines");
         *self.dead_reason.lock().await = Some(reason.clone());
         Some(format!("external plugin unavailable: {reason}"))
     }
@@ -657,13 +656,19 @@ for line in sys.stdin:
         let client = ExternalClient::spawn(&fixture_config(&script))
             .await
             .expect("spawn desync fixture");
-        client.initialize("desync-fixture").await.expect("initialize");
+        client
+            .initialize("desync-fixture")
+            .await
+            .expect("initialize");
 
         let first = client
             .request("tools/call", json!({"name": "garbage1"}))
             .await;
         assert!(
-            first.as_ref().err().is_some_and(|e| e.contains("invalid external plugin response")),
+            first
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("invalid external plugin response")),
             "first malformed line must fail the request without killing the client: {first:?}"
         );
 
@@ -671,7 +676,10 @@ for line in sys.stdin:
             .request("tools/call", json!({"name": "garbage2"}))
             .await;
         assert!(
-            second.as_ref().err().is_some_and(|e| e.contains("response stream desynced")),
+            second
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("response stream desynced")),
             "the second strike must mark the client dead: {second:?}"
         );
 
@@ -679,7 +687,10 @@ for line in sys.stdin:
             .request("tools/call", json!({"name": "anything"}))
             .await;
         assert!(
-            third.as_ref().err().is_some_and(|e| e.contains("external plugin unavailable")),
+            third
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("external plugin unavailable")),
             "a dead client must fail fast: {third:?}"
         );
         client.shutdown().await;

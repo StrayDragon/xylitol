@@ -16,6 +16,8 @@ use xylitol_protocol::Notification;
 use xylitol_protocol::auth;
 
 use crate::lifecycle::{DEFAULT_IDLE_GRACE, ServeLifecycle};
+
+pub const DEFAULT_WS_KEEPALIVE: Duration = Duration::from_secs(20);
 use crate::occupancy::downlink_text;
 use crate::registration::{self, Registration};
 use crate::wire::{CONTENT_TYPE, MAX_BODY_BYTES, Reply};
@@ -78,6 +80,10 @@ impl RunningListener {
 
     pub fn set_lifecycle(&self, lifecycle: ServeLifecycle, idle_timeout: Duration) {
         self.gateway.set_lifecycle(lifecycle, idle_timeout);
+    }
+
+    pub fn set_ws_keepalive(&self, keepalive: Option<Duration>) {
+        self.gateway.set_ws_keepalive(keepalive);
     }
 
     pub async fn evicted(&mut self) {
@@ -270,6 +276,7 @@ pub struct Gateway {
     idle_gen: AtomicU64,
     lifecycle: AtomicU8,
     idle_timeout_ms: AtomicU64,
+    ws_keepalive_ms: AtomicU64,
     idle_tx: tokio::sync::watch::Sender<bool>,
 }
 
@@ -284,6 +291,7 @@ impl Gateway {
             idle_gen: AtomicU64::new(0),
             lifecycle: AtomicU8::new(ServeLifecycle::Persistent.as_u8()),
             idle_timeout_ms: AtomicU64::new(DEFAULT_IDLE_GRACE.as_millis() as u64),
+            ws_keepalive_ms: AtomicU64::new(DEFAULT_WS_KEEPALIVE.as_millis() as u64),
             idle_tx,
         })
     }
@@ -295,6 +303,16 @@ impl Gateway {
         if lifecycle.is_persistent() {
             let _ = self.idle_tx.send(false);
         }
+    }
+
+    pub fn set_ws_keepalive(&self, keepalive: Option<Duration>) {
+        let ms = keepalive.map(|d| d.as_millis() as u64).unwrap_or(0);
+        self.ws_keepalive_ms.store(ms, Ordering::SeqCst);
+    }
+
+    pub fn ws_keepalive(&self) -> Option<Duration> {
+        let ms = self.ws_keepalive_ms.load(Ordering::SeqCst);
+        (ms > 0).then(|| Duration::from_millis(ms))
     }
 
     pub fn lifecycle(&self) -> ServeLifecycle {
@@ -599,8 +617,9 @@ async fn mux_upgrade(
                     self.0.mux_closed();
                 }
             }
-            let _guard = IdleGuard(gateway);
-            handle_mux(ws, host).await;
+            let _guard = IdleGuard(gateway.clone());
+            let keepalive = gateway.ws_keepalive();
+            handle_mux(ws, host, keepalive).await;
         })
         .await
 }
@@ -620,9 +639,9 @@ fn mux_origin_allowed(origin: Option<&str>) -> bool {
     }
 }
 
-async fn handle_mux(ws: WebSocket, host: Arc<dyn OccupiedHost>) {
+async fn handle_mux(ws: WebSocket, host: Arc<dyn OccupiedHost>, keepalive: Option<Duration>) {
     let (sink, stream) = ws.split();
-    serve_mux(host, stream, sink).await;
+    serve_mux(host, stream, sink, keepalive).await;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -645,18 +664,24 @@ fn frame_kind(frame: &Message) -> FrameKind {
     }
 }
 
-async fn serve_mux<S, K>(host: Arc<dyn OccupiedHost>, mut inbound: S, mut outbound: K)
-where
+async fn serve_mux<S, K>(
+    host: Arc<dyn OccupiedHost>,
+    mut inbound: S,
+    mut outbound: K,
+    keepalive: Option<Duration>,
+) where
     S: Stream<Item = Result<Message, salvo::Error>> + Unpin,
     K: Sink<Message> + Unpin,
 {
     let (tx, mut rx) = mpsc::channel::<Notification>(MUX_CHAN_CAP);
     let (reply_tx, mut reply_rx) = mpsc::channel::<String>(MUX_CHAN_CAP);
     let (pong_tx, mut pong_rx) = mpsc::channel::<Vec<u8>>(8);
+    let (ping_tx, mut ping_rx) = mpsc::channel::<Vec<u8>>(8);
     let mux_id = host.register_unbound_mux(tx).await;
     let clean_close = AtomicBool::new(false);
     let unsupported = AtomicBool::new(false);
     let inbound_error = AtomicBool::new(false);
+    let last_seen = std::sync::Mutex::new(tokio::time::Instant::now());
 
     let send_loop = async {
         loop {
@@ -679,6 +704,33 @@ where
                         break;
                     }
                 }
+                payload = ping_rx.recv() => {
+                    let Some(payload) = payload else { break };
+                    if outbound.send(Message::ping(payload)).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    };
+
+    let keepalive_loop = async {
+        let Some(period) = keepalive else {
+            std::future::pending::<()>().await;
+            unreachable!()
+        };
+        let mut tick = tokio::time::interval(period);
+        loop {
+            tick.tick().await;
+            let silent_for = {
+                let seen = last_seen.lock().expect("last_seen");
+                seen.elapsed()
+            };
+            if silent_for >= period * 2 {
+                break;
+            }
+            if ping_tx.send(Vec::new()).await.is_err() {
+                break;
             }
         }
     };
@@ -689,6 +741,10 @@ where
                 inbound_error.store(true, Ordering::SeqCst);
                 break;
             };
+            {
+                let mut seen = last_seen.lock().expect("last_seen");
+                *seen = tokio::time::Instant::now();
+            }
             if frame.is_close() {
                 clean_close.store(true, Ordering::SeqCst);
                 break;
@@ -723,6 +779,7 @@ where
     tokio::select! {
         _ = send_loop => {}
         _ = recv_loop => {}
+        _ = keepalive_loop => {}
     }
 
     if unsupported.load(Ordering::SeqCst) {
@@ -841,11 +898,15 @@ mod tests {
     }
 
     fn ws_harness() -> WsHarness {
+        ws_harness_with_keepalive(None)
+    }
+
+    fn ws_harness_with_keepalive(keepalive: Option<Duration>) -> WsHarness {
         let host = Arc::new(FakeHost::default());
         let (to_server, inbound) = futures_mpsc::unbounded();
         let (outbound, from_server) = futures_mpsc::unbounded();
         let dyn_host: Arc<dyn OccupiedHost> = host.clone();
-        let task = tokio::spawn(serve_mux(dyn_host, inbound, outbound));
+        let task = tokio::spawn(serve_mux(dyn_host, inbound, outbound, keepalive));
         WsHarness {
             host,
             to_server,
@@ -854,6 +915,85 @@ mod tests {
         }
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn keepalive_pings_then_closes_a_silent_client() {
+        let mut harness = ws_harness_with_keepalive(Some(Duration::from_millis(100)));
+        let ping = next_frame(&mut harness.from_server).await;
+        assert!(
+            ping.is_ping(),
+            "first keepalive tick must send a ping: {ping:?}"
+        );
+        tokio::time::advance(Duration::from_millis(250)).await;
+        for _ in 0..64 {
+            tokio::task::yield_now().await;
+            if harness.host.last_prune.lock().expect("prune").is_some() {
+                break;
+            }
+            tokio::time::advance(Duration::from_millis(10)).await;
+        }
+        let pruned = *harness.host.last_prune.lock().expect("prune");
+        assert_eq!(
+            pruned,
+            Some(false),
+            "a silent client must be pruned as an unclean disconnect"
+        );
+        drop(harness);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn keepalive_keeps_a_responsive_client_alive() {
+        let mut harness = ws_harness_with_keepalive(Some(Duration::from_millis(100)));
+        let ping = next_frame(&mut harness.from_server).await;
+        assert!(
+            ping.is_ping(),
+            "first keepalive tick must send a ping: {ping:?}"
+        );
+
+        // traffic inside the threshold refreshes liveness
+        harness
+            .to_server
+            .unbounded_send(Ok(Message::text(describe_request("k1"))))
+            .expect("send describe");
+        let _reply = next_frame(&mut harness.from_server).await;
+        tokio::time::advance(Duration::from_millis(90)).await;
+        tokio::task::yield_now().await;
+        harness
+            .to_server
+            .unbounded_send(Ok(Message::text(describe_request("k2"))))
+            .expect("send describe again");
+        let _reply2 = next_frame(&mut harness.from_server).await;
+
+        let pruned = *harness.host.last_prune.lock().expect("prune");
+        assert!(pruned.is_none(), "responsive client must stay connected");
+        harness.to_server.send(Ok(Message::close())).await.ok();
+        drop(harness);
+    }
+
+    #[tokio::test]
+    async fn keepalive_disabled_sends_no_pings() {
+        let mut harness = ws_harness_with_keepalive(None);
+        harness
+            .to_server
+            .unbounded_send(Ok(Message::text(describe_request("k3"))))
+            .expect("send describe");
+        let reply = next_frame(&mut harness.from_server).await;
+        assert!(
+            reply.is_text(),
+            "a describe reply must arrive without any ping: {reply:?}"
+        );
+        // keepalive disabled: the only frames are replies to our own requests.
+        // No ping frame can appear while the connection stays otherwise idle.
+        harness
+            .to_server
+            .unbounded_send(Ok(Message::ping(vec![1u8])))
+            .expect("send client ping");
+        let pong = next_frame(&mut harness.from_server).await;
+        assert!(
+            pong.is_pong(),
+            "client ping must still be answered: {pong:?}"
+        );
+        drop(harness);
+    }
     #[tokio::test]
     async fn auth_gate_rejects_missing_and_accepts_discovered_credential() {
         let gateway = Gateway::starting();

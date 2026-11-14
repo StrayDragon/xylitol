@@ -164,6 +164,8 @@ pub enum CliCommand {
         lifecycle: Option<String>,
         #[arg(long)]
         idle_timeout: Option<String>,
+        #[arg(long, default_value_t = 20_000)]
+        ws_keepalive_ms: u64,
         #[command(subcommand)]
         action: Option<ServeAction>,
     },

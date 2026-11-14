@@ -583,17 +583,19 @@ pub struct EnsureHostOpts {
     pub ready_timeout: Duration,
     pub lifecycle: xylitol_serve::ServeLifecycle,
     pub idle_timeout: Duration,
+    pub ws_keepalive: Option<Duration>,
 }
 
 #[cfg(feature = "server")]
 impl Default for EnsureHostOpts {
     fn default() -> Self {
-        let (lifecycle, idle_timeout) = autostart_policy(None);
+        let (lifecycle, idle_timeout, ws_keepalive) = autostart_policy(None);
         Self {
             registration_path: None,
             ready_timeout: READY_WAIT,
             lifecycle,
             idle_timeout,
+            ws_keepalive,
         }
     }
 }
@@ -601,7 +603,7 @@ impl Default for EnsureHostOpts {
 #[cfg(feature = "server")]
 pub fn autostart_policy(
     config_path: Option<&std::path::Path>,
-) -> (xylitol_serve::ServeLifecycle, Duration) {
+) -> (xylitol_serve::ServeLifecycle, Duration, Option<Duration>) {
     let serve = crate::config::loader::load_app_config(config_path)
         .map(|cfg| {
             cfg.section_or_default::<xylitol_official_plugin_config::types::ServeConfig>("serve")
@@ -613,7 +615,11 @@ pub fn autostart_policy(
     } else {
         xylitol_serve::ServeLifecycle::Persistent
     };
-    (lifecycle, serve.idle_duration())
+    (
+        lifecycle,
+        serve.idle_duration(),
+        serve.ws_keepalive_duration(),
+    )
 }
 
 #[cfg(feature = "server")]
@@ -625,12 +631,13 @@ pub async fn ensure_host_from_config(
     url: &str,
     config_path: Option<&std::path::Path>,
 ) -> Result<(), String> {
-    let (lifecycle, idle_timeout) = autostart_policy(config_path);
+    let (lifecycle, idle_timeout, ws_keepalive) = autostart_policy(config_path);
     ensure_host_with(
         url,
         EnsureHostOpts {
             lifecycle,
             idle_timeout,
+            ws_keepalive,
             ..EnsureHostOpts::default()
         },
         spawn_detached_serve,
@@ -691,7 +698,12 @@ fn host_exited_message(url: &str, status: std::process::ExitStatus, stderr: &str
 pub async fn ensure_host_with(
     url: &str,
     opts: EnsureHostOpts,
-    spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<SpawnedHost>,
+    spawn: impl FnOnce(
+        &str,
+        xylitol_serve::ServeLifecycle,
+        Duration,
+        Option<Duration>,
+    ) -> std::io::Result<SpawnedHost>,
 ) -> Result<(), String> {
     ensure_host_with_hooks(url, opts, spawn, crate::occupancy::subcommand::request_exit).await
 }
@@ -700,7 +712,12 @@ pub async fn ensure_host_with(
 async fn ensure_host_with_hooks(
     url: &str,
     opts: EnsureHostOpts,
-    spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<SpawnedHost>,
+    spawn: impl FnOnce(
+        &str,
+        xylitol_serve::ServeLifecycle,
+        Duration,
+        Option<Duration>,
+    ) -> std::io::Result<SpawnedHost>,
     exit: impl Fn(u32) -> Result<(), String>,
 ) -> Result<(), String> {
     let reg_path = opts
@@ -722,7 +739,7 @@ async fn ensure_host_with_hooks(
     if probe_host(url).is_err() {
         let _ = dead_registration_message(reg.as_ref(), url, &reg_path);
     }
-    let mut spawned = match spawn(url, opts.lifecycle, opts.idle_timeout) {
+    let mut spawned = match spawn(url, opts.lifecycle, opts.idle_timeout, opts.ws_keepalive) {
         Ok(spawned) => spawned,
         Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => SpawnedHost::detached(),
         Err(err) => return Err(spawn_failed_message(url, &err.to_string())),
@@ -735,7 +752,12 @@ async fn replace_running(
     url: &str,
     registration_path: &std::path::Path,
     opts: &EnsureHostOpts,
-    spawn: impl FnOnce(&str, xylitol_serve::ServeLifecycle, Duration) -> std::io::Result<SpawnedHost>,
+    spawn: impl FnOnce(
+        &str,
+        xylitol_serve::ServeLifecycle,
+        Duration,
+        Option<Duration>,
+    ) -> std::io::Result<SpawnedHost>,
     exit: impl Fn(u32) -> Result<(), String>,
 ) -> Result<(), String> {
     let _lock = acquire_replace_lock(registration_path).await?;
@@ -766,7 +788,7 @@ async fn replace_running(
             xylitol_serve::remove_registration(registration_path);
         }
     }
-    let mut spawned = match spawn(url, opts.lifecycle, opts.idle_timeout) {
+    let mut spawned = match spawn(url, opts.lifecycle, opts.idle_timeout, opts.ws_keepalive) {
         Ok(spawned) => spawned,
         Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => SpawnedHost::detached(),
         Err(err) => return Err(spawn_failed_message(url, &err.to_string())),
@@ -952,6 +974,7 @@ pub fn spawn_detached_serve(
     url: &str,
     lifecycle: xylitol_serve::ServeLifecycle,
     idle_timeout: Duration,
+    ws_keepalive: Option<Duration>,
 ) -> std::io::Result<SpawnedHost> {
     let parsed = url::Url::parse(url).map_err(std::io::Error::other)?;
     let host = parsed.host_str().unwrap_or("127.0.0.1");
@@ -983,6 +1006,12 @@ pub fn spawn_detached_serve(
         .arg(lifecycle.as_str())
         .arg("--idle-timeout")
         .arg(xylitol_serve::format_idle_timeout(idle_timeout))
+        .arg("--ws-keepalive-ms")
+        .arg(
+            ws_keepalive
+                .map(|d| d.as_millis().to_string())
+                .unwrap_or_else(|| "0".into()),
+        )
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::from(stderr_file));
@@ -1195,8 +1224,9 @@ mod c2475_tests {
                 ready_timeout: Duration::from_millis(200),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            move |_, _, _| {
+            move |_, _, _, _| {
                 flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 Ok(SpawnedHost::detached())
             },
@@ -1221,8 +1251,9 @@ mod c2475_tests {
                 ready_timeout: Duration::from_millis(80),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            move |_, _, _| {
+            move |_, _, _, _| {
                 flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 Ok(SpawnedHost::detached())
             },
@@ -1251,8 +1282,9 @@ mod c2475_tests {
                 ready_timeout: Duration::from_secs(5),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            move |_, _, _| {
+            move |_, _, _, _| {
                 Ok(SpawnedHost {
                     child: Some(child),
                     stderr_path: Some(stderr_path),
@@ -1289,8 +1321,9 @@ mod c2475_tests {
                 ready_timeout: Duration::from_millis(200),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            move |_, _, _| {
+            move |_, _, _, _| {
                 flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 Ok(SpawnedHost::detached())
             },
@@ -1335,8 +1368,9 @@ mod c2475_tests {
                 ready_timeout: Duration::from_millis(800),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            move |_, _, _| {
+            move |_, _, _, _| {
                 xylitol_serve::write_registration(
                     &path_for_spawn,
                     &xylitol_serve::Registration {
@@ -1508,8 +1542,9 @@ mod c3040_tests {
                 ready_timeout: Duration::from_millis(800),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            move |_, _, _| {
+            move |_, _, _, _| {
                 xylitol_serve::write_registration(
                     &spawn_reg_path,
                     &xylitol_serve::Registration {
@@ -1587,8 +1622,9 @@ mod c3040_tests {
                 ready_timeout: Duration::from_millis(800),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            move |_, _, _| {
+            move |_, _, _, _| {
                 xylitol_serve::write_registration(
                     &spawn_reg_path,
                     &xylitol_serve::Registration {
@@ -1634,8 +1670,9 @@ mod c3040_tests {
                 ready_timeout: Duration::from_millis(200),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            move |_, _, _| {
+            move |_, _, _, _| {
                 flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 Err(std::io::Error::from(std::io::ErrorKind::AddrInUse))
             },
@@ -1668,8 +1705,9 @@ mod c3040_tests {
                 ready_timeout: Duration::from_millis(200),
                 lifecycle: xylitol_serve::ServeLifecycle::LastClient,
                 idle_timeout: Duration::from_millis(30),
+                ws_keepalive: None,
             },
-            |_, _, _| Ok(SpawnedHost::detached()),
+            |_, _, _, _| Ok(SpawnedHost::detached()),
         )
         .await
         .expect_err("unparsable version must fail closed");
@@ -1717,6 +1755,7 @@ mod c3040_tests {
             ready_timeout: Duration::from_millis(800),
             lifecycle: xylitol_serve::ServeLifecycle::LastClient,
             idle_timeout: Duration::from_millis(30),
+            ws_keepalive: None,
         };
         let exits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let spawns = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -1729,7 +1768,7 @@ mod c3040_tests {
             &url,
             &reg_path,
             &opts,
-            move |_, _, _| {
+            move |_, _, _, _| {
                 spawns_a.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Ok(SpawnedHost::detached())
             },
@@ -1742,7 +1781,7 @@ mod c3040_tests {
             &url,
             &reg_path,
             &opts,
-            move |_, _, _| {
+            move |_, _, _, _| {
                 spawns_b.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Ok(SpawnedHost::detached())
             },

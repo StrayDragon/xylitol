@@ -61,6 +61,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             port,
             lifecycle,
             idle_timeout,
+            ws_keepalive_ms,
             action,
         }) => {
             return xylitol_kernel::occupancy::subcommand::run(
@@ -68,6 +69,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 port,
                 lifecycle,
                 idle_timeout,
+                Some(ws_keepalive_ms),
                 action,
             )
             .await;
