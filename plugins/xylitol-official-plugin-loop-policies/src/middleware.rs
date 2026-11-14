@@ -15,7 +15,11 @@ use crate::config::{
 
 const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue];
 const TOOL_EXPOSURE_STAGES: &[LoopStage] = &[LoopStage::BeforeLlmRequest];
-const SELF_HEAL_STAGES: &[LoopStage] = &[LoopStage::AfterTool, LoopStage::DecideContinue];
+const SELF_HEAL_STAGES: &[LoopStage] = &[
+    LoopStage::BeforeStep,
+    LoopStage::AfterTool,
+    LoopStage::DecideContinue,
+];
 const CRITIC_STAGES: &[LoopStage] = &[
     LoopStage::BeforeStep,
     LoopStage::BeforeLlmRequest,
@@ -426,6 +430,13 @@ impl LoopMiddleware for SelfHealMiddleware {
         "self-heal"
     }
 
+    async fn before_step(&self, ctx: BeforeStepCtx) -> LoopStep<BeforeStepCtx> {
+        if ctx.has_new_user_messages {
+            *self.lock_pending() = None;
+        }
+        LoopStep::continued(ctx)
+    }
+
     fn order(&self) -> i64 {
         210
     }
@@ -829,6 +840,32 @@ mod tests {
             mw.decide_continue(decide_ctx(0, false)).await.control,
             LoopControl::Continue,
             "a pending failure must force another model call"
+        );
+    }
+
+    #[tokio::test]
+    async fn self_heal_pending_resets_on_new_user_messages() {
+        let mw = SelfHealMiddleware::new(&SelfHealConfig {
+            enabled: true,
+            max_attempts: 2,
+            ..Default::default()
+        });
+        mw.after_tool(heal_ctx("bash", "test failed: two assertions", true))
+            .await;
+        mw.after_tool(heal_ctx("bash", "test failed: two assertions", true))
+            .await;
+        mw.before_step(before_step_ctx(1, true)).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(1, true)).await.control,
+            LoopControl::Continue,
+            "a fresh user message must clear the pending failure and its attempts"
+        );
+        mw.after_tool(heal_ctx("bash", "test failed: two assertions", true))
+            .await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(1, true)).await.control,
+            LoopControl::Continue,
+            "attempts must restart at one after the reset"
         );
     }
 
