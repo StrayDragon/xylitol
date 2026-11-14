@@ -440,11 +440,7 @@ mod switch_hub_release_tests {
             gate: Arc::new(tokio::sync::Notify::new()),
         });
         let mut driver = release_test_driver(hub.clone(), model);
-        driver
-            .store
-            .create("b", None, None)
-            .await
-            .expect("seed b");
+        driver.store.create("b", None, None).await.expect("seed b");
         driver.agent.bind_session("a").expect("bind a");
 
         use crate::driver::proto::XyDriver as _;
@@ -476,11 +472,7 @@ mod switch_hub_release_tests {
             gate: Arc::new(tokio::sync::Notify::new()),
         });
         let mut driver = release_test_driver(hub.clone(), model);
-        driver
-            .store
-            .create("b", None, None)
-            .await
-            .expect("seed b");
+        driver.store.create("b", None, None).await.expect("seed b");
         driver.agent.bind_session("a").expect("bind a");
         let switched = driver.switch_session("b").await;
         assert!(switched.is_ok(), "idle switch must succeed: {switched:?}");
@@ -523,7 +515,10 @@ mod switch_hub_release_tests {
         let mut driver = release_test_driver(hub.clone(), model);
         driver.agent.bind_session("a").expect("bind a");
         let created = driver.new_session().await;
-        assert!(created.is_ok(), "idle new_session must succeed: {created:?}");
+        assert!(
+            created.is_ok(),
+            "idle new_session must succeed: {created:?}"
+        );
         assert_eq!(hub.released(), vec!["a".to_string()]);
     }
 }
