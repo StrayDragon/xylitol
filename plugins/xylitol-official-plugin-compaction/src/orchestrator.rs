@@ -56,7 +56,7 @@ impl CompactionOrchestrator {
             export_skipped(&error_message, None, obs_session);
             event_sink
                 .emit(&XyEvent::CompactionEnd {
-                    reason: "manual".into(),
+                    reason: reason.to_string(),
                     outcome: CompactionOutcome::Failed {
                         error: Some(error_message),
                         will_retry: false,
@@ -116,6 +116,20 @@ impl CompactionOrchestrator {
             if let Some(settled) = settled {
                 emit_settlement_event(event_sink, &settled).await;
             }
+        } else {
+            event_sink
+                .emit(&XyEvent::CompactionEnd {
+                    reason: reason.to_string(),
+                    outcome: CompactionOutcome::Failed {
+                        error: result.as_ref().err().map(|e| e.to_string()),
+                        will_retry: false,
+                    },
+                    summary: None,
+                    tokens_before: None,
+                    tokens_after: None,
+                    notice: None,
+                })
+                .await;
         }
 
         result?;
@@ -688,5 +702,211 @@ impl XyCompaction for CompactionOrchestrator {
             floor_notice_emitted,
         )
         .await
+    }
+}
+#[cfg(test)]
+mod manual_pairing_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use xylitol_plugin_sdk::XySessionStore;
+    use xylitol_plugin_sdk::message::XyLlmMessage;
+    use xylitol_plugin_sdk::session::{CustomEntry, EntryBase, SessionContext};
+    use xylitol_plugin_sdk::{XySessionError, XySessionStoreError};
+
+    #[derive(Default)]
+    struct RecordingSink {
+        events: Mutex<Vec<XyEvent>>,
+    }
+
+    #[async_trait::async_trait]
+    impl XyEventSink for RecordingSink {
+        async fn emit(&self, event: &XyEvent) {
+            self.events.lock().unwrap().push(event.clone());
+        }
+    }
+
+    struct MemStore {
+        branch: Mutex<Vec<SessionEntry>>,
+    }
+
+    #[async_trait::async_trait]
+    impl XySessionStore for MemStore {
+        async fn exists(&self, _: &str) -> bool {
+            true
+        }
+        async fn load_entries(&self, _: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Ok(self.branch.lock().unwrap().clone())
+        }
+        async fn append_session_entry(
+            &self,
+            _: &str,
+            entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            self.branch.lock().unwrap().push(entry.clone());
+            Ok(())
+        }
+        async fn build_session_context(
+            &self,
+            _: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            Err(XySessionStoreError::unsupported("build_session_context"))
+        }
+        async fn create(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            Ok(())
+        }
+        async fn fork(
+            &self,
+            _: &str,
+            _: &str,
+            at_entry_id: &str,
+            _: xylitol_plugin_sdk::session::ForkPosition,
+        ) -> Result<(), XySessionError> {
+            Err(XySessionError::EntryNotFound {
+                entry_id: at_entry_id.into(),
+            })
+        }
+        fn set_leaf(&self, _: &str, _: Option<&str>) {}
+        fn leaf_id(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    struct FailingModel;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for FailingModel {
+        fn name(&self) -> &str {
+            "failing-summary"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            Err(xylitol_plugin_sdk::error::XyError::provider(
+                xylitol_plugin_sdk::error::XyProviderError {
+                    message: "summary boom".into(),
+                    ..Default::default()
+                },
+            ))
+        }
+    }
+
+    fn custom_entry(id: &str) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: "audit_note".into(),
+            data: serde_json::json!({ "note": "history payload long enough to sit beyond the keep window" }),
+        })
+    }
+
+    fn compaction_reasons(events: &[XyEvent]) -> Vec<(String, String)> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                XyEvent::CompactionStart { reason } => Some(("start".into(), reason.clone())),
+                XyEvent::CompactionEnd { reason, .. } => Some(("end".into(), reason.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn prepare_failure_end_carries_the_requested_reason() {
+        let store = MemStore {
+            branch: Mutex::new(Vec::new()),
+        };
+        let sink = Arc::new(RecordingSink::default());
+        let orchestrator = CompactionOrchestrator::new(CompactionSettings::default());
+        let summary = CompactionSummaryBinding::for_test(Arc::new(FailingModel), "failing-summary");
+        let mut fallback_notice_emitted = false;
+
+        let outcome = orchestrator
+            .compact(
+                &store,
+                "sess-prepare-fail",
+                &summary,
+                sink.as_ref(),
+                None,
+                "loop_middleware:demo",
+                1_000_000,
+                None,
+                &mut fallback_notice_emitted,
+            )
+            .await;
+
+        assert!(outcome.is_err(), "empty session must fail prepare");
+        let events = sink.events.lock().unwrap().clone();
+        assert_eq!(
+            compaction_reasons(&events),
+            vec![
+                ("start".to_string(), "loop_middleware:demo".to_string()),
+                ("end".to_string(), "loop_middleware:demo".to_string()),
+            ],
+            "CompactionEnd must pair with CompactionStart and echo its reason: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn summarize_failure_still_emits_compaction_end() {
+        let store = MemStore {
+            branch: Mutex::new(vec![
+                custom_entry("e1"),
+                custom_entry("e2"),
+                custom_entry("e3"),
+            ]),
+        };
+        let sink = Arc::new(RecordingSink::default());
+        let orchestrator = CompactionOrchestrator::new(CompactionSettings::default());
+        let summary = CompactionSummaryBinding::for_test(Arc::new(FailingModel), "failing-summary");
+        let mut fallback_notice_emitted = false;
+
+        let outcome = orchestrator
+            .compact(
+                &store,
+                "sess-llm-fail",
+                &summary,
+                sink.as_ref(),
+                None,
+                "loop_middleware:demo",
+                1,
+                None,
+                &mut fallback_notice_emitted,
+            )
+            .await;
+
+        assert!(
+            outcome.is_err(),
+            "failing summary model must surface the error"
+        );
+        let events = sink.events.lock().unwrap().clone();
+        let reasons = compaction_reasons(&events);
+        assert_eq!(
+            reasons.len(),
+            2,
+            "CompactionStart must be paired by CompactionEnd even when the LLM path fails: {events:?}"
+        );
+        assert_eq!(reasons[0].1, "loop_middleware:demo");
+        assert_eq!(reasons[1].1, "loop_middleware:demo");
+        assert!(matches!(
+            &events[1],
+            XyEvent::CompactionEnd {
+                outcome: CompactionOutcome::Failed { .. },
+                ..
+            }
+        ));
     }
 }
