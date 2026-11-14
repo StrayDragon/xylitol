@@ -17,7 +17,5 @@ pub use baseline::RuntimeBaseline;
 pub use event::XyEventStream;
 pub use hooks::AgentHooks;
 pub use react::AgentRuntime;
-pub use state::{
-    RunCoordinator, RunId, RunPolicy, RuntimeControlError, RuntimePhase, SharedRunCoordinator,
-};
+pub use state::{RunCoordinator, RunId, RuntimeControlError, RuntimePhase, SharedRunCoordinator};
 pub use xylitol_plugin_sdk::lifecycle::XyEvent;

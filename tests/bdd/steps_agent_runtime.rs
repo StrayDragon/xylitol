@@ -1621,7 +1621,7 @@ fn coord_seed(
                 c.with_mut(|co| co.mark_streaming(id));
             }
             if phase == "cancelling" {
-                c.with_mut(|co| co.cancel_active(false));
+                c.with_mut(|co| co.cancel_active());
             }
         }
         other => panic!("unknown phase: {other}"),
@@ -1660,7 +1660,7 @@ pub(crate) fn _w_coord_transition(event: String, guard: String) {
             }
         }
         ("cancel", "always") => {
-            c.with_mut(|co| co.cancel_active(false));
+            c.with_mut(|co| co.cancel_active());
         }
         ("finish", "run_id_match") => {
             let active = c.with(|co| co.phase().active_run_id());
@@ -1671,11 +1671,11 @@ pub(crate) fn _w_coord_transition(event: String, guard: String) {
         ("finish", "run_id_stale") => {
             let old = c.with(|co| co.phase().active_run_id());
             if let Some(old) = old {
-                c.with_mut(|co| co.cancel_active(false));
+                c.with_mut(|co| co.cancel_active());
                 c.with_mut(|co| co.finish_run(old));
                 let (_new, _) = c.with_mut(|co| co.try_begin_immediate().expect("begin r2"));
                 let r = c.with_mut(|co| co.finish_run(old));
-                assert!(r.is_none(), "stale finish must be ignored");
+                assert!(!r, "stale finish must be ignored");
             }
         }
         other => panic!("unknown event/guard: {other:?}"),

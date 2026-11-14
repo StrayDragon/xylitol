@@ -30,9 +30,7 @@ use super::middleware::{
     run_after_step, run_before_llm_request, run_before_step, run_decide_continue,
 };
 use super::retry::{RetryState, is_retryable_xy_error};
-use super::state::{
-    FrozenRootConfig, RunId, RunLease, RunPolicy, RuntimeControlError, SharedRunCoordinator,
-};
+use super::state::{FrozenRootConfig, RunId, RunLease, RuntimeControlError, SharedRunCoordinator};
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::compaction::CompactionError;
@@ -115,7 +113,7 @@ impl AgentRuntime {
 
     pub fn abort(&self) {
         self.coordinator.with_mut(|c| {
-            c.cancel_active(false);
+            c.cancel_active();
             if let Some(id) = c.phase().active_run_id() {
                 c.clear_active_turn_if(id);
             }
@@ -448,18 +446,14 @@ impl AgentRuntime {
         self.inner.maybe_auto_compact().await
     }
 
-    pub async fn submit_root(&mut self, prompt: &str, policy: RunPolicy) -> XyEventStream {
-        self.submit_parts(
-            vec![xylitol_plugin_sdk::message::AgentPart::text(prompt)],
-            policy,
-        )
-        .await
+    pub async fn submit_root(&mut self, prompt: &str) -> XyEventStream {
+        self.submit_parts(vec![xylitol_plugin_sdk::message::AgentPart::text(prompt)])
+            .await
     }
 
     pub async fn submit_parts(
         &mut self,
         parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
-        policy: RunPolicy,
     ) -> XyEventStream {
         let Some(session_id) = self.inner.session_id().map(str::to_string) else {
             return XyEventStream::error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
@@ -475,10 +469,6 @@ impl AgentRuntime {
                 run_id: RunId,
                 cancel: CancellationToken,
             },
-            Pending {
-                run_id: RunId,
-                rx: tokio::sync::oneshot::Receiver<FrozenRootConfig>,
-            },
             Busy,
         }
 
@@ -487,18 +477,7 @@ impl AgentRuntime {
                 let (run_id, cancel) = c.try_begin_immediate().expect("idle begin");
                 return Admit::Immediate { run_id, cancel };
             }
-            match policy {
-                RunPolicy::Reject => Admit::Busy,
-                RunPolicy::AbortAndReplace => {
-                    c.cancel_active(true);
-                    let (run_id, rx) = c.enqueue_pending(frozen.clone(), false);
-                    Admit::Pending { run_id, rx }
-                }
-                RunPolicy::QueueAfterRun => {
-                    let (run_id, rx) = c.enqueue_pending(frozen.clone(), false);
-                    Admit::Pending { run_id, rx }
-                }
-            }
+            Admit::Busy
         });
 
         match admit {
@@ -507,7 +486,6 @@ impl AgentRuntime {
                 self.start_root_stream(session_id, run_id, cancel, frozen)
                     .await
             }
-            Admit::Pending { run_id, rx } => self.pending_root_stream(session_id, run_id, rx).await,
         }
     }
 
@@ -528,71 +506,6 @@ impl AgentRuntime {
             pending_prepare: self.pending_prepare.lock().ok().and_then(|g| g.clone()),
             loop_chain: self.inner.loop_chain(),
         }
-    }
-
-    async fn pending_root_stream(
-        &self,
-        session_id: String,
-        run_id: RunId,
-        rx: tokio::sync::oneshot::Receiver<FrozenRootConfig>,
-    ) -> XyEventStream {
-        let coordinator = self.coordinator.clone();
-        let store = self.inner.session_store();
-        let model_manager = self.inner.model_manager_handle();
-        let queues = self.inner.queues();
-        let event_sink_inner = self.inner.event_sink();
-        let cwd = self.inner.cwd().to_string();
-        let obs_session_name = self.inner.session_name().map(str::to_string);
-
-        let lease = RunLease::new(coordinator.clone(), run_id, Some(queues.clone()));
-
-        let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
-            let Ok(frozen) = rx.await else {
-                return;
-            };
-            let cancel = match coordinator.with(|c| c.take_started_token(run_id)) {
-                Some(t) => t,
-                None => return,
-            };
-
-            if !store.exists(&session_id).await
-                && let Err(e) = store.create(&session_id, Some(&cwd), None).await
-            {
-                yield XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::from_xy(
-                    &XyError::from(e),
-                ));
-                return;
-            }
-
-            let seeded_history = match load_history(&store, &session_id).await {
-                Ok(h) => h,
-                Err(e) => {
-                    yield XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::from_xy(&e));
-                    return;
-                }
-            };
-
-            coordinator.with_mut(|c| c.mark_streaming(run_id));
-            let stream = build_live_react_stream(LiveReactArgs {
-                run_id,
-                coordinator: coordinator.clone(),
-                cancel,
-                frozen,
-                model_manager,
-                queues: queues.clone(),
-                store,
-                session_id,
-                seeded_history,
-                event_sink_inner,
-                obs_session_name: obs_session_name.clone(),
-            });
-            let mut stream = std::pin::pin!(stream);
-            while let Some(ev) = stream.next().await {
-                yield ev;
-            }
-        });
-
-        XyEventStream::with_lease(inner, lease)
     }
 
     async fn start_root_stream(
@@ -658,14 +571,6 @@ impl AgentRuntime {
         self.coordinator.with_mut(|c| c.mark_streaming(run_id));
         XyEventStream::with_lease(Box::pin(stream), lease)
     }
-}
-
-async fn load_history(
-    store: &Arc<dyn XySessionStore>,
-    session_id: &str,
-) -> Result<Vec<AgentMessage>, XyError> {
-    crate::agent::capabilities::load_conversation_history_from_store(store.as_ref(), session_id)
-        .await
 }
 
 struct LiveReactArgs {
@@ -2353,7 +2258,6 @@ mod loop_middleware_tests {
 
     use crate::agent::capabilities::QueueMode;
     use crate::agent::model::registry::ModelRegistry;
-    use crate::agent::runtime::RunPolicy;
     use crate::agent::runtime::baseline::RuntimeBaseline;
     use crate::agent::tools::ToolSet;
     use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder};
@@ -2537,7 +2441,7 @@ mod loop_middleware_tests {
         runtime.follow_up("second step");
 
         let mut events = Vec::new();
-        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("go").await;
         while let Some(ev) = stream.next().await {
             events.push(ev);
         }
@@ -2600,7 +2504,7 @@ mod loop_middleware_tests {
         runtime.follow_up("f2");
         runtime.follow_up("f3");
 
-        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("p").await;
         let mut events = Vec::new();
         while let Some(event) = stream.next().await {
             events.push(event);
@@ -2637,7 +2541,7 @@ mod loop_middleware_tests {
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-steer-late").expect("bind");
 
-        let mut stream = runtime.submit_root("first", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("first").await;
         while stream.next().await.is_some() {}
         assert_eq!(runtime.queue_stats().steer_count, 0, "steer drained");
 
@@ -2649,7 +2553,7 @@ mod loop_middleware_tests {
         );
         assert_eq!(runtime.queue_stats().steer_count, 0);
 
-        let mut stream = runtime.submit_root("second", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("second").await;
         let mut events = Vec::new();
         while let Some(event) = stream.next().await {
             events.push(event);
@@ -2829,7 +2733,7 @@ mod loop_middleware_tests {
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-stop").expect("bind");
 
-        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("p").await;
         let mut events = Vec::new();
         let mut steered = false;
         while let Some(event) = stream.next().await {
@@ -2874,7 +2778,7 @@ mod loop_middleware_tests {
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-compact").expect("bind");
 
-        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("p").await;
         let mut steered = false;
         let mut events = Vec::new();
         while let Some(event) = stream.next().await {
@@ -2909,7 +2813,8 @@ mod loop_middleware_tests {
             })
             .collect();
         assert_eq!(
-            step_indices, vec![0, 1],
+            step_indices,
+            vec![0, 1],
             "the post-compact step must advance step_index instead of repeating it"
         );
     }
@@ -2928,7 +2833,7 @@ mod loop_middleware_tests {
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-compact-fail").expect("bind");
 
-        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("p").await;
         let mut events = Vec::new();
         let mut steered = false;
         while let Some(event) = stream.next().await {
@@ -2966,7 +2871,7 @@ mod loop_middleware_tests {
         runtime.follow_up("f1");
         runtime.follow_up("f2");
 
-        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("p").await;
         let mut events = Vec::new();
         while let Some(event) = stream.next().await {
             events.push(event);
@@ -3003,7 +2908,7 @@ mod loop_middleware_tests {
         runtime.follow_up("f1");
         runtime.follow_up("f2");
 
-        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("p").await;
         let mut events = Vec::new();
         let first = stream.next().await.expect("AgentStart");
         assert!(matches!(
@@ -3201,7 +3106,7 @@ mod loop_middleware_tests {
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-steer-midturn").expect("bind");
 
-        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("go").await;
         let mut events = Vec::new();
         let mut saw_tool_start = false;
         while let Some(event) = stream.next().await {
@@ -3363,7 +3268,7 @@ mod loop_middleware_tests {
             .await
             .expect("append goal");
 
-        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("go").await;
         let mut events = Vec::new();
         while let Some(event) = stream.next().await {
             events.push(event);
@@ -3445,7 +3350,7 @@ mod loop_middleware_tests {
         runtime.bind_session("sess-before-step").expect("bind");
         runtime.set_loop_middleware(Some(reg));
         runtime.follow_up("second turn");
-        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("go").await;
         while stream.next().await.is_some() {}
         let seen = seen.lock().expect("seen");
         assert_eq!(
@@ -3515,7 +3420,7 @@ mod loop_middleware_tests {
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-inject").expect("bind");
         runtime.set_loop_middleware(Some(reg));
-        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("go").await;
         while stream.next().await.is_some() {}
         let entries = store.load_entries("sess-inject").await.expect("entries");
         let transcript: Vec<&SessionEntry> = entries
@@ -3562,7 +3467,7 @@ mod loop_middleware_tests {
         runtime.set_should_stop_after_step(Some(crate::agent::max_steps_stop_hook(1)));
 
         let mut events = Vec::new();
-        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("go").await;
         while let Some(ev) = stream.next().await {
             events.push(ev);
         }
@@ -3617,7 +3522,7 @@ mod loop_middleware_tests {
         assert_eq!(runtime.loop_middleware_ids(), vec!["deny-bash".to_string()]);
 
         let mut events = Vec::new();
-        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("go").await;
         while let Some(ev) = stream.next().await {
             events.push(ev);
         }
@@ -3638,7 +3543,7 @@ mod loop_middleware_tests {
         runtime.bind_session("sess-stop").expect("bind");
         runtime.set_loop_middleware(Some(reg));
         let mut events = Vec::new();
-        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("go").await;
         while let Some(ev) = stream.next().await {
             events.push(ev);
         }
@@ -3663,7 +3568,7 @@ mod loop_middleware_tests {
         runtime.select_model("mock").await.expect("select");
         runtime.bind_session("sess-persist").expect("bind");
 
-        let mut stream = runtime.submit_root("hi", RunPolicy::Reject).await;
+        let mut stream = runtime.submit_root("hi").await;
         let mut seen_end = false;
         while let Some(ev) = stream.next().await {
             if matches!(ev, crate::agent::runtime::XyEvent::MessageEnd { .. }) {
@@ -3709,13 +3614,10 @@ mod loop_middleware_tests {
 
         let mut events = Vec::new();
         let mut stream = runtime
-            .submit_parts(
-                vec![xylitol_plugin_sdk::message::AgentPart::image(
-                    "image/png",
-                    "abc",
-                )],
-                RunPolicy::Reject,
-            )
+            .submit_parts(vec![xylitol_plugin_sdk::message::AgentPart::image(
+                "image/png",
+                "abc",
+            )])
             .await;
         while let Some(ev) = stream.next().await {
             events.push(ev);

@@ -65,7 +65,6 @@ impl RuntimeBaseline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::runtime::RunPolicy;
     use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder};
     use futures::StreamExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -230,8 +229,8 @@ mod tests {
         a.bind_session("sess-a").expect("bind a");
         b.bind_session("sess-b").expect("bind b");
 
-        let mut stream_a = a.submit_root("go-a", RunPolicy::Reject).await;
-        let mut stream_b = b.submit_root("go-b", RunPolicy::Reject).await;
+        let mut stream_a = a.submit_root("go-a").await;
+        let mut stream_b = b.submit_root("go-b").await;
 
         let mut saw_a = false;
         let mut saw_b = false;

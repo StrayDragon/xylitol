@@ -14,7 +14,6 @@ mod tools_ops;
 pub use self::hook_bus::HookBlockedError;
 pub(crate) use self::hook_bus::{cancel_hook, observe_hook, observe_hook_sync};
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats};
-pub(crate) use self::session_ops::load_conversation_history_from_store;
 pub use self::stats::SessionStats;
 pub use self::stats::{ContextUsage, get_context_usage};
 pub use self::tools_ops::ToolsWriteOutcome;

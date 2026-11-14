@@ -5,7 +5,7 @@ use xylitol::XyDriverError;
 use xylitol_official_plugin_hooks::{HookDispatcher, HookEvent, HookPhase};
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_runtime::agent::capabilities::AgentCapabilities;
-use xylitol_runtime::agent::runtime::{AgentRuntime, RunPolicy};
+use xylitol_runtime::agent::runtime::AgentRuntime;
 use xylitol_runtime::agent::tools::ToolSet;
 
 use crate::bdd::fixtures::AgentState;
@@ -97,7 +97,7 @@ pub(crate) async fn agent_submit_root(
     if agent.session_id().is_none() {
         bind_session_or_panic(agent, uuid::Uuid::new_v4().to_string());
     }
-    agent.submit_root(prompt, RunPolicy::Reject).await
+    agent.submit_root(prompt).await
 }
 
 pub(crate) async fn agent_submit_root_with_id(
@@ -106,7 +106,7 @@ pub(crate) async fn agent_submit_root_with_id(
     session_id: &str,
 ) -> xylitol_runtime::agent::XyEventStream {
     bind_session_or_panic(agent, session_id.to_string());
-    agent.submit_root(prompt, RunPolicy::Reject).await
+    agent.submit_root(prompt).await
 }
 
 pub(crate) async fn run_wiring_operation(

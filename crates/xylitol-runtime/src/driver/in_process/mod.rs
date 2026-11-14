@@ -7,7 +7,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::agent::AgentRuntime;
 use crate::agent::capabilities::ToolsWriteOutcome;
-use crate::agent::runtime::RunPolicy;
 use crate::driver::bang_exec::BangExecHandler;
 use crate::driver::session_export::SessionExporter;
 use xylitol_plugin_sdk::AgentTodoGateway;
@@ -569,7 +568,7 @@ impl XyDriver for XyInProcessDriver {
                 }
             }
         }
-        let stream = self.agent.submit_root(prompt, RunPolicy::Reject).await;
+        let stream = self.agent.submit_root(prompt).await;
         Box::pin(stream)
     }
 

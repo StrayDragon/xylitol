@@ -16,7 +16,6 @@ use xylitol_plugin_sdk::model::XyModelConfig;
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_runtime::agent::capabilities::AgentCapabilities;
 use xylitol_runtime::agent::llm_project::project_for_llm;
-use xylitol_runtime::agent::runtime::RunPolicy;
 use xylitol_runtime::agent::tools::ToolSet;
 
 #[when("以附加指令合成摘要请求前缀")]
@@ -229,9 +228,7 @@ async fn w_c2844_collect(compaction_probe: &CompactionProbe) {
         .borrow_mut()
         .take()
         .expect("runtime armed");
-    let mut stream = agent
-        .submit_root("continue the work", RunPolicy::Reject)
-        .await;
+    let mut stream = agent.submit_root("continue the work").await;
     let mut names = Vec::new();
     while let Some(e) = stream.next().await {
         let short = match e {

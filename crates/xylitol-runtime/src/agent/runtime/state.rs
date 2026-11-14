@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use tokio_util::sync::CancellationToken;
@@ -14,14 +13,6 @@ impl RunId {
     pub(crate) fn from_raw_for_test(raw: u64) -> Self {
         Self(raw)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RunPolicy {
-    #[default]
-    Reject,
-    AbortAndReplace,
-    QueueAfterRun,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -82,12 +73,6 @@ pub struct FrozenRootConfig {
     pub loop_chain: xylitol_plugin_sdk::LoopChain,
 }
 
-pub struct PendingRoot {
-    run_id: RunId,
-    frozen: FrozenRootConfig,
-    activate_tx: Option<tokio::sync::oneshot::Sender<FrozenRootConfig>>,
-}
-
 struct ActiveTurnSlot {
     run_id: RunId,
     binding: ActiveTurnBinding,
@@ -97,7 +82,7 @@ struct ActiveTurnSlot {
 pub enum RunEvent {
     Begin,
     StreamStarted(RunId),
-    Cancel { clear_pending: bool },
+    Cancel,
     Finish(RunId),
 }
 
@@ -109,9 +94,7 @@ pub enum RunTransition {
     },
     Streaming,
     Cancelling,
-    Finished {
-        next: Option<(RunId, Box<FrozenRootConfig>)>,
-    },
+    Finished,
     Rejected,
 }
 
@@ -121,7 +104,6 @@ pub struct RunCoordinator {
     cancel: Option<(RunId, CancellationToken)>,
     active_turn: Option<ActiveTurnSlot>,
     turn_in_flight: bool,
-    pending: VecDeque<PendingRoot>,
 }
 
 impl Default for RunCoordinator {
@@ -138,7 +120,6 @@ impl RunCoordinator {
             cancel: None,
             active_turn: None,
             turn_in_flight: false,
-            pending: VecDeque::new(),
         }
     }
 
@@ -151,7 +132,7 @@ impl RunCoordinator {
     }
 
     pub fn has_work(&self) -> bool {
-        self.has_active_run() || !self.pending.is_empty()
+        self.has_active_run()
     }
 
     pub fn allocate_run_id(&mut self) -> RunId {
@@ -185,10 +166,7 @@ impl RunCoordinator {
                 }
                 _ => RunTransition::Rejected,
             },
-            RunEvent::Cancel { clear_pending } => {
-                if clear_pending {
-                    self.pending.clear();
-                }
+            RunEvent::Cancel => {
                 let Some((run_id, token)) = self.cancel.as_ref() else {
                     return RunTransition::Rejected;
                 };
@@ -210,19 +188,14 @@ impl RunCoordinator {
             }
             RunEvent::Finish(run_id) => {
                 if self.phase.active_run_id() != Some(run_id) {
-                    self.pending.retain(|p| p.run_id != run_id);
-                    return RunTransition::Finished { next: None };
+                    return RunTransition::Finished;
                 }
                 self.clear_active_turn_if(run_id);
                 if self.cancel.as_ref().is_some_and(|(id, _)| *id == run_id) {
                     self.cancel = None;
                 }
                 self.phase = RuntimePhase::Idle;
-                RunTransition::Finished {
-                    next: self
-                        .activate_next_pending()
-                        .map(|(run_id, frozen)| (run_id, Box::new(frozen))),
-                }
+                RunTransition::Finished
             }
         }
     }
@@ -238,29 +211,8 @@ impl RunCoordinator {
         let _ = self.transition(RunEvent::StreamStarted(run_id));
     }
 
-    pub fn enqueue_pending(
-        &mut self,
-        frozen: FrozenRootConfig,
-        replace_pending: bool,
-    ) -> (RunId, tokio::sync::oneshot::Receiver<FrozenRootConfig>) {
-        if replace_pending {
-            self.pending.clear();
-        }
-        let run_id = self.allocate_run_id();
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.pending.push_back(PendingRoot {
-            run_id,
-            frozen,
-            activate_tx: Some(tx),
-        });
-        (run_id, rx)
-    }
-
-    pub fn cancel_active(&mut self, clear_pending: bool) -> bool {
-        matches!(
-            self.transition(RunEvent::Cancel { clear_pending }),
-            RunTransition::Cancelling
-        )
+    pub fn cancel_active(&mut self) -> bool {
+        matches!(self.transition(RunEvent::Cancel), RunTransition::Cancelling)
     }
 
     pub fn set_turn_in_flight(&mut self, in_flight: bool) {
@@ -314,35 +266,14 @@ impl RunCoordinator {
         self.active_turn.is_some()
     }
 
-    pub fn finish_run(&mut self, run_id: RunId) -> Option<(RunId, FrozenRootConfig)> {
-        match self.transition(RunEvent::Finish(run_id)) {
-            RunTransition::Finished { next } => next.map(|(run_id, frozen)| (run_id, *frozen)),
-            _ => None,
+    pub fn finish_run(&mut self, run_id: RunId) -> bool {
+        if self.phase.active_run_id() != Some(run_id) {
+            return false;
         }
-    }
-
-    pub fn revoke_pending(&mut self, run_id: RunId) {
-        self.pending.retain(|p| p.run_id != run_id);
-    }
-
-    fn activate_next_pending(&mut self) -> Option<(RunId, FrozenRootConfig)> {
-        let pending = self.pending.pop_front()?;
-        let run_id = pending.run_id;
-        let frozen = pending.frozen;
-        let token = CancellationToken::new();
-        self.phase = RuntimePhase::Starting(run_id);
-        self.cancel = Some((run_id, token));
-        if let Some(tx) = pending.activate_tx {
-            let _ = tx.send(frozen.clone());
-        }
-        Some((run_id, frozen))
-    }
-
-    pub fn take_started_token(&self, run_id: RunId) -> Option<CancellationToken> {
-        match &self.cancel {
-            Some((id, token)) if *id == run_id => Some(token.clone()),
-            _ => None,
-        }
+        matches!(
+            self.transition(RunEvent::Finish(run_id)),
+            RunTransition::Finished
+        )
     }
 }
 
@@ -413,7 +344,6 @@ impl Drop for RunLease {
         if !self.finished {
             let phase_id = self.coordinator.with(|c| c.phase().active_run_id());
             if phase_id != Some(self.run_id) {
-                self.coordinator.with_mut(|c| c.revoke_pending(self.run_id));
                 self.finished = true;
                 return;
             }
@@ -432,7 +362,7 @@ mod tests {
         let (id, _) = c.try_begin_immediate().expect("first");
         assert!(c.try_begin_immediate().is_none());
         assert_eq!(c.phase().active_run_id(), Some(id));
-        assert!(c.finish_run(id).is_none());
+        assert!(c.finish_run(id));
         assert!(!c.has_work());
         assert!(c.try_begin_immediate().is_some());
     }
@@ -442,7 +372,7 @@ mod tests {
         let mut c = RunCoordinator::new();
         let (id, _) = c.try_begin_immediate().expect("idle begin");
         c.mark_streaming(id);
-        assert!(c.cancel_active(false));
+        assert!(c.cancel_active());
         assert_eq!(c.phase(), RuntimePhase::Cancelling(id));
         c.mark_streaming(id);
         assert_eq!(
@@ -450,7 +380,7 @@ mod tests {
             RuntimePhase::Cancelling(id),
             "mark_streaming must not overwrite Cancelling"
         );
-        assert!(c.finish_run(id).is_none());
+        assert!(c.finish_run(id));
         assert_eq!(c.phase(), RuntimePhase::Idle);
     }
 
@@ -463,9 +393,7 @@ mod tests {
             RunTransition::Rejected
         ));
         assert!(matches!(
-            c.transition(RunEvent::Cancel {
-                clear_pending: false
-            }),
+            c.transition(RunEvent::Cancel),
             RunTransition::Rejected
         ));
         let (id, _) = c.try_begin_immediate().expect("idle begin");
@@ -479,12 +407,9 @@ mod tests {
         assert_eq!(c.phase(), RuntimePhase::Streaming(id));
         c.mark_streaming(id);
         assert_eq!(c.phase(), RuntimePhase::Streaming(id));
-        assert!(matches!(
-            c.transition(RunEvent::Finish(stale)),
-            RunTransition::Finished { next: None }
-        ));
+        assert!(!c.finish_run(stale));
         assert_eq!(c.phase(), RuntimePhase::Streaming(id));
-        assert!(c.finish_run(id).is_none());
+        assert!(c.finish_run(id));
         assert_eq!(c.phase(), RuntimePhase::Idle);
     }
 
@@ -493,13 +418,13 @@ mod tests {
         let mut c = RunCoordinator::new();
         let (id, token) = c.try_begin_immediate().unwrap();
         c.mark_streaming(id);
-        assert!(c.cancel_active(false));
+        assert!(c.cancel_active());
         assert!(token.is_cancelled());
         let fresh = c.rearm_cancel_after_abort(id).expect("rearm");
         assert_eq!(c.phase(), RuntimePhase::Streaming(id));
         assert!(!fresh.is_cancelled());
         assert!(!c.cancel_token().is_cancelled());
-        c.cancel_active(false);
+        c.cancel_active();
         assert!(fresh.is_cancelled());
         c.finish_run(id);
         assert!(c.rearm_cancel_after_abort(id).is_none());
@@ -527,8 +452,8 @@ mod tests {
     fn stale_finish_does_not_clear_newer_run() {
         let mut c = RunCoordinator::new();
         let (old, _) = c.try_begin_immediate().unwrap();
-        c.cancel_active(true);
-        assert!(c.finish_run(old).is_none());
+        assert!(c.cancel_active());
+        assert!(c.finish_run(old));
         let (new, _) = c.try_begin_immediate().unwrap();
         c.set_active_turn(
             new,
@@ -539,7 +464,7 @@ mod tests {
                 omit_thinking: true,
             },
         );
-        assert!(c.finish_run(old).is_none());
+        assert!(!c.finish_run(old));
         assert!(c.has_active_turn());
         assert_eq!(c.phase().active_run_id(), Some(new));
     }
