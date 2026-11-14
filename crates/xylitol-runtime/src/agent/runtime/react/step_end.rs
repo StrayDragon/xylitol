@@ -18,7 +18,24 @@ pub(crate) fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentM
 }
 
 pub(crate) fn pop_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Option<AgentMessage> {
-    crate::utils::lock_mutex(queue).drain().into_iter().next()
+    crate::utils::lock_mutex(queue).pop_one()
+}
+
+pub(crate) fn requeue_pending(
+    steer_queue: &Arc<Mutex<PendingMessageQueue>>,
+    follow_up_queue: &Arc<Mutex<PendingMessageQueue>>,
+    pending: Vec<AgentMessage>,
+) -> Option<(usize, usize)> {
+    if pending.is_empty() {
+        return None;
+    }
+    {
+        let mut queue = crate::utils::lock_mutex(follow_up_queue);
+        for message in pending {
+            queue.enqueue(message);
+        }
+    }
+    Some(queue_counts(steer_queue, follow_up_queue))
 }
 
 pub(crate) fn queue_counts(

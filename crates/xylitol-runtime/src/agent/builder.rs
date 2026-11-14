@@ -105,6 +105,11 @@ impl AgentBuilder {
     }
 
     pub fn follow_up_mode(mut self, mode: QueueMode) -> Self {
+        if matches!(mode, QueueMode::All) {
+            log::warn!(
+                "follow_up_mode(All) has no per-turn effect: follow_up submissions always open one turn each; QueueMode::All only applies to steer draining"
+            );
+        }
         self.follow_up_mode = mode;
         self
     }

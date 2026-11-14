@@ -9,7 +9,7 @@ use assistant::{
 };
 use step_end::{
     FinishTurnOutcome, IterationClose, close_iteration, drain_queue, pop_queue, queue_counts,
-    try_turn_end_compaction,
+    requeue_pending, try_turn_end_compaction,
 };
 use support::{
     ClearActiveTurn, attempt_model_stream, current_model_modality_support, observe_script_hook,
@@ -1758,6 +1758,18 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     {
                         note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                         yield middleware_fault_event(&fault);
+                        if let FinishTurnOutcome::Advanced {
+                            pending: drained,
+                            ..
+                        } = settle_outcome
+                            && let Some((steer_count, follow_up_count)) =
+                                requeue_pending(&steer_queue, &follow_up_queue, drained)
+                        {
+                            yield XyEvent::QueueUpdate {
+                                steer_count,
+                                follow_up_count,
+                            };
+                        }
                         break 'outer;
                     }
                     if !matches!(settle_outcome, FinishTurnOutcome::Advanced { .. }) {
@@ -1791,6 +1803,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         Err(error) => {
                             note_abort(AgentEndReason::ModelError, &mut abort_reason);
                             yield XyEvent::error_msg(format!("goal evaluator failed: {error}"));
+                            if let Some((steer_count, follow_up_count)) =
+                                requeue_pending(&steer_queue, &follow_up_queue, next_pending)
+                            {
+                                yield XyEvent::QueueUpdate {
+                                    steer_count,
+                                    follow_up_count,
+                                };
+                            }
                             break 'outer;
                         }
                     };
@@ -1805,6 +1825,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         }
                         Some(GoalDecision::Stop) => {
                             note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
+                            if let Some((steer_count, follow_up_count)) =
+                                requeue_pending(&steer_queue, &follow_up_queue, next_pending)
+                            {
+                                yield XyEvent::QueueUpdate {
+                                    steer_count,
+                                    follow_up_count,
+                                };
+                            }
                             break 'outer;
                         }
                         None => {}
@@ -1834,6 +1862,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 }
                                 LoopControl::Stop => {
                                     note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
+                                    if let Some((steer_count, follow_up_count)) =
+                                        requeue_pending(&steer_queue, &follow_up_queue, next_pending)
+                                    {
+                                        yield XyEvent::QueueUpdate {
+                                            steer_count,
+                                            follow_up_count,
+                                        };
+                                    }
                                     break 'outer;
                                 }
                                 LoopControl::Compact => {
@@ -1845,6 +1881,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
                                         note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                                         yield middleware_limit_event("compact");
+                                        if let Some((steer_count, follow_up_count)) =
+                                            requeue_pending(&steer_queue, &follow_up_queue, next_pending)
+                                        {
+                                            yield XyEvent::QueueUpdate {
+                                                steer_count,
+                                                follow_up_count,
+                                            };
+                                        }
                                         break 'outer;
                                     }
                                     let request = out.ctx.compact.unwrap_or_default();
@@ -1872,6 +1916,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     {
                                         Ok(reloaded) => {
                                             history = reloaded;
+                                            pending = next_pending;
+                                            if let Some((steer_count, follow_up_count)) = queue_update {
+                                                yield XyEvent::QueueUpdate {
+                                                    steer_count,
+                                                    follow_up_count,
+                                                };
+                                            }
                                             continue 'outer;
                                         }
                                         Err(e) => {
@@ -1879,6 +1930,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                             yield XyEvent::error_msg(format!(
                                                 "loop middleware {requested_by} compact failed: {e}"
                                             ));
+                                            if let Some((steer_count, follow_up_count)) =
+                                                requeue_pending(&steer_queue, &follow_up_queue, next_pending)
+                                            {
+                                                yield XyEvent::QueueUpdate {
+                                                    steer_count,
+                                                    follow_up_count,
+                                                };
+                                            }
                                             break 'outer;
                                         }
                                     }
@@ -1894,18 +1953,42 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         ),
                                     );
                                     note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
+                                    if let Some((steer_count, follow_up_count)) =
+                                        requeue_pending(&steer_queue, &follow_up_queue, next_pending)
+                                    {
+                                        yield XyEvent::QueueUpdate {
+                                            steer_count,
+                                            follow_up_count,
+                                        };
+                                    }
                                     break 'outer;
                                 }
                             },
                             Err(fault) => {
                                 note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                 yield middleware_fault_event(&fault);
+                                if let Some((steer_count, follow_up_count)) =
+                                    requeue_pending(&steer_queue, &follow_up_queue, next_pending)
+                                {
+                                    yield XyEvent::QueueUpdate {
+                                        steer_count,
+                                        follow_up_count,
+                                    };
+                                }
                                 break 'outer;
                             }
                         }
                         if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
                             note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                             yield middleware_limit_event("continue");
+                            if let Some((steer_count, follow_up_count)) =
+                                requeue_pending(&steer_queue, &follow_up_queue, next_pending)
+                            {
+                                yield XyEvent::QueueUpdate {
+                                    steer_count,
+                                    follow_up_count,
+                                };
+                            }
                             break 'outer;
                         }
                     }
@@ -2605,6 +2688,309 @@ mod loop_middleware_tests {
             delivered_user_texts,
             vec!["late steer"],
             "the settled steer must be delivered as a fresh user message in its own turn"
+        );
+    }
+
+    use crate::agent::compaction::{CompactionError, CompactionSettings, XyCompaction};
+    use xylitol_plugin_sdk::loop_middleware::{CompactRequest, LoopControl};
+    use xylitol_plugin_sdk::{
+        CompactionSummaryBinding, EstimateOpts, FixedRequestContext, OverflowCompactOutcome,
+        XyEventSink,
+    };
+
+    struct CompactAtSettle {
+        compacted: std::sync::atomic::AtomicBool,
+    }
+
+    impl CompactAtSettle {
+        fn new() -> Self {
+            Self {
+                compacted: std::sync::atomic::AtomicBool::new(false),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for CompactAtSettle {
+        fn id(&self) -> &str {
+            "compact-at-settle"
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::DecideContinue]
+        }
+
+        async fn decide_continue(&self, mut ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+            if !self
+                .compacted
+                .swap(true, std::sync::atomic::Ordering::SeqCst)
+            {
+                ctx.compact = Some(CompactRequest::default());
+                LoopStep {
+                    ctx,
+                    control: LoopControl::Compact,
+                    properties: Vec::new(),
+                }
+            } else {
+                LoopStep::stopped(ctx)
+            }
+        }
+    }
+
+    struct FailingCompaction {
+        settings: CompactionSettings,
+    }
+
+    #[async_trait::async_trait]
+    impl XyCompaction for FailingCompaction {
+        fn settings(&self) -> &CompactionSettings {
+            &self.settings
+        }
+
+        async fn compact(
+            &self,
+            _store: &dyn xylitol_plugin_sdk::XySessionStore,
+            _sid: &str,
+            _summary: &CompactionSummaryBinding,
+            _event_sink: &dyn XyEventSink,
+            _instructions: Option<String>,
+            _reason: &str,
+            _context_window: u64,
+            _fixed_context: Option<&FixedRequestContext>,
+            _fallback_notice_emitted: &mut bool,
+        ) -> Result<(), CompactionError> {
+            Err("compaction boom".into())
+        }
+
+        async fn maybe_overflow_compact(
+            &self,
+            _store: &dyn xylitol_plugin_sdk::XySessionStore,
+            _sid: &str,
+            _summary: &CompactionSummaryBinding,
+            _event_sink: &dyn XyEventSink,
+            _context_window: u64,
+            _last_assistant: &xylitol_plugin_sdk::message::AgentMessage,
+            _current_provider: &str,
+            _current_model_id: &str,
+            _overflow_recovery_attempted: bool,
+            _fixed_context: Option<&FixedRequestContext>,
+            _turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+            _fallback_notice_emitted: &mut bool,
+            _floor_notice_emitted: Option<&mut bool>,
+        ) -> Result<OverflowCompactOutcome, CompactionError> {
+            Ok(OverflowCompactOutcome::Skipped)
+        }
+
+        async fn maybe_auto_compact(
+            &self,
+            _store: &dyn xylitol_plugin_sdk::XySessionStore,
+            _sid: &str,
+            _summary: &CompactionSummaryBinding,
+            _event_sink: &dyn XyEventSink,
+            _context_window: u64,
+            _estimate_opts: &EstimateOpts,
+            _last_assistant: Option<&xylitol_plugin_sdk::message::AgentMessage>,
+            _precomputed: Option<&xylitol_plugin_sdk::ContextTokenEstimate>,
+            _fixed_context: Option<&FixedRequestContext>,
+            _turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+            _fallback_notice_emitted: &mut bool,
+            _floor_notice_emitted: Option<&mut bool>,
+        ) -> Result<bool, CompactionError> {
+            Ok(false)
+        }
+    }
+
+    struct RecordingText {
+        calls: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for RecordingText {
+        fn name(&self) -> &str {
+            "recording-text"
+        }
+
+        async fn generate_stream(
+            &self,
+            messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            self.calls.lock().unwrap().push(format!("{messages:?}"));
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(xylitol_plugin_sdk::model::XyChunk::TextDelta("done".into())),
+                Ok(xylitol_plugin_sdk::model::XyChunk::Done {
+                    finish_reason: xylitol_plugin_sdk::message::XyStopReason::Stop,
+                    usage: None,
+                }),
+            ])))
+        }
+    }
+
+    #[tokio::test]
+    async fn decide_continue_stop_requeues_settled_steer_into_follow_up_fifo() {
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let mut runtime = base.materialize_runtime();
+        let chain = registry();
+        chain.register(Arc::new(StopAtSettle)).expect("register");
+        runtime.set_loop_middleware(Some(chain));
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-stop").expect("bind");
+
+        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut events = Vec::new();
+        let mut steered = false;
+        while let Some(event) = stream.next().await {
+            if !steered
+                && matches!(
+                    &event,
+                    crate::agent::runtime::XyEvent::MessageEnd { role, .. } if role == "assistant"
+                )
+            {
+                runtime.steer("mid settle");
+                steered = true;
+            }
+            events.push(event);
+        }
+        assert!(
+            steered,
+            "test must steer before the settle drain: {events:?}"
+        );
+        assert_eq!(
+            runtime.queue_stats().follow_up_count,
+            1,
+            "middleware stop must requeue the drained steer into the follow_up FIFO: {events:?}"
+        );
+        assert_eq!(runtime.queue_stats().steer_count, 0);
+    }
+
+    #[tokio::test]
+    async fn middleware_compact_success_feeds_settled_steer_to_next_step() {
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut base = baseline();
+        base.model_builder = Arc::new({
+            let calls = Arc::clone(&calls);
+            move |_| {
+                let calls = Arc::clone(&calls);
+                Arc::new(RecordingText { calls }) as Arc<dyn xylitol_plugin_sdk::XyModel>
+            }
+        });
+        let mut runtime = base.materialize_runtime();
+        let chain = registry();
+        chain
+            .register(Arc::new(CompactAtSettle::new()))
+            .expect("register");
+        runtime.set_loop_middleware(Some(chain));
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-compact").expect("bind");
+
+        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut steered = false;
+        while let Some(event) = stream.next().await {
+            if !steered
+                && matches!(
+                    &event,
+                    crate::agent::runtime::XyEvent::MessageEnd { role, .. } if role == "assistant"
+                )
+            {
+                runtime.steer("mid steer");
+                steered = true;
+            }
+        }
+        assert!(steered);
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            calls.len(),
+            2,
+            "compact must continue the loop into a second step"
+        );
+        assert!(
+            calls[1].contains("mid steer"),
+            "the drained steer must reach the model call after compaction: {}",
+            calls[1]
+        );
+    }
+
+    #[tokio::test]
+    async fn middleware_compact_failure_requeues_settled_steer() {
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        base.compaction_factory =
+            Arc::new(|settings| Arc::new(FailingCompaction { settings }) as Arc<dyn XyCompaction>);
+        let mut runtime = base.materialize_runtime();
+        let chain = registry();
+        chain
+            .register(Arc::new(CompactAtSettle::new()))
+            .expect("register");
+        runtime.set_loop_middleware(Some(chain));
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-compact-fail").expect("bind");
+
+        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut events = Vec::new();
+        let mut steered = false;
+        while let Some(event) = stream.next().await {
+            if !steered
+                && matches!(
+                    &event,
+                    crate::agent::runtime::XyEvent::MessageEnd { role, .. } if role == "assistant"
+                )
+            {
+                runtime.steer("mid steer");
+                steered = true;
+            }
+            events.push(event);
+        }
+        assert!(steered);
+        assert_eq!(
+            runtime.queue_stats().follow_up_count,
+            1,
+            "failed middleware compact must requeue the drained steer: {events:?}"
+        );
+        assert!(events.iter().any(|event| {
+            matches!(event, crate::agent::runtime::XyEvent::Error(e) if e.message.contains("compact failed"))
+        }));
+    }
+
+    #[tokio::test]
+    async fn follow_up_all_mode_still_opens_one_turn_per_submission() {
+        let mut base = baseline();
+        base.follow_up_mode = QueueMode::All;
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-all").expect("bind");
+        runtime.follow_up("f1");
+        runtime.follow_up("f2");
+
+        let mut stream = runtime.submit_root("p", RunPolicy::Reject).await;
+        let mut events = Vec::new();
+        while let Some(event) = stream.next().await {
+            events.push(event);
+        }
+
+        let boundaries: Vec<&str> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::agent::runtime::XyEvent::AgentStart { .. } => Some("start"),
+                crate::agent::runtime::XyEvent::AgentEnd { .. } => Some("end"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            boundaries,
+            vec!["start", "end", "start", "end", "start", "end"],
+            "All mode must still open one turn per follow_up submission: {events:?}"
+        );
+        assert_eq!(
+            user_texts(&events),
+            vec!["p", "f1", "f2"],
+            "no follow_up submission may be dropped in All mode"
         );
     }
 

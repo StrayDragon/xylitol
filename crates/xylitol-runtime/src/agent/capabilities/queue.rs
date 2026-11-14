@@ -53,6 +53,10 @@ impl PendingMessageQueue {
         }
     }
 
+    pub fn pop_one(&mut self) -> Option<AgentMessage> {
+        self.messages.pop_front()
+    }
+
     pub fn clear(&mut self) {
         self.messages.clear();
     }
@@ -122,6 +126,17 @@ mod tests {
         q.enqueue(user("b"));
         assert_eq!(q.drain().len(), 1);
         assert_eq!(q.len(), 1);
+    }
+
+    #[test]
+    fn pop_one_takes_only_the_front_message_in_all_mode() {
+        let mut q = PendingMessageQueue::new(QueueMode::All);
+        q.enqueue(user("a"));
+        q.enqueue(user("b"));
+        assert_eq!(q.pop_one().map(|m| m.text()), Some("a".to_string()));
+        assert_eq!(q.len(), 1, "pop_one must not drop the rest in All mode");
+        assert_eq!(q.pop_one().map(|m| m.text()), Some("b".to_string()));
+        assert_eq!(q.len(), 0);
     }
 
     #[test]
