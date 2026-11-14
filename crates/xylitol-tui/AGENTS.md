@@ -91,7 +91,7 @@
 
 ## Specs
 
-本包能力 specs 使用 `package-tui-*` 前缀（见根 `AGENTS.md` 与 `llmanspec/AGENTS.md`）。产品端用 `app-tui-*`（不再堆进单体 `app-tui`）。
+本包能力 specs 使用 `package-tui-*` 前缀（见 `llmanspec/AGENTS.md`）。产品端用 `app-tui-*`（不再堆进单体 `app-tui`）。
 
 ## HOW（指针）
 

@@ -28,7 +28,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 ### spec（capability 命名）
 
 - spec 目录名 = **capability**：领域名词、kebab-case，描述 **WHAT**（不写动作）。
-  例：`runtime-config`（非 add-config）、`agent-runtime`（非 add-agent-loop）、`tool-system`。
+  例：`runtime-config`（非 add-config）、`agent-runtime`（非 add-agent-loop）、`user-experience`。
 - **capability 前缀按 crate**（实测分布，normative；历史 `app-*` / `agent-*` / `infra-*` 名可并存）：
   - `package-tui-*` — `crates/xylitol-tui`
   - `provider-openai*` — `plugins/xylitol-official-plugin-provider-openai`（OpenAI 方言 + 共享 BDD；Anthropic 方言在 `plugins/xylitol-official-plugin-provider-anthropic`）
