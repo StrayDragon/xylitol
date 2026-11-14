@@ -128,6 +128,7 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     last_seq: Arc<AtomicU64>,
     downlink_gen: Arc<AtomicU64>,
     phase: Arc<std::sync::Mutex<super::LinkPhase>>,
+    resync_rebuild: Arc<AtomicBool>,
     tunings: Arc<LinkTunings>,
     reverse_rpc: Option<ReverseRpcNotify>,
     downlink: SharedDownlink,
@@ -179,6 +180,7 @@ struct DownlinkCtx<C> {
     client_cwd: String,
     downlink_gen: Arc<AtomicU64>,
     phase: Arc<std::sync::Mutex<super::LinkPhase>>,
+    resync_rebuild: Arc<AtomicBool>,
     turn_cancel: Arc<std::sync::Mutex<CancellationToken>>,
     tunings: Arc<LinkTunings>,
     my_gen: u64,
@@ -343,6 +345,14 @@ where
         }
         Downlink::SessionSubscribed(_) => {
             ctx.skip_cold_replay.store(false, Ordering::SeqCst);
+            if let Ok(mut phase) = ctx.phase.lock()
+                && matches!(
+                    *phase,
+                    super::LinkPhase::Connecting | super::LinkPhase::ResyncNeeded
+                )
+            {
+                *phase = super::LinkPhase::Live;
+            }
         }
         Downlink::SessionModel(payload) => {
             let agent_event = XyEvent::ModelSelect {
@@ -390,6 +400,7 @@ where
         }
         Downlink::SessionResyncRequired(_) => {
             ctx.last_seq.store(0, Ordering::SeqCst);
+            ctx.resync_rebuild.store(true, Ordering::SeqCst);
             if let Ok(mut phase) = ctx.phase.lock() {
                 *phase = super::LinkPhase::ResyncNeeded;
             }
@@ -608,6 +619,7 @@ where
             last_seq: Arc::new(AtomicU64::new(0)),
             downlink_gen: Arc::new(AtomicU64::new(0)),
             phase: Arc::new(std::sync::Mutex::new(super::LinkPhase::Connecting)),
+            resync_rebuild: Arc::new(AtomicBool::new(false)),
             tunings: Arc::new(LinkTunings::default()),
             reverse_rpc: None,
             downlink: SharedDownlink::new(),
@@ -714,6 +726,7 @@ where
         if let Ok(mut phase) = self.phase.lock() {
             *phase = super::LinkPhase::Connecting;
         }
+        self.resync_rebuild.store(false, Ordering::SeqCst);
         if let Ok(mut observe) = self.attach_observe.lock() {
             *observe = super::AttachObserve::Live;
         }
@@ -786,6 +799,7 @@ where
             client_cwd: self.client_cwd.clone(),
             downlink_gen: self.downlink_gen.clone(),
             phase: self.phase.clone(),
+            resync_rebuild: self.resync_rebuild.clone(),
             turn_cancel: self.turn_cancel.clone(),
             tunings: self.tunings.clone(),
             my_gen: self.downlink_gen.load(Ordering::SeqCst),
@@ -1074,13 +1088,13 @@ where
     }
 
     fn take_resync_rebuild(&mut self) -> bool {
+        let pending = self.resync_rebuild.swap(false, Ordering::SeqCst);
         let mut phase = self.phase.lock().unwrap_or_else(|e| e.into_inner());
-        if matches!(*phase, super::LinkPhase::ResyncNeeded) {
+        let from_resync = matches!(*phase, super::LinkPhase::ResyncNeeded);
+        if from_resync {
             *phase = super::LinkPhase::Connecting;
-            true
-        } else {
-            false
         }
+        pending || from_resync
     }
 
     async fn run(&mut self, prompt: &str) -> EventStream {

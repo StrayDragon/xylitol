@@ -355,6 +355,90 @@ async fn resync_required_frame_resubscribes_from_zero() {
     ));
 }
 
+#[tokio::test]
+async fn subscribed_after_resync_returns_link_to_live_and_keeps_rebuild() {
+    let mut driver = new_driver(ScriptedHost::describing(describe_ok()));
+    let ctx = driver.downlink_ctx();
+    handle_frame(
+        &ctx,
+        &|_: XyEvent| {},
+        frame(
+            method::SESSION_RESYNC_REQUIRED,
+            json!({"session_id": "s-test"}),
+        ),
+    )
+    .await;
+    assert_eq!(driver.link_health(), super::super::LinkHealth::Down);
+    handle_frame(
+        &ctx,
+        &|_: XyEvent| {},
+        frame(
+            method::SESSION_SUBSCRIBED,
+            json!({"session_id": "s-test", "seq": 0, "inflight": false}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        driver.link_health(),
+        super::super::LinkHealth::Up,
+        "session/subscribed MUST return a resynced link to Live"
+    );
+    assert!(matches!(
+        *driver.phase.lock().expect("phase slot"),
+        super::super::LinkPhase::Live
+    ));
+    assert!(
+        driver.take_resync_rebuild(),
+        "resync rebuild MUST survive the Live transition"
+    );
+    assert_eq!(
+        driver.link_health(),
+        super::super::LinkHealth::Up,
+        "consuming the rebuild MUST not downgrade Live"
+    );
+    assert!(!driver.take_resync_rebuild(), "rebuild is one-shot");
+}
+
+#[tokio::test]
+async fn subscribed_frame_marks_connecting_phase_live() {
+    let mut driver = new_driver(ScriptedHost::describing(describe_ok()));
+    let ctx = driver.downlink_ctx();
+    handle_frame(
+        &ctx,
+        &|_: XyEvent| {},
+        frame(
+            method::SESSION_SUBSCRIBED,
+            json!({"session_id": "s-test", "seq": 3, "inflight": false}),
+        ),
+    )
+    .await;
+    assert_eq!(driver.link_health(), super::super::LinkHealth::Up);
+    assert!(!driver.take_resync_rebuild(), "no resync means no rebuild");
+}
+
+#[tokio::test]
+async fn subscribed_frame_does_not_revive_fatal_closed() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    *driver.phase.lock().expect("phase slot") = super::super::LinkPhase::FatalClosed {
+        reason: "protocol mismatch".into(),
+    };
+    let ctx = driver.downlink_ctx();
+    handle_frame(
+        &ctx,
+        &|_: XyEvent| {},
+        frame(
+            method::SESSION_SUBSCRIBED,
+            json!({"session_id": "s-test", "seq": 1, "inflight": false}),
+        ),
+    )
+    .await;
+    assert!(matches!(
+        *driver.phase.lock().expect("phase slot"),
+        super::super::LinkPhase::FatalClosed { .. }
+    ));
+    assert_eq!(driver.link_health(), super::super::LinkHealth::Down);
+}
+
 #[derive(Clone)]
 struct ExportHost {
     result: Value,
