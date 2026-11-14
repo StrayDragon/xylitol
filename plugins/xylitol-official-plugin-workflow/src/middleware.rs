@@ -280,7 +280,9 @@ Keep completed tasks unchanged. Call workflow_write with the full workflow.\n</w
     fn blocked_instruction(task: &WorkflowTask) -> String {
         format!(
             "<plan_blocked>\nStep {} — {} requires human approval. Stop and ask the user; \
-the next user message approves it once.\n</plan_blocked>",
+the next user message approves it once. Approvals are not persisted \
+across process restarts: if you approved before a restart, confirm \
+again.\n</plan_blocked>",
             task.id, task.description
         )
     }
@@ -743,6 +745,22 @@ mod nested_tests {
             output_ref: None,
             sub_workflow: None,
         }
+    }
+
+    #[test]
+    fn blocked_instruction_notes_restart_non_persistence() {
+        let text = WorkflowMiddleware::blocked_instruction(&leaf(
+            "s9",
+            WorkflowTaskStatus::Blocked,
+        ));
+        assert!(
+            text.contains("the next user message approves it once"),
+            "the one-time approval contract must stay: {text}"
+        );
+        assert!(
+            text.contains("Approvals are not persisted across process restarts"),
+            "the restart caveat must be present: {text}"
+        );
     }
 
     fn container(id: &str, child: Workflow, status: WorkflowTaskStatus) -> WorkflowTask {
