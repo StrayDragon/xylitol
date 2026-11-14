@@ -28,7 +28,7 @@ persistence; a plugin only returns `{ ctx, control }`.
 ### Control
 
 `LoopControl` is a closed set: `Continue`, `Stop`, `Compact`, `Handoff`.
-`Stop` ends the current run. `Compact` asks core to compact once and continue.
+`Stop` ends the current turn. `Compact` asks core to compact once and continue.
 `Handoff` is reserved; core currently returns `LoopMiddlewareHandoffUnsupported`.
 
 `LoopStep::continued(ctx)` and `LoopStep::stopped(ctx)` are the usual constructors.
@@ -83,7 +83,7 @@ impl Plugin for MyPlugin {
 
 - `id()` must be unique; `order()` orders stages (lower first, registration order breaks ties).
 - `stages()` declares exactly the stages the middleware implements.
-- The chain is snapshotted at run start; a run is not affected by later registrations.
+- The chain is snapshotted at turn submission; a turn is not affected by later registrations.
 - An empty chain is zero-overhead and produces no span or event.
 - Host session slots can derive a scoped registry (`LoopMiddlewareRegistry::derive()`);
   a derived registry freezes the parent snapshot and isolates later registrations.

@@ -627,7 +627,7 @@ obs-recent n="40":
 # Spinner / host-loop freeze breadcrumbs in xylitol.log (target xylitol::lag).
 # Repro: XYLITOL_DEBUG=1 or RUST_LOG=xylitol::lag=info,xylitol=warn — then submit a prompt
 # while MCP is still connecting; run `just obs-tui-lag` and look for host_run_await /
-# mcp_settle_* / rebuild_system_prompt lines ≥80ms.
+# rebuild_system_prompt lines ≥80ms.
 obs-tui-lag n="80" LOG="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -638,7 +638,7 @@ obs-tui-lag n="80" LOG="":
       exit 1
     fi
     echo "# $log (last {{n}} xylitol::lag lines)"
-    rg -n "xylitol::lag|xylitol::wheel|host_run_await|host_drain_pending|host_mcp_poll|mcp_settle_|rebuild_system_prompt|run_ensure_session|run_load_history|run_build_tool_schemas|host_tick|host_wheel_paint|host_step_paint" "$log" | tail -n "{{n}}"
+    rg -n "xylitol::lag|xylitol::wheel|host_run_await|host_drain_pending|host_mcp_poll|rebuild_system_prompt|run_ensure_session|run_load_history|run_build_tool_schemas|host_tick|host_wheel_paint|host_step_paint" "$log" | tail -n "{{n}}"
 
 # --- Documentation ---
 

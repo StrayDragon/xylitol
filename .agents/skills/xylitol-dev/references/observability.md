@@ -104,9 +104,10 @@ just obs-tui-lag
 | phase | 含义 |
 |-------|------|
 | `host_run_await` | 已画 spinner 后仍 await `XyDriver::run`（**此间无 Tick**） |
-| `run_ensure_session` / `run_load_history` / `run_build_tool_schemas` | run 启动分段 |
-| `mcp_settle_*` / `rebuild_system_prompt` | MCP 合并 tools + 重筑 system prompt（可堵 Tick） |
-| `host_mcp_poll_refresh` | settle 后刷 welcome 卡；若伴随 `loaded_snap_connected_servers` 大数 → 曾是 `list_all_tools` RPC（已改缓存） |
+| `run_ensure_session` / `run_load_history` / `run_build_tool_schemas` | turn 提交启动分段 |
+| `rebuild_system_prompt` | 重筑 system prompt（可堵 Tick） |
+| `host_mcp_poll_refresh` | settle 后刷 welcome 卡（读缓存快照） |
+| `host_drain_pending` / `host_tick` / `host_step_paint` / `host_wheel_paint` | 帧循环分段 |
 
 ≥80ms → warn（约一帧 Loader）；≥16ms → info。
 
