@@ -1,75 +1,65 @@
 ---
 depends_on:
   - c3006-add-minimal-eval-harness
-title: "Full eval sweep + reproducible release report SOP"
+title: "Single representative eval baseline"
 needs_specs_change: false
 ---
 
-# Full eval sweep + reproducible release report SOP
+# Single representative eval baseline
 
-> **promoted（2026-11-15）**：从 `delayed-changes/` 迁回；按当前 `tools/eval`、
-> `model-lock.yaml` 与 `justfile` 重适配。本 change 只交付方案，不进入实现。
+> **narrowed（2026-11-15）**：原「DeepSWE 10 + TB4 10 全量 sweep」收窄为单 task
+> baseline。全套留到 1.0.0 前另开 change；本 change 不锁 full task 集，避免提前锁定。
+> 目录名仍为 `c3225-add-eval-full-sweep`，保留历史 id。
 
 ## Why
 
-第一个公开版需要可对比的指标表：同一模型、同一任务、同一 verifier 下，xylitol 与 Pi 的
-pass@1、flip rate、cross-scaffold gap、cost/wall。c3006 交付 5-task typical；
-公开版需要 DeepSWE 10 + TB4 10，并且报告必须能按固定步骤复现，不能靠手工拼数。
+全套 sweep 的成本与锁定成本都高：task id、checksum、镜像、报告口径一旦钉死，后续
+调整要重做。当前只需要一个能代表 coding agent 行为的回归信号，用来判断 xylitol 改动
+是否退步；全套对比留到 1.0.0 发布前。
 
 ## What Changes
 
-- 固定 DeepSWE 10 task 集：5 个 typical + 5 个补充 task；task id 与 checksum 写入
-  `tools/eval/model-lock.yaml`。
-- 跑 DeepSWE 10 task × N=3 × xylitol/Pi，1800s wall、80 steps，同模型同预算。
-- 跑 TB4 10 task × xylitol N=2；不跑 Pi；floor 结论单列，不并入主分。
-- 新增 `just eval-full`（DeepSWE 10）与 `just eval-tb4`（TB4 10）配方。
-- 扩展 `tools/eval/scripts/summarize_harbor.py`：CSV 输出、无效 trial 计数、N、
-  commit/SHA、per-benchmark 汇总。
-- 新增报告模板与 SOP：固定输入、运行、无效 trial 处理、聚合、发布表格。
-- 发布报告包含：per-task pass@1、overall pass@1、flip rate、cross-scaffold gap、
-  token/cost、wall time、N、异常 trial 数、模型/任务/verifier 口径。
+- 只保留一个代表性 DeepSWE task：`actionlint-action-pinning-lint`。
+- 该 task × N=3 × xylitol；1800s wall、80 steps；同模型 `group/glm-5.3-flash`。
+- 新增 `just eval-one`；移除 `eval-typical` / `eval-typical-both`。
+- 用 `examples/eval-one.yaml` 替换 `examples/eval-terminal-bench.yaml`；同步改测试。
+- `model-lock.yaml` 只保留 `deepswe.baseline_id` 与该 task 的 image digest；不写
+  `full_ids` / `full_checksums` / `terminal_bench.ids`。
+- README 改为单 task 用法；删除 TB4 与 5-task 段。
+- 报告只需一页：task、N、pass@1、wall、cost、commit/SHA、Harbor 版本。
+- 保留 `just eval-smoke` 作为框架 canary；它不是分数，不替代 baseline。
 
-## Report SOP（必须可复现）
+## 为什么选 actionlint
 
-1. 固定输入：model lock、task ids + checksums、Harbor 版本、binary SHA-256、git commit。
-2. 固定预算：DeepSWE 1800s wall、80 steps、N=3；TB4 1800s wall、80 steps、N=2；
-   xylitol 与 Pi 同预算。
-3. 运行：每个 scaffold/benchmark 单独 job；记录 `jobs/<job>/result.json` 与 per-trial
-   `result.json`。
-4. 无效 trial：quota、provider error、sidecar 平台错误、verifier infra error 标为无效并重跑；
-   agent timeout 计为失败，不剔除；无改动导致 reward 0 计为失败，不剔除。
-5. 聚合：先按 task 聚合 pass@1，再取 scaffold 总体；flip rate 与 cross-scaffold gap
-   分开算；TB4 单列。
-6. 发布：生成 Markdown 表 + CSV；原始 `jobs/` 与报告一起归档；注明 commit / SHA / N。
-7. 复核：同一 commit + 同一 lock 重跑一次，确认表格可由脚本重建；不要求 trial 级完全一致。
+- 5-task baseline 中 xylitol 与 Pi 都是 1/3：有 headroom，不饱和（`abs` 3/3），
+  不触底（`adaptix` 0/3）。
+- 0 exceptions；无 timeout 噪声（`arcane` 有 Pi 1800s 超时）。
+- 真实 Go 仓库 + lint 修复 + 测试执行，覆盖 repo 编辑与验证链路。
+- 备选：`anko-typed-variable-bindings`（同样 1/3，Go 解释器类型绑定）。
 
 ## Non-goals
 
-- 不做 CI / 观测 / 云（Phase 5.1–5.3 不在本 change）。
-- 不跑 TB4 Pi；不把 TB4 floor 混进 DeepSWE 主分。
-- 不自研 judge；分数只来自 Harbor verifier。
-- 不承诺“xylitol 比模型强”；报告只写 scaffold 对比。
-- 不改产品默认行为；eval 是开发者工具链。
+- 不做 DeepSWE 10 / TB4 10 全套。
+- 不跑 Pi；Pi 对比留到 1.0.0 全套。
+- 不锁 full task ids / checksums / TB4 ids。
+- 不做 CSV / 报告模板 / 发布表；单 task 用现有 `summarize_harbor.py` 足够。
+- 不做 CI / 观测 / 云。
 
 ## Acceptance
 
-- DeepSWE 10 × N=3 × 2 scaffold 完成，无未解释异常。
-- TB4 10 × xylitol N=2 完成；floor 结论单列。
-- 报告可由脚本从 `jobs/` 重建；表格含 N、异常数、口径。
-- 同一 commit + lock 重跑，聚合结果可由脚本复现。
-- `just eval-full` 与 `just eval-tb4` 可直接复跑。
+- `just eval-one` 可跑 `actionlint-action-pinning-lint` × N=3 × xylitol。
+- 一页 baseline 记录 task、N、pass@1、wall、cost、commit/SHA、Harbor 版本。
+- 同 commit + lock 重跑，结果可由 `summarize_harbor.py` 重建。
+- `just eval-test` 与 `just eval-smoke --check` 绿。
 
 ## Risks
 
-- 全量 token / wall 成本高；先估算预算，必要时分批跑。
-- TB4 floor 明显，区分度低；报告必须标注。
-- N=3 仍有噪声；公开表要给 N 与异常数，不把单次差异写成能力结论。
-- 5 个补充 DeepSWE task 的镜像与 verifier 稳定性未验证；先做单 task 冒烟。
-- quota / 网络不稳定；无效 trial 规则必须先定。
+- 单 task N=3 噪声大；只作回归 canary，不作能力结论。
+- task 可能饱和或触底；选 1/3 的 actionlint 降低该风险。
+- 移除 5-task / TB4 后，历史报告仍可读，但日常入口只剩 `eval-one` 与 `eval-smoke`。
+- `actionlint` 随镜像/verifier 变化时需更新单条记录，不涉及全量集。
 
 ## Further Notes
 
-- 依赖 c3006 的 5-task baseline、预装 Pi 镜像、`just eval-typical`。
-- 现有聚合脚本：`tools/eval/scripts/summarize_harbor.py`；已有 pass@1 / flip /
-  cross-scaffold / cost / wall 计算，缺 CSV 与无效 trial 计数。
-- 公开版报告是发布物；SOP 与模板落在 `tools/eval/`，不写进 live spec。
+- 全套 sweep 在 1.0.0 前另开 change；届时再钉 task 集与 checksum。
+- 历史 baseline：`llmanspec/changes/archive/2026-11-09-c3006-add-minimal-eval-harness/research/baseline-2026-11.md`。
