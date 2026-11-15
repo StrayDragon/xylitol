@@ -53,6 +53,7 @@ fn main() {
             "CFLAGS_wasm32_wasip1",
             format!("--sysroot={}", sysroot.display()),
         )
+        .env("WASI_SDK", &sdk)
         .env_remove("RUSTFLAGS")
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .status()
