@@ -680,18 +680,21 @@ eval-test:
     cd tools/eval
     uv run --extra dev pytest -m "not integration"
 
-# Run the 5-task DeepSWE typical set for xylitol or Pi (N=3).
-eval-typical scaffold="xylitol":
+# Run the single representative DeepSWE task (xylitol, N=3).
+eval-one:
     #!/usr/bin/env bash
     set -euo pipefail
-    case "{{scaffold}}" in
-      xylitol|pi) ;;
-      *) echo "usage: just eval-typical xylitol|pi" >&2; exit 2 ;;
-    esac
     : "${MAGPIE_GATEWAY_URL:?MAGPIE_GATEWAY_URL is required}"
     harbor_bin="${HARBOR_BIN:-/tmp/harbor-venv/bin/harbor}"
     env_file="${MAGPIE_HARBOR_ENV_FILE:-/tmp/magpie-harbor.env}"
+    task="actionlint-action-pinning-lint"
+    task_dir="/tmp/deep-swe/tasks/${task}"
     [[ -x "${harbor_bin}" ]] || { echo "error: Harbor not found at ${harbor_bin}" >&2; exit 1; }
+    [[ -d "${task_dir}" ]] || { echo "error: missing ${task_dir}" >&2; exit 1; }
+    [[ -x target/eval-bin/xylitol-linux-x86_64-musl ]] || {
+      echo "error: missing target/eval-bin/xylitol-linux-x86_64-musl; run tools/eval/scripts/build_linux_musl.sh" >&2
+      exit 1
+    }
     if [[ ! -f "${env_file}" ]]; then
       : "${MAGPIE_GATEWAY_KEY:?MAGPIE_GATEWAY_KEY is required to create ${env_file}}"
       umask 077
@@ -699,58 +702,18 @@ eval-typical scaffold="xylitol":
       chmod 600 "${env_file}"
     fi
     export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 DOCKER_DEFAULT_PLATFORM=linux/amd64
-    tasks=(
-      abs-module-cache-flags
-      actionlint-action-pinning-lint
-      adaptix-name-mapping-aliases
-      anko-typed-variable-bindings
-      arcane-drift-detection-baselines
-    )
-    for t in "${tasks[@]}"; do
-      if [[ "{{scaffold}}" == xylitol ]]; then
-        task_dir="/tmp/deep-swe/tasks/${t}"
-        [[ -x target/eval-bin/xylitol-linux-x86_64-musl ]] || {
-          echo "error: missing target/eval-bin/xylitol-linux-x86_64-musl; run tools/eval/scripts/build_linux_musl.sh" >&2
-          exit 1
-        }
-        agent="xylitol_agent:XylitolAgent"
-        extra=(--ak binary=target/eval-bin/xylitol-linux-x86_64-musl --ak max_steps_per_turn=80 --ak wall_seconds=1800)
-      else
-        task_dir="/tmp/deep-swe-agents/${t}"
-        [[ -d "${task_dir}" ]] || {
-          echo "error: missing ${task_dir}; build the preinstalled Pi image and task copy first" >&2
-          exit 1
-        }
-        agent="preinstalled_agents:PiPreinstalled"
-        extra=(
-          --effort high
-          --ak model_api=openai-responses
-          --ak max_steps_per_turn=80
-          --ak disable_web_search=true
-          --agent-timeout-multiplier 0.1666666667
-          --ae GIT_AUTHOR_NAME=eval --ae GIT_AUTHOR_EMAIL=eval@example.com
-          --ae GIT_COMMITTER_NAME=eval --ae GIT_COMMITTER_EMAIL=eval@example.com
-        )
-      fi
-      HARBOR_BIN="${harbor_bin}" tools/eval/scripts/harbor_local.sh run \
-        -p "${task_dir}" \
-        -a "${agent}" \
-        -m openai/group/glm-5.3-flash \
-        "${extra[@]}" \
-        --base-url "${MAGPIE_GATEWAY_URL}/v1" \
-        --api-key-name MAGPIE_GATEWAY_KEY \
-        --api-format openai_responses \
-        --env-file "${env_file}" \
-        --job-name "typical-{{scaffold}}-${t}" \
-        -k 3 -n 1 -y
-    done
-
-# Run xylitol then Pi on the 5-task typical set.
-eval-typical-both:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just eval-typical xylitol
-    just eval-typical pi
+    HARBOR_BIN="${harbor_bin}" tools/eval/scripts/harbor_local.sh run \
+      -p "${task_dir}" \
+      -a xylitol_agent:XylitolAgent \
+      -m openai/group/glm-5.3-flash \
+      --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
+      --ak max_steps_per_turn=80 --ak wall_seconds=1800 \
+      --base-url "${MAGPIE_GATEWAY_URL}/v1" \
+      --api-key-name MAGPIE_GATEWAY_KEY \
+      --api-format openai_responses \
+      --env-file "${env_file}" \
+      --job-name "one-${task}" \
+      -k 3 -n 3 -y
 
 eval-smoke mode="":
     #!/usr/bin/env bash

@@ -20,17 +20,9 @@ profiles:
     wall_seconds: 1800
 
 benchmarks:
-  terminal_bench:
-    dataset: terminal-bench/terminal-bench@4.0.0
-    tasks: 10
   deepswe:
     dataset: deep-swe/tasks
     revision: v1.1
-    tasks: 10
-    typical_tasks: 5
-    typical_ids:
-      - abs-module-cache-flags
-      - actionlint-action-pinning-lint
-      - adaptix-name-mapping-aliases
-      - anko-typed-variable-bindings
-      - arcane-drift-detection-baselines
+    baseline_id: actionlint-action-pinning-lint
+    image: public.ecr.aws/d3j8x8q7/swe-bench-202605:kh79dnvkvq8j9bs22ededmsc79823akj-v1.1
+    image_digest: sha256:522a6e93a31656d03cc79474dafc5542bb27109051914d5566d7d29789c2a1a6

@@ -8,19 +8,20 @@ from xylitol_eval.errors import ConfigError
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
-def test_load_terminal_bench_config():
-    cfg = load_config(EXAMPLES / "eval-terminal-bench.yaml")
+def test_load_single_eval_config():
+    cfg = load_config(EXAMPLES / "eval-one.yaml")
     assert cfg.phase == "m3"
-    assert cfg.dataset.name == "terminal-bench/terminal-bench@4.0.0"
-    assert cfg.dataset.limit == 10
+    assert cfg.dataset.name == "deep-swe/tasks"
+    assert cfg.dataset.instance_ids == ["actionlint-action-pinning-lint"]
+    assert cfg.dataset.limit == 0
     assert cfg.model.alias == "group/glm-5.3-flash"
     assert cfg.model.thinking_levels == ["low", "high"]
     assert len(cfg.sha256) == 64
 
 
 def test_config_hash_is_stable():
-    first = load_config(EXAMPLES / "eval-terminal-bench.yaml")
-    second = load_config(EXAMPLES / "eval-terminal-bench.yaml")
+    first = load_config(EXAMPLES / "eval-one.yaml")
+    second = load_config(EXAMPLES / "eval-one.yaml")
     assert first.sha256 == second.sha256
 
 

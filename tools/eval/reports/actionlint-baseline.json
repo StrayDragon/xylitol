@@ -1,0 +1,29 @@
+{
+  "rows": [
+    {
+      "label": "deepswe:xylitol",
+      "benchmark": "deepswe",
+      "scaffold": "xylitol",
+      "tasks": [
+        {
+          "task": "actionlint-action-pinning-lint",
+          "runs": 3,
+          "rewards": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pass_at_1": 0.0,
+          "flip": false,
+          "errors": 0
+        }
+      ],
+      "pass_at_1": 0.0,
+      "flip_rate": 0.0,
+      "errors": 0,
+      "wall_seconds": 1577.2827523333333,
+      "cost_usd": null
+    }
+  ],
+  "cross": []
+}

@@ -2,11 +2,11 @@ version: 1
 phase: m3
 
 dataset:
-  name: terminal-bench/terminal-bench@4.0.0
-  revision: 4.0.0
+  name: deep-swe/tasks
+  revision: v1.1
   split: test
-  instance_ids: []
-  limit: 10
+  instance_ids: ["actionlint-action-pinning-lint"]
+  limit: 0
 
 model:
   alias: "group/glm-5.3-flash"
@@ -33,8 +33,8 @@ sandbox:
 
 grader:
   backend: harbor
-  version: "4.0.0"
-  run_id: m3-terminal-bench-10
+  version: "v1.1"
+  run_id: m3-actionlint
   max_workers: 2
 
 report:

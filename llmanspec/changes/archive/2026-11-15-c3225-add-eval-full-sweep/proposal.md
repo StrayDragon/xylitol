@@ -3,6 +3,9 @@ depends_on:
   - c3006-add-minimal-eval-harness
 title: "Single representative eval baseline"
 needs_specs_change: false
+branch: sdd/c3225-add-eval-full-sweep
+base_branch: main
+base_sha: 9862973c4d563006a3f6c3cef2486d2867c93901
 ---
 
 # Single representative eval baseline
