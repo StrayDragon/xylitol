@@ -33,14 +33,17 @@ xylitol 需要把外部插件二进制接入 CLI，而不是为每个 UI 或端�
 
 `src/cli`（参数解析与委派）、config 类型（插件路径 / PATH 开关 / 允许列表）、`llmanspec/specs/` 与 BDD。
 
-## Open Questions
+## Decisions
 
-- PATH 查找是否要默认开启；开启时的信任提示形态。
-- `requires_host` 为真时是否每次都 ensure Host，还是允许插件自行 attach。
-- 允许列表（allowlist）是否必需，还是插件目录本身即信任边界。
-- 插件清单是否需要独立文件（`plugin.json`）而非 `--describe`。
+- PATH 查找默认关闭；插件目录即信任边界，显式 `path_from_env` 才开。
+- `requires_host` 为真时每次 ensure Host；插件不自行 attach。
+- allowlist 可选；默认只扫 `~/.xylitol/plugins/bin`。
+- 清单用 `--describe`，不另立 `plugin.json`。
+- 范围：本 change 只推进到 planned，不实现。
 
-## Further Notes
+## Related
 
-- 第一个消费者与设计细节：`https://github.com/StrayDragon/xylitol-thoughtdag`（private），见 `docs/plugin-command.md`。
+- 关联仓：`https://github.com/StrayDragon/xylitol-thoughtdag`（private）。
+- 关联提案：`c1-add-thoughtdag-surface`（该仓，planned）。
+- 设计细节：该仓 `docs/plugin-command.md`、`docs/architecture.md`。
 - 该 change 只做通用命令注册与委派；ThoughtDAG 桥接、Web surface、nsh 端各自独立 change。
