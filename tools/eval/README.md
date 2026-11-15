@@ -21,8 +21,8 @@ feature.
 Current baseline is **one representative DeepSWE task**:
 
 - task: `actionlint-action-pinning-lint`
-- scaffold: xylitol only
-- N=3; 1800s wall / 80 steps
+- scaffold: xylitol or Pi
+- N=3; 1800s wall / 120 steps
 - model: `group/glm-5.3-flash`
 
 The full DeepSWE 10 + TB4 10 sweep is deferred to the 1.0.0 release cycle.
@@ -42,7 +42,8 @@ Or from the repo root:
 just eval-test
 just eval-smoke --check   # no model call; prerequisites only
 just eval-smoke           # one short xylitol trial; expects reward 1
-just eval-one             # actionlint task, xylitol, N=3
+just eval-one xylitol     # actionlint task, xylitol, N=3
+just eval-one pi          # actionlint task, Pi preinstalled, N=3
 ```
 
 ## Smoke
@@ -62,7 +63,7 @@ deterministic. A smoke failure means fix the framework before a baseline run.
 
 ## Single-task baseline
 
-`just eval-one` runs `actionlint-action-pinning-lint` with N=3. Report
+`just eval-one <scaffold>` runs `actionlint-action-pinning-lint` with N=3. Both scaffolds use 120 steps. Report
 per-task pass@1, wall, cost and commit/SHA; do not treat one task as a
 capability ranking. For a stable signal, rerun with the same commit, lock and
 profile.
@@ -77,7 +78,8 @@ Keep only what the single-task baseline needs:
 - one DeepSWE task image (`actionlint-action-pinning-lint`);
 - the amd64 egress sidecar.
 
-The Pi preinstalled images and TB4 images are not used by this baseline.
+Pi uses one preinstalled image for the same task; TB4 images are not used.
+Pi needs `/tmp/deep-swe-agents/actionlint-action-pinning-lint`; build/prepare it before `just eval-one pi`.
 Re-pull them only for the deferred 1.0.0 sweep.
 
 ## Harbor
