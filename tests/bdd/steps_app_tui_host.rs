@@ -11,6 +11,22 @@ use xylitol_plugin_sdk::XyBashResult;
 use xylitol_tui::Component;
 use xylitol_tui::Terminal as _;
 
+fn footer_line(frame: &str) -> String {
+    let lines: Vec<&str> = frame.lines().collect();
+    if lines
+        .last()
+        .is_some_and(|line| line.contains("shortcuts") || line.contains("Esc close"))
+    {
+        lines
+            .get(lines.len().saturating_sub(2))
+            .copied()
+            .unwrap_or_default()
+            .to_string()
+    } else {
+        lines.last().copied().unwrap_or_default().to_string()
+    }
+}
+
 pub struct HostPump {
     pub session: HostSession<TestTerminal>,
     pub driver: ScriptedDriver,
@@ -1684,7 +1700,7 @@ fn c2826_up_event() -> xylitol_tui::InputEvent {
 pub(crate) fn t_c2826_selector_replaces(host_pump_bdd: &HostPumpBdd) {
     assert_eq!(format!("{:?}", c2826_slot(host_pump_bdd)), "Models");
     let frame = c2826_frame(host_pump_bdd);
-    let footer = frame.lines().last().unwrap_or_default();
+    let footer = footer_line(&frame);
     assert!(
         footer.contains("·") || !footer.trim().is_empty(),
         "c2826: footer 应仍为末行：{frame}"
@@ -1918,7 +1934,7 @@ pub(crate) fn t_c2826_queue_strip_click(host_pump_bdd: &HostPumpBdd) {
         before.contains("steer-one") || before.contains("Steering"),
         "c2826: 队列条应含插队文本：{before}"
     );
-    let footer = before.lines().last().unwrap_or_default();
+    let footer = footer_line(&before);
     assert!(
         !footer.contains("q:s"),
         "c2826: footer 无队列徽章：{footer}"
@@ -2304,7 +2320,7 @@ pub(crate) fn t_c2826_keybindings_bad(host_pump_bdd: &HostPumpBdd) {
 #[then("footer 反映新 active 模型且无换模预告")]
 pub(crate) fn t_c2826_models_footer(host_pump_bdd: &HostPumpBdd) {
     let frame = c2826_frame(host_pump_bdd);
-    let footer = frame.lines().last().unwrap_or_default();
+    let footer = footer_line(&frame);
     assert!(
         footer.contains("fake"),
         "c2826: 直设后 footer 应反映 active 模型：{footer}"
@@ -2318,7 +2334,7 @@ pub(crate) fn t_c2826_models_footer(host_pump_bdd: &HostPumpBdd) {
 #[then("驱动估计恰被调用一次")]
 pub(crate) fn t_c2826_single_estimate_refresh(host_pump_bdd: &HostPumpBdd) {
     let frame = c2826_frame(host_pump_bdd);
-    let footer = frame.lines().last().unwrap_or_default();
+    let footer = footer_line(&frame);
     assert!(
         footer.contains("used 1.2k tokens"),
         "c2826: 刷新应经 Driver 只读估计落到 footer：{footer}"

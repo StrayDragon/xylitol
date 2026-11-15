@@ -183,7 +183,7 @@
 
   @req:r1228
   规则: fixed-zone-footprint-term-budget
-    产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（status 恒 1 行、footer 1 行；非空 queue strip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
+    产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（status 恒 1 行、footer 1 行、hint 行按 0/1 行计入；非空 queue strip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
 
     场景: 短终端忙碌状态可见
       当 以小高度终端渲染忙碌帧
@@ -315,3 +315,7 @@
       假如 终端高 16 行且 `/mcp` 槽打开
       当 渲染槽
       那么 槽总行数不超过 term_rows 且 status lead 可见
+
+  @req:r3356
+  规则: footer-hint-line
+    产品 TUI 须在 footer 下方渲染第二行 hint：editor 空且 help 面板关闭时 须显示 `? shortcuts`；editor 非空 须隐藏；help 面板打开 须显示 `? / Esc close`。hint 行 须为 dim 文本，`?` 可以用 accent；不得写入对话条目或会话历史；不得常驻快捷键墙。hint 行 须计入 Fixed-Zone Footprint。由 harness 与 snapshot 覆盖，不扩 BDD step。

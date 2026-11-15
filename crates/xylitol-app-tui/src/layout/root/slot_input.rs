@@ -425,6 +425,11 @@ impl UiRoot {
 
     fn handle_editor_keys(&mut self, event: InputEvent) {
         if let InputEvent::Key(ref key) = event
+            && self.handle_help_key(key)
+        {
+            return;
+        }
+        if let InputEvent::Key(ref key) = event
             && self.handle_fold_key(key)
         {
             return;

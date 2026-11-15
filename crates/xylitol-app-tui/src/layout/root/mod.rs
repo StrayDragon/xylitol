@@ -2,6 +2,7 @@ mod capabilities_slot;
 mod editor_border;
 mod fixed_zone_footprint_apply;
 mod footer_chips;
+mod help_panel;
 mod mcp_slot;
 mod models_slot;
 mod mount;
@@ -13,6 +14,7 @@ mod slot_input;
 mod slot_nav;
 mod theme_apply;
 
+use help_panel::HelpPanel;
 use pending_slot::PendingSlotOps;
 use sidebar_panel::SidebarPanel;
 use std::collections::VecDeque;
@@ -136,6 +138,7 @@ pub struct UiRoot {
     suppress_status_right_cue: bool,
     toast_notice: Option<(String, Instant, ToastKind)>,
     slot: EditorSlot,
+    help: HelpPanel,
     pending: PendingSlotOps,
     designing: bool,
     session_sidebar_on: bool,
@@ -168,6 +171,7 @@ pub struct UiRoot {
     last_toast_rows: usize,
     last_status_rows: usize,
     last_editor_rows: usize,
+    last_help_rows: usize,
     last_queue_rows: usize,
     queue_strip_row: usize,
     last_footer_hits: Vec<footer_chips::FooterChipHit>,
@@ -273,6 +277,7 @@ impl UiRoot {
             suppress_status_right_cue: false,
             toast_notice: None,
             slot: EditorSlot::Editor,
+            help: HelpPanel::new(),
             pending: PendingSlotOps::default(),
             designing: false,
             session_sidebar_on: false,
@@ -316,6 +321,7 @@ impl UiRoot {
             last_toast_rows: 0,
             last_status_rows: 1,
             last_editor_rows: 3,
+            last_help_rows: 0,
             last_queue_rows: 0,
             queue_strip_row: 0,
             last_footer_hits: Vec::new(),
@@ -910,8 +916,10 @@ impl UiRoot {
             queue_rows,
             todo_rows,
             self.toast_notice.is_some(),
+            self.hint_rows() > 0,
         )
         .saturating_add(self.last_tray_rows)
+        .saturating_add(self.last_help_rows)
         .saturating_add(4)
         .max(4)
     }
@@ -1502,6 +1510,10 @@ impl UiRoot {
     }
 
     pub fn on_ctrl_c(&mut self, quit_flag: &AtomicBool) {
+        if self.help.is_open() {
+            self.close_help();
+            return;
+        }
         if self.slot.is_overlay() {
             self.close_slot();
             return;
@@ -1874,7 +1886,8 @@ mod tests {
         let expected_screen_row = root
             .term_rows
             .saturating_sub(root.last_editor_rows)
-            .saturating_sub(1);
+            .saturating_sub(1)
+            .saturating_sub(root.hint_rows());
         assert_eq!(Some(expected_screen_row), root.last_chip_row);
     }
 

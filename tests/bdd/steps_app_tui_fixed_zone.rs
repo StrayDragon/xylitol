@@ -4,6 +4,22 @@ use rstest_bdd_macros::{given, then, when};
 use xylitol_app_tui::{InteractionBdd, UiModel};
 use xylitol_plugin_sdk::session::{TodoItem, TodoList, TodoStatus};
 
+fn footer_line(frame: &str) -> String {
+    let lines: Vec<&str> = frame.lines().collect();
+    if lines
+        .last()
+        .is_some_and(|line| line.contains("shortcuts") || line.contains("Esc close"))
+    {
+        lines
+            .get(lines.len().saturating_sub(2))
+            .copied()
+            .unwrap_or_default()
+            .to_string()
+    } else {
+        lines.last().copied().unwrap_or_default().to_string()
+    }
+}
+
 pub struct FixedZoneBdd {
     pub model: RefCell<UiModel>,
     pub frame: RefCell<Option<String>>,
@@ -171,7 +187,7 @@ fn t_c2826_idle_busy(fixed_zone_bdd: &FixedZoneBdd) {
     let busy = plain(busy);
     let working_rows = busy.lines().filter(|l| l.contains("Working")).count();
     assert_eq!(working_rows, 1, "c2826: 忙碌短词应恰一行：{busy}");
-    let footer = busy.lines().last().unwrap_or_default();
+    let footer = footer_line(&busy);
     assert!(
         !footer.contains("Working"),
         "c2826: footer 不含忙碌词：{footer}"
@@ -199,7 +215,7 @@ fn t_c2826_compacting(fixed_zone_bdd: &FixedZoneBdd) {
     let frame = plain(&fixed_zone_bdd.frame.borrow().clone().expect("frame"));
     let rows = frame.lines().filter(|l| l.contains("Compacting")).count();
     assert_eq!(rows, 1, "c2826: Compacting 应单行：{frame}");
-    let footer = frame.lines().last().unwrap_or_default();
+    let footer = footer_line(&frame);
     assert!(
         !footer.contains("Compacting"),
         "c2826: footer 不含 Compacting：{footer}"
@@ -240,7 +256,7 @@ fn t_c2826_spinner_single(fixed_zone_bdd: &FixedZoneBdd) {
     let frame = plain(&fixed_zone_bdd.frame.borrow().clone().expect("frame"));
     let rows = frame.lines().filter(|l| l.contains("Working")).count();
     assert_eq!(rows, 1, "c2826: spinner 短词应恰一行：{frame}");
-    let footer = frame.lines().last().unwrap_or_default();
+    let footer = footer_line(&frame);
     assert!(
         !footer.contains("Working"),
         "c2826: footer 不含 spinner：{footer}"
@@ -328,7 +344,7 @@ fn w_c2826_thinking_footer(fixed_zone_bdd: &FixedZoneBdd, level: String) {
 #[then("footer 含该档位标签")]
 fn t_c2826_thinking_footer(fixed_zone_bdd: &FixedZoneBdd) {
     let frame = fixed_zone_bdd.frame.borrow().clone().expect("frame");
-    let footer = frame.lines().last().unwrap_or_default();
+    let footer = footer_line(&frame);
     assert!(
         footer.contains("high") || footer.contains("thinking"),
         "c2826: footer 应含 thinking 档标签：{footer}"
@@ -445,14 +461,8 @@ async fn footer_with_estimate(
         prompt_cache_read: cache,
     }));
     xylitol_app_tui::refresh_footer_tokens(&mut session, &mut driver).await;
-    session
-        .ui_root()
-        .expect("ui")
-        .borrow_mut()
-        .render(160)
-        .last()
-        .expect("footer")
-        .clone()
+    let frame = session.ui_root().expect("ui").borrow_mut().render(160);
+    footer_line(&frame.join("\n"))
 }
 
 #[when("以 Heuristic 上下文估计驱动 footer token 字段")]

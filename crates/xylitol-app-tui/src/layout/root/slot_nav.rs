@@ -12,6 +12,11 @@ pub struct EscWindow {
 
 impl UiRoot {
     pub fn on_escape(&mut self, esc: &mut EscWindow) -> bool {
+        if self.help.is_open() {
+            self.close_help();
+            esc.last_at = None;
+            return true;
+        }
         if self.session_sidebar_dragging {
             self.cancel_sidebar_drag();
             return true;

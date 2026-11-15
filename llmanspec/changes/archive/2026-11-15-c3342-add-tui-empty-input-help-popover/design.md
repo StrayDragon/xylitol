@@ -12,6 +12,14 @@
 - `/help` slash 命令。
 - 面板写入会话历史或持久化。
 
+## Component split
+
+- `xylitol-tui::BorderedPanel`：通用带标题边框面板；输入 painted lines、viewport、scroll；负责边框、内容高度、滚动 clamp、宽度截断；不认 keybindings/theme。可选注入 border/title paint；默认 plain。
+- `xylitol-app-tui::HelpPanel`：产品状态（open/scroll）+ 内容分组/中文标签 + `?`/Esc/Ctrl+C 语义；用 `BorderedPanel` 渲染。写入前 clamp scroll。
+- 键位格式化统一到 `layout/key_format`，`help_panel` 与 `session_tree` 共用。
+- 面板高度按可用 transcript 行 cap，避免 dock 增长触发 render overflow。
+- `UiRoot` 持有 `HelpPanel`，不再直接持 `help_open`/`help_scroll`。
+
 ## Layout and footprint
 
 - dock 顺序：queue、todo、toast、status、tray、editor、footer、hint。
@@ -20,10 +28,10 @@
   - 面板打开：`? / Esc close`
   - editor 非空：0 行
 - hint 行 dim；`?` 用 accent，其余 muted。
-- `last_dock_rows` 与 `editor_top_row` 必须计入 hint 行。
+- `last_dock_rows` 与 `editor_top_row` 必须计入 hint 行与 help 面板行。
 - `Fixed-Zone Footprint` 的预留行必须加入 hint 0/1 行。
-- 面板打开时 upper area 渲染面板；loaded resources 与 scrollback 隐藏。
-- 面板高度按可用 transcript 行计算；内容过高时滚动。
+- 面板打开时在 editor 上方 dock 内渲染；loaded resources 与 scrollback 保留。
+- 面板高度包住内容（内容行 + 2 行边框）；内容过高时滚动；面板贴在 editor 上方，上方留空。
 
 ## State
 
@@ -58,8 +66,8 @@
 
 ## Rendering
 
-- `UiRoot::render` 在 `help_open` 时跳过 loaded resources 与 scrollback，渲染面板。
-- 面板行数不超过可用 transcript 行；不足时补空行或留白。
+- `UiRoot::render` 在 `help_open` 时于 dock 内 editor 上方渲染面板；loaded resources 与 scrollback 保留。
+- 面板高度按内容行数 + 2 行边框；内容过高时滚动。
 - 切换 `help_open` 时 `bump_upper_gen()`，避免旧 upper cache。
 - 面板不进入 `UiEntry` / scrollback / 会话历史。
 

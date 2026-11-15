@@ -121,7 +121,10 @@ impl UiRoot {
     }
 
     fn editor_top_row(&self, dock_prefix: usize, editor_rows: usize) -> usize {
-        let dock_total = dock_prefix.saturating_add(editor_rows).saturating_add(1);
+        let dock_total = dock_prefix
+            .saturating_add(editor_rows)
+            .saturating_add(1)
+            .saturating_add(self.hint_rows());
         self.term_rows
             .saturating_sub(dock_total)
             .saturating_add(dock_prefix)
@@ -494,6 +497,25 @@ impl Component for UiRoot {
         let toast = self.render_toast_notice_slot(term_cols);
         let status = self.render_status_slot(term_cols);
         let tray = self.render_tray_slot(term_cols);
+        let base_dock = queue
+            .len()
+            .saturating_add(todo.len())
+            .saturating_add(toast.len())
+            .saturating_add(status.len())
+            .saturating_add(tray.len())
+            .saturating_add(self.last_editor_rows.max(1))
+            .saturating_add(1)
+            .saturating_add(self.hint_rows());
+        let max_help_rows = self
+            .term_rows
+            .saturating_sub(lines.len())
+            .saturating_sub(base_dock);
+        let help = if self.help.is_open() {
+            self.render_help_slot(term_cols, max_help_rows)
+        } else {
+            Vec::new()
+        };
+        self.last_help_rows = help.len();
         self.apply_fixed_zone_footprint(todo.len());
         let mut editor = self.render_editor_slot(term_cols);
         let has_chips = self.paint_editor_chips(&mut editor, term_cols);
@@ -502,7 +524,8 @@ impl Component for UiRoot {
             .saturating_add(todo.len())
             .saturating_add(toast.len())
             .saturating_add(status.len())
-            .saturating_add(tray.len());
+            .saturating_add(tray.len())
+            .saturating_add(help.len());
         let editor_top = self.editor_top_row(dock_prefix, editor.len());
         self.last_slot_top_row = Some(editor_top);
         self.last_chip_row = has_chips.then_some(editor_top);
@@ -523,8 +546,10 @@ impl Component for UiRoot {
             .saturating_add(toast.len())
             .saturating_add(status.len())
             .saturating_add(tray.len())
+            .saturating_add(help.len())
             .saturating_add(editor.len())
-            .saturating_add(1);
+            .saturating_add(1)
+            .saturating_add(self.hint_rows());
         self.sync_editor_screen_origin();
         self.queue_strip_row = lines.len();
         lines.extend(queue);
@@ -533,8 +558,10 @@ impl Component for UiRoot {
         lines.extend(status);
         self.tray_strip_row = lines.len();
         lines.extend(tray);
+        lines.extend(help);
         lines.extend(editor);
         lines.push(footer);
+        lines.extend(self.render_hint_slot(term_cols));
         lines
     }
 

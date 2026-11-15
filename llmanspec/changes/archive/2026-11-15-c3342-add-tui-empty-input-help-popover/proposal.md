@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 空输入提示行与快捷键面板
+branch: sdd/c3342-add-tui-empty-input-help-popover
+base_branch: main
+base_sha: 197ee9c03501bf4a0163b38cef6f23101fcef1fa
 ---
 
 # 空输入提示行与快捷键面板
@@ -18,11 +21,12 @@ title: 空输入提示行与快捷键面板
 - 面板打开时 hint 行显示 `? / Esc close`。
 - 空输入 + `?` 键 = 打开快捷键面板；`?` 不得写入输入。
 - 输入非空 + `?` 键 = 输入字面 `?`。
-- 面板打开时 `?` 或 Esc 关闭；面板占据 transcript 区，输入框仍在底部。
+- 面板打开时 `?` 或 Esc 关闭；面板在 editor 上方 dock 内渲染，高度包住内容，上方保留 transcript；输入框仍在底部。
 - 面板内容由 keybindings 注册表动态生成；按宽度分 3/2/1 列；内容过高时可滚动。
 - MVP 面板只读；点击行触发功能不在本期。
 - `/help` slash 命令不在本期。
 - 不新增第二套动作词表；键位与描述来自 keybindings 注册表。
+- 实现拆分为通用 `xylitol-tui::BorderedPanel`（标题/边框/滚动/内容高度）与产品 `xylitol-app-tui::HelpPanel`（状态/内容/键位）。
 
 ## 已钉决策
 
@@ -31,6 +35,7 @@ title: 空输入提示行与快捷键面板
 - 面板只读；点击行留到后续。
 - busy 时可打开面板；Esc 先关面板，不 abort。
 - 窄终端 3/2/1 列。
+- 通用壳与产品内容分层：`BorderedPanel` 不认 keybindings/theme；`HelpPanel` 持有 open/scroll。
 
 ## 现状与约束
 

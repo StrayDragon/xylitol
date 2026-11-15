@@ -142,54 +142,7 @@ fn push_help_item(parts: &mut Vec<String>, keys: &[String], label: &str, label_f
 }
 
 fn format_help_keys(keys: &[String]) -> String {
-    if keys.is_empty() {
-        return String::new();
-    }
-    let pretty: Vec<String> = keys.iter().map(|k| pretty_key_id(k)).collect();
-    compact_raw_keys(&pretty)
-}
-
-fn pretty_key_id(key_id: &str) -> String {
-    let (prefix, suffix) = match key_id.rfind('+') {
-        Some(i) => (&key_id[..=i], &key_id[i + 1..]),
-        None => ("", key_id),
-    };
-    let mapped = match suffix {
-        "up" => "↑",
-        "down" => "↓",
-        "left" => "←",
-        "right" => "→",
-        "pageUp" => "pgup",
-        "pageDown" => "pgdn",
-        other => other,
-    };
-    format!("{prefix}{mapped}")
-}
-
-fn compact_raw_keys(keys: &[String]) -> String {
-    if keys.len() == 1 {
-        return keys[0].clone();
-    }
-    let parts: Vec<(String, String)> = keys
-        .iter()
-        .map(|key| match key.rfind('+') {
-            Some(i) => (key[..=i].to_string(), key[i + 1..].to_string()),
-            None => (String::new(), key.clone()),
-        })
-        .collect();
-    let prefix = parts[0].0.clone();
-    if !prefix.is_empty() && parts.iter().all(|p| p.0 == prefix) {
-        format!(
-            "{prefix}{}",
-            parts
-                .iter()
-                .map(|p| p.1.as_str())
-                .collect::<Vec<_>>()
-                .join("/")
-        )
-    } else {
-        keys.join("/")
-    }
+    super::key_format::format_keys(keys)
 }
 
 pub(crate) fn wrap_help_line(line: &str, width: usize) -> Vec<String> {

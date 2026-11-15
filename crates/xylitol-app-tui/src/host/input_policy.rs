@@ -87,6 +87,9 @@ impl<T: Terminal> HostSession<T> {
         let InputEvent::Key(key) = input else {
             return false;
         };
+        if root.borrow().help_open() {
+            return false;
+        }
         if root.borrow().slot().is_overlay() {
             return false;
         }

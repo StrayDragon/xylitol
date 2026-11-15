@@ -1,3 +1,4 @@
+pub mod bordered_panel;
 pub mod cancellable_loader;
 pub mod choice_prompt;
 pub mod container;

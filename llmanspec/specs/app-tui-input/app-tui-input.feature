@@ -371,3 +371,7 @@
   @req:r3092
   规则: at-path-fd-completion
     产品 TUI `@` 路径补全 须优先用 fd（`fd` 或 `fdfind`）召回深层文件/目录，含 CJK 文件名；fd 不存在或结果为空 须静默回落现有单层 read_dir；`@` 空查询 须列顶层；目录项 须带 `/` 后缀；quoted 语义不变；不得新增配置或用户面开关。由引擎单测与 harness 覆盖。
+
+  @req:r3357
+  规则: help-panel-shortcut
+    产品 TUI 在 editor 空且 help 面板关闭时，`?` 键 须打开快捷键面板且 不得写入 editor；editor 非空时 `?` 须按普通字符输入；help 面板打开时 `?` 或 Esc 须关闭面板；busy 时 Esc 须先关面板，不得 abort；help 面板打开时 Ctrl+C 须先关面板，不得清空输入或退出。面板内容 须由 keybindings 注册表动态生成；键位自定义后 须反映当前键位；面板只读，点击行 不得触发动作。由 harness 覆盖，不扩 BDD step。

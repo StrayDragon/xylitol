@@ -1508,6 +1508,25 @@ pub fn key_event(
     })
 }
 
+#[cfg(test)]
+fn footer_line(frame: &[String]) -> String {
+    let plain: Vec<String> = frame
+        .iter()
+        .map(|line| xylitol_tui::utils::strip_ansi_codes(line))
+        .collect();
+    if plain
+        .last()
+        .is_some_and(|line| line.contains("? shortcuts") || line.contains("? / Esc close"))
+    {
+        plain
+            .get(plain.len().saturating_sub(2))
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        plain.last().cloned().unwrap_or_default()
+    }
+}
+
 pub fn enter_event() -> InputEvent {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     InputEvent::Key(KeyEvent {
@@ -4980,7 +4999,7 @@ mod slice_tests {
         refresh_footer_tokens(&mut session, &mut driver).await;
         session.render_now().unwrap();
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
-        let footer = frame.last().expect("footer");
+        let footer = footer_line(&frame);
         assert!(
             footer.contains("~/x") && footer.contains("Fake"),
             "footer identity missing: {footer}"
@@ -5017,7 +5036,7 @@ mod slice_tests {
         }));
         refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
-        let footer = frame.last().expect("footer");
+        let footer = footer_line(&frame);
         assert!(
             footer.contains("used ~42 tokens"),
             "Heuristic must show tilde: {footer}"
@@ -5057,7 +5076,7 @@ mod slice_tests {
         }));
         refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
-        let footer = frame.last().expect("footer");
+        let footer = footer_line(&frame);
         assert!(
             footer.contains("used 42 tokens"),
             "must keep used field: {footer}"
@@ -5097,7 +5116,7 @@ mod slice_tests {
         }));
         refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
-        let footer = frame.last().expect("footer");
+        let footer = footer_line(&frame);
         assert!(
             footer.contains("used 42k tokens") && footer.contains("32.8%/128k"),
             "Api must show derived percent: {footer}"
@@ -5126,7 +5145,7 @@ mod slice_tests {
         }));
         refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
-        let footer = frame.last().expect("footer");
+        let footer = footer_line(&frame);
         assert!(
             footer.contains("used 100 tokens") && !footer.contains("used ~"),
             "Api must be exact: {footer}"
@@ -5166,7 +5185,7 @@ mod slice_tests {
             .await
             .unwrap();
         let footer1 = root.borrow_mut().render(80);
-        let f1 = footer1.last().expect("footer").clone();
+        let f1 = footer_line(&footer1);
         assert!(
             f1.contains("used ~11 tokens"),
             "first travel estimate: {f1}"
@@ -5187,7 +5206,7 @@ mod slice_tests {
             .await
             .unwrap();
         let footer2 = root.borrow_mut().render(80);
-        let f2 = footer2.last().expect("footer").clone();
+        let f2 = footer_line(&footer2);
         assert!(
             f2.contains("used ~99 tokens"),
             "travel must refresh token field: {f2}"
@@ -5227,14 +5246,8 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        let footer = session
-            .ui_root()
-            .expect("ui")
-            .borrow_mut()
-            .render(80)
-            .last()
-            .cloned()
-            .unwrap_or_default();
+        let frame = session.ui_root().expect("ui").borrow_mut().render(80);
+        let footer = footer_line(&frame);
         assert!(
             footer.contains("used 42 tokens"),
             "CompactionEnd must refresh footer tokens: {footer}"
@@ -5280,14 +5293,8 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        let footer = session
-            .ui_root()
-            .expect("ui")
-            .borrow_mut()
-            .render(80)
-            .last()
-            .cloned()
-            .unwrap_or_default();
+        let frame = session.ui_root().expect("ui").borrow_mut().render(80);
+        let footer = footer_line(&frame);
         assert!(
             footer.contains("used 11 tokens"),
             "TurnSettled settlement must refresh footer tokens: {footer}"
@@ -5329,7 +5336,7 @@ mod slice_tests {
             .await
             .unwrap();
         let before = session.ui_root().expect("ui").borrow_mut().render(80);
-        let before_f = before.last().expect("footer").clone();
+        let before_f = footer_line(&before);
         assert!(
             !before_f.contains("used 7 tokens"),
             "AgentEnd must not kick footer estimate alone: {before_f}"
@@ -5340,7 +5347,7 @@ mod slice_tests {
             .await
             .unwrap();
         let footer = session.ui_root().expect("ui").borrow_mut().render(80);
-        let f = footer.last().expect("footer");
+        let f = footer_line(&footer);
         assert!(
             f.contains("used ~7 tokens"),
             "stream closed + drain must refresh footer when no settlement: {f}"
@@ -5384,16 +5391,8 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert!(
-            session
-                .ui_root()
-                .expect("ui")
-                .borrow_mut()
-                .render(80)
-                .last()
-                .expect("f")
-                .contains("used 42 tokens")
-        );
+        let frame = session.ui_root().expect("ui").borrow_mut().render(80);
+        assert!(footer_line(&frame).contains("used 42 tokens"));
         let before = driver.estimate_calls();
         session.on_run_stream_closed();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -5433,7 +5432,7 @@ mod slice_tests {
             false,
         );
         let before = root.borrow_mut().render(80);
-        let before_f = before.last().expect("footer").clone();
+        let before_f = footer_line(&before);
         assert!(
             !before_f.contains("used 42k tokens"),
             "restore alone must not sync estimate without drain: {before_f}"
@@ -5443,7 +5442,7 @@ mod slice_tests {
             .await
             .unwrap();
         let after_restore = root.borrow_mut().render(80);
-        let f_restore = after_restore.last().expect("footer").clone();
+        let f_restore = footer_line(&after_restore);
         assert!(
             f_restore.contains("used 42k tokens"),
             "CLI restore + drain must fill footer tokens: {f_restore}"
@@ -5462,7 +5461,7 @@ mod slice_tests {
             .await
             .unwrap();
         let after_resume = root.borrow_mut().render(80);
-        let f_resume = after_resume.last().expect("footer").clone();
+        let f_resume = footer_line(&after_resume);
         assert!(
             f_resume.contains("used ~99 tokens"),
             "resume switch + drain must refresh footer: {f_resume}"

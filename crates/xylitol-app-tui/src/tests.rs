@@ -1,7 +1,7 @@
 use super::bridge::{UiModel, UiPhase, apply_xy_event};
 use super::harness::{alt_enter_event, enter_event, esc_event};
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
-use super::layout::build_root;
+use super::layout::{UiRoot, build_root};
 use crate::driver::XyEvent;
 use xylitol_tui::utils::strip_ansi_codes as strip_ansi;
 use xylitol_tui::{Component, InputEvent, Terminal};
@@ -89,6 +89,21 @@ fn mouse_at(
         column: col,
         row,
         modifiers: KeyModifiers::NONE,
+    }
+}
+
+fn footer_line(lines: &[String]) -> String {
+    let plain: Vec<String> = lines.iter().map(|l| strip_ansi(l)).collect();
+    if plain
+        .last()
+        .is_some_and(|l| l.contains("? shortcuts") || l.contains("? / Esc close"))
+    {
+        plain
+            .get(plain.len().saturating_sub(2))
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        plain.last().cloned().unwrap_or_default()
     }
 }
 
@@ -2055,7 +2070,7 @@ fn layout_idle_status_is_one_blank_above_editor() {
         editor_border > 0 && lines[editor_border - 1].is_empty(),
         "idle must keep one blank above editor: {lines:?}"
     );
-    let footer = lines.last().expect("footer");
+    let footer = footer_line(&lines);
     assert!(footer.contains("~/xylitol"), "{footer}");
     assert!(footer.contains("model-name"), "{footer}");
     assert!(
@@ -2103,7 +2118,7 @@ fn layout_compacting_and_retry_stay_single_status_row() {
         1,
         "Compacting must be a single status row: {compact_lines:?}"
     );
-    let footer = compact_lines.last().expect("footer");
+    let footer = footer_line(&compact_lines);
     assert!(
         !footer.contains("Compacting"),
         "Compacting must not live in footer: {footer}"
@@ -2120,7 +2135,7 @@ fn layout_compacting_and_retry_stay_single_status_row() {
         1,
         "Retry must be a single status row: {retry_lines:?}"
     );
-    let footer = retry_lines.last().expect("footer");
+    let footer = footer_line(&retry_lines);
     assert!(
         !footer.contains("Retry"),
         "Retry must not live in footer: {footer}"
@@ -2157,7 +2172,7 @@ fn layout_busy_status_is_separate_from_footer() {
         }),
         "busy status must include spinner frame: {lines:?}"
     );
-    let footer = lines.last().expect("footer");
+    let footer = footer_line(&lines);
     assert!(
         !footer.contains("Working"),
         "Working must not live in footer: {footer}"
@@ -4480,6 +4495,7 @@ fn dock_growth_keeps_scrolled_ao_viewport_anchored() {
         session.push_scroll_notice(format!("row-{i:03}"));
     }
     session.render_now().unwrap();
+    session.render_now().unwrap();
     let notch = session.tui.application_owned_wheel_notch();
     assert!(session.tui.application_owned_scroll_by(-(notch * 6)));
     session.render_now().unwrap();
@@ -4512,6 +4528,8 @@ fn dock_viewport_oscillation_keeps_the_anchored_top_row() {
         session.push_scroll_notice(format!("row-{i:03}"));
     }
     session.render_now().unwrap();
+    session.render_now().unwrap();
+    session.render_now().unwrap();
     let notch = session.tui.application_owned_wheel_notch();
     assert!(session.tui.application_owned_scroll_by(-(notch * 30)));
     session.render_now().unwrap();
@@ -4524,6 +4542,17 @@ fn dock_viewport_oscillation_keeps_the_anchored_top_row() {
             .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
             .unwrap_or_default()
     };
+    let lines = session
+        .tui
+        .application_owned_content_lines()
+        .unwrap_or_default();
+    if let Some(known) = lines
+        .iter()
+        .position(|line| strip_ansi(line).contains("row-080"))
+    {
+        session.tui.application_owned_set_scroll_top(known);
+        session.render_now().unwrap();
+    }
     let base = top_row(&session);
     assert!(
         base.contains("row-"),
@@ -4548,9 +4577,21 @@ fn streaming_deltas_do_not_drift_a_scrolled_viewport() {
         session.push_scroll_notice(format!("row-{i:03}"));
     }
     session.render_now().unwrap();
+    session.render_now().unwrap();
     let notch = session.tui.application_owned_wheel_notch();
     assert!(session.tui.application_owned_scroll_by(-(notch * 6)));
     session.render_now().unwrap();
+    let lines = session
+        .tui
+        .application_owned_content_lines()
+        .unwrap_or_default();
+    if let Some(known) = lines
+        .iter()
+        .position(|line| strip_ansi(line).contains("row-080"))
+    {
+        session.tui.application_owned_set_scroll_top(known);
+        session.render_now().unwrap();
+    }
     let top_before = session.tui.application_owned_scroll_top();
     let row_before = session
         .tui
@@ -6879,12 +6920,24 @@ async fn load_earlier_keeps_the_scroll_anchor_on_the_same_content_row() {
     }
     session.apply_resume_session("s1", entries, true);
     session.render_now().unwrap();
+    session.render_now().unwrap();
     let notch = session.tui.application_owned_wheel_notch();
     assert!(
         session.tui.application_owned_scroll_by(-(notch * 6)),
         "fixture must be scrollable"
     );
     session.render_now().unwrap();
+    let lines = session
+        .tui
+        .application_owned_content_lines()
+        .unwrap_or_default();
+    if let Some(known) = lines
+        .iter()
+        .position(|line| strip_ansi(line).contains("filler-20"))
+    {
+        session.tui.application_owned_set_scroll_top(known);
+        session.render_now().unwrap();
+    }
 
     let marker = |s: &HostSession<TestTerminal>| {
         s.tui
@@ -7232,4 +7285,172 @@ fn esc_suppression_is_host_owned() {
         !session.esc_suppressed_for_test(),
         "a new turn MUST clear the Esc suppression"
     );
+}
+
+fn question_key_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Char('?'),
+        modifiers: KeyModifiers::SHIFT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[test]
+fn empty_editor_shows_shortcut_hint() {
+    let mut root = UiRoot::new();
+    root.set_term_rows(24);
+    let frame = strip_ansi(&root.render(80).join("\n"));
+    assert!(frame.contains("? shortcuts"), "frame: {frame}");
+}
+
+#[test]
+fn non_empty_editor_hides_shortcut_hint() {
+    let mut root = UiRoot::new();
+    root.set_term_rows(24);
+    root.set_editor_text("hello");
+    let frame = strip_ansi(&root.render(80).join("\n"));
+    assert!(!frame.contains("? shortcuts"), "frame: {frame}");
+}
+
+#[test]
+fn question_mark_opens_and_closes_help() {
+    let mut root = UiRoot::new();
+    root.set_term_rows(24);
+    assert!(root.handle_help_key(&crossterm::event::KeyEvent {
+        code: crossterm::event::KeyCode::Char('?'),
+        modifiers: crossterm::event::KeyModifiers::SHIFT,
+        kind: crossterm::event::KeyEventKind::Press,
+        state: crossterm::event::KeyEventState::NONE,
+    }));
+    assert!(root.help_open());
+    let frame = strip_ansi(&root.render(120).join("\n"));
+    assert!(frame.contains("快捷键"), "frame: {frame}");
+    assert!(frame.contains("? / Esc close"), "frame: {frame}");
+    assert!(root.handle_help_key(&crossterm::event::KeyEvent {
+        code: crossterm::event::KeyCode::Char('?'),
+        modifiers: crossterm::event::KeyModifiers::SHIFT,
+        kind: crossterm::event::KeyEventKind::Press,
+        state: crossterm::event::KeyEventState::NONE,
+    }));
+    assert!(!root.help_open());
+    let frame = strip_ansi(&root.render(80).join("\n"));
+    assert!(frame.contains("? shortcuts"), "frame: {frame}");
+}
+
+#[test]
+fn non_empty_question_mark_is_literal() {
+    let mut root = UiRoot::new();
+    root.set_term_rows(24);
+    root.set_editor_text("hello");
+    assert!(!root.handle_help_key(&crossterm::event::KeyEvent {
+        code: crossterm::event::KeyCode::Char('?'),
+        modifiers: crossterm::event::KeyModifiers::SHIFT,
+        kind: crossterm::event::KeyEventKind::Press,
+        state: crossterm::event::KeyEventState::NONE,
+    }));
+    root.handle_input(question_key_event());
+    assert!(
+        root.editor_text().ends_with('?'),
+        "editor: {}",
+        root.editor_text()
+    );
+}
+
+#[test]
+fn help_panel_lists_shortcuts_and_scrolls() {
+    let mut root = UiRoot::new();
+    root.set_term_rows(24);
+    root.open_help();
+    let frame = strip_ansi(&root.render(120).join("\n"));
+    assert!(frame.contains("快捷键"), "frame: {frame}");
+    assert!(frame.contains("Ctrl+G"), "frame: {frame}");
+    root.set_term_rows(12);
+    let _ = root.render(120);
+    root.handle_help_key(&crossterm::event::KeyEvent {
+        code: crossterm::event::KeyCode::PageDown,
+        modifiers: crossterm::event::KeyModifiers::NONE,
+        kind: crossterm::event::KeyEventKind::Press,
+        state: crossterm::event::KeyEventState::NONE,
+    });
+    assert!(
+        root.help_scroll() > 0,
+        "PageDown must scroll short terminals"
+    );
+}
+
+#[test]
+fn help_panel_wraps_content_above_editor() {
+    let mut root = UiRoot::new();
+    root.set_term_rows(40);
+    root.open_help();
+    let _ = root.render(80);
+    let frame = strip_ansi(&root.render(80).join("\n"));
+    let lines: Vec<&str> = frame.lines().collect();
+    let top = lines
+        .iter()
+        .position(|line| line.contains("快捷键"))
+        .expect("panel title");
+    let bottom = top
+        + lines[top..]
+            .iter()
+            .position(|line| line.contains("╰"))
+            .expect("panel bottom");
+    assert_eq!(
+        bottom - top + 1,
+        28,
+        "panel must wrap content rows + 2 borders, not fill 34 rows: {frame}"
+    );
+    assert!(
+        lines[bottom + 1].contains("╭"),
+        "panel must sit directly above the editor: {frame}"
+    );
+    assert!(
+        lines.last().is_some_and(|line| line.contains("Esc close")),
+        "hint must close the panel: {frame}"
+    );
+}
+
+#[test]
+fn esc_closes_help_without_abort() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_term_rows(24);
+    session
+        .step(HostEvent::Input(question_key_event()))
+        .unwrap();
+    assert!(root.borrow().help_open());
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert!(!root.borrow().help_open());
+    assert!(!session.take_abort());
+}
+
+#[test]
+fn ctrl_c_closes_help_without_quit() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_term_rows(24);
+    session
+        .step(HostEvent::Input(question_key_event()))
+        .unwrap();
+    assert!(root.borrow().help_open());
+    session.step(HostEvent::Input(ctrl_c_event())).unwrap();
+    assert!(!root.borrow().help_open());
+    assert!(!session.should_quit());
+}
+
+#[test]
+fn busy_question_mark_opens_help_and_esc_closes_before_abort() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_term_rows(24);
+    session.on_turn_started("hello");
+    session
+        .step(HostEvent::Input(question_key_event()))
+        .unwrap();
+    assert!(root.borrow().help_open());
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert!(!root.borrow().help_open());
+    assert!(!session.take_abort());
 }
