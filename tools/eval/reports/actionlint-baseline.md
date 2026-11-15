@@ -12,8 +12,18 @@
 - run: `jobs/one-actionlint-action-pinning-lint`
 - result: pass@1 `0.000`; F2P `0/55`; P2P `145/145`; partial `0.725`; 0 exceptions; 3 trials.
 
-> 3 个 trial 都在 1800s agent timeout 处结束，未提交 commit；collect hook 取到空 patch。
+> 3 个 trial 都触发 `[End] step_limit`（`max_steps_per_turn=80`），不是 1800s wall timeout；
+> agent 在 Turn 79 停止时未提交 commit，collect hook 的 `git diff base..HEAD` 为空，`model.patch` 被跳过。
+> 直接原因：step 预算耗尽 + 未提交；1800s wall 未成为约束（trial 实际 24–29 min）。
 > 这份 baseline 是回归 canary，不是能力结论。全套 DeepSWE 10 + TB4 10 留到 1.0.0 前另开 change。
+
+## Diagnosis
+
+- `artifacts/manifest.json`：`model.patch` 状态 `skipped`。
+- `agent/xylitol.txt`：`[End] step_limit`；Turn 79；工作树 dirty，无 commit。
+- `verifier/ctrf.json`：200 tests，145 passed，55 failed（F2P）。
+- `verifier/run.log`：F2P 失败；P2P 145/145。
+- 结论：不是 verifier 或环境错误；是 step 预算与提交步骤缺失。
 
 # Harbor eval summary
 
