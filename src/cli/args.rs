@@ -131,6 +131,15 @@ pub enum SessionsAction {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum PluginsAction {
+    List,
+    Describe {
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum CliCommand {
     Tui {
         #[command(flatten)]
@@ -153,6 +162,10 @@ pub enum CliCommand {
     Sessions {
         #[command(subcommand)]
         action: SessionsAction,
+    },
+    Plugins {
+        #[command(subcommand)]
+        action: PluginsAction,
     },
     #[cfg(feature = "server")]
     Serve {

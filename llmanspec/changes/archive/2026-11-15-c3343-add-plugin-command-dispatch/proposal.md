@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: "Add generic plugin command dispatch"
+branch: sdd/c3343-add-plugin-command-dispatch
+base_branch: main
+base_sha: 308b68712d1235c0c7981c45553170b1afe89de8
 ---
 
 ## Why

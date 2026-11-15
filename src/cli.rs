@@ -1,6 +1,7 @@
 mod args;
 mod config_cmd;
 mod intent;
+mod plugins_cmd;
 mod sessions_cmd;
 pub use xylitol_official_plugin_obs as logging;
 mod print;
@@ -27,6 +28,11 @@ use xylitol_kernel::occupancy::subcommand::ServeAction;
 use xylitol_kernel::timing;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let raw_args: Vec<String> = std::env::args().collect();
+    if crate::cli::plugins_cmd::external_command_name(&raw_args).is_some() {
+        crate::cli::plugins_cmd::dispatch_external(raw_args[1..].to_vec()).await?;
+        return Ok(());
+    }
     let args = CliArgs::parse();
     let surface = surface_from_command(args.command.as_ref())?;
 
@@ -55,6 +61,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let _flush = FlushOnDrop;
 
     match args.command {
+        Some(CliCommand::Plugins { action }) => {
+            crate::cli::plugins_cmd::run_plugins(action)?;
+            return Ok(());
+        }
         #[cfg(feature = "server")]
         Some(CliCommand::Serve {
             host,
@@ -945,5 +955,39 @@ mod tests {
         let e = CliArgs::try_parse_from(["xylitol", "tui", "--no-ensure-host"]).unwrap();
         let s = surface_from_command(e.command.as_ref()).expect("surface");
         assert!(s.no_ensure_host);
+    }
+}
+
+#[cfg(test)]
+mod plugin_cli_tests {
+    use super::*;
+
+    #[test]
+    fn parses_plugin_list() {
+        let args = CliArgs::try_parse_from(["xylitol", "plugins", "list"]).expect("parse");
+        assert!(matches!(
+            args.command,
+            Some(CliCommand::Plugins {
+                action: PluginsAction::List
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_plugin_describe() {
+        let args = CliArgs::try_parse_from(["xylitol", "plugins", "describe", "thoughtdag"])
+            .expect("parse");
+        assert!(matches!(
+            args.command,
+            Some(CliCommand::Plugins {
+                action: PluginsAction::Describe { .. }
+            })
+        ));
+    }
+
+    #[test]
+    fn builtin_subcommand_is_not_shadowed() {
+        let args = CliArgs::try_parse_from(["xylitol", "tui"]).expect("parse");
+        assert!(matches!(args.command, Some(CliCommand::Tui { .. })));
     }
 }

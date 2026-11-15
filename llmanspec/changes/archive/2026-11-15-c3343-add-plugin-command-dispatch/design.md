@@ -6,7 +6,7 @@
 
 ## CLI 入口
 
-- clap 增加外部子命令兜底：`#[command(external_subcommand)] External(Vec<String>)`。
+- 在 clap 解析前识别第一个参数：若为已安装的 `xylitol-<name>`，直接委派；否则交给 clap。
 - 内置子命令优先；外部名不得遮蔽 `serve` / `tui` / `print` / `config` / `sessions` / `plugins`。
 - `xylitol <name> ...` 把剩余参数原样交给 `xylitol-<name>`；不经过 shell 拼接。
 - `xylitol plugins list` 列出已发现插件；`xylitol plugins describe <name>` 打印清单。

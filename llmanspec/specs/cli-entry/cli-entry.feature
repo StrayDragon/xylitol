@@ -256,3 +256,11 @@
     场景: 同传信任标志硬失败
       当 命令行同传 --trust 与 --no-trust
       那么 报错退出且未进入 trust 门禁
+
+  @req:r3363
+  规则: plugin-subcommand-surface
+    CLI 子命令面 须含 `plugins`；外部名不得遮蔽内置名。
+
+    场景: 插件子命令可见
+      当 xylitol --help
+      那么 Commands 含 plugins
