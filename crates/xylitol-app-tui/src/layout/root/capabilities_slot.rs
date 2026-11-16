@@ -24,7 +24,6 @@ impl UiRoot {
     }
 
     pub fn take_pending_capability_toggle(&mut self) -> Option<(String, bool)> {
-        self.pending.capability_toggle.take()
+        self.intents.take_capability_toggle()
     }
-
 }

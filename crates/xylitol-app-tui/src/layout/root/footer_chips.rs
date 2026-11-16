@@ -233,7 +233,6 @@ impl UiRoot {
         }
         true
     }
-
 }
 #[cfg(test)]
 mod tests {

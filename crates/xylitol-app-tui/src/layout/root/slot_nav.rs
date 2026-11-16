@@ -1,7 +1,9 @@
 use std::time::{Duration, Instant};
 
 use super::super::slots::EditorSlot;
-use super::{ImportConfirmDecision, UiRoot};
+use super::super::slots::ImportConfirmDecision;
+use super::UiRoot;
+use super::intent::UiIntent;
 use crate::bridge::UiPhase;
 
 #[derive(Debug, Default)]
@@ -33,7 +35,8 @@ impl UiRoot {
             return true;
         }
         if matches!(&self.slot, EditorSlot::ImportConfirm(_)) {
-            self.pending.import_decision = Some(ImportConfirmDecision::Rejected);
+            self.intents
+                .request(UiIntent::ImportDecision(ImportConfirmDecision::Rejected));
             self.close_import_confirm();
             return true;
         }
@@ -73,7 +76,7 @@ impl UiRoot {
                 && now.duration_since(prev) < Duration::from_millis(500)
             {
                 esc.last_at = None;
-                self.pending.tree_open = true;
+                self.intents.request(UiIntent::TreeOpen);
                 return true;
             }
             esc.last_at = Some(now);
@@ -88,7 +91,7 @@ impl UiRoot {
             ask.abort();
         }
         self.slot = EditorSlot::Editor;
-        self.pending.clear_cancelled_on_close();
+        self.intents.clear_cancelled_on_close();
     }
 
     pub fn close_session_tree(&mut self) {
@@ -100,7 +103,7 @@ impl UiRoot {
     pub fn open_slot(&mut self, slot: EditorSlot) {
         match slot {
             EditorSlot::Editor => self.close_slot(),
-            EditorSlot::Tree(_) => self.pending.tree_open = true,
+            EditorSlot::Tree(_) => self.intents.request(UiIntent::TreeOpen),
             EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice(_) => {
                 self.slot = slot;
             }

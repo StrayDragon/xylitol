@@ -6,6 +6,7 @@ use super::super::slots::{
     ModelsAction, ScenesAction, ThemesAction, TreeAction,
 };
 use super::UiRoot;
+use super::intent::UiIntent;
 use crate::keybindings::matches_binding;
 use crate::session_resume::SessionResumeAction;
 
@@ -48,10 +49,10 @@ impl UiRoot {
             EditorSlot::Tree(tree) => {
                 match tree.handle_input(event) {
                     TreeAction::None => {}
-                    TreeAction::Travel(id) => self.pending.tree_travel = Some(id),
-                    TreeAction::Fork(id) => self.pending.tree_fork = Some(id),
+                    TreeAction::Travel(id) => self.intents.request(UiIntent::TreeTravel(id)),
+                    TreeAction::Fork(id) => self.intents.request(UiIntent::TreeFork(id)),
                     TreeAction::Label { id, annotation } => {
-                        self.pending.tree_label = Some((id, annotation));
+                        self.intents.request(UiIntent::TreeLabel(id, annotation));
                     }
                 }
                 false
@@ -63,38 +64,39 @@ impl UiRoot {
             }
             EditorSlot::Models(models) => {
                 if let ModelsAction::Select(choice) = models.handle_input(event) {
-                    self.pending.model_select = Some(choice);
+                    self.intents.request(UiIntent::ModelSelect(choice));
                 }
                 false
             }
             EditorSlot::Scenes(scenes) => {
                 if let ScenesAction::Select(id) = scenes.handle_input(event) {
-                    self.pending.scene_select = Some(id);
+                    self.intents.request(UiIntent::SceneSelect(id));
                 }
                 false
             }
             EditorSlot::Themes(themes) => {
                 if let ThemesAction::Select(name) = themes.handle_input(event) {
-                    self.pending.theme_select = Some(name);
+                    self.intents.request(UiIntent::ThemeSelect(name));
                 }
                 false
             }
             EditorSlot::ImportConfirm(imp) => {
                 if let ImportAction::Decide(decision) = imp.handle_input(event) {
-                    self.pending.import_decision = Some(decision);
+                    self.intents.request(UiIntent::ImportDecision(decision));
                 }
                 false
             }
             EditorSlot::SessionResume(panel) => {
                 match panel.handle_input(event) {
                     SessionResumeAction::Switch(id) => {
-                        self.pending.session_resume_select = Some(id);
+                        self.intents.request(UiIntent::SessionResumeSelect(id));
                     }
                     SessionResumeAction::Rename { id, name } => {
-                        self.pending.session_resume_rename = Some((id, name));
+                        self.intents
+                            .request(UiIntent::SessionResumeRename(id, name));
                     }
                     SessionResumeAction::Delete(id) => {
-                        self.pending.session_resume_delete = Some(id);
+                        self.intents.request(UiIntent::SessionResumeDelete(id));
                     }
                     SessionResumeAction::None => {}
                 }
@@ -103,7 +105,7 @@ impl UiRoot {
             EditorSlot::Mcp(mcp) => match mcp.handle_input(event) {
                 McpAction::Close => true,
                 McpAction::Authorize(server) => {
-                    self.pending.mcp_oauth_start = Some(server);
+                    self.intents.request(UiIntent::McpOAuthStart(server));
                     true
                 }
                 McpAction::None => false,
@@ -113,8 +115,10 @@ impl UiRoot {
                 if let McpPromptAction::Select(index) = action
                     && let Some(entry) = prompts.entry(index)
                 {
-                    self.pending.mcp_prompt_select =
-                        Some((entry.server.clone(), entry.name.clone()));
+                    self.intents.request(UiIntent::McpPromptSelect(
+                        entry.server.clone(),
+                        entry.name.clone(),
+                    ));
                 }
                 matches!(action, McpPromptAction::Close)
             }
@@ -124,10 +128,12 @@ impl UiRoot {
                     && let Some(entry) = resources.entry(index)
                     && let Some(uri) = entry.uri.clone()
                 {
-                    self.pending.mcp_resource_add = Some(xylitol_plugin_sdk::mcp::McpResourceRef {
-                        server: entry.server.clone(),
-                        uri,
-                    });
+                    self.intents.request(UiIntent::McpResourceAdd(
+                        xylitol_plugin_sdk::mcp::McpResourceRef {
+                            server: entry.server.clone(),
+                            uri,
+                        },
+                    ));
                 }
                 matches!(action, McpResourceAction::Close)
             }
@@ -184,7 +190,7 @@ impl UiRoot {
                 return false;
             };
             if previous.as_deref() == Some(id.as_str()) {
-                self.pending.tree_travel = Some(id);
+                self.intents.request(UiIntent::TreeTravel(id));
             }
             return true;
         }
@@ -194,7 +200,7 @@ impl UiRoot {
                 return false;
             };
             if previous.as_deref() == Some(id.as_str()) {
-                self.pending.session_resume_select = Some(id);
+                self.intents.request(UiIntent::SessionResumeSelect(id));
             }
             return true;
         }
@@ -207,11 +213,9 @@ impl UiRoot {
                 if previous.as_deref() == Some(id)
                     && let Some((model_id, thinking)) = models.confirm_selected()
                 {
-                    self.pending.model_select =
-                        Some(super::super::models_picker::PendingModelChoice {
-                            model_id,
-                            thinking,
-                        });
+                    self.intents.request(UiIntent::ModelSelect(
+                        super::super::models_picker::PendingModelChoice { model_id, thinking },
+                    ));
                 }
                 true
             }
@@ -221,7 +225,12 @@ impl UiRoot {
                     return false;
                 };
                 if previous.as_deref() == Some(name) {
-                    self.pending.theme_select = themes.confirm_selected();
+                    match themes.confirm_selected() {
+                        Some(theme) => self.intents.request(UiIntent::ThemeSelect(theme)),
+                        None => self
+                            .intents
+                            .cancel(|i| matches!(i, UiIntent::ThemeSelect(_))),
+                    }
                 }
                 true
             }
@@ -234,8 +243,10 @@ impl UiRoot {
                 if previous == index
                     && let Some(entry) = prompts.entry(index)
                 {
-                    self.pending.mcp_prompt_select =
-                        Some((entry.server.clone(), entry.name.clone()));
+                    self.intents.request(UiIntent::McpPromptSelect(
+                        entry.server.clone(),
+                        entry.name.clone(),
+                    ));
                 }
                 true
             }
@@ -248,10 +259,12 @@ impl UiRoot {
                     && let Some(entry) = resources.entry(index)
                     && let Some(uri) = entry.uri.clone()
                 {
-                    self.pending.mcp_resource_add = Some(xylitol_plugin_sdk::mcp::McpResourceRef {
-                        server: entry.server.clone(),
-                        uri,
-                    });
+                    self.intents.request(UiIntent::McpResourceAdd(
+                        xylitol_plugin_sdk::mcp::McpResourceRef {
+                            server: entry.server.clone(),
+                            uri,
+                        },
+                    ));
                 }
                 true
             }
@@ -383,7 +396,8 @@ impl UiRoot {
         };
         match caps.handle_input(event) {
             CapabilitiesAction::Toggle { id, enabled } => {
-                self.pending.capability_toggle = Some((id, enabled));
+                self.intents
+                    .request(UiIntent::CapabilityToggle(id, enabled));
                 false
             }
             CapabilitiesAction::Close => true,
@@ -394,7 +408,8 @@ impl UiRoot {
     fn handle_capabilities_action(&mut self, action: CapabilitiesAction) -> bool {
         match action {
             CapabilitiesAction::Toggle { id, enabled } => {
-                self.pending.capability_toggle = Some((id, enabled));
+                self.intents
+                    .request(UiIntent::CapabilityToggle(id, enabled));
                 false
             }
             CapabilitiesAction::Close => true,

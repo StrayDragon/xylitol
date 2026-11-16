@@ -19,6 +19,6 @@ impl UiRoot {
     }
 
     pub fn take_pending_scene_select(&mut self) -> Option<String> {
-        self.pending.scene_select.take()
+        self.intents.take_scene_select()
     }
 }

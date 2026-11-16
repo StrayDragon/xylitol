@@ -3,10 +3,10 @@ mod editor_border;
 mod fixed_zone_footprint_apply;
 mod footer_chips;
 mod help_panel;
+mod intent;
 mod mcp_slot;
 mod models_slot;
 mod mount;
-mod pending_slot;
 mod render;
 mod scenes_slot;
 mod sidebar_panel;
@@ -15,7 +15,7 @@ mod slot_nav;
 mod theme_apply;
 
 use help_panel::HelpPanel;
-use pending_slot::PendingSlotOps;
+use intent::{PendingIntents, UiIntent};
 use sidebar_panel::SidebarPanel;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -139,7 +139,7 @@ pub struct UiRoot {
     toast_notice: Option<(String, Instant, ToastKind)>,
     slot: EditorSlot,
     help: HelpPanel,
-    pending: PendingSlotOps,
+    intents: PendingIntents,
     designing: bool,
     session_sidebar_on: bool,
     session_sidebar_width: usize,
@@ -278,7 +278,7 @@ impl UiRoot {
             toast_notice: None,
             slot: EditorSlot::Editor,
             help: HelpPanel::new(),
-            pending: PendingSlotOps::default(),
+            intents: PendingIntents::default(),
             designing: false,
             session_sidebar_on: false,
             session_sidebar_width: Self::SESSION_SIDEBAR_WIDTHS[0],
@@ -1004,16 +1004,16 @@ impl UiRoot {
     }
 
     pub fn request_session_sidebar(&mut self) {
-        self.pending.session_sidebar = true;
+        self.intents.request(UiIntent::SessionSidebar);
     }
 
     #[cfg(test)]
     pub fn has_pending_session_sidebar(&self) -> bool {
-        self.pending.session_sidebar
+        self.intents.has_session_sidebar()
     }
 
     pub fn take_pending_session_sidebar(&mut self) -> bool {
-        std::mem::take(&mut self.pending.session_sidebar)
+        self.intents.take_session_sidebar()
     }
 
     pub fn show_session_sidebar(&mut self, _session_id: &str) {
@@ -1316,27 +1316,27 @@ impl UiRoot {
     }
 
     pub fn take_pending_tree_open(&mut self) -> bool {
-        std::mem::take(&mut self.pending.tree_open)
+        self.intents.take_tree_open()
     }
 
     pub fn request_tree_open(&mut self) {
-        self.pending.tree_open = true;
+        self.intents.request(UiIntent::TreeOpen);
     }
 
     pub fn take_pending_tree_travel(&mut self) -> Option<String> {
-        self.pending.tree_travel.take()
+        self.intents.take_tree_travel()
     }
 
     pub fn take_pending_tree_fork(&mut self) -> Option<String> {
-        self.pending.tree_fork.take()
+        self.intents.take_tree_fork()
     }
 
     pub fn request_tree_fork(&mut self, entry_id: String) {
-        self.pending.tree_fork = Some(entry_id);
+        self.intents.request(UiIntent::TreeFork(entry_id));
     }
 
     pub fn take_pending_tree_label(&mut self) -> Option<(String, Option<String>)> {
-        self.pending.tree_label.take()
+        self.intents.take_tree_label()
     }
 
     pub fn apply_tree_label(&mut self, id: &str, label: Option<String>) {
@@ -1346,21 +1346,21 @@ impl UiRoot {
     }
 
     pub fn take_pending_model_select(&mut self) -> Option<PendingModelChoice> {
-        self.pending.model_select.take()
+        self.intents.take_model_select()
     }
 
     pub fn pending_take_mcp_prompt_select(&mut self) -> Option<(String, String)> {
-        self.pending.mcp_prompt_select.take()
+        self.intents.take_mcp_prompt_select()
     }
 
     pub fn pending_take_mcp_oauth_start(&mut self) -> Option<String> {
-        self.pending.mcp_oauth_start.take()
+        self.intents.take_mcp_oauth_start()
     }
 
     pub fn pending_take_mcp_resource_add(
         &mut self,
     ) -> Option<xylitol_plugin_sdk::mcp::McpResourceRef> {
-        self.pending.mcp_resource_add.take()
+        self.intents.take_mcp_resource_add()
     }
 
     pub fn models_open(&self) -> bool {
@@ -1368,7 +1368,7 @@ impl UiRoot {
     }
 
     pub fn take_pending_theme_select(&mut self) -> Option<String> {
-        self.pending.theme_select.take()
+        self.intents.take_theme_select()
     }
 
     pub fn themes_open(&self) -> bool {
@@ -1384,15 +1384,15 @@ impl UiRoot {
     }
 
     pub fn take_pending_session_resume_select(&mut self) -> Option<String> {
-        self.pending.session_resume_select.take()
+        self.intents.take_session_resume_select()
     }
 
     pub fn take_pending_session_resume_rename(&mut self) -> Option<(String, String)> {
-        self.pending.session_resume_rename.take()
+        self.intents.take_session_resume_rename()
     }
 
     pub fn take_pending_session_resume_delete(&mut self) -> Option<String> {
-        self.pending.session_resume_delete.take()
+        self.intents.take_session_resume_delete()
     }
 
     pub fn session_resume_apply_rename(&mut self, id: &str, name: &str) {
@@ -1451,7 +1451,7 @@ impl UiRoot {
     }
 
     pub fn take_pending_import_decision(&mut self) -> Option<ImportConfirmDecision> {
-        self.pending.import_decision.take()
+        self.intents.take_import_decision()
     }
 
     pub fn mount_import_confirm(&mut self, path: &str) {
@@ -1750,11 +1750,11 @@ impl UiRoot {
     }
 
     pub(crate) fn pending_tree_fork(&self) -> Option<String> {
-        self.pending.tree_fork.clone()
+        self.intents.pending_tree_fork()
     }
 
     pub(crate) fn pending_tree_label(&self) -> Option<(String, Option<String>)> {
-        self.pending.tree_label.clone()
+        self.intents.pending_tree_label()
     }
 
     #[cfg(test)]
@@ -1952,13 +1952,13 @@ mod tests {
         let top = root.last_slot_top_row.expect("slot top");
         assert!(root.handle_slot_row_click_for_test(top as u16 + 2));
         assert!(
-            root.pending.model_select.is_none(),
+            root.take_pending_model_select().is_none(),
             "first click only selects"
         );
         let _ = root.render(120);
         assert!(root.handle_slot_row_click_for_test(top as u16 + 2));
         assert!(
-            root.pending.model_select.is_some(),
+            root.take_pending_model_select().is_some(),
             "second click commits the row action"
         );
     }
@@ -2315,7 +2315,7 @@ mod tests {
         root.mount_models_picker(vec![fake_row()]);
         root.handle_key(enter());
         assert!(
-            root.pending.model_select.is_some(),
+            root.take_pending_model_select().is_some(),
             "Enter must record the picker confirm"
         );
         root.on_escape(&mut EscWindow::default());
@@ -2331,7 +2331,7 @@ mod tests {
         root.mount_themes_picker(Some("dark"));
         root.handle_key(enter());
         assert!(
-            root.pending.theme_select.is_some(),
+            root.take_pending_theme_select().is_some(),
             "Enter must record the theme confirm"
         );
         root.on_escape(&mut EscWindow::default());
