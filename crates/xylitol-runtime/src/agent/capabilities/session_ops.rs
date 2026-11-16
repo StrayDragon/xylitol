@@ -82,6 +82,7 @@ impl AgentCapabilities {
         xylitol_plugin_sdk::ObsSessionContext {
             session_id: self.session_id.clone(),
             session_name: self.session_name.clone(),
+            prompt_cache_key: self.session_id.clone(),
             ..Default::default()
         }
     }
@@ -105,6 +106,7 @@ impl AgentCapabilities {
             let (parent, cut) = xylitol_plugin_sdk::session::session_fork_edge(&entries);
             ctx.parent_session_id = parent;
             ctx.fork_at_entry_id = cut;
+            ctx.prompt_cache_key = xylitol_plugin_sdk::session::session_cache_key(&entries);
         }
         ctx
     }

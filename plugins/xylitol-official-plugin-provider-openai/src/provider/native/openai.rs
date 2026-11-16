@@ -211,7 +211,13 @@ impl OpenAIProvider {
         else {
             return;
         };
-        body["prompt_cache_key"] = serde_json::json!(session_id);
+        let cache_key = options
+            .obs_session
+            .prompt_cache_key
+            .as_deref()
+            .filter(|key| !key.is_empty())
+            .unwrap_or(session_id);
+        body["prompt_cache_key"] = serde_json::json!(cache_key);
         if let Some(retention) = self.wire_policy.prompt_cache_retention() {
             body["prompt_cache_retention"] = serde_json::json!(retention.as_wire_str());
         }

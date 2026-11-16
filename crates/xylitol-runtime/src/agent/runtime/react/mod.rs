@@ -970,17 +970,20 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 None => (None, String::new()),
             }
         };
-        let (parent_session_id, fork_at_entry_id) = store
-            .load_entries(&session_id)
-            .await
-            .ok()
-            .map(|entries| xylitol_plugin_sdk::session::session_fork_edge(&entries))
+        let entries = store.load_entries(&session_id).await.ok();
+        let (parent_session_id, fork_at_entry_id) = entries
+            .as_ref()
+            .map(|entries| xylitol_plugin_sdk::session::session_fork_edge(entries))
             .unwrap_or((None, None));
+        let prompt_cache_key = entries
+            .as_ref()
+            .and_then(|entries| xylitol_plugin_sdk::session::session_cache_key(entries));
         let obs_session = xylitol_plugin_sdk::ObsSessionContext {
             session_id: Some(session_id.clone()),
             session_name: obs_session_name,
             parent_session_id,
             fork_at_entry_id,
+            prompt_cache_key,
             llm_gateway_session_id: None,
             ..Default::default()
         };

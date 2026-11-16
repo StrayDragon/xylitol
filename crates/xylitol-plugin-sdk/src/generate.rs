@@ -10,6 +10,7 @@ pub struct ObsSessionContext {
     pub session_name: Option<String>,
     pub parent_session_id: Option<String>,
     pub fork_at_entry_id: Option<String>,
+    pub prompt_cache_key: Option<String>,
     pub llm_gateway_session_id: Option<String>,
     pub compaction_requested_model: Option<String>,
     pub compaction_actual_model: Option<String>,

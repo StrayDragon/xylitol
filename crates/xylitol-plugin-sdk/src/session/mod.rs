@@ -36,8 +36,8 @@ pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json,
     has_unmigrated_legacy_custom_types, is_assistant_message, is_env_custom_message,
     is_tool_call_part, is_user_message, message_custom_type, message_parts, message_role,
-    message_text, paginate_entries, session_fork_edge, tool_call_name, tool_file_paths,
-    transcript_ancestry_ids, transcript_leaf_anchor,
+    message_text, paginate_entries, session_cache_key, session_fork_edge, tool_call_name,
+    tool_file_paths, transcript_ancestry_ids, transcript_leaf_anchor,
 };
 pub use manifest::{ParentRef, SealedIndex, SessionManifest, SessionSegment};
 pub use parse::{
