@@ -2,6 +2,9 @@
 depends_on: []
 blocks: []
 title: 核心显式上下文运行
+branch: sdd/c3344-add-core-explicit-context-run
+base_branch: main
+base_sha: b1b8ebf44cba53e7b328e564ebc05567419c5f7f
 ---
 
 # 核心显式上下文运行
@@ -26,6 +29,7 @@ ThoughtDAG surface 需要把画布编译出的完整 `messages` 作为本轮上�
 | 方案 | 问题 | 结论 |
 |---|---|---|
 | 加 `run_with_messages(prompt, messages)` | 方法继续增殖；system/parts 无处放；B/C 还要再加 `run_with_options` | 拒绝 |
+| `run_turn` 必填、无默认实现 | 编译期强制支持；但破坏所有外部 driver 与测试 stub | 拒绝 |
 | 把上下文写成 session 条目或临时 session | 污染 session；fork/replay 语义变复杂；违背“一画布不强制一 session” | 拒绝 |
 | 复用 `McpResourceContext` | MCP 资源语义，不是对话消息；无法表达 assistant/tool result | 拒绝 |
 | 用 context-inject loop 中间件 | 需要按请求动态注册；线程/生命周期复杂；surface 无法配置 | 拒绝 |
@@ -71,14 +75,20 @@ impl TurnRequest {
 `crates/xylitol-runtime/src/driver/proto.rs`：
 
 ```rust
-async fn run_turn(&mut self, request: TurnRequest) -> EventStream {
-    self.run(&request.prompt_text()).await
+async fn run_turn(
+    &mut self,
+    request: TurnRequest,
+) -> Result<EventStream, XyDriverError> {
+    if request.context.is_empty() && request.system_prompt.is_none() {
+        return Ok(self.run(&request.prompt_text()).await);
+    }
+    Err(XyDriverError::unsupported("run_turn request context"))
 }
 ```
 
-- 默认实现忽略 `context` / `system_prompt`，保证所有现有 driver 可用。
+- 默认实现只对“纯 prompt”回退 `run`；带 `context` 或 `system_prompt` 时返回显式 `Unsupported`，不静默丢弃。
 - `run` / `run_with_context` 保持不变；不递归。
-- `XyInProcessDriver` 覆盖 `run_turn`。
+- `XyInProcessDriver` 覆盖 `run_turn`，返回 `Ok`。
 
 ### 3. InProcessDriver
 
@@ -99,9 +109,8 @@ async fn run_turn(&mut self, request: TurnRequest) -> EventStream {
 - 与 `submit_parts` 共用准入、turn 创建、`freeze_root_config`。
 - `start_root_stream` 增加参数：
   - `seeded_history: Option<Vec<AgentMessage>>`
-  - `system_prompt_override: Option<String>`
+- `freeze_root_config` 增加 `system_prompt: Option<String>` 参数；有覆盖值时用它替代 `inner.system_prompt()`，否则保持原值。`FrozenRootConfig` 结构不变。
 - 有 seed 时跳过 `load_conversation_history`；无 seed 保持现状。
-- `FrozenRootConfig` 增加 `system_prompt_override`；`freeze_root_config` 用覆盖值替代 `inner.system_prompt()`。
 - 历史构建：
   - `let mut history = seeded_history.unwrap_or_else(load...)`
   - push 本轮 user parts。
@@ -137,15 +146,18 @@ async fn run_turn(&mut self, request: TurnRequest) -> EventStream {
 
 ## Impact
 
-- 兼容：`run_turn` 默认回退，现有 5+ 个 `XyDriver` 实现不受影响。
+- 兼容：`run_turn` 有默认实现，现有 5+ 个 `XyDriver` 实现不受影响；纯 prompt 仍可回退。
+- 显式失败：带 context/system 的请求在不支持该能力的 driver 上返回 `Unsupported`，不静默降级。
 - 影响面：`proto.rs`、`driver/types.rs`、`in_process/mod.rs`、`react/mod.rs`、`src/embed.rs`；`xtd-core` / `xtd-web` 使用新入口。
+- 不改公共 `FrozenRootConfig` 字段；不破坏直接构造该结构的代码。
 - 跨仓：thoughtdag `add-explicit-context-run` 依赖本 change；跨仓依赖不能写进 `depends_on`，需在两边 proposal 互相标注。
 - 风险：seed 不落盘导致 session 重放看不到完整上下文；需要在 UI/文档说明。
 - 风险：system 覆盖可能丢失 boot 的上下文注入；需明确“覆盖”而非“追加”，并提供追加选项。
 
 ## Verification
 
-- 单测：`run_turn` 默认回退；in-process 把 context 传给 `submit_turn`。
+- 单测：`run_turn` 纯 prompt 默认回退；带 context/system 的默认实现返回 `Unsupported`。
+- 单测：in-process 把 context 传给 `submit_turn`。
 - 单测：seed 不写 session；本轮 user/assistant 写 session。
 - 单测：system 覆盖进入 `XyGenerateOptions.system_prompt`，不写 user。
 - 单测：`TurnRequest::text` 与 `run(prompt)` 等价。

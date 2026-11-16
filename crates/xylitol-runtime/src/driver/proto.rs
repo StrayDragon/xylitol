@@ -7,7 +7,8 @@ use serde_json::Value;
 use super::XyDriverError;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
-    ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport, SessionState, XyEvent,
+    ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport, SessionState, TurnRequest,
+    XyEvent,
 };
 
 pub type BashRun =
@@ -45,6 +46,13 @@ pub trait XyDriver: Send {
         _contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
     ) -> EventStream {
         self.run(prompt).await
+    }
+
+    async fn run_turn(&mut self, request: TurnRequest) -> Result<EventStream, XyDriverError> {
+        if request.context.is_empty() && request.system_prompt.is_none() {
+            return Ok(self.run(&request.prompt_text()).await);
+        }
+        Err(XyDriverError::unsupported("run_turn request context"))
     }
 
     async fn mcp_catalog(&mut self) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
@@ -259,5 +267,97 @@ pub trait XyDriver: Send {
         Err(XyDriverError::unsupported(
             "read_clipboard_text not supported on this driver",
         ))
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::StreamExt;
+
+    struct Stub;
+
+    #[async_trait]
+    impl XyDriver for Stub {
+        async fn run(&mut self, prompt: &str) -> EventStream {
+            Box::pin(futures::stream::iter(vec![XyEvent::TextDelta(
+                prompt.to_string(),
+            )]))
+        }
+
+        fn abort(&self) {}
+
+        fn current_model(&self) -> Option<ModelInfo> {
+            None
+        }
+
+        fn available_models(&self) -> Vec<ModelInfo> {
+            Vec::new()
+        }
+
+        fn thinking_level(&self) -> String {
+            "off".into()
+        }
+
+        fn session_id(&self) -> Option<String> {
+            Some("stub".into())
+        }
+
+        fn get_commands(&self) -> Vec<CommandInfo> {
+            Vec::new()
+        }
+
+        fn leaf_entry_id(&self) -> Option<String> {
+            None
+        }
+
+        async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+            LoadedResourcesSnapshot::default()
+        }
+
+        async fn estimate_context_tokens(
+            &self,
+        ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
+            Ok(Default::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn run_turn_falls_back_for_plain_prompt() {
+        let mut driver = Stub;
+        let mut stream = driver
+            .run_turn(TurnRequest::text("hello"))
+            .await
+            .expect("plain prompt must fall back");
+        let mut text = String::new();
+        while let Some(event) = stream.next().await {
+            if let XyEvent::TextDelta(delta) = event {
+                text.push_str(&delta);
+            }
+        }
+        assert_eq!(text, "hello");
+    }
+
+    #[tokio::test]
+    async fn run_turn_rejects_context_on_unsupported_driver() {
+        let mut driver = Stub;
+        let request = TurnRequest::text("hello").with_context(vec![
+            xylitol_plugin_sdk::message::XyLlmMessage::user("prior"),
+        ]);
+        let error = match driver.run_turn(request).await {
+            Ok(_) => panic!("context must fail"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("run_turn request context"));
+    }
+
+    #[tokio::test]
+    async fn run_turn_rejects_system_on_unsupported_driver() {
+        let mut driver = Stub;
+        let request = TurnRequest::text("hello").with_system_prompt(Some("system".into()));
+        let error = match driver.run_turn(request).await {
+            Ok(_) => panic!("system must fail"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("run_turn request context"));
     }
 }

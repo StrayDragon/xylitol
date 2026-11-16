@@ -3,6 +3,7 @@ use std::pin::Pin;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 
+use xylitol_plugin_sdk::message::{AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::model::{THINKING_OFF, XyModelMeta, thinking_levels_are_adjustable};
 use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeKind};
 
@@ -157,6 +158,72 @@ pub fn estimate_from_session_entries(
 }
 
 pub use xylitol_plugin_sdk::lifecycle::XyEvent;
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Default)]
+pub struct TurnRequest {
+    pub parts: Vec<AgentPart>,
+    pub context: Vec<XyLlmMessage>,
+    pub system_prompt: Option<String>,
+}
+
+impl TurnRequest {
+    pub fn text(prompt: impl Into<String>) -> Self {
+        Self::new(vec![AgentPart::text(prompt)])
+    }
+
+    pub fn new(parts: Vec<AgentPart>) -> Self {
+        Self {
+            parts,
+            context: Vec::new(),
+            system_prompt: None,
+        }
+    }
+
+    pub fn with_context(mut self, context: Vec<XyLlmMessage>) -> Self {
+        self.context = context;
+        self
+    }
+
+    pub fn with_system_prompt(mut self, system_prompt: Option<String>) -> Self {
+        self.system_prompt = system_prompt;
+        self
+    }
+
+    pub fn prompt_text(&self) -> String {
+        self.parts
+            .iter()
+            .filter_map(|part| match part {
+                AgentPart::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_request_round_trips_prompt() {
+        let request = TurnRequest::text("hello");
+        assert_eq!(request.prompt_text(), "hello");
+        assert!(request.context.is_empty());
+        assert!(request.system_prompt.is_none());
+    }
+
+    #[test]
+    fn prompt_text_joins_text_parts_only() {
+        let request = TurnRequest::new(vec![
+            AgentPart::text("first"),
+            AgentPart::thinking("hidden"),
+            AgentPart::text("second"),
+        ]);
+        assert_eq!(request.prompt_text(), "first\nsecond");
+    }
+}
 
 pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
 

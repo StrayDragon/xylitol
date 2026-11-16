@@ -17,5 +17,5 @@ pub use types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
     MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot, ModelInfo, ProjectTrustMode,
     ProjectTrustPersistReport, QueueStats, ReloadStepReport, RuntimeReloadReport, SessionListEntry,
-    SessionState, SessionStats, XyEvent, estimate_from_session_entries,
+    SessionState, SessionStats, TurnRequest, XyEvent, estimate_from_session_entries,
 };

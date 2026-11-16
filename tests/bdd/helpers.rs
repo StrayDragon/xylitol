@@ -109,6 +109,18 @@ pub(crate) async fn agent_submit_root_with_id(
     agent.submit_root(prompt).await
 }
 
+pub(crate) async fn agent_submit_turn(
+    agent: &mut AgentRuntime,
+    parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
+    context: Vec<xylitol_plugin_sdk::message::AgentMessage>,
+    system_prompt: Option<String>,
+) -> xylitol_runtime::agent::XyEventStream {
+    if agent.session_id().is_none() {
+        bind_session_or_panic(agent, uuid::Uuid::new_v4().to_string());
+    }
+    agent.submit_turn(parts, context, system_prompt).await
+}
+
 pub(crate) async fn run_wiring_operation(
     agent: &AgentState,
     op: &str,

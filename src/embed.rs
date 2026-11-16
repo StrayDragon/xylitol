@@ -7,8 +7,8 @@ pub use xylitol_kernel::composition::{
     BuildAgentOptions, McpServerSpec, McpSession, McpTransportSpec, build_agent,
 };
 pub use xylitol_kernel::driver::{
-    CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, XyDriver, XyDriverError,
-    XyInProcessDriver, assemble_driver,
+    CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, TurnRequest, XyDriver,
+    XyDriverError, XyInProcessDriver, assemble_driver,
 };
 
 pub fn with_loop_registry(

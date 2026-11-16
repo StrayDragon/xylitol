@@ -17,9 +17,10 @@ use xylitol_plugin_sdk::error::XySessionError;
 
 use super::types::{
     CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode,
-    ProjectTrustPersistReport,
+    ProjectTrustPersistReport, TurnRequest,
 };
 pub(super) use super::{XyDriver, XyDriverError, types};
+use xylitol_plugin_sdk::message::AgentMessage;
 
 mod prepare;
 mod reload;
@@ -528,17 +529,7 @@ impl XyDriver for XyInProcessDriver {
         prompt: &str,
         contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
     ) -> EventStream {
-        self.apply_pending_capability_overlay();
-        self.ensure_tool_table_frozen().await;
-        if self.agent.session_id().is_none() {
-            let id = uuid::Uuid::new_v4().to_string();
-            if let Err(e) = bind_session_or_err(&mut self.agent, id.clone()) {
-                e.log_failure("driver.run.bind_session");
-            }
-            self.bind_todo_session(Some(&id)).await;
-        } else if let Some(sid) = self.agent.session_id() {
-            self.bind_todo_session(Some(sid)).await;
-        }
+        self.prepare_run().await;
         if let Some(sid) = self.agent.session_id() {
             for context in contexts {
                 let entry = xylitol_plugin_sdk::session::SessionEntry::CustomMessage(
@@ -570,6 +561,16 @@ impl XyDriver for XyInProcessDriver {
         }
         let stream = self.agent.submit_root(prompt).await;
         Box::pin(stream)
+    }
+
+    async fn run_turn(&mut self, request: TurnRequest) -> Result<EventStream, XyDriverError> {
+        self.prepare_run().await;
+        let context = request.context.into_iter().map(AgentMessage::Llm).collect();
+        let stream = self
+            .agent
+            .submit_turn(request.parts, context, request.system_prompt)
+            .await;
+        Ok(Box::pin(stream))
     }
 
     async fn mcp_catalog(&mut self) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
@@ -863,6 +864,20 @@ impl XyDriver for XyInProcessDriver {
 }
 
 impl XyInProcessDriver {
+    async fn prepare_run(&mut self) {
+        self.apply_pending_capability_overlay();
+        self.ensure_tool_table_frozen().await;
+        if self.agent.session_id().is_none() {
+            let id = uuid::Uuid::new_v4().to_string();
+            if let Err(e) = bind_session_or_err(&mut self.agent, id.clone()) {
+                e.log_failure("driver.run.bind_session");
+            }
+            self.bind_todo_session(Some(&id)).await;
+        } else if let Some(sid) = self.agent.session_id() {
+            self.bind_todo_session(Some(sid)).await;
+        }
+    }
+
     pub async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         let registry = self.agent.model_registry();
         let found = registry

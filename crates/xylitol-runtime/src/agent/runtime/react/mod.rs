@@ -457,6 +457,15 @@ impl AgentRuntime {
         &mut self,
         parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
     ) -> XyEventStream {
+        self.submit_turn(parts, Vec::new(), None).await
+    }
+
+    pub async fn submit_turn(
+        &mut self,
+        parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
+        context: Vec<AgentMessage>,
+        system_prompt: Option<String>,
+    ) -> XyEventStream {
         let Some(session_id) = self.inner.session_id().map(str::to_string) else {
             return XyEventStream::error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
                 "NoSession",
@@ -464,7 +473,8 @@ impl AgentRuntime {
             ));
         };
 
-        let frozen = self.freeze_root_config(parts);
+        let frozen = self.freeze_root_config(parts, system_prompt);
+        let seeded_history = (!context.is_empty()).then_some(context);
 
         enum Admit {
             Immediate {
@@ -485,16 +495,20 @@ impl AgentRuntime {
         match admit {
             Admit::Busy => XyEventStream::busy(),
             Admit::Immediate { turn_id, cancel } => {
-                self.start_root_stream(session_id, turn_id, cancel, frozen)
+                self.start_root_stream(session_id, turn_id, cancel, frozen, seeded_history)
                     .await
             }
         }
     }
 
-    fn freeze_root_config(&self, user_parts: Vec<AgentPart>) -> FrozenRootConfig {
+    fn freeze_root_config(
+        &self,
+        user_parts: Vec<AgentPart>,
+        system_prompt: Option<String>,
+    ) -> FrozenRootConfig {
         FrozenRootConfig {
             user_parts,
-            system_prompt: self.inner.system_prompt().map(str::to_string),
+            system_prompt: system_prompt.or_else(|| self.inner.system_prompt().map(str::to_string)),
             tools: self.inner.tools().clone(),
             hooks: self.inner.hooks().clone(),
             batch_mode: self.inner.tool_mode(),
@@ -516,6 +530,7 @@ impl AgentRuntime {
         turn_id: TurnId,
         cancel: CancellationToken,
         frozen: FrozenRootConfig,
+        seeded_history: Option<Vec<AgentMessage>>,
     ) -> XyEventStream {
         let t_ensure = std::time::Instant::now();
         if let Err(e) = self.inner.ensure_session(&session_id, None).await {
@@ -533,27 +548,38 @@ impl AgentRuntime {
             }
         }
 
-        let t_hist = std::time::Instant::now();
-        let seeded_history = match self.inner.load_conversation_history(&session_id).await {
-            Ok(h) => h,
-            Err(e) => {
-                self.coordinator.with_mut(|c| {
-                    let _ = c.finish_turn(turn_id);
-                });
-                return XyEventStream::error(xylitol_plugin_sdk::lifecycle::XyEventError::from_xy(
-                    &e,
-                ));
+        let seeded_history = match seeded_history {
+            Some(seeded) => {
+                log::debug!(
+                    target: "xylitol::lag",
+                    "run_seed_history entries={}",
+                    seeded.len()
+                );
+                seeded
+            }
+            None => {
+                let t_hist = std::time::Instant::now();
+                let history = match self.inner.load_conversation_history(&session_id).await {
+                    Ok(h) => h,
+                    Err(e) => {
+                        self.coordinator.with_mut(|c| {
+                            let _ = c.finish_turn(turn_id);
+                        });
+                        return XyEventStream::error(
+                            xylitol_plugin_sdk::lifecycle::XyEventError::from_xy(&e),
+                        );
+                    }
+                };
+                let ms = t_hist.elapsed().as_millis();
+                let n = history.len();
+                if ms >= 16 {
+                    log::info!(target: "xylitol::lag", "run_load_history {ms}ms entries={n}");
+                } else {
+                    log::debug!(target: "xylitol::lag", "run_load_history {ms}ms entries={n}");
+                }
+                history
             }
         };
-        {
-            let ms = t_hist.elapsed().as_millis();
-            let n = seeded_history.len();
-            if ms >= 16 {
-                log::info!(target: "xylitol::lag", "run_load_history {ms}ms entries={n}");
-            } else {
-                log::debug!(target: "xylitol::lag", "run_load_history {ms}ms entries={n}");
-            }
-        }
 
         let queues = self.inner.queues();
         let lease = TurnLease::new(self.coordinator.clone(), turn_id, Some(queues.clone()));
@@ -3640,5 +3666,57 @@ mod loop_middleware_tests {
             rejection.is_some(),
             "image input must be rejected when the model declares text only: {events:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn submit_turn_seed_is_not_persisted() {
+        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
+        use xylitol_plugin_sdk::session::SessionEntry;
+
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(OneShotText) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let store = base.store.clone();
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-run-context").expect("bind");
+
+        let seed = vec![AgentMessage::assistant("prior")];
+        let mut stream = runtime
+            .submit_turn(
+                vec![AgentPart::text("new question")],
+                seed,
+                Some("override system".into()),
+            )
+            .await;
+        while stream.next().await.is_some() {}
+
+        let entries = store
+            .load_entries("sess-run-context")
+            .await
+            .expect("entries");
+        let texts: Vec<String> = entries
+            .iter()
+            .filter_map(|entry| match entry {
+                SessionEntry::Message(message) => message
+                    .message
+                    .get("content")
+                    .and_then(|content| content.as_array())
+                    .map(|parts| {
+                        parts
+                            .iter()
+                            .filter_map(|part| part.get("text")?.as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            texts.iter().all(|text| text != "prior"),
+            "seed must not be persisted: {texts:?}"
+        );
+        assert!(texts.iter().any(|text| text == "new question"));
+        assert!(texts.iter().any(|text| text == "done"));
     }
 }
