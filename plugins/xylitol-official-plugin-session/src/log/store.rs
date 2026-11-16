@@ -316,6 +316,7 @@ async fn fork_impl(
         Some(leaf) => load_branch(store, parent_id, Some(leaf)).await?,
     };
     let from_id = path_leaf.unwrap_or(at_entry_id).to_string();
+    let fork_from = from_id.clone();
     let path_ids: HashSet<&str> = path.iter().filter_map(|entry| entry.entry_id()).collect();
     let skipped: Vec<SessionEntry> = parent_entries
         .iter()
@@ -391,7 +392,7 @@ async fn fork_impl(
             &EdgeRecord {
                 id: format!("fork:{child_id}"),
                 edge_kind: EdgeKind::Fork,
-                from: at_entry_id.to_string(),
+                from: fork_from,
                 to: leaf,
                 order: 0,
                 enabled: true,

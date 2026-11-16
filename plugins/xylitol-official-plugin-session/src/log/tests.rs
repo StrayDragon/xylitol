@@ -91,6 +91,17 @@ async fn fork_branch_keeps_context_reminder_in_ancestor_chain() {
         !ids.contains(&"u1"),
         "ForkPosition::Before must drop the forked-at user message: {ids:?}"
     );
+    let context = build_context_entries(&store, "s_fork_child")
+        .await
+        .expect("graph context");
+    let context_ids: Vec<_> = context
+        .iter()
+        .filter_map(|entry| entry.entry_id())
+        .collect();
+    assert!(
+        !context_ids.contains(&"u1"),
+        "ForkPosition::Before must keep the forked-at user message out of graph context: {context_ids:?}"
+    );
 }
 
 fn normalize_entries(entries: &[SessionEntry], known: &HashSet<String>) -> Value {

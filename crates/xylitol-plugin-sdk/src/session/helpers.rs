@@ -208,12 +208,19 @@ pub fn transcript_ancestry_ids(entries: &[SessionEntry], leaf_id: Option<&str>) 
 }
 
 pub fn session_fork_edge(entries: &[SessionEntry]) -> (Option<String>, Option<String>) {
-    for entry in entries {
+    for entry in entries.iter().rev() {
         if let SessionEntry::Header(h) = entry {
             return (h.parent_session.clone(), h.fork_at_entry_id.clone());
         }
     }
     (None, None)
+}
+
+pub fn session_cache_key(entries: &[SessionEntry]) -> Option<String> {
+    entries.iter().find_map(|entry| match entry {
+        SessionEntry::Header(header) => Some(header.id.clone()),
+        _ => None,
+    })
 }
 
 pub fn has_unmigrated_legacy_custom_types(entries: &[SessionEntry]) -> bool {
@@ -281,6 +288,41 @@ mod leaf_anchor_tests {
             provider: "fake".into(),
             model_id: "fake/m".into(),
         })
+    }
+
+    #[test]
+    fn cache_key_uses_root_header_and_fork_edge_uses_own_header() {
+        use crate::session::SessionHeader;
+
+        let entries = vec![
+            SessionEntry::Header(SessionHeader {
+                entry_type: "session".into(),
+                version: 7,
+                id: "root".into(),
+                timestamp: 0,
+                cwd: ".".into(),
+                parent_session: None,
+                fork_at_entry_id: None,
+                agent_profile: None,
+                agent_profile_fingerprint: None,
+            }),
+            SessionEntry::Header(SessionHeader {
+                entry_type: "session".into(),
+                version: 7,
+                id: "child".into(),
+                timestamp: 0,
+                cwd: ".".into(),
+                parent_session: Some("root".into()),
+                fork_at_entry_id: Some("u1".into()),
+                agent_profile: None,
+                agent_profile_fingerprint: None,
+            }),
+        ];
+        assert_eq!(session_cache_key(&entries).as_deref(), Some("root"));
+        assert_eq!(
+            session_fork_edge(&entries),
+            (Some("root".into()), Some("u1".into()))
+        );
     }
 
     #[test]
