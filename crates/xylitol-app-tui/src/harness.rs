@@ -3227,7 +3227,7 @@ mod slice_tests {
             "default must not show [no-tools]; got:\n{panel}"
         );
         assert_eq!(
-            root.borrow().tree_filter_for_test(),
+            root.borrow().tree_filter(),
             crate::layout::FilterMode::Default
         );
     }
@@ -3269,7 +3269,7 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
         assert_eq!(
-            root.borrow().tree_filter_for_test(),
+            root.borrow().tree_filter(),
             crate::layout::FilterMode::Default
         );
         session.step(HostEvent::Input(ctrl_key_event('o'))).unwrap();
@@ -3279,7 +3279,7 @@ mod slice_tests {
             "ctrl+o from default must cycle to no-tools; got:\n{panel}"
         );
         assert_eq!(
-            root.borrow().tree_filter_for_test(),
+            root.borrow().tree_filter(),
             crate::layout::FilterMode::NoTools
         );
     }
@@ -3475,7 +3475,7 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
         assert_eq!(
-            root.borrow().tree_filter_for_test(),
+            root.borrow().tree_filter(),
             crate::layout::FilterMode::Default
         );
         session
@@ -3487,7 +3487,7 @@ mod slice_tests {
             "ctrl+shift+o from default must cycle to all; got:\n{panel}"
         );
         assert_eq!(
-            root.borrow().tree_filter_for_test(),
+            root.borrow().tree_filter(),
             crate::layout::FilterMode::All
         );
     }

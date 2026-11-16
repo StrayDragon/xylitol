@@ -101,7 +101,7 @@ impl InteractionBdd {
 
     pub fn click_todo_summary(&mut self) -> bool {
         let _ = self.root.render(80);
-        let Some(row) = self.root.todo_summary_row_for_test() else {
+        let Some(row) = self.root.todo_summary_row() else {
             return false;
         };
         self.root.click_todo_bar_local(0, row)
@@ -165,7 +165,7 @@ impl InteractionBdd {
         if !self.is_tree_slot() {
             return None;
         }
-        Some(match self.root.tree_filter_for_test() {
+        Some(match self.root.tree_filter() {
             FilterMode::Default => "default",
             FilterMode::NoTools => "no-tools",
             FilterMode::UserOnly => "user-only",

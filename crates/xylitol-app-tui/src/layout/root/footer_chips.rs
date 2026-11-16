@@ -234,18 +234,6 @@ impl UiRoot {
         true
     }
 
-    #[cfg(test)]
-    pub fn footer_chip_actions_for_test(&self) -> Vec<(FooterAction, String, bool)> {
-        self.footer_chip_actions()
-    }
-
-    #[cfg(test)]
-    pub fn footer_chip_columns_for_test(&self) -> Vec<(usize, usize, FooterAction)> {
-        self.last_footer_hits
-            .iter()
-            .map(|h| (h.start, h.end, h.action))
-            .collect()
-    }
 }
 #[cfg(test)]
 mod tests {

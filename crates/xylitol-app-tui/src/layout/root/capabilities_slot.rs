@@ -27,27 +27,4 @@ impl UiRoot {
         self.pending.capability_toggle.take()
     }
 
-    #[cfg(test)]
-    pub fn capabilities_panel_text_for_test(&self) -> String {
-        match &self.slot {
-            EditorSlot::Capabilities(caps) => caps.panel_text(),
-            _ => String::new(),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn capabilities_selected_id_for_test(&self) -> Option<String> {
-        match &self.slot {
-            EditorSlot::Capabilities(caps) => caps.selected_id(),
-            _ => None,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn capabilities_selected_index_for_test(&self) -> usize {
-        match &self.slot {
-            EditorSlot::Capabilities(caps) => caps.selected_index(),
-            _ => 0,
-        }
-    }
 }

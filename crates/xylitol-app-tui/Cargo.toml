@@ -36,8 +36,11 @@ tokio-tungstenite = { workspace = true, features = ["connect", "handshake"] }
 tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
+[features]
+tui-testing = []
+
 [lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("server"))'] }
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("server", "tui-testing"))'] }
 
 [dev-dependencies]
 chrono = { workspace = true }

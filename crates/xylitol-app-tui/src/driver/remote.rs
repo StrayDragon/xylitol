@@ -655,6 +655,7 @@ where
         self.reverse_rpc = Some(notify);
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn mark_subscribed_ok_for_test(&self) {
         if let Ok(mut phase) = self.phase.lock() {
             *phase = super::LinkPhase::Live;

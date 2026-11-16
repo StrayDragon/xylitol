@@ -859,14 +859,9 @@ impl UiRoot {
         self.copy_notice_visible().then_some("Copied")
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn client_notice_bodies_for_test(&self) -> Vec<String> {
         self.client_notices.iter().map(|n| n.body.clone()).collect()
-    }
-
-    #[cfg(test)]
-    pub fn transient_notice_contains_for_test(&self, needle: &str) -> bool {
-        self.toast_notice_body().is_some_and(|b| b.contains(needle))
-            || self.client_notices.iter().any(|n| n.body.contains(needle))
     }
 
     pub fn push_client_notice(&mut self, kind: ClientNoticeKind, body: impl Into<String>) {
@@ -1525,6 +1520,7 @@ impl UiRoot {
         quit_flag.store(true, Ordering::SeqCst);
     }
 
+    #[cfg(test)]
     pub fn open_session_tree_for_test(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
         self.editor.set_text(String::new());
         self.mount_session_tree(roots, active_id);
@@ -1652,18 +1648,12 @@ impl UiRoot {
         ));
     }
 
-    pub fn todo_summary_row_for_test(&self) -> Option<usize> {
+    pub fn todo_summary_row(&self) -> Option<usize> {
         self.last_todo_hits.first().map(|hit| hit.row)
     }
 
     pub fn todo_bar_expanded(&self) -> bool {
         self.todo_expanded
-    }
-
-    #[cfg(test)]
-    pub fn todo_bar_expanded_for_test(&mut self, expanded: bool) {
-        self.todo_expanded = expanded;
-        self.todo_scroll = 0;
     }
 
     pub fn push_toast_info_notice(&mut self, body: impl Into<String>) {
@@ -1727,7 +1717,7 @@ impl UiRoot {
         self.editor.set_screen_origin(row, col);
     }
 
-    pub fn tree_filter_for_test(&self) -> FilterMode {
+    pub fn tree_filter(&self) -> FilterMode {
         match &self.slot {
             EditorSlot::Tree(tree) => tree.filter(),
             _ => FilterMode::Default,
@@ -1816,22 +1806,27 @@ impl UiRoot {
         self.upper_rebuild_count
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn scrollback_entry_misses_for_test(&self) -> u64 {
         self.scrollback_paint.entry_misses
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn clear_scrollback_entry_misses_for_test(&mut self) {
         self.scrollback_paint.clear_misses();
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn streaming_assistant_full_parses_for_test(&self) -> u64 {
         self.scrollback_paint.streaming_assistant.full_parses
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn streaming_assistant_last_lines_for_test(&self) -> usize {
         self.scrollback_paint.streaming_assistant.last_lines
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn clear_streaming_assistant_parse_counts_for_test(&mut self) {
         self.scrollback_paint.streaming_assistant.clear_counts();
     }

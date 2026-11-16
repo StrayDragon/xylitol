@@ -244,6 +244,7 @@ xylitol-official-plugin-context-inject = { workspace = true }
 xylitol-official-plugin-codemode = { workspace = true }
 xylitol-official-plugin-tools-fff = { workspace = true }
 xylitol-wire = { workspace = true }
+xylitol-app-tui = { workspace = true, features = ["tui-testing"] }
 
 insta = { workspace = true, features = ["filters", "glob"] }
 criterion = { workspace = true }
