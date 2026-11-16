@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::Value;
 use xylitol_plugin_sdk::CompactionOutcome;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_wire::{event_from_wire, event_to_wire};

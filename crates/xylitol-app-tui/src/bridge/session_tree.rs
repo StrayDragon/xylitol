@@ -100,30 +100,7 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
         .map(str::to_string);
 
     if is_ask_tool(name) {
-        let (phase, summary, detail_lines) = crate::bridge::humanize_ask_result(&result, is_error);
-        if let Some(UiEntry::Ask {
-            summary: s,
-            detail_lines: d,
-            phase: p,
-            expanded,
-            ..
-        }) = entries.iter_mut().rev().find(|e| match e {
-            UiEntry::Ask { id: tid, .. } => tid == tool_call_id,
-            _ => false,
-        }) {
-            *s = summary;
-            *d = detail_lines;
-            *p = phase;
-            *expanded = false;
-        } else {
-            entries.push(UiEntry::Ask {
-                id: tool_call_id.to_string(),
-                summary,
-                detail_lines,
-                phase,
-                expanded: false,
-            });
-        }
+        crate::bridge::project_ask_result(entries, tool_call_id, &result, is_error);
         return;
     }
 
