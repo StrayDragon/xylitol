@@ -1291,7 +1291,12 @@ async fn harness_history_copy_emits_pending_osc52_on_terminal() {
         .unwrap();
 
     assert!(
-        session.tui.terminal.frames().iter().any(|f| f.contains(osc)),
+        session
+            .tui
+            .terminal
+            .frames()
+            .iter()
+            .any(|f| f.contains(osc)),
         "host must write deferred OSC 52 via Terminal before render; frames={:?}",
         session.tui.terminal.frames()
     );

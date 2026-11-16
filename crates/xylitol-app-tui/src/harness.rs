@@ -3508,10 +3508,7 @@ mod slice_tests {
             panel.contains("[all]"),
             "ctrl+shift+o from default must cycle to all; got:\n{panel}"
         );
-        assert_eq!(
-            root.borrow().tree_filter(),
-            crate::layout::FilterMode::All
-        );
+        assert_eq!(root.borrow().tree_filter(), crate::layout::FilterMode::All);
     }
 
     #[tokio::test]

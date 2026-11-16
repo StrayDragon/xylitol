@@ -35,7 +35,6 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
     log::debug!(target: "xylitol::tui", "XyEvent unhandled by bridge event={}", event.description());
 }
 
-
 pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &AgentMessage) {
     use xylitol_plugin_sdk::message::{AgentPart, XyLlmMessage};
 
@@ -77,11 +76,6 @@ pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &Agent
         }
     }
 }
-
-
-
-
-
 
 pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
     let entry = user_entry(text.clone());

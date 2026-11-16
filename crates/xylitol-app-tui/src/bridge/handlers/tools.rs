@@ -38,7 +38,13 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
 fn apply_tool_start(model: &mut UiModel, id: &str, name: &str, args: &serde_json::Value) {
     model.flush_streaming();
     if is_ask_tool(name) {
-        upsert_ask_entry(&mut model.entries, id, AskPhase::Waiting, "Ask · 等待回答…", vec![]);
+        upsert_ask_entry(
+            &mut model.entries,
+            id,
+            AskPhase::Waiting,
+            "Ask · 等待回答…",
+            vec![],
+        );
     } else {
         upsert_tool_entry(model, id, name, args);
     }
@@ -76,4 +82,3 @@ fn apply_tool_end(
         model.status = Some("Working".into());
     }
 }
-
