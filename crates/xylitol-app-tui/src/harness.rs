@@ -943,16 +943,6 @@ impl ScriptedDriver {
         *self.mcp_catalog.lock().expect("mcp_catalog") = Some(catalog);
     }
 
-    pub fn set_mcp_resource_content_for_driver(
-        &self,
-        content: xylitol_plugin_sdk::mcp::McpResourceContent,
-    ) {
-        self.mcp_resource_contents
-            .lock()
-            .expect("mcp_resource_contents")
-            .push(content);
-    }
-
     pub fn set_mcp_resource_failure_for_driver(&self, server: &str, uri: &str) {
         self.mcp_resource_failures
             .lock()
@@ -1450,6 +1440,8 @@ pub struct TestTerminal {
     frames: Vec<String>,
     started: bool,
     stopped: bool,
+    mouse_capture_active: bool,
+    alternate_screen_active: bool,
 }
 
 impl TestTerminal {
@@ -1460,11 +1452,21 @@ impl TestTerminal {
             frames: Vec::new(),
             started: false,
             stopped: false,
+            mouse_capture_active: false,
+            alternate_screen_active: false,
         }
     }
 
     pub fn frames(&self) -> &[String] {
         &self.frames
+    }
+
+    pub fn clear_frames(&mut self) {
+        self.frames.clear();
+    }
+
+    pub fn started(&self) -> bool {
+        self.started
     }
 }
 
@@ -1493,6 +1495,26 @@ impl Terminal for TestTerminal {
     }
     fn stop(&mut self) {
         self.stopped = true;
+        self.mouse_capture_active = false;
+        self.alternate_screen_active = false;
+    }
+    fn enable_mouse_capture(&mut self) {
+        self.mouse_capture_active = true;
+    }
+    fn disable_mouse_capture(&mut self) {
+        self.mouse_capture_active = false;
+    }
+    fn mouse_capture_active(&self) -> bool {
+        self.mouse_capture_active
+    }
+    fn enter_alternate_screen(&mut self) {
+        self.alternate_screen_active = true;
+    }
+    fn leave_alternate_screen(&mut self) {
+        self.alternate_screen_active = false;
+    }
+    fn alternate_screen_active(&self) -> bool {
+        self.alternate_screen_active
     }
 }
 

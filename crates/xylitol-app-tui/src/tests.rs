@@ -1,82 +1,10 @@
 use super::bridge::{UiModel, UiPhase, apply_xy_event};
-use super::harness::{alt_enter_event, enter_event, esc_event};
+use super::harness::{TestTerminal, alt_enter_event, enter_event, esc_event};
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
 use super::layout::{UiRoot, build_root};
 use crate::driver::XyEvent;
 use xylitol_tui::utils::strip_ansi_codes as strip_ansi;
 use xylitol_tui::{Component, InputEvent, Terminal};
-
-struct TestTerminal {
-    cols: u16,
-    rows: u16,
-    pub frames: Vec<String>,
-    started: bool,
-    stopped: bool,
-    mouse_capture_active: bool,
-    alternate_screen_active: bool,
-}
-
-impl TestTerminal {
-    fn new(cols: u16, rows: u16) -> Self {
-        Self {
-            cols,
-            rows,
-            frames: Vec::new(),
-            started: false,
-            stopped: false,
-            mouse_capture_active: false,
-            alternate_screen_active: false,
-        }
-    }
-}
-
-impl Terminal for TestTerminal {
-    fn write(&mut self, data: &str) {
-        self.frames.push(data.to_string());
-    }
-    fn columns(&self) -> u16 {
-        self.cols
-    }
-    fn rows(&self) -> u16 {
-        self.rows
-    }
-    fn hide_cursor(&mut self) {}
-    fn show_cursor(&mut self) {}
-    fn clear_line(&mut self) {}
-    fn clear_from_cursor(&mut self) {}
-    fn clear_screen(&mut self) {}
-    fn flush(&mut self) {}
-    fn set_size_hint(&mut self, cols: u16, rows: u16) {
-        self.cols = cols;
-        self.rows = rows;
-    }
-    fn start(&mut self) {
-        self.started = true;
-    }
-    fn stop(&mut self) {
-        self.stopped = true;
-        self.mouse_capture_active = false;
-        self.alternate_screen_active = false;
-    }
-    fn enable_mouse_capture(&mut self) {
-        self.mouse_capture_active = true;
-    }
-    fn disable_mouse_capture(&mut self) {
-        self.mouse_capture_active = false;
-    }
-    fn mouse_capture_active(&self) -> bool {
-        self.mouse_capture_active
-    }
-    fn enter_alternate_screen(&mut self) {
-        self.alternate_screen_active = true;
-    }
-    fn leave_alternate_screen(&mut self) {
-        self.alternate_screen_active = false;
-    }
-    fn alternate_screen_active(&self) -> bool {
-        self.alternate_screen_active
-    }
-}
 
 fn mouse_at(
     kind: crossterm::event::MouseEventKind,
@@ -137,7 +65,7 @@ fn harness_min_size_shows_hint() {
     let mut session = HostSession::new(TestTerminal::new(20, 3), build_root);
     assert_eq!(session.mode(), LayoutMode::TooSmall);
     session.render_now().expect("render");
-    let joined = session.tui.terminal.frames.concat();
+    let joined = session.tui.terminal.frames().concat();
     assert!(
         joined.contains(TOO_SMALL_HINT),
         "expected hint in writes, got: {joined:?}"
@@ -153,7 +81,7 @@ fn harness_resize_to_ready() {
         .unwrap();
     session.render_now().unwrap();
     assert_eq!(session.mode(), LayoutMode::Ready);
-    let joined = session.tui.terminal.frames.concat();
+    let joined = session.tui.terminal.frames().concat();
     assert!(
         joined.contains('─') || joined.contains("model-name") || joined.contains("~/"),
         "expected editor border or footer layout, got: {joined:?}"
@@ -198,7 +126,7 @@ fn harness_never_calls_terminal_start() {
         .step(HostEvent::Input(InputEvent::Paste("hi".into())))
         .unwrap();
     assert!(
-        !session.tui.terminal.started,
+        !session.tui.terminal.started(),
         "HostSession must not call Terminal::start"
     );
 }
@@ -258,7 +186,7 @@ fn application_owned_host_coalesced_wheel_paints_once_without_tick_tail() {
         session.push_scroll_notice(format!("wheel-history-{i:02}"));
     }
     session.render_now().expect("seed long AO viewport");
-    session.tui.terminal.frames.clear();
+    session.tui.terminal.clear_frames();
     let frames_before = session.tui.frame_count();
     let notch = session.tui.application_owned_wheel_notch();
 
@@ -277,7 +205,7 @@ fn application_owned_host_coalesced_wheel_paints_once_without_tick_tail() {
         "normal wheel motion must not leave a residual busy-tick tail"
     );
     assert!(
-        !session.tui.terminal.frames.is_empty(),
+        !session.tui.terminal.frames().is_empty(),
         "the coalesced viewport delta should paint immediately"
     );
 
@@ -803,7 +731,7 @@ async fn harness_double_esc_opens_session_tree() {
         "double Esc on empty editor should open session tree"
     );
     session.render_now().unwrap();
-    let joined = session.tui.terminal.frames.concat();
+    let joined = session.tui.terminal.frames().concat();
     assert!(
         joined.contains("Session tree"),
         "expected tree layout; got: {joined}"
@@ -843,7 +771,7 @@ async fn harness_enter_travel_closes_tree() {
     assert!(!root.borrow().tree_open());
     assert_eq!(driver.travel_calls(), vec!["u2".to_string()]);
     session.render_now().unwrap();
-    let joined = session.tui.terminal.frames.concat();
+    let joined = session.tui.terminal.frames().concat();
     assert!(
         joined.contains("history @ u2"),
         "expected travel transcript banner; got: {joined}"
@@ -1088,7 +1016,7 @@ fn harness_xy_events_update_ui_model_and_transcript() {
     assert!(!session.run_active());
 
     session.render_now().unwrap();
-    let joined = session.tui.terminal.frames.concat();
+    let joined = session.tui.terminal.frames().concat();
     assert!(
         joined.contains("hello") && joined.contains("Hi"),
         "expected bridge scrollback; got: {joined}"
@@ -1363,9 +1291,9 @@ async fn harness_history_copy_emits_pending_osc52_on_terminal() {
         .unwrap();
 
     assert!(
-        session.tui.terminal.frames.iter().any(|f| f.contains(osc)),
+        session.tui.terminal.frames().iter().any(|f| f.contains(osc)),
         "host must write deferred OSC 52 via Terminal before render; frames={:?}",
-        session.tui.terminal.frames
+        session.tui.terminal.frames()
     );
 }
 
@@ -3846,7 +3774,7 @@ fn bang_chunk_marks_dirty_and_paints_on_tick() {
         session.tui.frame_count() > frames,
         "Tick must paint after paint_dirty bang chunk"
     );
-    let text = session.tui.terminal.frames.join("\n");
+    let text = session.tui.terminal.frames().join("\n");
     assert!(
         session
             .ui_model()
@@ -4371,7 +4299,7 @@ fn application_owned_copy_notice_fixed_zone_ath31() {
         root.borrow().toast_notice_body().is_none(),
         "ath31 MUST NOT use Error: toast-notice for copy success"
     );
-    let joined = session.tui.terminal.frames.concat();
+    let joined = session.tui.terminal.frames().concat();
     assert!(
         joined.contains("Copied"),
         "frame MUST show Copied cue, got: {joined:?}"
@@ -6465,7 +6393,7 @@ fn scene_live_xy_steps_host_session() {
     }
     session.step(HostEvent::Tick).unwrap();
     session.render_now().unwrap();
-    let joined = strip_ansi_live_window(&session.tui.terminal.frames.concat());
+    let joined = strip_ansi_live_window(&session.tui.terminal.frames().concat());
     assert!(
         joined.contains("Explor") || joined.contains("a.rs") || joined.contains("read"),
         "LiveXy HostSession::step must paint explore/read; got:\n{joined}"

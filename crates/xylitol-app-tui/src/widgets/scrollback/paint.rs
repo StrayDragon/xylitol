@@ -251,6 +251,7 @@ impl StreamingAssistantPaint {
         self.prefix_lines.clear();
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn clear_counts(&mut self) {
         self.full_parses = 0;
         self.suffix_parses = 0;

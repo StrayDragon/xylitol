@@ -33,6 +33,7 @@ impl ScrollbackPaintCache {
         self.streaming_assistant.invalidate();
     }
 
+    #[cfg(any(test, feature = "tui-testing"))]
     pub fn clear_misses(&mut self) {
         self.entry_misses = 0;
     }
