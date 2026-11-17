@@ -20,7 +20,7 @@ pub use xylitol_plugin_sdk::model::{
 };
 pub use xylitol_plugin_sdk::{
     NoopHookBus, XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel,
-    XyModelBuilder, XyPermission, XySecretResolver, XySessionStore, XyStream, XyTool,
+    XyModelBuilder, XyPermission, XySessionStore, XyStream, XyTool,
 };
 
 #[cfg(feature = "cli")]
