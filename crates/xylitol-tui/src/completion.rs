@@ -1,7 +1,3 @@
-use crate::autocomplete::{
-    AutocompleteItem, AutocompleteSuggestions, SlashCommand, expand_home_path, extract_at_prefix,
-    parse_path_prefix, path_autocomplete_item,
-};
 use crate::autocomplete_fd::walk_directory_with_fd;
 use crate::fuzzy::fuzzy_match;
 use std::path::{Path, PathBuf};
@@ -911,5 +907,238 @@ mod fd_path_tests {
                 .map(|item| item.value.clone())
                 .collect::<Vec<_>>()
         );
+    }
+}
+
+#[derive(Clone)]
+pub struct AutocompleteItem {
+    pub value: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+#[allow(clippy::type_complexity)]
+pub struct SlashCommand {
+    pub name: String,
+    pub description: Option<String>,
+    pub argument_hint: Option<String>,
+    pub get_argument_completions: Option<Box<dyn Fn(&str) -> Option<Vec<AutocompleteItem>>>>,
+}
+
+pub struct AutocompleteSuggestions {
+    pub items: Vec<AutocompleteItem>,
+    pub prefix: String,
+}
+
+pub(crate) const PATH_DELIMITERS: &[char] = &[' ', '\t', '"', '\'', '='];
+
+pub(crate) fn to_display_path(value: &str) -> String {
+    value.replace('\\', "/")
+}
+
+pub fn extract_at_prefix(text: &str) -> Option<String> {
+    let quoted = extract_quoted_prefix(text);
+    if let Some(ref q) = quoted
+        && q.starts_with("@\"")
+    {
+        return quoted;
+    }
+
+    let delim = find_last_delimiter(text);
+    let start = if delim < 0 { 0 } else { (delim + 1) as usize };
+    if text[start..].starts_with('@') {
+        return Some(text[start..].to_string());
+    }
+    None
+}
+
+pub fn extract_dollar_prefix(text: &str) -> Option<String> {
+    let delim = find_last_delimiter(text);
+    let start = if delim < 0 { 0 } else { (delim + 1) as usize };
+    if text[start..].starts_with('$') {
+        Some(text[start..].to_string())
+    } else {
+        None
+    }
+}
+
+pub(crate) fn find_last_delimiter(text: &str) -> isize {
+    for (i, ch) in text.char_indices().rev() {
+        if PATH_DELIMITERS.contains(&ch) {
+            return i as isize;
+        }
+    }
+    -1
+}
+
+pub(crate) fn extract_quoted_prefix(text: &str) -> Option<String> {
+    let quote_start = find_unclosed_quote(text)?;
+    let start =
+        if quote_start > 0 && text.as_bytes().get(quote_start.saturating_sub(1)) == Some(&b'@') {
+            quote_start.saturating_sub(1)
+        } else {
+            quote_start
+        };
+    Some(text[start..].to_string())
+}
+
+fn find_unclosed_quote(text: &str) -> Option<usize> {
+    let mut in_quotes = false;
+    let mut quote_start = 0;
+    for (i, ch) in text.char_indices() {
+        if ch == '"' {
+            in_quotes = !in_quotes;
+            if in_quotes {
+                quote_start = i;
+            }
+        }
+    }
+    in_quotes.then_some(quote_start)
+}
+
+pub fn parse_path_prefix(prefix: &str) -> (&str, bool, bool) {
+    if let Some(stripped) = prefix.strip_prefix("@\"") {
+        (stripped, true, true)
+    } else if let Some(stripped) = prefix.strip_prefix('"') {
+        (stripped, false, true)
+    } else if let Some(stripped) = prefix.strip_prefix('@') {
+        (stripped, true, false)
+    } else {
+        (prefix, false, false)
+    }
+}
+
+pub(crate) fn build_completion_value(
+    path: &str,
+    _is_directory: bool,
+    is_at: bool,
+    is_quoted: bool,
+) -> String {
+    let needs_quotes = is_quoted || path.contains(' ');
+    let prefix = if is_at { "@" } else { "" };
+    if !needs_quotes {
+        format!("{prefix}{path}")
+    } else {
+        format!("{prefix}\"{path}\"")
+    }
+}
+
+pub(crate) fn expand_home_path(path: &str) -> String {
+    if path.starts_with("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            let rest = path.strip_prefix("~/").unwrap_or("");
+            if path.ends_with('/') {
+                format!("{home}/{rest}/")
+            } else {
+                format!("{home}/{rest}")
+            }
+        } else {
+            path.to_string()
+        }
+    } else if path == "~" {
+        std::env::var("HOME").unwrap_or_default()
+    } else {
+        path.to_string()
+    }
+}
+
+pub(crate) fn construct_relative_path(display_prefix: &str, name: &str) -> String {
+    if display_prefix.ends_with('/') {
+        format!("{display_prefix}{name}")
+    } else if display_prefix.contains('/') || display_prefix.contains('\\') {
+        let parent = std::path::Path::new(display_prefix)
+            .parent()
+            .and_then(|p| p.to_str())
+            .unwrap_or(".");
+        if parent == "." {
+            format!("./{name}")
+        } else {
+            format!("{}/{name}", parent.trim_end_matches('/'))
+        }
+    } else {
+        name.to_string()
+    }
+}
+
+pub(crate) fn path_autocomplete_item(
+    display_prefix: &str,
+    name: &str,
+    is_dir: bool,
+    is_at: bool,
+    is_quoted: bool,
+) -> AutocompleteItem {
+    let relative = construct_relative_path(display_prefix, name);
+    let display = to_display_path(&relative);
+    let path_value = if is_dir {
+        if display.ends_with('/') {
+            display
+        } else {
+            format!("{display}/")
+        }
+    } else {
+        display
+    };
+    let label = if is_dir {
+        format!("{name}/")
+    } else {
+        name.to_string()
+    };
+    let description = if path_value == label {
+        None
+    } else {
+        Some(path_value.clone())
+    };
+    AutocompleteItem {
+        value: build_completion_value(&path_value, is_dir, is_at, is_quoted),
+        label,
+        description,
+    }
+}
+
+#[cfg(test)]
+mod path_item_tests {
+    use super::path_autocomplete_item;
+
+    #[test]
+    fn root_entry_has_no_duplicate_description() {
+        let item = path_autocomplete_item("", "foo.rs", false, true, false);
+        assert_eq!(item.value, "@foo.rs");
+        assert_eq!(item.label, "foo.rs");
+        assert_eq!(item.description, None);
+    }
+
+    #[test]
+    fn nested_entry_keeps_prefix_and_shows_relative_desc() {
+        let item = path_autocomplete_item(".git/", "COMMIT_EDITMSG", false, true, false);
+        assert_eq!(item.value, "@.git/COMMIT_EDITMSG");
+        assert_eq!(item.label, "COMMIT_EDITMSG");
+        assert_eq!(item.description.as_deref(), Some(".git/COMMIT_EDITMSG"));
+    }
+
+    #[test]
+    fn nested_dir_keeps_trailing_slash_on_value() {
+        let item = path_autocomplete_item(".git/", "objects", true, true, false);
+        assert_eq!(item.value, "@.git/objects/");
+        assert_eq!(item.label, "objects/");
+        assert_eq!(item.description.as_deref(), Some(".git/objects/"));
+    }
+}
+
+#[cfg(test)]
+mod dollar_prefix_tests {
+    use super::extract_dollar_prefix;
+
+    #[test]
+    fn extracts_inline_dollar_after_words() {
+        assert_eq!(extract_dollar_prefix("use $"), Some("$".into()));
+        assert_eq!(extract_dollar_prefix("use $dem"), Some("$dem".into()));
+        assert_eq!(extract_dollar_prefix("$alone"), Some("$alone".into()));
+    }
+
+    #[test]
+    fn ignores_when_no_dollar_token() {
+        assert_eq!(extract_dollar_prefix("use skill"), None);
+        assert_eq!(extract_dollar_prefix("price is 5$"), None);
+        assert_eq!(extract_dollar_prefix("use $demo more"), None);
     }
 }

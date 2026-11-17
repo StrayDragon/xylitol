@@ -7,10 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions, SlashCommand};
 use xylitol_tui::completion::{
-    AtPathSource, CompletionContext, CompletionMatch, CompletionSource, SlashArgCompletionSource,
-    SlashCommandSource,
+    AtPathSource, AutocompleteItem, AutocompleteSuggestions, CompletionContext, CompletionMatch,
+    CompletionSource, SlashArgCompletionSource, SlashCommand, SlashCommandSource,
 };
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};

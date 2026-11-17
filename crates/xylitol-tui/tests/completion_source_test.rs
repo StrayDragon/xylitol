@@ -3,11 +3,10 @@ mod support;
 use support::TuiTestHarness;
 use xylitol_tui::Component;
 use xylitol_tui::Focusable;
-use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions, SlashCommand};
 use xylitol_tui::clock::SystemClock;
 use xylitol_tui::completion::{
-    AtPathSource, CompletionContext, CompletionMatch, CompletionSource, SlashArgCompletionSource,
-    SlashCommandSource,
+    AtPathSource, AutocompleteItem, AutocompleteSuggestions, CompletionContext, CompletionMatch,
+    CompletionSource, SlashArgCompletionSource, SlashCommand, SlashCommandSource,
 };
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use xylitol_tui::extract_dollar_prefix;

@@ -2,6 +2,9 @@
 depends_on: []
 needs_specs_change: false
 title: 收敛 TUI 补全到 CompletionSource 单栈并修订补全检索合约
+branch: sdd/c3349-remove-tui-autocomplete-legacy-stack
+base_branch: main
+base_sha: 79d57e9e3a0bd14b958897ae4276d65cc6f34a85
 ---
 
 # 收敛 TUI 补全到 CompletionSource 单栈

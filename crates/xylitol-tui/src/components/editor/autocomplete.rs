@@ -1,6 +1,7 @@
 use super::AutocompleteSession;
-use crate::autocomplete::{AutocompleteItem, AutocompleteSuggestions};
-use crate::completion::{CompletionContext, CompletionSource};
+use crate::completion::{
+    AutocompleteItem, AutocompleteSuggestions, CompletionContext, CompletionSource,
+};
 use crate::components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
 };

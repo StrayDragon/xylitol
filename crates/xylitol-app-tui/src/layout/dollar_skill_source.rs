@@ -1,6 +1,6 @@
-use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions};
 use xylitol_tui::completion::{CompletionContext, CompletionMatch, CompletionSource};
 use xylitol_tui::extract_dollar_prefix;
+use xylitol_tui::{AutocompleteItem, AutocompleteSuggestions};
 
 pub struct DollarSkillSource {
     catalog: Vec<(String, String)>,

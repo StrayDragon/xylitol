@@ -1,6 +1,5 @@
 pub mod application_owned;
 pub mod application_owned_runtime;
-pub mod autocomplete;
 pub mod autocomplete_fd;
 pub mod clock;
 pub mod completion;
@@ -27,16 +26,13 @@ pub mod word_navigation;
 
 pub use application_owned::{ApplicationOwnedTui, editor_screen_origin, mouse_in_dock};
 pub use application_owned_runtime::COPY_NOTICE_TTL;
-pub use autocomplete::{
-    AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider,
-    DebouncedAutocomplete, SlashCommand, extract_at_prefix, extract_dollar_prefix,
-    parse_path_prefix,
-};
 pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use clock::{Clock, MockClock, SystemClock};
 pub use completion::{
-    AtPathSource, CompletionContext, CompletionMatch, CompletionRegistry, CompletionSource,
-    SlashArgCompletionSource, SlashCommandSource, extract_slash_arg_prefix, fd_path_suggestions,
+    AtPathSource, AutocompleteItem, AutocompleteSuggestions, CompletionContext, CompletionMatch,
+    CompletionRegistry, CompletionSource, SlashArgCompletionSource, SlashCommand,
+    SlashCommandSource, extract_at_prefix, extract_dollar_prefix, extract_slash_arg_prefix,
+    fd_path_suggestions, parse_path_prefix,
 };
 pub use components::bordered_panel::BorderedPanel;
 pub use components::cancellable_loader::CancellableLoader;
