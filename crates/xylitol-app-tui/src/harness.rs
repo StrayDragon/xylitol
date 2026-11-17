@@ -1536,17 +1536,10 @@ fn footer_line(frame: &[String]) -> String {
         .iter()
         .map(|line| xylitol_tui::utils::strip_ansi_codes(line))
         .collect();
-    if plain
-        .last()
-        .is_some_and(|line| line.contains("? shortcuts") || line.contains("? / Esc close"))
-    {
-        plain
-            .get(plain.len().saturating_sub(2))
-            .cloned()
-            .unwrap_or_default()
-    } else {
-        plain.last().cloned().unwrap_or_default()
-    }
+    plain
+        .get(plain.len().saturating_sub(2))
+        .cloned()
+        .unwrap_or_default()
 }
 
 pub fn enter_event() -> InputEvent {
@@ -6354,8 +6347,8 @@ mod slice_tests {
             root.borrow().last_dock_rows()
         );
         let debug = root.borrow().mcp_detail_debug_for_test();
-        assert_eq!(debug.0, 3, "detail rows: {debug:?}");
-        assert_eq!(debug.1, 3, "detail height: {debug:?}");
+        assert_eq!(debug.0, 2, "detail rows: {debug:?}");
+        assert_eq!(debug.1, 2, "detail height: {debug:?}");
     }
 
     #[tokio::test]

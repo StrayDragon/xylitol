@@ -13,18 +13,11 @@ use xylitol_tui::Terminal as _;
 
 fn footer_line(frame: &str) -> String {
     let lines: Vec<&str> = frame.lines().collect();
-    if lines
-        .last()
-        .is_some_and(|line| line.contains("shortcuts") || line.contains("Esc close"))
-    {
-        lines
-            .get(lines.len().saturating_sub(2))
-            .copied()
-            .unwrap_or_default()
-            .to_string()
-    } else {
-        lines.last().copied().unwrap_or_default().to_string()
-    }
+    lines
+        .get(lines.len().saturating_sub(2))
+        .copied()
+        .unwrap_or_default()
+        .to_string()
 }
 
 pub struct HostPump {

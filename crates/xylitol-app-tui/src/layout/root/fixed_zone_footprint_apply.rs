@@ -20,13 +20,8 @@ impl UiRoot {
             self.ui_model.pending_follow_up.len(),
         );
         let toast_present = self.toast_notice.is_some();
-        let reserved = reserved_lower_fixed_zone(
-            self.status_busy,
-            queue_lines,
-            todo_lines,
-            toast_present,
-            self.hint_rows() > 0,
-        );
+        let reserved =
+            reserved_lower_fixed_zone(self.status_busy, queue_lines, todo_lines, toast_present);
         let rows = self.term_rows;
 
         apply_slot_footprint(&mut self.slot, rows, reserved);

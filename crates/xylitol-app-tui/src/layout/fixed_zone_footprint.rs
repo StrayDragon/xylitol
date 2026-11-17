@@ -65,7 +65,6 @@ pub fn reserved_lower_fixed_zone(
     queue_lines: usize,
     todo_lines: usize,
     toast_present: bool,
-    hint_present: bool,
 ) -> usize {
     let status = if status_busy {
         STATUS_BUSY_ROWS
@@ -73,7 +72,7 @@ pub fn reserved_lower_fixed_zone(
         STATUS_IDLE_ROWS
     };
     let toast = usize::from(toast_present);
-    let hint = usize::from(hint_present);
+    let hint = 1;
     queue_lines
         .saturating_add(todo_lines)
         .saturating_add(toast)
@@ -95,35 +94,34 @@ mod tests {
 
     #[test]
     fn short_terminal_resume_budget_keeps_status_room() {
-        let reserved = reserved_lower_fixed_zone(true, 0, 0, false, false);
-        assert_eq!(reserved, 3);
+        let reserved = reserved_lower_fixed_zone(true, 0, 0, false);
+        assert_eq!(reserved, 4);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
-        assert_eq!(body, 8);
-        let slot_total = RESUME_SLOT.overhead() + body;
-        assert_eq!(2 + slot_total + 1, 16);
+        assert_eq!(body, 7);
+        assert_eq!(reserved + RESUME_SLOT.overhead() + body, 16);
     }
 
     #[test]
     fn toast_and_queue_shrink_resume_body_so_lower_stack_fits() {
         assert_eq!(queue_strip_line_count(1, 0), 3);
-        let reserved = reserved_lower_fixed_zone(true, 3, 0, true, false);
-        assert_eq!(reserved, 7);
+        let reserved = reserved_lower_fixed_zone(true, 3, 0, true);
+        assert_eq!(reserved, 8);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
-        assert_eq!(body, 4);
-        assert_eq!(3 + 1 + 2 + RESUME_SLOT.overhead() + body + 1, 16);
+        assert_eq!(body, 3);
+        assert_eq!(reserved + RESUME_SLOT.overhead() + body, 16);
     }
 
     #[test]
     fn hint_row_counts_in_lower_reserved() {
-        let reserved = reserved_lower_fixed_zone(true, 0, 0, false, true);
+        let reserved = reserved_lower_fixed_zone(true, 0, 0, false);
         assert_eq!(reserved, 4);
     }
 
     #[test]
     fn todo_bar_rows_count_in_lower_reserved() {
-        let reserved = reserved_lower_fixed_zone(true, 0, 3, false, false);
-        assert_eq!(reserved, 6);
+        let reserved = reserved_lower_fixed_zone(true, 0, 3, false);
+        assert_eq!(reserved, 7);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
-        assert_eq!(body, 5);
+        assert_eq!(body, 4);
     }
 }

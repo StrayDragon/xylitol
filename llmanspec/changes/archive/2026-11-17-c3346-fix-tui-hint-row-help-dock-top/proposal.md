@@ -2,6 +2,9 @@
 depends_on: []
 blocks: []
 title: TUI 提示行恒占位与帮助框停靠固定区顶
+branch: sdd/c3346-fix-tui-hint-row-help-dock-top
+base_branch: main
+base_sha: d53fe0bfc281fd4babe7825cb793824005f35607
 ---
 
 # TUI 提示行恒占位与帮助框停靠固定区顶

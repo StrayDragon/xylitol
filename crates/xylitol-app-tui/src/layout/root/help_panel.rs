@@ -81,7 +81,7 @@ impl UiRoot {
     }
 
     pub(crate) fn hint_rows(&self) -> usize {
-        usize::from(self.hint_visible())
+        1
     }
 
     pub(crate) fn help_open(&self) -> bool {
@@ -152,7 +152,7 @@ impl UiRoot {
 
     pub(super) fn render_hint_slot(&mut self, width: usize) -> Vec<String> {
         if !self.hint_visible() {
-            return Vec::new();
+            return vec![String::new()];
         }
         let (head, tail) = if self.help.is_open() {
             ("?", " / Esc close")
