@@ -3253,40 +3253,100 @@ async fn w_arm_tool_freeze(server_test: &ServerTest) {
     }
 }
 
-#[then("门时限内返回冻结快照且引导收口")]
-fn t_arm_freeze_bounded(server_test: &ServerTest) {
+#[then("立即返回当前快照且冻结决议经下行收口")]
+async fn t_arm_freeze_bounded(server_test: &ServerTest) {
     let err = server_test.freeze_error.borrow().clone();
     assert!(err.is_none(), "arm_tool_freeze MUST ok: {err:?}");
     let elapsed = server_test.freeze_elapsed_ms.get();
     assert!(
-        elapsed < 30_000,
-        "MUST be bounded by the first-turn gate window, took {elapsed}ms"
+        elapsed < 3_000,
+        "arm MUST return immediately without waiting the gate window, took {elapsed}ms"
     );
     let v = server_test
         .freeze_value
         .borrow()
         .clone()
         .expect("snapshot value");
-    assert_eq!(v["tools_table_frozen"], true, "timeout MUST freeze: {v}");
     assert_eq!(
-        v["mcp_bootstrap_complete"], true,
-        "timeout MUST settle bootstrap: {v}"
+        v["tools_table_frozen"], false,
+        "unbounded MCP MUST NOT be frozen at arm return: {v}"
     );
+
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let session = server_test.freeze_session.borrow().clone();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+    host.register_unbound_mux(tx).await;
+    let slot = host.slot(&session).await;
+    let _ = host.bind_mux_to_session(&slot, 0, None).await;
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        assert!(
+            !remaining.is_zero(),
+            "freeze resolution MUST settle within the gate window"
+        );
+        let f = match tokio::time::timeout(remaining.min(Duration::from_secs(3)), rx.recv()).await {
+            Ok(Some(f)) => f,
+            Ok(None) => panic!("downlink closed while awaiting resolution"),
+            Err(_) => continue,
+        };
+        let Notification { method, params } = &f;
+        if method != "session/resources" {
+            continue;
+        }
+        let snap = params.get("snapshot").expect("resources snapshot");
+        if snap
+            .get("tools_table_frozen")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+        {
+            continue;
+        }
+        return;
+    }
 }
 
-#[then("不取写占用仍返回冻结快照")]
-fn t_arm_freeze_lease_free(server_test: &ServerTest) {
+#[then("不取写占用立即返回快照")]
+async fn t_arm_freeze_lease_free(server_test: &ServerTest) {
     let err = server_test.freeze_error.borrow().clone();
     assert!(err.is_none(), "lease-free arm MUST ok: {err:?}");
-    let v = server_test
-        .freeze_value
-        .borrow()
-        .clone()
-        .expect("snapshot value");
-    assert_eq!(
-        v["tools_table_frozen"], true,
-        "lease-free arm MUST resolve frozen: {v}"
+    let elapsed = server_test.freeze_elapsed_ms.get();
+    assert!(
+        elapsed < 3_000,
+        "lease-free arm MUST return without blocking, took {elapsed}ms"
     );
+    assert!(
+        server_test.freeze_value.borrow().is_some(),
+        "lease-free arm MUST return a snapshot"
+    );
+
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let session = server_test.freeze_session.borrow().clone();
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        let r = xylitol_kernel::occupancy::host::handle_unary(
+            &host,
+            None,
+            "loaded_resources",
+            serde_json::json!({ "session_id": session }),
+            None,
+        )
+        .await;
+        let frozen = r
+            .value
+            .expect("loaded_resources MUST ok")
+            .get("tools_table_frozen")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        if frozen {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "lease-free arm MUST resolve frozen within the gate window"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 const OBSERVE_SESSION: &str = "s-observe";

@@ -2,6 +2,9 @@
 depends_on: []
 blocks: []
 title: MCP 准备门武装不再阻塞会话引擎锁
+branch: sdd/c3345-fix-mcp-gate-ui-freeze
+base_branch: main
+base_sha: e87012c96be9af8046ad2a7e98f8d6286595e052
 ---
 
 # MCP 准备门武装不再阻塞会话引擎锁

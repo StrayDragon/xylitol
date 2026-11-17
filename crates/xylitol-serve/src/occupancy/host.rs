@@ -1789,11 +1789,39 @@ async fn dispatch_session_unary(
                 "arm_tool_freeze materialize_writer failed: {e}"
             );
         }
+        const ARM_GATE_POLL_TICK: Duration = Duration::from_millis(50);
+        const ARM_GATE_POLL_MAX_TICKS: usize = 200;
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        driver.ensure_tool_table_frozen().await;
+        if driver.is_tools_frozen() {
+            let snapshot = driver.loaded_resources_snapshot().await;
+            return RpcResult::ok_value(serde_json::to_value(&snapshot).unwrap_or(Value::Null));
+        }
+        let slot_bg = slot.clone();
+        tokio::spawn(async move {
+            for _ in 0..ARM_GATE_POLL_MAX_TICKS {
+                tokio::time::sleep(ARM_GATE_POLL_TICK).await;
+                let frozen = {
+                    let mut g = slot_bg.driver.lock().await;
+                    let Some(d) = g.as_mut() else { return };
+                    if !d.is_tools_frozen() {
+                        let _ = d.poll_tool_gate().await;
+                    }
+                    d.is_tools_frozen()
+                };
+                if frozen {
+                    let snapshot = {
+                        let mut g = slot_bg.driver.lock().await;
+                        let Some(d) = g.as_mut() else { return };
+                        d.loaded_resources_snapshot().await
+                    };
+                    slot_bg.push_resources(snapshot).await;
+                    return;
+                }
+            }
+        });
         let snapshot = driver.loaded_resources_snapshot().await;
         return RpcResult::ok_value(serde_json::to_value(&snapshot).unwrap_or(Value::Null));
     }
@@ -2917,6 +2945,10 @@ mod tests {
         }
 
         async fn ensure_tool_table_frozen(&mut self) {}
+
+        async fn poll_tool_gate(&mut self) -> bool {
+            true
+        }
 
         async fn execute_command(&mut self, _cmd: Command) -> Result<Value, XyDriverError> {
             Ok(Value::Null)
