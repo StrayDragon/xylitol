@@ -4,11 +4,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use chrono::{DateTime, Local};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
-use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::session::{
     AutomationFact, GoalState, RunOutcome, ScheduleState, SkipReason, TriggerSource, project_goals,
     project_schedules,
 };
+use xylitol_plugin_sdk::{XySessionStore, XySessionStoreError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AutomationAction {
@@ -100,11 +100,11 @@ impl AutomationEngine {
         busy: bool,
         permission_required: bool,
     ) -> Result<Vec<AutomationAction>, AutomationEngineError> {
-        let entries = self
-            .store
-            .load_leaf_branch(&self.session_id)
-            .await
-            .map_err(|e| AutomationEngineError::Store(e.to_string()))?;
+        let entries = match self.store.load_leaf_branch(&self.session_id).await {
+            Ok(entries) => entries,
+            Err(XySessionStoreError::NotFound { .. }) => Vec::new(),
+            Err(e) => return Err(AutomationEngineError::Store(e.to_string())),
+        };
         let index = AutomationIndex::load(&entries, &self.branch_id);
         let mut actions = Vec::new();
 
@@ -454,6 +454,43 @@ mod tests {
         let drained = engine.drain_pending(now).await.unwrap();
         assert!(matches!(drained, Some(AutomationAction::Run { .. })));
         assert!(!engine.has_pending());
+    }
+
+    #[tokio::test]
+    async fn unpersisted_session_ticks_as_empty_branch() {
+        let store = Arc::new(MemoryStore::new());
+        let mut engine = AutomationEngine::new_at(
+            store.clone(),
+            "never-persisted",
+            Local.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let now = Local.with_ymd_and_hms(2026, 1, 1, 0, 1, 0).unwrap();
+        let actions = engine.tick(now, false, false).await.unwrap();
+        assert!(
+            actions.is_empty(),
+            "unpersisted session MUST tick as an empty branch, not an error"
+        );
+    }
+
+    #[tokio::test]
+    async fn persisted_session_ticks_still_read_facts() {
+        let store = Arc::new(MemoryStore::new());
+        let session = "s1";
+        store
+            .append_session_entry(session, &schedule_entry("sched", session, 2))
+            .await
+            .unwrap();
+        let mut engine = AutomationEngine::new_at(
+            store.clone(),
+            session,
+            Local.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let now = Local.with_ymd_and_hms(2026, 1, 1, 0, 1, 0).unwrap();
+        let actions = engine.tick(now, false, false).await.unwrap();
+        assert!(
+            matches!(actions.as_slice(), [AutomationAction::Run { .. }]),
+            "persisted schedules must keep firing"
+        );
     }
 
     #[tokio::test]
