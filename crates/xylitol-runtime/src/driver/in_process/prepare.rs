@@ -29,8 +29,6 @@ pub trait InProcessReloadHook: Send + Sync {
     ) -> Result<RuntimeReloadReport, XyDriverError>;
 }
 
-const TOOL_GATE_POLL_WINDOW: Duration = Duration::from_millis(100);
-
 fn session_workspaces(agent: &crate::agent::AgentRuntime) -> Vec<String> {
     let mut workspaces = agent.workspaces().to_vec();
     if workspaces.is_empty() {
@@ -201,23 +199,18 @@ impl XyInProcessDriver {
         }
         self.agent.begin_tool_gating();
         let started = *self.tool_gate_poll_started.get_or_insert(Instant::now());
-        let elapsed = started.elapsed();
-        if let Some(remaining) = MCP_FIRST_TURN_GATE_TIMEOUT.checked_sub(elapsed) {
-            let window = TOOL_GATE_POLL_WINDOW.min(remaining);
-            let result = self.hub_wait(window).await;
-            let settled = self
-                .prepare_hub
-                .as_ref()
-                .is_none_or(|hub| hub.view().configured == 0 || hub.view().complete);
-            if !settled {
-                return false;
-            }
-            self.settle_tool_gate(result);
-        } else {
-            self.mcp_gate_notice = Some(xylitol_plugin_sdk::SESSION_PREPARE_TIMEOUT_NOTICE.into());
-            let result = self.hub_snapshot_result();
-            self.settle_tool_gate(result);
+        let settled = self.prepare_hub.as_ref().is_none_or(|hub| {
+            let view = hub.view();
+            view.configured == 0 || view.complete
+        });
+        if !settled && started.elapsed() < MCP_FIRST_TURN_GATE_TIMEOUT {
+            return false;
         }
+        if !settled {
+            self.mcp_gate_notice = Some(xylitol_plugin_sdk::SESSION_PREPARE_TIMEOUT_NOTICE.into());
+        }
+        let result = self.hub_snapshot_result();
+        self.settle_tool_gate(result);
         self.tool_gate_poll_started = None;
         self.agent.is_tools_frozen()
     }
@@ -400,5 +393,142 @@ mod tests {
         assert_eq!(short, vec!["bad: spawn failed"]);
         assert!(details.iter().any(|line| line.contains("server=bad")));
         assert!(!short.iter().any(|line| line.contains("server=")));
+    }
+}
+
+#[cfg(test)]
+mod tool_gate_poll_tests {
+    use super::XyInProcessDriver;
+    use crate::agent::runtime::baseline::RuntimeBaseline;
+    use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder};
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+    use xylitol_plugin_sdk::plugin_events::SessionPrepareResult;
+    use xylitol_plugin_sdk::{SessionPrepareHub, SessionPrepareView, XySessionStore};
+
+    struct CountingHub {
+        ensure_calls: AtomicUsize,
+        wait_calls: AtomicUsize,
+        complete: AtomicBool,
+    }
+
+    impl CountingHub {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                ensure_calls: AtomicUsize::new(0),
+                wait_calls: AtomicUsize::new(0),
+                complete: AtomicBool::new(false),
+            })
+        }
+
+        fn set_complete(&self, complete: bool) {
+            self.complete.store(complete, Ordering::SeqCst);
+        }
+
+        fn drive_calls(&self) -> usize {
+            self.ensure_calls.load(Ordering::SeqCst) + self.wait_calls.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl SessionPrepareHub for CountingHub {
+        fn fire(&self) {}
+
+        async fn reset_join(&self) {}
+
+        async fn ensure(&self) -> SessionPrepareResult {
+            self.ensure_calls.fetch_add(1, Ordering::SeqCst);
+            SessionPrepareResult::default()
+        }
+
+        async fn wait(&self, _timeout: Duration) -> SessionPrepareResult {
+            self.wait_calls.fetch_add(1, Ordering::SeqCst);
+            SessionPrepareResult::default()
+        }
+
+        fn view(&self) -> SessionPrepareView {
+            SessionPrepareView {
+                configured: 2,
+                complete: self.complete.load(Ordering::SeqCst),
+                ..SessionPrepareView::default()
+            }
+        }
+
+        fn take_notice(&self) -> Option<String> {
+            None
+        }
+
+        fn tools(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
+            Vec::new()
+        }
+    }
+
+    fn poll_test_driver(hub: Arc<dyn SessionPrepareHub>) -> XyInProcessDriver {
+        let store: Arc<dyn XySessionStore> = Arc::new(MemoryStore::new());
+        let baseline = RuntimeBaseline {
+            store: store.clone(),
+            sink: Arc::new(NoopSink),
+            permission: crate::permission::allow_all_permission(),
+            hook_bus: None,
+            model_registry: crate::agent::ModelRegistry::new(),
+            model_builder: crate::test_support::dummy_model_builder(),
+            cwd: ".".into(),
+            steering_mode: crate::agent::capabilities::QueueMode::default(),
+            follow_up_mode: crate::agent::capabilities::QueueMode::default(),
+            compaction_settings: None,
+            compaction_factory: xylitol_plugin_sdk::noop_compaction_factory(),
+            tools: crate::agent::tools::ToolSet::empty(),
+            system_prompt: None,
+            context_files: Vec::new(),
+            append_system_prompt: Vec::new(),
+            skills: Vec::new(),
+            batch_mode: xylitol_plugin_sdk::XyBatchMode::Sequential,
+        };
+        let mut driver = XyInProcessDriver::new(baseline.materialize_runtime(), store);
+        driver.set_prepare_hub(hub);
+        driver
+    }
+
+    #[tokio::test]
+    async fn poll_tool_gate_passive_poll_never_drives_prepare() {
+        let hub = CountingHub::new();
+        let mut driver = poll_test_driver(hub.clone());
+        for _ in 0..5 {
+            assert!(!driver.poll_tool_gate().await);
+        }
+        assert_eq!(
+            hub.drive_calls(),
+            0,
+            "passive poll MUST NOT call ensure/wait"
+        );
+        assert!(!driver.agent.is_tools_frozen());
+    }
+
+    #[tokio::test]
+    async fn poll_tool_gate_settles_when_view_completes() {
+        let hub = CountingHub::new();
+        let mut driver = poll_test_driver(hub.clone());
+        assert!(!driver.poll_tool_gate().await);
+        hub.set_complete(true);
+        assert!(driver.poll_tool_gate().await);
+        assert!(driver.agent.is_tools_frozen());
+        assert_eq!(hub.drive_calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn poll_tool_gate_settles_once_with_notice_at_gate_deadline() {
+        let hub = CountingHub::new();
+        let mut driver = poll_test_driver(hub.clone());
+        assert!(!driver.poll_tool_gate().await);
+        driver.tool_gate_poll_started = Some(Instant::now() - Duration::from_secs(16));
+        assert!(driver.poll_tool_gate().await);
+        assert!(driver.agent.is_tools_frozen());
+        assert!(
+            driver.mcp_gate_notice.is_some(),
+            "gate deadline MUST surface the timeout notice once"
+        );
+        assert_eq!(hub.drive_calls(), 0);
     }
 }

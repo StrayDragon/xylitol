@@ -823,6 +823,14 @@ impl SessionSlot {
                     driver.loaded_resources_snapshot().await
                 };
                 if last.as_ref() != Some(&snap) {
+                    log::debug!(
+                        target: "xylitol::mcp_hub",
+                        "resources watch push slot={} connected={} configured={} complete={}",
+                        slot.session_id,
+                        snap.mcp_connected.len(),
+                        snap.mcp_configured,
+                        snap.mcp_bootstrap_complete
+                    );
                     last = Some(snap.clone());
                     slot.push_resources(snap).await;
                 }

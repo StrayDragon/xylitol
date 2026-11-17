@@ -388,6 +388,13 @@ where
         }
         Downlink::SessionResources(payload) => {
             if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(payload.snapshot) {
+                log::debug!(
+                    target: "xylitol::tui",
+                    "resources downlink apply connected={} configured={} complete={}",
+                    snap.mcp_connected.len(),
+                    snap.mcp_configured,
+                    snap.mcp_bootstrap_complete
+                );
                 store_resources_snapshot(
                     &ctx.cached_skills,
                     &ctx.gate_notice_consumed,
@@ -1373,7 +1380,24 @@ where
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        let snap = match self.unary_cmd(Command::LoadedResources {}).await {
+        let Ok(base) = serde_json::to_value(Command::LoadedResources {}) else {
+            return LoadedResourcesSnapshot {
+                mcp_diag_short: vec!["remote loaded_resources: encode failed".into()],
+                ..LoadedResourcesSnapshot::default()
+            };
+        };
+        let payload = self.with_session(base);
+        let Some(method) = payload
+            .get("type")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            return LoadedResourcesSnapshot {
+                mcp_diag_short: vec!["remote loaded_resources: missing wire tag".into()],
+                ..LoadedResourcesSnapshot::default()
+            };
+        };
+        let snap = match self.unary(&method, payload).await {
             Ok(data) => serde_json::from_value(data).unwrap_or_else(|e| LoadedResourcesSnapshot {
                 mcp_diag_short: vec![format!("remote loaded_resources decode: {e}")],
                 ..LoadedResourcesSnapshot::default()
