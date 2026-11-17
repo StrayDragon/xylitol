@@ -73,17 +73,11 @@ pub(super) async fn resolve_contexts<T: Terminal>(
     Some(contexts)
 }
 
-pub(super) async fn drain<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    oauth_start(session, driver).await;
-    resource_add(session).await;
-    prompt_select(session, driver).await;
-    prompt_args(session, driver).await;
-}
-
-async fn oauth_start<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some(server) = session.take_pending_mcp_oauth_start() else {
-        return;
-    };
+pub(super) async fn oauth_start<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    server: String,
+) {
     match driver.mcp_oauth_start(&server).await {
         Ok(flow) => {
             session.close_mcp_slot();
@@ -100,10 +94,10 @@ async fn oauth_start<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn
     let _ = session.render_now();
 }
 
-async fn resource_add<T: Terminal>(session: &mut HostSession<T>) {
-    let Some(r) = session.take_pending_mcp_resource_add() else {
-        return;
-    };
+pub(super) async fn resource_add<T: Terminal>(
+    session: &mut HostSession<T>,
+    r: xylitol_plugin_sdk::mcp::McpResourceRef,
+) {
     session.close_mcp_slot();
     if session.mcp_tray_add(&r.server, &r.uri) {
         session.push_toast_info_notice(format!("Attached {}/{}", r.server, r.uri));
@@ -153,10 +147,12 @@ async fn fetch_and_insert_prompt<T: Terminal>(
     let _ = session.render_now();
 }
 
-async fn prompt_select<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some((server, name)) = session.take_pending_mcp_prompt_select() else {
-        return;
-    };
+pub(super) async fn prompt_select<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    server: String,
+    name: String,
+) {
     let Some(catalog) = fetch_catalog(session, driver).await else {
         return;
     };
@@ -183,7 +179,10 @@ async fn prompt_select<T: Terminal>(session: &mut HostSession<T>, driver: &mut d
     let _ = session.render_now();
 }
 
-async fn prompt_args<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
+pub(super) async fn prompt_args<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+) {
     let Some((target, json)) = session.take_mcp_prompt_args_result() else {
         return;
     };

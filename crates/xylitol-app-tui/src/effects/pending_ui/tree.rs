@@ -15,9 +15,6 @@ pub(super) fn outcome_error(
 }
 
 pub(super) async fn open<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    if !session.take_pending_session_tree_open() {
-        return;
-    }
     log::info!(target: "xylitol::tui", "Command::SessionTree(MessageHistory)");
     match crate::dispatch::dispatch(
         driver,
@@ -48,10 +45,11 @@ pub(super) async fn open<T: Terminal>(session: &mut HostSession<T>, driver: &mut
     let _ = session.render_now();
 }
 
-pub(super) async fn travel<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some(entry_id) = session.take_pending_session_tree_travel() else {
-        return;
-    };
+pub(super) async fn travel<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    entry_id: String,
+) {
     log::info!(target: "xylitol::tui", "Command::TravelSessionTree(MessageHistory) entry_id={}", entry_id);
     match crate::dispatch::dispatch(
         driver,
@@ -195,10 +193,12 @@ pub(super) async fn fork<T: Terminal>(
     true
 }
 
-pub(super) async fn label<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some((entry_id, label)) = session.take_pending_session_tree_label() else {
-        return;
-    };
+pub(super) async fn label<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    entry_id: String,
+    label: Option<String>,
+) {
     log::info!(target: "xylitol::tui", "Command::AppendEntryLabel entry_id={}", entry_id);
     match crate::dispatch::dispatch(
         driver,

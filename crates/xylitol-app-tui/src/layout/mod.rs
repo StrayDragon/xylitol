@@ -21,6 +21,7 @@ pub(crate) use session_tree::map_session_tree_nodes;
 #[cfg(test)]
 pub(crate) use slash_catalog::{product_slash_commands_for_editor, slash_commands_for_editor};
 
+pub(crate) use root::UiIntent;
 #[cfg(test)]
 pub(crate) use root::sample_tree_nodes_for_test;
 pub use root::{EscWindow, UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};

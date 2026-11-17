@@ -22,22 +22,15 @@ impl<T: Terminal> HostSession<T> {
         width_tier(Terminal::columns(&self.tui.terminal) as usize) >= WidthTier::Standard
     }
 
-    pub fn take_pending_session_sidebar(&mut self) -> bool {
-        let root = self.ui_root.as_ref().expect("product ui").clone();
-        root.borrow_mut().take_pending_session_sidebar()
+    pub(crate) fn pop_ui_intent(&mut self) -> Option<crate::layout::UiIntent> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().pop_intent()
     }
 
     pub fn show_session_sidebar(&mut self, session_id: &str) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().show_session_sidebar(session_id);
         }
-    }
-
-    pub fn take_pending_session_tree_open(&mut self) -> bool {
-        let Some(root) = self.ui_root.as_ref() else {
-            return false;
-        };
-        root.borrow_mut().take_pending_tree_open()
     }
 
     pub fn request_session_tree_open(&mut self) {
@@ -50,21 +43,6 @@ impl<T: Terminal> HostSession<T> {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().request_tree_fork(entry_id.into());
         }
-    }
-
-    pub fn take_pending_session_tree_travel(&mut self) -> Option<String> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_tree_travel()
-    }
-
-    pub fn take_pending_session_tree_fork(&mut self) -> Option<String> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_tree_fork()
-    }
-
-    pub fn take_pending_session_tree_label(&mut self) -> Option<(String, Option<String>)> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_tree_label()
     }
 
     pub fn apply_session_tree_label(&mut self, id: &str, label: Option<String>) {
@@ -82,23 +60,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    pub fn take_pending_model_select(&mut self) -> Option<crate::layout::PendingModelChoice> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_model_select()
-    }
-
-    pub fn take_pending_theme_select(&mut self) -> Option<String> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_theme_select()
-    }
-
-    pub fn take_pending_import_decision(
-        &mut self,
-    ) -> Option<super::super::layout::ImportConfirmDecision> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_import_decision()
-    }
-
     pub fn mount_import_confirm(&mut self, path: &str) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -112,23 +73,6 @@ impl<T: Terminal> HostSession<T> {
             root.borrow_mut().close_import_confirm();
             self.sync_ui_root_from_model();
         }
-    }
-
-    pub fn take_pending_mcp_oauth_start(&mut self) -> Option<String> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().pending_take_mcp_oauth_start()
-    }
-
-    pub fn take_pending_mcp_prompt_select(&mut self) -> Option<(String, String)> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().pending_take_mcp_prompt_select()
-    }
-
-    pub fn take_pending_mcp_resource_add(
-        &mut self,
-    ) -> Option<xylitol_plugin_sdk::mcp::McpResourceRef> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().pending_take_mcp_resource_add()
     }
 
     pub fn mount_mcp_prompt_picker(
@@ -305,21 +249,6 @@ impl<T: Terminal> HostSession<T> {
                 .mount_session_resume_loading(loaded, total);
             self.sync_ui_root_from_model();
         }
-    }
-
-    pub fn take_pending_session_resume_select(&mut self) -> Option<String> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_session_resume_select()
-    }
-
-    pub fn take_pending_session_resume_rename(&mut self) -> Option<(String, String)> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_session_resume_rename()
-    }
-
-    pub fn take_pending_session_resume_delete(&mut self) -> Option<String> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_session_resume_delete()
     }
 
     pub fn session_resume_apply_rename(&mut self, id: &str, name: &str) {
