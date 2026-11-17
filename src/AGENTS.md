@@ -26,7 +26,7 @@ Print：我 → xylitol-app-print → xylitol-kernel → xylitol-runtime（不�
 
 ```mermaid
 flowchart TB
-  subgraph contracts["① 契约叶 · 框内三包互不依赖"]
+  subgraph contracts["① 契约叶 · tui 与 sdk、protocol 互不依赖；sdk → protocol 单向（Command 词表）"]
     direction LR
     xylitol_plugin_sdk["xylitol-plugin-sdk<br/>词表 + 端口 + rt"]
     xylitol_protocol["xylitol-protocol<br/>JSON-RPC 信封"]
@@ -84,6 +84,7 @@ flowchart TB
     xylitol["xylitol<br/>argv + profile"]
   end
 
+  xylitol_plugin_sdk --> xylitol_protocol
   xylitol_official_plugin_session --> xylitol_plugin_sdk
   xylitol_official_plugin_compaction --> xylitol_plugin_sdk
   xylitol_official_plugin_context_inject --> xylitol_plugin_sdk
@@ -131,7 +132,7 @@ flowchart TB
 
 | crate | 必须 | 不得 |
 |---|---|---|
-| `xylitol-plugin-sdk` | 词表 + 端口 + 错误 + `rt` 再导出。插件作者只依赖这一包 | 认识信封；放 HTTP / 假模型 / 观测写出；再拆 `xylitol-types` |
+| `xylitol-plugin-sdk` | 词表 + 端口 + 错误 + `rt` 再导出。插件作者只依赖这一包；可单向依赖 `xylitol-protocol` 的 Command 词表（翻译合约落点） | 承担信封职责（JSON-RPC envelope / 分派）；放 HTTP / 传输栈 / 假模型 / 观测写出；再拆 `xylitol-types` |
 | `xylitol-protocol` | 四象限信封（JSON-RPC 2.0 文本）+ `PROTOCOL_VERSION`（仅 `host.describe` 协商） | 认识端口；认识 `XyEvent`；承接 plugin-sdk；依赖 wire / runtime |
 | `xylitol-runtime` | `XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入 + 资源发现 + 权限后端。进程内直调合法 | 依赖官方插件；依赖信封或 wire 映射；`use rutis` |
 | `xylitol-kernel` | `Kernel::boot`；核心插件挂载；loader rows；admit；`Command` 经 `xylitol-protocol` | 依赖 `xylitol-app-tui`；把每 token delta 送上 rutis 总线 |
@@ -197,6 +198,13 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 - **`XyEventSink`**：侧路生命周期（如 compaction），**不是**多 client turn 总线；turn 走 `XyDriver::run` 的事件流。
 
 端口清单与签名以 `xylitol-plugin-sdk` 代码为准。升格新 port 前先证明不能用配置开关或既有 `XyTool`/`XyModel`/`XyDriver`。异步 port 以 `dyn` 注入 → **维持 `async_trait`**（朴素 RPITIT 与 dyn 冲突）。
+
+### sdk 收纳准则
+
+1. 纯数据 / 纯函数且无新增依赖 → 可入 sdk；引用 `xylitol-protocol` 的 Command 词表经 sdk→protocol 单向边合法。
+2. fastrace span 埋点语义 → 可入（obs_gate / obs_session 现状）；观测**写出**（OTLP / 文件 / provider-trace.jsonl）→ 不得入（归 obs 插件与 runtime）。
+3. 传输栈类库（reqwest 等）一票否决，相关件留插件并显式记录「接受镜像」为决策；小而纯解析 / 工具库个案准入，逐案登记于裁决 change（先例：c3355）。
+4. 不得为落点另造第 4 个契约 crate。
 
 ## 错误与观测
 
