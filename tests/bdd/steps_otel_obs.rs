@@ -619,14 +619,14 @@ fn w_c2827_idle_settle(_otel_bdd: &OtelBdd) {
         session_id: Some(SESSION_UUID.into()),
         ..Default::default()
     };
-    let opts = xylitol_official_plugin_compaction::token_estimator::EstimateOpts {
+    let opts = xylitol_plugin_sdk::token_estimator::EstimateOpts {
         obs_session,
         ..Default::default()
     };
-    let _ = xylitol_official_plugin_compaction::settlement::settle_from_session_entries(
+    let _ = xylitol_plugin_sdk::settlement::settle_from_session_entries(
         &entries,
         &opts,
-        xylitol_official_plugin_compaction::settlement::ContextTokenSettlementReason::TurnSettled,
+        xylitol_plugin_sdk::settlement::ContextTokenSettlementReason::TurnSettled,
     );
     std::thread::sleep(std::time::Duration::from_millis(200));
 }

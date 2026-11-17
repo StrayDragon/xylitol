@@ -1,15 +1,13 @@
-pub mod binding;
-pub mod plugin;
-pub use binding::{CompactionModelAttribution, CompactionSummaryBinding};
 pub mod cut_detector;
 pub mod file_ops;
 pub mod llm_summarizer;
 pub mod obs;
 pub mod orchestrator;
-pub mod overflow;
-pub mod settings;
-pub mod settlement;
-pub mod token_estimator;
+pub mod plugin;
+
+pub use xylitol_plugin_sdk::compaction_binding::{
+    CompactionModelAttribution, CompactionSummaryBinding,
+};
 
 pub use orchestrator::{CompactionOrchestrator, OverflowCompactOutcome};
 
@@ -19,13 +17,15 @@ pub use file_ops::FileOps;
 pub use file_ops::{compute_file_lists, extract_file_ops_from_messages, format_file_ops_xml};
 pub use llm_summarizer::{generate_summary, generate_turn_prefix_summary};
 pub use orchestrator::should_compact;
-pub use overflow::error_message_is_context_overflow;
-pub use overflow::{assistant_same_model, is_context_overflow_assistant};
-pub use settings::CompactionSettings;
-pub use settlement::{
+pub use xylitol_plugin_sdk::compaction_settings::CompactionSettings;
+pub use xylitol_plugin_sdk::overflow::error_message_is_context_overflow;
+pub use xylitol_plugin_sdk::overflow::{assistant_same_model, is_context_overflow_assistant};
+pub use xylitol_plugin_sdk::settlement::{
     ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
 };
-pub use token_estimator::{EstimateOpts, FixedRequestContext, estimate_from_session_entries};
+pub use xylitol_plugin_sdk::token_estimator::{
+    EstimateOpts, FixedRequestContext, estimate_from_session_entries,
+};
 
 use anyhow::Result;
 use serde_json::json;
@@ -331,7 +331,7 @@ pub async fn compact_session(
                 context_window,
                 settings.reserve_tokens,
                 settings.keep_recent_tokens,
-                crate::token_estimator::ESTIMATOR_VERSION,
+                xylitol_plugin_sdk::token_estimator::ESTIMATOR_VERSION,
             ),
         ),
     };

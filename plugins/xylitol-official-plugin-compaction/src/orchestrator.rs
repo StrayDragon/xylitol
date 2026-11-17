@@ -1,12 +1,12 @@
-use crate::CompactionSummaryBinding;
 use crate::obs::{AgentCompactionSpan, export_skipped};
-use crate::overflow::{assistant_same_model, is_context_overflow_assistant};
-use crate::token_estimator::{EstimateOpts, FixedRequestContext};
 use crate::{CompactionError, CompactionSettings, compact_session, prepare_compaction};
 use xylitol_plugin_sdk::XyCompaction;
+use xylitol_plugin_sdk::compaction_binding::CompactionSummaryBinding;
 use xylitol_plugin_sdk::lifecycle::{CompactionOutcome, XyEvent};
 use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage, XyStopReason};
+use xylitol_plugin_sdk::overflow::{assistant_same_model, is_context_overflow_assistant};
 use xylitol_plugin_sdk::session::SessionEntry;
+use xylitol_plugin_sdk::token_estimator::{EstimateOpts, FixedRequestContext};
 use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 
 pub use xylitol_plugin_sdk::OverflowCompactOutcome;
@@ -280,7 +280,7 @@ impl CompactionOrchestrator {
         let estimate = match precomputed {
             Some(e) => e.clone(),
             None => {
-                use crate::settlement::estimate_quiet;
+                use xylitol_plugin_sdk::settlement::estimate_quiet;
                 let mut quiet_opts = estimate_opts.clone();
                 quiet_opts.fixed_context = fixed_context.cloned();
                 estimate_quiet(&entries, &quiet_opts)
@@ -501,8 +501,10 @@ async fn compute_after_compaction_settlement(
     fixed_context: Option<&FixedRequestContext>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_plugin_sdk::ObsSessionContext,
-) -> Option<crate::settlement::ContextTokenSettlement> {
-    use crate::settlement::{ContextTokenSettlementReason, settle_from_session_entries};
+) -> Option<xylitol_plugin_sdk::settlement::ContextTokenSettlement> {
+    use xylitol_plugin_sdk::settlement::{
+        ContextTokenSettlementReason, settle_from_session_entries,
+    };
     let Ok(fresh) = store.load_leaf_branch(sid).await else {
         return None;
     };
@@ -520,7 +522,7 @@ async fn compute_after_compaction_settlement(
 
 async fn emit_settlement_event(
     event_sink: &dyn XyEventSink,
-    settled: &crate::settlement::ContextTokenSettlement,
+    settled: &xylitol_plugin_sdk::settlement::ContextTokenSettlement,
 ) {
     event_sink
         .emit(&XyEvent::ContextTokenSettlement {

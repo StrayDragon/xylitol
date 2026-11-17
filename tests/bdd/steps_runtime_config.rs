@@ -385,7 +385,7 @@ fn t_rc_compaction_anchor(rc_snap: &RcSnap) {
 }
 #[then("两键被忽略且不进入运行时 CompactionSettings")]
 fn t_rc_compaction_settings_ignored(rc_snap: &RcSnap) {
-    let merged = xylitol_official_plugin_compaction::settings::merge_compaction_runtime(
+    let merged = xylitol_plugin_sdk::compaction_settings::merge_compaction_runtime(
         None,
         rc_snap.settings.borrow().compaction.as_ref(),
     );

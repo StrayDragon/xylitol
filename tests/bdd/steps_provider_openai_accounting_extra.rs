@@ -138,9 +138,9 @@ pub(crate) fn g_t2_anchor_aborted(t2_est_bdd: &T2EstBdd) {
 #[when("以同源估计器估计上下文")]
 pub(crate) fn w_t2_estimate(t2_est_bdd: &T2EstBdd) {
     let entries = t2_est_bdd.entries.borrow().clone();
-    let est = xylitol_official_plugin_compaction::token_estimator::estimate_from_session_entries(
+    let est = xylitol_plugin_sdk::token_estimator::estimate_from_session_entries(
         &entries,
-        &xylitol_official_plugin_compaction::token_estimator::EstimateOpts::default(),
+        &xylitol_plugin_sdk::token_estimator::EstimateOpts::default(),
     );
     *t2_est_bdd.est.borrow_mut() = Some(est);
 }
