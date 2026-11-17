@@ -163,18 +163,8 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
     };
     let (ctx, loader) = boot_ctx(&boot_opts).await?;
 
-    let assembly = resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: None,
-        interactive: false,
-        caller: "server",
-        ephemeral_sessions: false,
-        static_tools: Vec::new(),
-        agent_profile: None,
-    })
-    .map_err(map_bootstrap_error)?;
+    let assembly =
+        resolve_assembly(&BootstrapInput::from(&boot_opts)).map_err(map_bootstrap_error)?;
 
     let fallback_session = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone().unwrap_or_default();

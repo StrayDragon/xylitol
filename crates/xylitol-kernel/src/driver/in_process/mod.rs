@@ -80,24 +80,21 @@ impl ToolFeatures {
 }
 
 pub fn assemble_driver(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> RuntimeDriver {
-    assemble_driver_with_features(agent, store, ToolFeatures::default())
+    assemble_driver_with_features_and_context(
+        agent,
+        store,
+        ToolFeatures::default(),
+        DriverContext::default(),
+    )
 }
 
-pub fn assemble_driver_with_features(
-    agent: AgentRuntime,
-    store: Arc<dyn XySessionStore>,
-    features: ToolFeatures,
-) -> RuntimeDriver {
-    assemble_driver_with_features_and_context(agent, store, features, DriverContext::default())
-}
-
-pub fn assemble_driver_with_features_and_context(
+fn assemble_driver_with_features_and_context(
     agent: AgentRuntime,
     store: Arc<dyn XySessionStore>,
     features: ToolFeatures,
     context: DriverContext,
 ) -> RuntimeDriver {
-    assemble_driver_with_ops_and_features_and_context(
+    assemble_driver_full(
         agent,
         store,
         BangExecHandler::new(Some(Arc::new(
@@ -109,33 +106,31 @@ pub fn assemble_driver_with_features_and_context(
     )
 }
 
-pub fn assemble_driver_with_ops(
+pub fn assemble_session_driver(
     agent: AgentRuntime,
     store: Arc<dyn XySessionStore>,
-    bang: BangExecHandler,
-    exporter: SessionExporter,
-) -> RuntimeDriver {
-    assemble_driver_with_ops_and_features(agent, store, bang, exporter, ToolFeatures::default())
-}
-
-pub fn assemble_driver_with_ops_and_features(
-    agent: AgentRuntime,
-    store: Arc<dyn XySessionStore>,
-    bang: BangExecHandler,
-    exporter: SessionExporter,
     features: ToolFeatures,
+    context: DriverContext,
+    mcp_server_ids: Vec<String>,
+    profile: xylitol_plugin_sdk::session::SessionProfile,
 ) -> RuntimeDriver {
-    assemble_driver_with_ops_and_features_and_context(
-        agent,
-        store,
-        bang,
-        exporter,
-        features,
-        DriverContext::default(),
-    )
+    let mut driver = assemble_driver_with_features_and_context(agent, store, features, context);
+    driver.set_mcp_server_ids(mcp_server_ids);
+    driver.set_session_profile(profile);
+    driver
 }
 
-pub fn assemble_driver_with_ops_and_features_and_context(
+pub(crate) fn attach_ctx_services(driver: &mut RuntimeDriver, ctx: &xylitol_plugin_sdk::rt::Ctx) {
+    driver.attach_ctx(ctx.clone());
+    if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
+        driver.set_prepare_hub(hub);
+    }
+    if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
+        driver.set_loop_middleware(Some(registry));
+    }
+}
+
+fn assemble_driver_full(
     agent: AgentRuntime,
     store: Arc<dyn XySessionStore>,
     bang: BangExecHandler,
@@ -143,16 +138,8 @@ pub fn assemble_driver_with_ops_and_features_and_context(
     features: ToolFeatures,
     context: DriverContext,
 ) -> RuntimeDriver {
-    let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone());
-    let workflow = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone());
-    let automation = xylitol_official_plugin_tools::SessionAutomationGateway::new(store.clone());
     let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
-    inner.set_todo_gateway(todo.clone());
-    inner.set_automation_gateway(automation.clone());
-    inner.set_workflow_gateway(workflow.clone());
-    let tools = compose_tools(features, &context, todo, workflow, automation, None);
-    inner.set_base_tools(tools.clone());
-    debug_assert!(matches!(inner.set_tools(tools), ToolsWriteOutcome::Applied));
+    install_product_tool_set(&mut inner, features, &context, None);
     inner.set_slash_commands(
         crate::product_commands::product_slash_commands()
             .into_iter()
@@ -174,6 +161,15 @@ pub fn install_product_ask_tool(
     context: DriverContext,
 ) {
     driver.install_ask_tool(gateway.clone());
+    install_product_tool_set(driver, features, &context, Some(gateway));
+}
+
+fn install_product_tool_set(
+    driver: &mut RuntimeDriver,
+    features: ToolFeatures,
+    context: &DriverContext,
+    ask: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
+) {
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(driver.store.clone());
     let workflow =
         xylitol_official_plugin_workflow::SessionWorkflowGateway::new(driver.store.clone());
@@ -182,14 +178,7 @@ pub fn install_product_ask_tool(
     driver.set_todo_gateway(todo.clone());
     driver.set_automation_gateway(automation.clone());
     driver.set_workflow_gateway(workflow.clone());
-    let tools = compose_tools(
-        features,
-        &context,
-        todo,
-        workflow,
-        automation,
-        Some(gateway),
-    );
+    let tools = compose_tools(features, context, todo, workflow, automation, ask);
     driver.set_base_tools(tools.clone());
     debug_assert!(matches!(
         driver.set_tools(tools),
@@ -250,17 +239,4 @@ fn resolve_tool_set(
         log::warn!(target: "xylitol::tools", "{warning}");
     }
     set
-}
-
-pub fn assemble_driver_with_bang(
-    agent: AgentRuntime,
-    store: Arc<dyn XySessionStore>,
-    bang: BangExecHandler,
-) -> RuntimeDriver {
-    assemble_driver_with_ops(
-        agent,
-        store,
-        bang,
-        SessionExporter::new(Some(Arc::new(crate::export::StdExportIo::new()))),
-    )
 }

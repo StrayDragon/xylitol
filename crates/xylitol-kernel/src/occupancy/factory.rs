@@ -16,9 +16,7 @@ use xylitol_serve::occupancy::{OccupancyEngine, OccupancyFactory};
 
 use crate::composition::build_baseline_with_store;
 use crate::dispatch::{SessionCommandExecutor, outcome_to_value};
-use crate::driver::{
-    DriverContext, ToolFeatures, XyInProcessDriver, assemble_driver_with_features_and_context,
-};
+use crate::driver::{DriverContext, ToolFeatures, XyInProcessDriver, assemble_session_driver};
 use crate::mcp_spec::McpServerSpec;
 use crate::occupancy::host::{HostState, ReloadBaseline};
 
@@ -116,13 +114,7 @@ fn attach_optional_context(
     mcp_servers: &[crate::mcp_spec::McpServerSpec],
 ) {
     if let Some(ctx) = ctx {
-        driver.attach_ctx(ctx.clone());
-        if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
-            driver.set_prepare_hub(hub);
-        }
-        if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
-            driver.set_loop_middleware_scoped(Some(registry), xylitol_plugin_sdk::LoopScope::Root);
-        }
+        crate::driver::attach_ctx_services(driver, ctx);
     } else if !mcp_servers.is_empty() {
         let servers = crate::mcp_spec::McpServerSpec::to_infra_list(mcp_servers);
         driver.set_prepare_hub(std::sync::Arc::new(
@@ -134,28 +126,26 @@ fn attach_optional_context(
 impl OccupancyFactory for ProductOccupancyFactory {
     fn new_driver_at(&self, workspace: &Path) -> Box<dyn OccupancyEngine> {
         let agent = self.ports.materialize_runtime();
-        let mut driver = assemble_driver_with_features_and_context(
+        let mut driver = assemble_session_driver(
             agent,
             self.ports.store.clone(),
             self.tool_features(),
             self.driver_context(workspace),
+            self.mcp_servers
+                .iter()
+                .map(|server| server.name.clone())
+                .collect(),
+            xylitol_plugin_sdk::session::SessionProfile {
+                name: self.agent_profile.clone(),
+                fingerprint: self.agent_profile_fingerprint.clone(),
+            },
         );
         driver.enable_reload_state(
             workspace.to_path_buf(),
             self.agent_dir.clone(),
             self.project_trusted(workspace),
         );
-        driver.set_mcp_server_ids(
-            self.mcp_servers
-                .iter()
-                .map(|server| server.name.clone())
-                .collect(),
-        );
         attach_optional_context(&mut driver, self.ctx.as_ref(), &self.mcp_servers);
-        driver.set_session_profile(xylitol_plugin_sdk::session::SessionProfile {
-            name: self.agent_profile.clone(),
-            fingerprint: self.agent_profile_fingerprint.clone(),
-        });
         driver
             .agent
             .set_cwd(workspace.to_string_lossy().into_owned());

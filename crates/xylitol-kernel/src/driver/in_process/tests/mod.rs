@@ -63,7 +63,7 @@ mod session;
 mod trust;
 
 #[tokio::test]
-async fn assemble_driver_with_bang_wrapper_builds_driver() {
+async fn assemble_driver_full_with_custom_ops_builds_driver() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
@@ -84,7 +84,14 @@ async fn assemble_driver_with_bang_wrapper_builds_driver() {
     store_trait.create(&sid, Some("."), None).await.unwrap();
     agent.bind_session(sid).unwrap();
 
-    let driver = assemble_driver_with_bang(agent, store, BangExecHandler::new(None));
+    let driver = assemble_driver_full(
+        agent,
+        store,
+        BangExecHandler::new(None),
+        SessionExporter::new(Some(Arc::new(crate::export::StdExportIo::new()))),
+        ToolFeatures::default(),
+        DriverContext::default(),
+    );
     assert!(driver.session_id().is_some());
 }
 

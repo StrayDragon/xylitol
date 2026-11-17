@@ -71,7 +71,7 @@ async fn boot_with(
     let mut bootstrap_input = BootstrapInput::from(&opts);
     bootstrap_input.static_tools = static_tools_from_ctx(&ctx);
     let mut runtime = bootstrap(bootstrap_input)?.into_runtime();
-    runtime.driver.attach_ctx(ctx.clone());
+    crate::driver::attach_ctx_services(&mut runtime.driver, &ctx);
     if let Some(regs) = ctx.get::<xylitol_plugin_sdk::HostRegistries>() {
         runtime
             .driver
@@ -81,12 +81,6 @@ async fn boot_with(
         runtime.driver.store.clone(),
     ))
     .map_err(cordis_to_bootstrap)?;
-    if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
-        runtime.driver.set_prepare_hub(hub);
-    }
-    if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
-        runtime.driver.set_loop_middleware(Some(registry));
-    }
     runtime
         .driver
         .enable_reload_state(cwd, agent_dir, opts.trust_override.unwrap_or(true));
