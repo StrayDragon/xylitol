@@ -109,3 +109,38 @@ where
         TypedTool::prepare_arguments(self, args)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_tool_args;
+    use crate::error::XyToolError;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    struct SampleArgs {
+        pattern: String,
+        #[serde(default)]
+        ignore_case: bool,
+    }
+
+    #[test]
+    fn parse_maps_missing_required_to_invalid_args() {
+        let err = parse_tool_args::<SampleArgs>(json!({})).unwrap_err();
+        assert!(matches!(err, XyToolError::InvalidArgs(_)));
+    }
+
+    #[test]
+    fn parse_accepts_camel_case_aliases() {
+        let args: SampleArgs =
+            parse_tool_args(json!({"pattern": "foo", "ignoreCase": true})).unwrap();
+        assert_eq!(
+            args,
+            SampleArgs {
+                pattern: "foo".into(),
+                ignore_case: true,
+            }
+        );
+    }
+}

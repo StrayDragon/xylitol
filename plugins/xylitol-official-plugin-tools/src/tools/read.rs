@@ -10,7 +10,7 @@ use xylitol_plugin_sdk::message::AgentPart;
 
 use super::path_utils::resolve_to_dir;
 use super::truncate::{TruncationOptions, truncate_head};
-use super::typed::TypedTool;
+use xylitol_plugin_sdk::TypedTool;
 
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "ico", "svg"];
 
@@ -68,7 +68,7 @@ impl TypedTool for ReadTool {
     }
     fn wait_bound(&self) -> Option<std::time::Duration> {
         Some(std::time::Duration::from_secs(
-            super::typed::FS_TOOL_TIMEOUT_SECS,
+            xylitol_plugin_sdk::FS_TOOL_TIMEOUT_SECS,
         ))
     }
 

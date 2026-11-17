@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use super::path_utils::resolve_to_dir;
 use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, truncate_head};
-use super::typed::TypedTool;
+use xylitol_plugin_sdk::TypedTool;
 use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
 

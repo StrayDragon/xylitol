@@ -12,7 +12,7 @@ use xylitol_plugin_sdk::error::XyToolError;
 use super::mutation::FileMutationQueue;
 use super::patch;
 use super::path_utils::resolve_to_dir;
-use super::typed::TypedTool;
+use xylitol_plugin_sdk::TypedTool;
 
 pub struct EditTool {
     mutation_queue: Arc<FileMutationQueue>,
@@ -185,7 +185,7 @@ impl TypedTool for EditTool {
     }
     fn wait_bound(&self) -> Option<std::time::Duration> {
         Some(std::time::Duration::from_secs(
-            super::typed::FS_TOOL_TIMEOUT_SECS,
+            xylitol_plugin_sdk::FS_TOOL_TIMEOUT_SECS,
         ))
     }
 

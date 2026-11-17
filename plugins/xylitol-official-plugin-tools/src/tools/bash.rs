@@ -15,7 +15,7 @@ use xylitol_plugin_sdk::host_env;
 pub(crate) const BASH_TOOL_TIMEOUT_SECS: u64 = 120;
 
 use super::accumulator::OutputAccumulator;
-use super::typed::TypedTool;
+use xylitol_plugin_sdk::TypedTool;
 
 const SIGTERM_GRACE_SECS: u64 = 5;
 

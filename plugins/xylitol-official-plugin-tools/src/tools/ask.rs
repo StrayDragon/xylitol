@@ -3,8 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::typed::TypedTool;
 use xylitol_plugin_sdk::BuiltinToolName;
+use xylitol_plugin_sdk::TypedTool;
 use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::{XyToolCtx, XyToolExecutionMode};
