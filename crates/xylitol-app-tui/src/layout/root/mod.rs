@@ -909,7 +909,6 @@ impl UiRoot {
             queue_rows,
             todo_rows,
             self.toast_notice.is_some(),
-            self.hint_rows() > 0,
         )
         .saturating_add(self.last_tray_rows)
         .saturating_add(self.last_help_rows)
@@ -2610,6 +2609,40 @@ mod tests {
         assert_eq!(
             root.last_slot_top_row, busy_top,
             "editor top must not move when spinner disappears"
+        );
+    }
+    #[test]
+    fn help_panel_open_keeps_lower_rows_anchored() {
+        let mut root = UiRoot::new();
+        root.set_term_rows(30);
+        root.set_term_cols(100);
+        let mut model = UiModel::new();
+        model.begin_run("task");
+        model.entries.push(crate::bridge::UiEntry::User {
+            text: "hello ".repeat(10),
+        });
+        root.apply_ui_model(&model);
+        let _ = root.render(100);
+        let editor_top = root.last_slot_top_row;
+        let editor_rows = root.last_editor_rows;
+        let status_row =
+            editor_top.map(|top| top.saturating_sub(root.last_tray_rows + root.last_status_rows));
+
+        root.open_help();
+        let _ = root.render(100);
+        assert_eq!(
+            root.last_slot_top_row, editor_top,
+            "editor top must not move when help opens"
+        );
+        assert_eq!(
+            root.last_editor_rows, editor_rows,
+            "editor height must not change when help opens"
+        );
+        assert_eq!(
+            root.last_slot_top_row
+                .map(|top| top.saturating_sub(root.last_tray_rows + root.last_status_rows)),
+            status_row,
+            "status row must not move when help opens"
         );
     }
 

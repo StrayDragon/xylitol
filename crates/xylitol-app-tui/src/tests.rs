@@ -7246,9 +7246,18 @@ fn empty_editor_shows_shortcut_hint() {
 fn non_empty_editor_hides_shortcut_hint() {
     let mut root = UiRoot::new();
     root.set_term_rows(24);
+    let with_hint = root.render(80);
     root.set_editor_text("hello");
-    let frame = strip_ansi(&root.render(80).join("\n"));
-    assert!(!frame.contains("? shortcuts"), "frame: {frame}");
+    let with_placeholder = root.render(80);
+    assert_eq!(
+        with_hint.len(),
+        with_placeholder.len(),
+        "hint placeholder row must stay pinned"
+    );
+    let joined = strip_ansi(&with_placeholder.join("\n"));
+    assert!(!joined.contains("? shortcuts"), "frame: {joined}");
+    let last = strip_ansi(with_placeholder.last().expect("hint row"));
+    assert!(last.trim().is_empty(), "hint row must be blank: {last:?}");
 }
 
 #[test]
@@ -7339,9 +7348,15 @@ fn help_panel_wraps_content_above_editor() {
         28,
         "panel must wrap content rows + 2 borders, not fill 34 rows: {frame}"
     );
+    let editor_border = bottom
+        + 1
+        + lines[bottom + 1..]
+            .iter()
+            .position(|line| line.contains("╭"))
+            .expect("editor border below panel");
     assert!(
-        lines[bottom + 1].contains("╭"),
-        "panel must sit directly above the editor: {frame}"
+        editor_border > bottom,
+        "editor must sit below the panel block: {frame}"
     );
     assert!(
         lines.last().is_some_and(|line| line.contains("Esc close")),
