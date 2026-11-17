@@ -630,21 +630,21 @@
 
   @req:r1923
   规则: 首轮工具门有界决议
-    `arm_tool_freeze` unary 须有界决议：配置了但连不上的 MCP 不得让首轮门无限等待——在门时限（`MCP_FIRST_TURN_GATE_TIMEOUT`）内 settle；超时 须 detach 未连上的 bootstrap 并冻结已 armed 工具子集后返回权威快照（`tools_table_frozen`、`mcp_bootstrap_complete` 反映决议结果）。该 unary 不得在连接无界挂起时返回未冻结快照使客户端无限等待（否则 TUI 首轮死锁、round 永不启动）。
+    `arm_tool_freeze` unary 须不阻塞决议：已冻结时 须返回权威快照；未冻结时 须立即返回当前快照，不得 在该 unary 调用栈内等待会话准备 settle，也不得 在等待冻结期间持有会话引擎锁（否则同会话其他 unary 排队到准备 settle，客户端主循环整体冻结）。冻结决议 须 在门时限（`MCP_FIRST_TURN_GATE_TIMEOUT`）内收口：超时 须 detach 未连上的 bootstrap 并冻结已 armed 工具子集；决议完成 须 经「session/resources」下行推送权威快照（`tools_table_frozen`、`mcp_bootstrap_complete` 反映决议结果），客户端不得依赖该 unary 的返回时刻判定冻结。
 
-    场景: 武装冻结有界低于挂起MCP
+    场景: 武装冻结不等待挂起MCP
       假如 宿主配置了连不上的 MCP 且会话写者已物化
       当 发起首轮工具门冻结
-      那么 门时限内返回冻结快照且引导收口
+      那么 立即返回当前快照且冻结决议经下行收口
 
   @req:r1925
   规则: arm_tool_freeze 租约冲突降级为无租约有界决议
-    「arm_tool_freeze」unary 不得占用会话写锁；他进程已持有该会话写占用时 须仍返回权威冻结快照，不得使首轮工具门永久停滞。冻结的是写者内部门、不写会话状态。
+    「arm_tool_freeze」unary 不得占用会话写锁；他进程已持有该会话写占用时 须仍不阻塞返回当前快照，不得使首轮工具门永久停滞。冻结的是写者内部门、不写会话状态；冻结决议经「session/resources」下行收口。
 
     场景: 武装冻结租约空闲低于写入冲突
       假如 会话写租约已被其他写者持有
       当 发起首轮工具门冻结
-      那么 不取写占用仍返回冻结快照
+      那么 不取写占用立即返回快照
 
   @req:r1926
   规则: attach 生效模型同步不进 journal

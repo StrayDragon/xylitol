@@ -6667,6 +6667,42 @@ mod slice_tests {
         assert_eq!(driver.runs, vec!["hi".to_string()]);
         assert!(!session.has_gated_submit());
     }
+    #[tokio::test]
+    async fn c3345_gate_window_keeps_typing_then_runs_after_freeze() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_tools_frozen(false);
+
+        root.borrow_mut().set_editor_text("hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(driver.runs.is_empty());
+        assert!(session.has_gated_submit());
+
+        session.step(HostEvent::Input(char_event('x'))).unwrap();
+        assert_eq!(
+            root.borrow().editor_text(),
+            "x",
+            "typing MUST land in the editor while the gate is unresolved"
+        );
+
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(driver.runs.is_empty());
+        assert!(session.has_gated_submit());
+
+        driver.set_tools_frozen(true);
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.runs, vec!["hi".to_string()]);
+        assert!(!session.has_gated_submit());
+    }
 
     #[tokio::test]
     async fn c1215_mcp_select_list_nav_enter_closes() {

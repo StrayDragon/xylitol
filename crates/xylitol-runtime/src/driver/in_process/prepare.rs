@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
@@ -27,6 +28,8 @@ pub trait InProcessReloadHook: Send + Sync {
         cancel: &CancellationToken,
     ) -> Result<RuntimeReloadReport, XyDriverError>;
 }
+
+const TOOL_GATE_POLL_WINDOW: Duration = Duration::from_millis(100);
 
 fn session_workspaces(agent: &crate::agent::AgentRuntime) -> Vec<String> {
     let mut workspaces = agent.workspaces().to_vec();
@@ -187,12 +190,51 @@ impl XyInProcessDriver {
         } else {
             self.hub_wait(timeout).await
         };
+        self.finish_prepare(&result);
+        result
+    }
+
+    pub async fn poll_tool_gate(&mut self) -> bool {
+        if self.agent.is_tools_frozen() {
+            self.tool_gate_poll_started = None;
+            return true;
+        }
+        self.agent.begin_tool_gating();
+        let started = *self.tool_gate_poll_started.get_or_insert(Instant::now());
+        let elapsed = started.elapsed();
+        if let Some(remaining) = MCP_FIRST_TURN_GATE_TIMEOUT.checked_sub(elapsed) {
+            let window = TOOL_GATE_POLL_WINDOW.min(remaining);
+            let result = self.hub_wait(window).await;
+            let settled = self
+                .prepare_hub
+                .as_ref()
+                .is_none_or(|hub| hub.view().configured == 0 || hub.view().complete);
+            if !settled {
+                return false;
+            }
+            self.settle_tool_gate(result);
+        } else {
+            self.mcp_gate_notice = Some(xylitol_plugin_sdk::SESSION_PREPARE_TIMEOUT_NOTICE.into());
+            let result = self.hub_snapshot_result();
+            self.settle_tool_gate(result);
+        }
+        self.tool_gate_poll_started = None;
+        self.agent.is_tools_frozen()
+    }
+
+    fn finish_prepare(&mut self, result: &SessionPrepareResult) {
         self.apply_prepare_tools();
         if !result.fingerprint.is_empty() {
             self.agent
-                .set_pending_prepare(xylitol_plugin_sdk::SessionPrepareSnapshot::from(&result));
+                .set_pending_prepare(xylitol_plugin_sdk::SessionPrepareSnapshot::from(result));
         }
-        result
+    }
+
+    fn settle_tool_gate(&mut self, result: SessionPrepareResult) {
+        self.finish_prepare(&result);
+        let tools = self.agent.clone_tools();
+        self.agent.freeze_tools(tools);
+        self.prepare_acked = true;
     }
 
     async fn hub_wait(&self, timeout: Duration) -> SessionPrepareResult {

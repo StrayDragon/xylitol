@@ -337,6 +337,10 @@ impl OccupancyEngine for OccupancyDriver {
         XyInProcessDriver::ensure_tool_table_frozen(&mut self.inner).await;
     }
 
+    async fn poll_tool_gate(&mut self) -> bool {
+        XyInProcessDriver::poll_tool_gate(&mut self.inner).await
+    }
+
     async fn execute_command(&mut self, cmd: Command) -> Result<serde_json::Value, XyDriverError> {
         let outcome = SessionCommandExecutor::execute_session_command(&mut self.inner, cmd).await?;
         Ok(outcome_to_value(outcome))

@@ -509,7 +509,7 @@ async fn test_session_tree_deep_restore(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "武装冻结有界低于挂起MCP"
+    name = "武装冻结不等待挂起MCP"
 )]
 async fn test_sr_r1923_arm_freeze_bounded(server_test: ServerTest) {}
 

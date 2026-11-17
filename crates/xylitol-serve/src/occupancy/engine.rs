@@ -19,6 +19,7 @@ pub trait OccupancyEngine: XyDriver {
     fn model_provider(&self, model_id: &str) -> Option<String>;
     async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError>;
     async fn ensure_tool_table_frozen(&mut self);
+    async fn poll_tool_gate(&mut self) -> bool;
     async fn execute_command(&mut self, cmd: Command) -> Result<Value, XyDriverError>;
     fn agent_cwd_for_test(&self) -> String;
     fn set_loop_middleware_scoped(
