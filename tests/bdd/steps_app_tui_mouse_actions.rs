@@ -421,18 +421,14 @@ async fn w_mat35_click_third_row(host_pump_bdd: &HostPumpBdd) {
 }
 
 #[then("选中项变为第三行且未发起 travel")]
-fn t_mat35_selected_not_traveled(host_pump_bdd: &HostPumpBdd) {
-    let mut pump = take_pump(host_pump_bdd);
-    let pending = pump.session.take_pending_session_tree_travel();
+async fn t_mat35_selected_not_traveled(host_pump_bdd: &HostPumpBdd) {
+    pump_once(host_pump_bdd).await;
+    let pump = take_pump(host_pump_bdd);
     let travels = pump.driver.travel_calls();
     put_pump(host_pump_bdd, pump);
     assert!(
-        pending.is_none(),
-        "mat35: 首次点击不得发起 travel: {pending:?}"
-    );
-    assert!(
         travels.is_empty(),
-        "mat35: 首次点击不得触发驱动 travel: {travels:?}"
+        "mat35: 首次点击不得发起 travel: {travels:?}"
     );
 }
 

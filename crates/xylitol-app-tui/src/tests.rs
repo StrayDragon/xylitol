@@ -4164,7 +4164,9 @@ fn models_picker_left_right_step_thinking_levels() {
         KeyCode::Enter,
         KeyModifiers::NONE,
     )));
-    let left = root.take_pending_model_select().expect("left confirm");
+    let Some(crate::layout::UiIntent::ModelSelect(left)) = root.pop_intent() else {
+        panic!("left confirm");
+    };
     assert_eq!(left.model_id, "qwen");
     assert_eq!(left.thinking, "low");
 
@@ -4183,7 +4185,9 @@ fn models_picker_left_right_step_thinking_levels() {
         KeyCode::Enter,
         KeyModifiers::NONE,
     )));
-    let right = root.take_pending_model_select().expect("right confirm");
+    let Some(crate::layout::UiIntent::ModelSelect(right)) = root.pop_intent() else {
+        panic!("right confirm");
+    };
     assert_eq!(right.thinking, "high");
 }
 

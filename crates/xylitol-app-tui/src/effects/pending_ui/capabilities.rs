@@ -7,10 +7,12 @@ use xylitol_protocol::Command;
 
 use super::super::helpers::note_driver_err;
 
-pub(super) async fn apply<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some((id, enabled)) = session.take_pending_capability_toggle() else {
-        return;
-    };
+pub(super) async fn apply<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    id: String,
+    enabled: bool,
+) {
     log::info!(
         target: "xylitol::tui",
         "SetCapability from capabilities slot id={id} enabled={enabled}"

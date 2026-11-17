@@ -8,10 +8,11 @@ use xylitol_protocol::Command;
 
 use super::super::helpers::{SwitchRebuildKind, switch_and_rebuild_transcript};
 
-pub(super) async fn decide<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some(decision) = session.take_pending_import_decision() else {
-        return;
-    };
+pub(super) async fn decide<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    decision: ImportConfirmDecision,
+) {
     match decision {
         ImportConfirmDecision::Rejected => {
             session.push_scroll_notice("Import cancelled");

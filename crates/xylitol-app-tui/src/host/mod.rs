@@ -315,16 +315,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    pub fn take_pending_capability_toggle(&mut self) -> Option<(String, bool)> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_capability_toggle()
-    }
-
-    pub fn take_pending_scene_select(&mut self) -> Option<String> {
-        let root = self.ui_root.as_ref()?;
-        root.borrow_mut().take_pending_scene_select()
-    }
-
     pub async fn inject_designing_scene(&mut self, driver: &mut dyn XyDriver, scene: &str) {
         if !self.designing_mode() {
             return;

@@ -6,10 +6,11 @@ use crate::host::HostSession;
 
 use super::super::helpers::{SwitchRebuildKind, note_driver_err, switch_and_rebuild_transcript};
 
-pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some(session_id) = session.take_pending_session_resume_select() else {
-        return;
-    };
+pub(super) async fn select<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    session_id: String,
+) {
     if session.is_busy() {
         session.push_toast_notice(BUSY_SESSION_SWITCH_NOTICE);
     } else {
@@ -20,10 +21,12 @@ pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &m
     let _ = session.render_now();
 }
 
-pub(super) async fn rename<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some((id, name)) = session.take_pending_session_resume_rename() else {
-        return;
-    };
+pub(super) async fn rename<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    id: String,
+    name: String,
+) {
     if session.is_busy() {
         session.push_toast_notice(BUSY_SESSION_SWITCH_NOTICE);
     } else {
@@ -64,10 +67,11 @@ pub(super) async fn rename<T: Terminal>(session: &mut HostSession<T>, driver: &m
     let _ = session.render_now();
 }
 
-pub(super) async fn delete<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some(id) = session.take_pending_session_resume_delete() else {
-        return;
-    };
+pub(super) async fn delete<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    id: String,
+) {
     if session.is_busy() {
         session.push_toast_notice(BUSY_SESSION_SWITCH_NOTICE);
     } else if driver.session_id().as_deref() == Some(id.as_str()) {

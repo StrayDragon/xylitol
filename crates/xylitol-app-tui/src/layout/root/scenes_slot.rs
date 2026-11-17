@@ -17,8 +17,4 @@ impl UiRoot {
     pub fn scenes_open(&self) -> bool {
         matches!(&self.slot, EditorSlot::Scenes(_))
     }
-
-    pub fn take_pending_scene_select(&mut self) -> Option<String> {
-        self.intents.take_scene_select()
-    }
 }

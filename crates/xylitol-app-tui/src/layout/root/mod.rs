@@ -15,7 +15,8 @@ mod slot_nav;
 mod theme_apply;
 
 use help_panel::HelpPanel;
-use intent::{PendingIntents, UiIntent};
+use intent::PendingIntents;
+pub(crate) use intent::UiIntent;
 use sidebar_panel::SidebarPanel;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -35,7 +36,6 @@ use xylitol_tui::{
 
 use super::dollar_skill_source::DollarSkillSource;
 use super::mcp_source::{McpPickSink, McpResourceSource};
-use super::models_picker::PendingModelChoice;
 use super::slash_catalog::slash_commands_for_editor;
 use crate::UiPhase;
 use crate::driver::{CAPABILITY_PENDING_CUE, MCP_PENDING_CUE};
@@ -59,8 +59,6 @@ use crate::widgets::{
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::model::THINKING_OFF;
 use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeTravel};
-
-pub use super::slots::ImportConfirmDecision;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastKind {
@@ -1012,10 +1010,6 @@ impl UiRoot {
         self.intents.has_session_sidebar()
     }
 
-    pub fn take_pending_session_sidebar(&mut self) -> bool {
-        self.intents.take_session_sidebar()
-    }
-
     pub fn show_session_sidebar(&mut self, _session_id: &str) {
         self.session_sidebar_on = true;
         self.session_sidebar_scroll = 0;
@@ -1315,28 +1309,16 @@ impl UiRoot {
         hits
     }
 
-    pub fn take_pending_tree_open(&mut self) -> bool {
-        self.intents.take_tree_open()
-    }
-
     pub fn request_tree_open(&mut self) {
         self.intents.request(UiIntent::TreeOpen);
-    }
-
-    pub fn take_pending_tree_travel(&mut self) -> Option<String> {
-        self.intents.take_tree_travel()
-    }
-
-    pub fn take_pending_tree_fork(&mut self) -> Option<String> {
-        self.intents.take_tree_fork()
     }
 
     pub fn request_tree_fork(&mut self, entry_id: String) {
         self.intents.request(UiIntent::TreeFork(entry_id));
     }
 
-    pub fn take_pending_tree_label(&mut self) -> Option<(String, Option<String>)> {
-        self.intents.take_tree_label()
+    pub(crate) fn pop_intent(&mut self) -> Option<UiIntent> {
+        self.intents.pop()
     }
 
     pub fn apply_tree_label(&mut self, id: &str, label: Option<String>) {
@@ -1345,30 +1327,8 @@ impl UiRoot {
         }
     }
 
-    pub fn take_pending_model_select(&mut self) -> Option<PendingModelChoice> {
-        self.intents.take_model_select()
-    }
-
-    pub fn pending_take_mcp_prompt_select(&mut self) -> Option<(String, String)> {
-        self.intents.take_mcp_prompt_select()
-    }
-
-    pub fn pending_take_mcp_oauth_start(&mut self) -> Option<String> {
-        self.intents.take_mcp_oauth_start()
-    }
-
-    pub fn pending_take_mcp_resource_add(
-        &mut self,
-    ) -> Option<xylitol_plugin_sdk::mcp::McpResourceRef> {
-        self.intents.take_mcp_resource_add()
-    }
-
     pub fn models_open(&self) -> bool {
         matches!(&self.slot, EditorSlot::Models(_))
-    }
-
-    pub fn take_pending_theme_select(&mut self) -> Option<String> {
-        self.intents.take_theme_select()
     }
 
     pub fn themes_open(&self) -> bool {
@@ -1381,18 +1341,6 @@ impl UiRoot {
 
     pub fn session_resume_open(&self) -> bool {
         matches!(&self.slot, EditorSlot::SessionResume(_))
-    }
-
-    pub fn take_pending_session_resume_select(&mut self) -> Option<String> {
-        self.intents.take_session_resume_select()
-    }
-
-    pub fn take_pending_session_resume_rename(&mut self) -> Option<(String, String)> {
-        self.intents.take_session_resume_rename()
-    }
-
-    pub fn take_pending_session_resume_delete(&mut self) -> Option<String> {
-        self.intents.take_session_resume_delete()
     }
 
     pub fn session_resume_apply_rename(&mut self, id: &str, name: &str) {
@@ -1448,10 +1396,6 @@ impl UiRoot {
         if matches!(&self.slot, EditorSlot::SessionResume(_)) {
             self.close_slot();
         }
-    }
-
-    pub fn take_pending_import_decision(&mut self) -> Option<ImportConfirmDecision> {
-        self.intents.take_import_decision()
     }
 
     pub fn mount_import_confirm(&mut self, path: &str) {
@@ -1926,7 +1870,10 @@ mod tests {
             root.try_click_painted_chip(width.saturating_sub(2), line),
             "marker must consume"
         );
-        assert!(root.take_pending_session_sidebar(), "request queued");
+        assert!(
+            matches!(root.pop_intent(), Some(UiIntent::SessionSidebar)),
+            "request queued"
+        );
     }
 
     #[test]
@@ -1951,14 +1898,11 @@ mod tests {
         let _ = root.render(120);
         let top = root.last_slot_top_row.expect("slot top");
         assert!(root.handle_slot_row_click_for_test(top as u16 + 2));
-        assert!(
-            root.take_pending_model_select().is_none(),
-            "first click only selects"
-        );
+        assert!(root.pop_intent().is_none(), "first click only selects");
         let _ = root.render(120);
         assert!(root.handle_slot_row_click_for_test(top as u16 + 2));
         assert!(
-            root.take_pending_model_select().is_some(),
+            root.pop_intent().is_some(),
             "second click commits the row action"
         );
     }
@@ -2315,12 +2259,12 @@ mod tests {
         root.mount_models_picker(vec![fake_row()]);
         root.handle_key(enter());
         assert!(
-            root.take_pending_model_select().is_some(),
+            root.pop_intent().is_some(),
             "Enter must record the picker confirm"
         );
         root.on_escape(&mut EscWindow::default());
         assert!(
-            root.take_pending_model_select().is_none(),
+            root.pop_intent().is_none(),
             "Esc close must cancel the recorded model confirm"
         );
     }
@@ -2331,12 +2275,12 @@ mod tests {
         root.mount_themes_picker(Some("dark"));
         root.handle_key(enter());
         assert!(
-            root.take_pending_theme_select().is_some(),
+            root.pop_intent().is_some(),
             "Enter must record the theme confirm"
         );
         root.on_escape(&mut EscWindow::default());
         assert!(
-            root.take_pending_theme_select().is_none(),
+            root.pop_intent().is_none(),
             "Esc close must cancel the recorded theme confirm"
         );
     }

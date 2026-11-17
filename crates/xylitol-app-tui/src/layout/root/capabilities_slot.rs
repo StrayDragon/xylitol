@@ -22,8 +22,4 @@ impl UiRoot {
             self.close_slot();
         }
     }
-
-    pub fn take_pending_capability_toggle(&mut self) -> Option<(String, bool)> {
-        self.intents.take_capability_toggle()
-    }
 }

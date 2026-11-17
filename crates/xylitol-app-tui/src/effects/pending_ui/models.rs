@@ -3,12 +3,14 @@ use xylitol_tui::Terminal;
 use crate::dispatch::{DispatchOutcome, dispatch};
 use crate::driver::XyDriver;
 use crate::host::HostSession;
+use crate::layout::PendingModelChoice;
 use xylitol_protocol::Command;
 
-pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let Some(choice) = session.take_pending_model_select() else {
-        return;
-    };
+pub(super) async fn select<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    choice: PendingModelChoice,
+) {
     log::info!(target: "xylitol::tui", "SetModel from picker model_id={}", choice.model_id);
     match dispatch(
         driver,

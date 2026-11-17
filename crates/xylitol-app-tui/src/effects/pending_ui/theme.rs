@@ -4,10 +4,7 @@ use crate::host::HostSession;
 
 use super::super::helpers::note_driver_err;
 
-pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>) {
-    let Some(theme_name) = session.take_pending_theme_select() else {
-        return;
-    };
+pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, theme_name: String) {
     log::info!(target: "xylitol::tui", "reload_themes from picker theme={}", theme_name);
     match session.reload_themes(&theme_name) {
         Ok(()) => {

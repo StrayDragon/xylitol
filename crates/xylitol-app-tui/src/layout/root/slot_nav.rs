@@ -91,7 +91,7 @@ impl UiRoot {
             ask.abort();
         }
         self.slot = EditorSlot::Editor;
-        self.intents.clear_cancelled_on_close();
+        self.intents.cancel(UiIntent::is_ephemeral);
     }
 
     pub fn close_session_tree(&mut self) {
