@@ -313,13 +313,11 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn external_command_name_in_dirs_finds_plugin() {
-        use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("xylitol-demo");
-        let mut file = std::fs::File::create(&path).expect("create");
-        file.write_all(b"#!/bin/sh\nexit 0\n").expect("write");
+        std::fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("write");
         let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
         permissions.set_mode(0o755);
         std::fs::set_permissions(&path, permissions).expect("chmod");
@@ -344,13 +342,12 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn discovers_manifest_from_temp_dir() {
-        use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("xylitol-demo");
-        let mut file = std::fs::File::create(&path).expect("create");
-        file.write_all(
+        std::fs::write(
+            &path,
             b"#!/bin/sh\nprintf '%s' '{\"name\":\"demo\",\"version\":\"0.1.0\",\"requires_host\":true}'\n",
         )
         .expect("write");
