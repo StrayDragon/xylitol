@@ -6,7 +6,7 @@
 
   @req:r1608
   规则: completion-source-registry
-    Editor 须 经 set_completion_sources() 支持可插拔 CompletionSource。Editor 须 在 edit/Tab 时按顺序探测已注册 source；首个 probe hit 拥有 popup。包 须 提供内置 SlashCommandSource（/）与 AtPathSource（@）；应用注册启用的 source。set_autocomplete_provider(CombinedAutocompleteProvider) 须 保留为兼容 shim，安装 SlashCommandSource + AtPathSource。注册表为空时，Tab/newline/Enter 须 回退到正常 editor 行为。
+    Editor 须 经 set_completion_sources() 支持可插拔 CompletionSource。Editor 须 在 edit/Tab 时按顺序探测已注册 source；首个 probe hit 拥有 popup。包 须 提供内置 SlashCommandSource（/）与 AtPathSource（@）；应用注册启用的 source。注册表为空时，Tab/newline/Enter 须 回退到正常 editor 行为。
   @req:r1609
   规则: autocomplete-selectlist-popup
     CompletionSource 返回建议时，Editor 须 用建议创建 SelectList popup，计算 best-match 预选项（精确 value 匹配 > prefix 起始匹配），并在 render() 中渲染于 editor 边框下方。popup 激活时，Tab/Enter 须 经 active source 的 apply() 应用选中项，Esc 须 取消 popup，上下箭头 须 导航列表。应用后 popup 须 关闭且光标 须 定位到补全后位置。

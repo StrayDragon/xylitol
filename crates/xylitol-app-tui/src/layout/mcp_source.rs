@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use xylitol_plugin_sdk::mcp::{McpCatalogEntry, McpResourceRef};
-use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions};
 use xylitol_tui::completion::{CompletionContext, CompletionMatch, CompletionSource};
+use xylitol_tui::{AutocompleteItem, AutocompleteSuggestions};
 
 use crate::mcp_attach::AttachmentTray;
 

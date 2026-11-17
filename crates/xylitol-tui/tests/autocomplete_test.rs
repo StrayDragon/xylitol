@@ -1,13 +1,8 @@
 mod support;
 
 use std::fs;
-use std::path::PathBuf;
-use std::time::Duration;
 use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
-use xylitol_tui::autocomplete::{
-    AutocompleteProvider, CombinedAutocompleteProvider, DebouncedAutocomplete,
-};
 use xylitol_tui::autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 
 fn make_temp_dir_with_files() -> TempDir {
@@ -34,28 +29,6 @@ fn fd_path() -> Option<&'static str> {
 
 fn require_fd() -> &'static str {
     fd_path().expect("fd (sharkdp/fd) must be installed for the fd autocomplete tests")
-}
-
-fn provider(base: PathBuf) -> CombinedAutocompleteProvider {
-    CombinedAutocompleteProvider::new(vec![], base)
-}
-
-fn provider_with_fd(base: PathBuf) -> CombinedAutocompleteProvider {
-    CombinedAutocompleteProvider::new_with_fd(vec![], base, "fd".to_string())
-}
-
-#[test]
-fn at_fuzzy_fallback_without_fd_lists_base_dir() {
-    let dir = make_temp_dir_with_files();
-    let p = CombinedAutocompleteProvider::new(vec![], dir.path().to_path_buf());
-    let lines = vec!["@C".to_string()];
-    let res = p.get_suggestions(&lines, 0, 2, false);
-    let res = res.expect("@ fuzzy without fd must degrade to base-dir listing, not None");
-    let names: Vec<String> = res.items.iter().map(|i| i.value.clone()).collect();
-    assert!(
-        names.iter().any(|v| v.contains("Cargo.toml")),
-        "@C fallback should surface Cargo.toml, got {names:?}"
-    );
 }
 
 #[test]
@@ -116,136 +89,4 @@ fn fd_cancellation_kills_subprocess() {
     ct.cancel();
     let results = walk_directory_with_fd(&base, "fd", ".", 100, ct);
     assert!(results.is_empty(), "cancelled query should return empty");
-}
-
-#[test]
-fn fd_path_none_fallback() {
-    let dir = make_temp_dir_with_files();
-    let p = CombinedAutocompleteProvider::new(vec![], dir.path().to_path_buf());
-    let lines = vec!["src/m".to_string()];
-    let res = p.get_suggestions(&lines, 0, 5, false);
-    let res = res.expect("without fd_path, read_dir fallback must complete path prefixes");
-    let names: Vec<String> = res.items.iter().map(|i| i.value.clone()).collect();
-    assert!(
-        names.iter().any(|v| v.contains("main.rs")),
-        "fallback should surface src/main.rs, got {names:?}"
-    );
-}
-
-#[test]
-fn async_get_suggestions_with_fd() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _fd = require_fd();
-    let dir = make_temp_dir_with_files();
-    let p = provider_with_fd(dir.path().to_path_buf());
-    let lines = vec!["@Car".to_string()];
-    let ct = CancellationToken::new();
-    let res = rt.block_on(async { p.get_suggestions_async(&lines, 0, 4, false, ct).await });
-    assert!(
-        res.is_some(),
-        "async fuzzy with fd should return suggestions"
-    );
-}
-
-#[test]
-fn async_get_suggestions_respects_cancellation() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _fd = require_fd();
-    let dir = make_temp_dir_with_files();
-    let p = provider_with_fd(dir.path().to_path_buf());
-    let lines = vec!["@Car".to_string()];
-    let ct = CancellationToken::new();
-    ct.cancel();
-    let res = rt.block_on(async { p.get_suggestions_async(&lines, 0, 4, false, ct).await });
-    assert!(res.is_none(), "pre-cancelled should return None");
-}
-
-#[tokio::test(start_paused = true)]
-async fn debounce_drops_intermediate_calls() {
-    let dir = make_temp_dir_with_files();
-    let p = provider(dir.path().to_path_buf());
-    let mut debounced = DebouncedAutocomplete::new(p, Duration::from_millis(250));
-    let lines = vec!["src/".to_string()];
-
-    let ct1 = CancellationToken::new();
-    let _ct1_clone = ct1.clone();
-
-    tokio::time::advance(Duration::from_millis(250)).await;
-
-    let ct2 = CancellationToken::new();
-    let res = debounced.get_suggestions(&lines, 0, 4, false, ct2).await;
-    let res = res.expect("debounced call must complete with suggestions");
-    assert!(!res.items.is_empty(), "expected at least one suggestion");
-}
-
-#[tokio::test(start_paused = true)]
-async fn debounce_single_call_fires_after_delay() {
-    let dir = make_temp_dir_with_files();
-    let p = provider(dir.path().to_path_buf());
-    let mut debounced = DebouncedAutocomplete::new(p, Duration::from_millis(250));
-    let lines = vec!["src/".to_string()];
-    let ct = CancellationToken::new();
-
-    tokio::time::advance(Duration::from_millis(250)).await;
-    let res = debounced.get_suggestions(&lines, 0, 4, false, ct).await;
-    let res = res.expect("single debounced call must fire after the delay");
-    assert!(!res.items.is_empty(), "expected at least one suggestion");
-}
-
-#[tokio::test(start_paused = true)]
-async fn debounce_successive_calls_do_not_panic() {
-    let dir = make_temp_dir_with_files();
-    let p = provider(dir.path().to_path_buf());
-    let mut debounced = DebouncedAutocomplete::new(p, Duration::from_millis(250));
-    let lines = vec!["src/".to_string()];
-
-    let ct1 = CancellationToken::new();
-    tokio::time::advance(Duration::from_millis(250)).await;
-    let _ = debounced.get_suggestions(&lines, 0, 4, false, ct1).await;
-
-    let ct2 = CancellationToken::new();
-    tokio::time::advance(Duration::from_millis(250)).await;
-    let res = debounced.get_suggestions(&lines, 0, 4, false, ct2).await;
-    let res = res.expect("successive debounced calls must still complete");
-    assert!(!res.items.is_empty(), "expected at least one suggestion");
-}
-
-#[tokio::test]
-async fn debounce_cancellation_by_upstream_ct() {
-    let dir = make_temp_dir_with_files();
-    let p = provider(dir.path().to_path_buf());
-    let mut debounced = DebouncedAutocomplete::new(p, Duration::from_millis(250));
-    let lines = vec!["test".to_string()];
-    let ct = CancellationToken::new();
-
-    ct.cancel();
-    let res = debounced.get_suggestions(&lines, 0, 4, false, ct).await;
-    assert!(res.is_none(), "cancelled debounce should return None");
-}
-
-#[test]
-fn get_suggestions_sync_still_works() {
-    let dir = make_temp_dir_with_files();
-    let p = provider(dir.path().to_path_buf());
-    let lines = vec!["mod".to_string()];
-    let res = p.get_suggestions(&lines, 0, 3, false);
-    assert!(res.is_none(), "non-trigger text must not suggest");
-}
-
-#[test]
-fn slash_command_completion_works() {
-    let dir = TempDir::new().unwrap();
-    let cmds = vec![xylitol_tui::autocomplete::SlashCommand {
-        name: "help".to_string(),
-        description: Some("Show help".to_string()),
-        argument_hint: None,
-        get_argument_completions: None,
-    }];
-    let p = CombinedAutocompleteProvider::new(cmds, dir.path().to_path_buf());
-    let lines = vec!["/hel".to_string()];
-    let res = p.get_suggestions(&lines, 0, 4, false);
-    assert!(
-        res.is_some() && res.unwrap().items.iter().any(|i| i.value == "help"),
-        "slash command completion should match /hel"
-    );
 }
