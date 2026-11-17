@@ -3,6 +3,9 @@ depends_on: []
 blocks: []
 title: 自动化引擎视未持久化会话为空分支
 needs_specs_change: false
+branch: sdd/c3348-fix-automation-unpersisted-session
+base_branch: main
+base_sha: d1ca28e85d52693ed8e708d07ff3d8b49a38d355
 ---
 
 # 自动化引擎视未持久化会话为空分支

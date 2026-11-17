@@ -970,6 +970,23 @@ async fn resources_watch_pushes_one_frame_on_snapshot_change() {
     }
 }
 
+async fn wait_writer_frozen(host: &HostState, session_id: &str, budget: Duration) -> bool {
+    let deadline = std::time::Instant::now() + budget;
+    loop {
+        if host
+            .loaded_resources_snapshot_for(session_id)
+            .await
+            .tools_table_frozen
+        {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 #[tokio::test]
 async fn arm_tool_freeze_unary_freezes_after_mcp_settle() {
     use materialize_writer;
@@ -1007,8 +1024,12 @@ async fn arm_tool_freeze_unary_freezes_after_mcp_settle() {
     let snap: LoadedResourcesSnapshot =
         serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
     assert!(
-        snap.tools_table_frozen,
-        "first-turn arm MUST freeze after MCP settle: {snap:?}"
+        !snap.tools_table_frozen,
+        "unary MUST return immediately without freezing in the call stack: {snap:?}"
+    );
+    assert!(
+        wait_writer_frozen(&host, "mcp-freeze", Duration::from_secs(20)).await,
+        "background resolution MUST freeze after MCP settle"
     );
 }
 
@@ -1030,11 +1051,9 @@ async fn idle_reload_clears_occupied_writer_tool_freeze() {
     )
     .await;
     assert!(arm.ok, "arm_tool_freeze unary failed: {arm:?}");
-    let frozen: LoadedResourcesSnapshot =
-        serde_json::from_value(arm.value.expect("snapshot")).expect("decode snapshot");
     assert!(
-        frozen.tools_table_frozen,
-        "precondition: writer MUST be frozen: {frozen:?}"
+        wait_writer_frozen(&host, "mcp-reload", Duration::from_secs(20)).await,
+        "precondition: writer MUST freeze via background resolution"
     );
 
     let t0 = std::time::Instant::now();
@@ -1101,11 +1120,9 @@ async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
         result.ok,
         "arm_tool_freeze MUST succeed without taking occupancy: {result:?}"
     );
-    let snap: LoadedResourcesSnapshot =
-        serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
     assert!(
-        snap.tools_table_frozen,
-        "lease-free arm MUST still resolve frozen: {snap:?}"
+        wait_writer_frozen(&host, "conflict-sess", Duration::from_secs(20)).await,
+        "lease-free arm MUST still resolve frozen"
     );
 }
 
@@ -1151,18 +1168,18 @@ async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
         "arm_tool_freeze unary MUST resolve within gate window: {result:?}"
     );
     assert!(
-        elapsed < std::time::Duration::from_secs(30),
-        "MUST be bounded by the first-turn gate window, took {elapsed:?}"
+        elapsed < std::time::Duration::from_secs(3),
+        "arm MUST return immediately without waiting the gate window, took {elapsed:?}"
     );
     let snap: LoadedResourcesSnapshot =
         serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
     assert!(
-        snap.tools_table_frozen,
-        "timeout MUST freeze armed subset (deadlock guard): {snap:?}"
+        !snap.tools_table_frozen,
+        "unbounded hang MUST NOT freeze at arm return: {snap:?}"
     );
     assert!(
-        snap.mcp_bootstrap_complete,
-        "timeout MUST settle bootstrap (no eternal connecting): {snap:?}"
+        wait_writer_frozen(&host, "hang-freeze", Duration::from_secs(20)).await,
+        "gate window MUST settle (detach hanging bootstrap + freeze armed subset)"
     );
 }
 
