@@ -70,3 +70,7 @@ pub fn fd_path_suggestions(
 - fd 的 `--hidden` / `.git` 排除沿用引擎参数；产品不另设。
 - 召回质量依赖 fd 查询语法；路径分隔符用 `build_fd_path_query`。
 - 不做缓存；每次补全 spawn fd；高频输入可能多次 spawn，后续可加 debounce / cache。
+
+## 勘误（2026-11-18，归档后复核；正文保留原样）
+
+1. **「现状（代码事实）」节引用的符号已被删除**：`CombinedAutocompleteProvider::new_with_fd`（autocomplete.rs:78）与 fd 评分映射（autocomplete.rs:297-332）随 c3349（2026-11-17 移除旧补全栈）不存在；fd 逻辑现唯一实现为 `autocomplete_fd.rs`（`walk_directory_with_fd`）与 `completion.rs` 的 `fd_path_suggestions`。按本文旧路径检索会误导。
