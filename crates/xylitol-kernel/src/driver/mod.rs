@@ -1,9 +1,9 @@
 mod in_process;
 
 pub(crate) use in_process::attach_ctx_services;
+pub(crate) use in_process::install_product_ask_tool;
 pub use in_process::{
     DriverContext, ToolFeatures, XyInProcessDriver, assemble_driver, assemble_session_driver,
-    install_product_ask_tool,
 };
 pub use xylitol_runtime::driver::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,

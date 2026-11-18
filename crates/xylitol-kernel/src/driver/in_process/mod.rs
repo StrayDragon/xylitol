@@ -154,7 +154,7 @@ fn assemble_driver_full(
     inner
 }
 
-pub fn install_product_ask_tool(
+pub(crate) fn install_product_ask_tool(
     driver: &mut RuntimeDriver,
     gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>,
     features: ToolFeatures,
