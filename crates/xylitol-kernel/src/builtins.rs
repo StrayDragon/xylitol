@@ -17,8 +17,6 @@ use xylitol_official_plugin_tools::plugin::ToolsPlugin;
 use xylitol_official_plugin_tools_fff::plugin::FffToolsPlugin;
 use xylitol_official_plugin_workflow::plugin::WorkflowPlugin;
 
-use crate::surfaces::{PrintPlugin, ServePlugin};
-
 pub fn official_builtins() -> Builtins {
     let mut builtins = Builtins::new();
     builtins.register("session-store", SessionStorePlugin::new);
@@ -38,7 +36,5 @@ pub fn official_builtins() -> Builtins {
     builtins.register("provider-openai", OpenAiPlugin::new);
     builtins.register("provider-anthropic", AnthropicPlugin::new);
     builtins.register("provider-fake", FakePlugin::new);
-    builtins.register("app-print", PrintPlugin::new);
-    builtins.register("serve", ServePlugin::new);
     builtins
 }

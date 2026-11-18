@@ -59,39 +59,6 @@ mod tests {
                 .iter()
                 .any(|p| p.name == "registries" && p.state == FiberState::Active)
         );
-        assert!(
-            diag.plugins
-                .iter()
-                .any(|p| p.name == "app-print" && p.state == FiberState::Active)
-        );
-        let _ = ctx.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn boot_ctx_self_check_host_profile() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        unsafe {
-            std::env::set_var("XYLITOL_CONFIG_DIR", dir.path());
-            std::env::set_var("HOME", dir.path());
-        }
-        let opts = BootOptions {
-            profile: Profile::Host,
-            config_path: None,
-            session: None,
-            model: None,
-            trust_override: Some(false),
-            interactive: false,
-            caller: "contract",
-            ephemeral_sessions: true,
-        };
-        let (ctx, _loader) = boot_ctx(&opts).await.expect("boot_ctx host");
-        let diag = ctx.diagnostics();
-        assert!(
-            diag.plugins
-                .iter()
-                .any(|p| p.name == "serve" && p.state == FiberState::Active),
-            "{diag:?}"
-        );
         let _ = ctx.shutdown().await;
     }
 
