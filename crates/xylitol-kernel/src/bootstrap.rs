@@ -246,7 +246,7 @@ pub struct ResolvedAssembly {
     pub session_file_exists: bool,
     pub warnings: Vec<BootstrapWarning>,
     pub mcp_servers: Option<Vec<crate::mcp_spec::McpServerSpec>>,
-    pub hooks_config: xylitol_official_plugin_config::types::HooksConfig,
+    pub hooks_config: xylitol_official_plugin_hooks::HooksConfig,
     pub default_thinking_level: Option<String>,
     pub thinking_budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>,
     pub batch_mode: xylitol_plugin_sdk::XyBatchMode,
@@ -618,7 +618,12 @@ pub fn resolve_assembly_with(
     let cli_config_path = input.config_path.as_deref();
     let mut warnings: Vec<BootstrapWarning> = Vec::new();
 
-    let loaded = match load_app_config_detailed_with(cli_config_path, &get_env, cwd) {
+    let loaded = match load_app_config_detailed_with(
+        cli_config_path,
+        &get_env,
+        cwd,
+        &crate::config_sections::all(),
+    ) {
         Ok(loaded) => loaded,
         Err(e) => return Err(BootstrapError::ConfigLoadFailed(e.to_string())),
     };
@@ -723,7 +728,7 @@ pub fn resolve_assembly_with(
 
     let mcp_servers =
         crate::mcp_spec::McpServerSpec::from_infra_list(app_config.as_ref().and_then(|c| {
-            c.section::<Vec<xylitol_official_plugin_config::types::McpServerConfig>>("mcp_servers")
+            c.section::<Vec<xylitol_official_plugin_mcp::McpServerConfig>>("mcp_servers")
                 .ok()
                 .flatten()
         }));
@@ -731,7 +736,7 @@ pub fn resolve_assembly_with(
     let hooks_config = app_config
         .as_ref()
         .map(|c| {
-            c.section_or_default::<xylitol_official_plugin_config::types::HooksConfig>("hooks")
+            c.section_or_default::<xylitol_official_plugin_hooks::HooksConfig>("hooks")
                 .unwrap_or_default()
         })
         .unwrap_or_default();

@@ -193,6 +193,7 @@ fn load_config(
 ) -> Option<xylitol_official_plugin_config::types::AppConfig> {
     xylitol_official_plugin_config::loader::load_app_config(
         driver.reload_config_path().map(|path| path.as_path()),
+        &crate::config_sections::all(),
     )
     .ok()
 }

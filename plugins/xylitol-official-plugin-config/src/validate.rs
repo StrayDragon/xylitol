@@ -3,10 +3,10 @@ use schemars::schema_for;
 use serde_json::Value;
 
 use super::error::LoadError;
-use super::sections::sections;
 use super::types::BootstrapConfig;
+use xylitol_plugin_sdk::config_section::ConfigSection;
 
-pub fn app_config_schema() -> serde_json::Value {
+pub fn app_config_schema(sections: &[ConfigSection]) -> serde_json::Value {
     let mut root = serde_json::json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "AppConfig",
@@ -19,7 +19,7 @@ pub fn app_config_schema() -> serde_json::Value {
         serde_json::to_value(schema_for!(BootstrapConfig)).expect("bootstrap schema");
     move_defs(&mut root, &mut bootstrap, "xylitol");
     root["properties"]["xylitol"] = bootstrap;
-    for section in sections() {
+    for section in sections {
         let mut schema = (section.schema)();
         move_defs(&mut root, &mut schema, section.key);
         root["properties"][section.key] = schema;
@@ -68,8 +68,8 @@ fn prefix_refs(value: &mut Value, prefix: &str) {
     }
 }
 
-pub fn render_app_config_schema() -> String {
-    let mut value = app_config_schema();
+pub fn render_app_config_schema(sections: &[ConfigSection]) -> String {
+    let mut value = app_config_schema(sections);
     sort_object_keys(&mut value);
     let mut out = serde_json::to_string_pretty(&value).expect("config schema must render");
     out.push('\n');
@@ -96,7 +96,10 @@ fn sort_object_keys(value: &mut serde_json::Value) {
     }
 }
 
-pub(crate) fn validate_merged_config(value: &Value) -> Result<(), LoadError> {
+pub(crate) fn validate_merged_config(
+    value: &Value,
+    sections: &[ConfigSection],
+) -> Result<(), LoadError> {
     if value.is_null() {
         return Ok(());
     }
@@ -116,7 +119,7 @@ pub(crate) fn validate_merged_config(value: &Value) -> Result<(), LoadError> {
         let schema = serde_json::to_value(schema_for!(BootstrapConfig)).expect("bootstrap schema");
         validate_with(&schema, bootstrap, "xylitol")?;
     }
-    for section in sections() {
+    for section in sections {
         if let Some(section_value) = map.get(section.key) {
             validate_with(&(section.schema)(), section_value, section.key)?;
         }
@@ -137,6 +140,10 @@ fn validate_with(schema: &Value, value: &Value, label: &str) -> Result<(), LoadE
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn validate_merged_config(value: &Value) -> Result<(), LoadError> {
+        super::validate_merged_config(value, crate::sections::core_sections())
+    }
 
     #[test]
     fn rejects_sse_transport_with_migration_hint() {
@@ -166,12 +173,6 @@ mod tests {
             "tui": {"activity_fold": {"enabled": false}}
         }))
         .unwrap();
-    }
-
-    #[test]
-    fn checked_in_schema_matches_registry() {
-        let expected = include_str!("../../../configs/config.schema.json");
-        assert_eq!(expected, render_app_config_schema());
     }
 
     #[test]

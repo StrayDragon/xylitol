@@ -46,7 +46,7 @@ pub(crate) fn make_agent_with_store(
     let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         Arc::new(xylitol_kernel::event::EventBus::new());
     let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = if agent.real_hooks.get() {
-        let config = xylitol_kernel::config::types::HooksConfig {
+        let config = xylitol_official_plugin_hooks::HooksConfig {
             global: agent.hook_entries.borrow().clone(),
             ..Default::default()
         };
@@ -233,7 +233,7 @@ pub(crate) async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: H
     agent
         .last_hook_stdin
         .replace(Some(event.to_json_context(phase)));
-    let dispatcher = HookDispatcher::new(&xylitol_kernel::config::types::HooksConfig {
+    let dispatcher = HookDispatcher::new(&xylitol_official_plugin_hooks::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         ..Default::default()
     });

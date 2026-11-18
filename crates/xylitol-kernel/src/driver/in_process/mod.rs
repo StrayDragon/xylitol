@@ -61,9 +61,9 @@ impl Default for ToolFeatures {
 
 impl ToolFeatures {
     pub fn from_config(config: &xylitol_official_plugin_config::types::AppConfig) -> Self {
-        let todo: xylitol_official_plugin_config::types::TodoConfig =
+        let todo: xylitol_official_plugin_todo::TodoConfig =
             config.section_or_default("todo").unwrap_or_default();
-        let workflow: xylitol_official_plugin_config::types::WorkflowConfig =
+        let workflow: xylitol_official_plugin_workflow::WorkflowConfig =
             config.section_or_default("workflow").unwrap_or_default();
         let tool_selection: Vec<String> = config.section_or_default("tools").unwrap_or_default();
         let codemode: xylitol_plugin_sdk::CodemodeConfig =

@@ -17,12 +17,12 @@ pub fn t6_mcp_bdd() -> T6McpBdd {
     }
 }
 
-fn t6_fixture_config(name: &str, tools: &str) -> xylitol_kernel::config::types::McpServerConfig {
+fn t6_fixture_config(name: &str, tools: &str) -> xylitol_official_plugin_mcp::McpServerConfig {
     let mut env = std::collections::HashMap::new();
     env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), tools.into());
-    xylitol_kernel::config::types::McpServerConfig {
+    xylitol_official_plugin_mcp::McpServerConfig {
         name: name.into(),
-        transport: xylitol_kernel::config::types::McpTransportKind::Stdio,
+        transport: xylitol_official_plugin_mcp::McpTransportKind::Stdio,
         command: Some("python3".into()),
         args: Some(vec![
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -37,7 +37,7 @@ fn t6_fixture_config(name: &str, tools: &str) -> xylitol_kernel::config::types::
 
 async fn t6_discover(
     t6_mcp_bdd: &T6McpBdd,
-    servers: &[xylitol_kernel::config::types::McpServerConfig],
+    servers: &[xylitol_official_plugin_mcp::McpServerConfig],
 ) {
     let result = xylitol_official_plugin_mcp::connect_and_discover(servers).await;
     let Some((manager, tools)) = result else {
@@ -88,9 +88,9 @@ pub(crate) fn t_t6_mcp_config_driven(_t6_mcp_bdd: &T6McpBdd) {}
 
 #[when("以无效 MCP 条目装配")]
 pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
-    let bad = xylitol_kernel::config::types::McpServerConfig {
+    let bad = xylitol_official_plugin_mcp::McpServerConfig {
         name: "bad".into(),
-        transport: xylitol_kernel::config::types::McpTransportKind::Stdio,
+        transport: xylitol_official_plugin_mcp::McpTransportKind::Stdio,
         command: None,
         ..Default::default()
     };

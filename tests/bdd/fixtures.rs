@@ -3,8 +3,8 @@ use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
 use xylitol::XyDriverError;
-use xylitol_kernel::config::types::HookEntry;
 use xylitol_official_plugin_hooks::DispatchResult;
+use xylitol_official_plugin_hooks::HookEntry;
 use xylitol_official_plugin_session::{LogSessionStore, SessionEntry};
 use xylitol_runtime::agent::capabilities::{ContextUsage, ModelRegistry};
 use xylitol_runtime::agent::runtime::XyEvent;

@@ -105,7 +105,7 @@ fn _g_hook_merge_combo(agent: &AgentState) {
         command: "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into(),
         ..Default::default()
     };
-    let config = xylitol_kernel::config::types::HooksConfig {
+    let config = xylitol_official_plugin_hooks::HooksConfig {
         global: vec![global],
         user: vec![user.clone()],
         ..Default::default()
@@ -221,7 +221,7 @@ async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
 
 #[when("hook 被加载")]
 fn _w_hook_loaded(agent: &AgentState) {
-    let config = xylitol_kernel::config::types::HooksConfig {
+    let config = xylitol_official_plugin_hooks::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         ..Default::default()
     };
