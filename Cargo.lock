@@ -5292,9 +5292,9 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "rutis"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "076bfaafcab2b3c5c3b2d6a2d9139769ffc0d558d9d6e68acab8d91b260e33ea"
+checksum = "2c0426d9e67bb8df546a9eaadd2cf8d0467808b0e9091753eacb3f57555a623b"
 dependencies = [
  "erased-serde",
  "rutis-macros",
@@ -5308,24 +5308,25 @@ dependencies = [
 
 [[package]]
 name = "rutis-loader"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8918a0eacefc32d5819f4c37aa115c31947db6a6aa7df0648846ac304701bdbe"
+checksum = "09de0554e0fd731303808a8f3da700b671249f0ac982ed4b30ebcb1b272a9877"
 dependencies = [
  "libc",
  "rutis",
  "schemars",
  "serde",
  "serde_json",
+ "shuttle",
  "thiserror 2.0.21",
  "tokio",
 ]
 
 [[package]]
 name = "rutis-macros"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b90a2ef67b45752c214df031687b1a616513f058c66b2073cf0ad90a9da0dc7d"
+checksum = "71e69b38965e9a50d646f2be5b670991fc14c9e860f0ef3791c095fea2b112a4"
 dependencies = [
  "proc-macro2",
  "quote",
