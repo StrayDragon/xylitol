@@ -43,3 +43,7 @@ base_sha: 2b9cfc81e9bda5af5044d47febaeaef60488a3a0
 ## Further Notes
 
 （决策与 research 结论回写处）
+
+## 勘误（2026-11-18，归档后复核；正文保留原样）
+
+1. **本文存在两个重复的「## Open Questions（逐问深挖记录）」节，Q1 有两版结论**：第一节（「全统一模板（一步到位）」）为同日早前草稿，已被第二节的「组合式」结论取代。有效决策以第二节为准（sdk truncation 引擎 + `generic_bytes_notice`，bash 逐字脚注渲染器留 tools），并经 c3350 wayfinder 地图 Decisions so far 采认；勿引用第一节。
