@@ -16,6 +16,8 @@ env_logger = { workspace = true }
 fastrace = { workspace = true, features = ["enable"] }
 log = { workspace = true }
 serde_json = { workspace = true, features = ["unbounded_depth"] }
+serde = { workspace = true, features = ["derive"] }
+schemars = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 reqwest = { workspace = true, default-features = false, features = ["json", "rustls"], optional = true }

@@ -37,7 +37,9 @@ mod sandbox_bdd {
     #[given("沙箱引擎已初始化")]
     fn sandbox_engine_init() {
         SANDBOX_ENGINE.with(|e| {
-            *e.borrow_mut() = Some(default_sandbox().to_permission());
+            *e.borrow_mut() = Some(xylitol_kernel::bootstrap::build_permission_from_config(
+                &default_sandbox(),
+            ));
         });
     }
 

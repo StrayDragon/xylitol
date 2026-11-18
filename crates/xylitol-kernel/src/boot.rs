@@ -205,10 +205,11 @@ fn default_rows(
         })
         .unwrap_or_default();
     let mut insert = base_rows(opts, mcp_servers);
-    let context_inject: xylitol_official_plugin_config::types::ContextInjectConfig = config
-        .as_ref()
-        .and_then(|cfg| cfg.app.section_or_default("context_inject").ok())
-        .unwrap_or_default();
+    let context_inject: xylitol_official_plugin_context_inject::config::ContextInjectConfig =
+        config
+            .as_ref()
+            .and_then(|cfg| cfg.app.section_or_default("context_inject").ok())
+            .unwrap_or_default();
     insert.push(serde_json::json!({
         "id": "context-inject",
         "name": "context-inject",

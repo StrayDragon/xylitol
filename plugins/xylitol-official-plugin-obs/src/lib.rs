@@ -1,4 +1,5 @@
 //! - else debug builds (`cfg(debug_assertions)`) → same default
+pub mod config;
 mod fanout;
 mod file_reporter;
 pub mod otel;
@@ -13,7 +14,7 @@ pub use fanout::FanoutReporter;
 pub use file_reporter::FileTraceReporter;
 pub use timing::{print_timings, reset_timings, time};
 
-use xylitol_official_plugin_config::types::{OtelConfig, OtelObservationIo};
+use config::{OtelConfig, OtelObservationIo};
 use xylitol_plugin_sdk::{
     ObservationIoTier, set_observation_io_tier, set_provider_trace_active,
     set_tool_observation_io_tier,

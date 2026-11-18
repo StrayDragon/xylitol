@@ -1,7 +1,11 @@
+use crate::bdd::fixtures::Workspace;
 use crate::bdd::prelude::*;
 use crate::bdd::steps_tokenizer::{TokenizerBdd, parse_app_config_yaml};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use std::path::PathBuf;
+use xylitol_kernel::boot::{BootOptions, Profile, boot_ctx};
+use xylitol_plugin_sdk::rt::CtxHost;
 
 pub struct RcSnap {
     pub(crate) settings: RefCell<xylitol_kernel::settings::Settings>,
@@ -735,7 +739,7 @@ context_inject:
 fn w_validate_context_inject(rc_snap: &RcSnap) {
     let yaml = rc_snap.local_yaml.borrow().clone().unwrap_or_default();
     let config = crate::bdd::steps_tokenizer::parse_app_config_yaml(&yaml).expect("parse config");
-    let section: xylitol_kernel::config::types::ContextInjectConfig = config
+    let section: xylitol_official_plugin_context_inject::config::ContextInjectConfig = config
         .section_or_default("context_inject")
         .expect("context_inject section");
     *rc_snap.validate_error.borrow_mut() = section.validate().err();
@@ -746,5 +750,161 @@ fn t_validate_error(rc_snap: &RcSnap) {
     assert!(
         rc_snap.validate_error.borrow().is_some(),
         "duplicate context_inject ids must be rejected"
+    );
+}
+
+pub struct RcBootBdd {
+    pub(crate) config_path: RefCell<Option<PathBuf>>,
+    pub(crate) boot_error: RefCell<Option<String>>,
+    pub(crate) warnings: RefCell<Vec<String>>,
+}
+
+#[fixture]
+pub fn rc_boot_bdd() -> RcBootBdd {
+    RcBootBdd {
+        config_path: RefCell::new(None),
+        boot_error: RefCell::new(None),
+        warnings: RefCell::new(Vec::new()),
+    }
+}
+
+pub(crate) mod rc_warn_log {
+    use std::sync::Mutex;
+
+    static RECORDS: Mutex<Vec<(log::Level, String, String)>> = Mutex::new(Vec::new());
+
+    struct Capture;
+
+    impl log::Log for Capture {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            true
+        }
+
+        fn log(&self, record: &log::Record<'_>) {
+            RECORDS
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push((
+                    record.level(),
+                    record.target().to_string(),
+                    record.args().to_string(),
+                ));
+        }
+
+        fn flush(&self) {}
+    }
+
+    pub(crate) fn install() {
+        RECORDS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
+        let _ = log::set_boxed_logger(Box::new(Capture));
+        log::set_max_level(log::LevelFilter::Warn);
+    }
+
+    pub(crate) fn take_warnings(target: &str) -> Vec<String> {
+        RECORDS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .drain(..)
+            .filter(|(level, record_target, _)| {
+                *level == log::Level::Warn && record_target == target
+            })
+            .map(|(_, _, message)| message)
+            .collect()
+    }
+}
+
+fn rc_write_boot_config(ws: &Workspace, tail: &str) -> PathBuf {
+    ws.init();
+    let config = format!(
+        "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n{tail}"
+    );
+    let path = PathBuf::from(ws.ws("config.yaml"));
+    std::fs::write(&path, config).expect("write boot config");
+    path
+}
+
+#[given("配置含注册表未声明的顶层键")]
+fn g_rc_unknown_top_level_key(ws: &Workspace, rc_boot_bdd: &RcBootBdd) {
+    let path = rc_write_boot_config(ws, "bogus_section:\n  any: true\n");
+    rc_boot_bdd.config_path.replace(Some(path));
+}
+
+#[given("配置含未知顶层键且 xylitol.unknown_keys 为 warn")]
+fn g_rc_unknown_top_level_key_warn(ws: &Workspace, rc_boot_bdd: &RcBootBdd) {
+    let path = rc_write_boot_config(
+        ws,
+        "xylitol:\n  unknown_keys: warn\nbogus_section:\n  any: true\n",
+    );
+    rc_boot_bdd.config_path.replace(Some(path));
+}
+
+#[when("加载并装配配置")]
+async fn w_rc_boot_assembly(rc_boot_bdd: &RcBootBdd) {
+    let config_path = rc_boot_bdd
+        .config_path
+        .borrow()
+        .clone()
+        .expect("boot config prepared");
+    if let Some(parent) = config_path.parent() {
+        unsafe {
+            std::env::set_var("XYLITOL_CONFIG_DIR", parent.join(".config").join("xylitol"));
+            std::env::set_var("HOME", parent);
+        }
+    }
+    rc_warn_log::install();
+    let opts = BootOptions {
+        profile: Profile::Print,
+        config_path: Some(config_path),
+        session: None,
+        model: None,
+        trust_override: Some(false),
+        interactive: false,
+        caller: "bdd",
+        ephemeral_sessions: true,
+    };
+    match boot_ctx(&opts).await {
+        Ok((ctx, _loader)) => {
+            rc_boot_bdd.boot_error.replace(None);
+            let _ = ctx.shutdown().await;
+        }
+        Err(error) => {
+            rc_boot_bdd.boot_error.replace(Some(error.to_string()));
+        }
+    }
+    *rc_boot_bdd.warnings.borrow_mut() = rc_warn_log::take_warnings("xylitol::config");
+}
+
+#[then("硬失败并指出该键")]
+fn t_rc_unknown_top_level_key_hard_fails(rc_boot_bdd: &RcBootBdd) {
+    let error = rc_boot_bdd.boot_error.borrow();
+    let error = error
+        .as_ref()
+        .expect("unknown top-level key must fail assembly");
+    assert!(
+        error.contains("bogus_section"),
+        "error must name the unknown key: {error}"
+    );
+}
+
+#[then("装配成功且产生警告")]
+fn t_rc_unknown_top_level_key_warn_assembles(rc_boot_bdd: &RcBootBdd) {
+    assert!(
+        rc_boot_bdd.boot_error.borrow().is_none(),
+        "warn policy must assemble successfully: {}",
+        rc_boot_bdd
+            .boot_error
+            .borrow()
+            .as_deref()
+            .unwrap_or_default()
+    );
+    let warnings = rc_boot_bdd.warnings.borrow();
+    assert!(
+        warnings
+            .iter()
+            .any(|message| message.contains("bogus_section")),
+        "expected a warning naming bogus_section, got: {warnings:?}"
     );
 }

@@ -1,3 +1,4 @@
+pub mod config;
 pub mod cut_detector;
 pub mod file_ops;
 pub mod llm_summarizer;

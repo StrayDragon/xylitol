@@ -459,7 +459,11 @@ fn g_ds_forbidden(ws: &Workspace) {
         },
         ..Default::default()
     };
-    xs_sec::SEC.with(|e| e.replace(Some(c.to_permission())));
+    xs_sec::SEC.with(|e| {
+        e.replace(Some(
+            xylitol_kernel::bootstrap::build_permission_from_config(&c),
+        ))
+    });
 }
 #[given("安全启用且无 MCP 允许列表")]
 fn g_ds_no_mcp() {
@@ -474,7 +478,11 @@ fn g_ds_no_mcp() {
         },
         ..Default::default()
     };
-    xs_sec::SEC.with(|e| e.replace(Some(c.to_permission())));
+    xs_sec::SEC.with(|e| {
+        e.replace(Some(
+            xylitol_kernel::bootstrap::build_permission_from_config(&c),
+        ))
+    });
 }
 #[given("全新安装无配置覆盖")]
 fn g_ds_fresh() {
@@ -497,7 +505,11 @@ fn g_ds_read_allowed() {
         },
         ..Default::default()
     };
-    xs_sec::SEC.with(|e| e.replace(Some(c.to_permission())));
+    xs_sec::SEC.with(|e| {
+        e.replace(Some(
+            xylitol_kernel::bootstrap::build_permission_from_config(&c),
+        ))
+    });
 }
 
 #[when("grep 以 path='/etc/passwd' 调用")]
@@ -571,7 +583,11 @@ fn g_xy_tool_approval_given(_agent: &AgentState) {
         },
         ..Default::default()
     };
-    xs_sec::SEC.with(|e| e.replace(Some(config.to_permission())));
+    xs_sec::SEC.with(|e| {
+        e.replace(Some(
+            xylitol_kernel::bootstrap::build_permission_from_config(&config),
+        ))
+    });
 }
 
 #[when("调用工具")]
@@ -656,7 +672,11 @@ fn g_ds_forbidden_override() {
         ..Default::default()
     };
     cfg.filesystem.write_allowed.push("/project/.env".into());
-    xs_sec::SEC.with(|e| e.replace(Some(cfg.to_permission())));
+    xs_sec::SEC.with(|e| {
+        e.replace(Some(
+            xylitol_kernel::bootstrap::build_permission_from_config(&cfg),
+        ))
+    });
 }
 
 #[when("合并配置")]
