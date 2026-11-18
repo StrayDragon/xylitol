@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::adapter::{McpPromptAdapter, McpResourceAdapter, McpToolAdapter};
 use super::client::McpClientManager;
-use super::types::McpServerConfig;
+use super::config::McpServerConfig;
 use xylitol_plugin_sdk::XyTool;
 
 pub fn mcp_enabled(servers: &Option<Vec<McpServerConfig>>) -> bool {
