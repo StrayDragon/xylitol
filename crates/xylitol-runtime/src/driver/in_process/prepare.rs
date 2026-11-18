@@ -400,7 +400,7 @@ mod tests {
 mod tool_gate_poll_tests {
     use super::XyInProcessDriver;
     use crate::agent::runtime::baseline::RuntimeBaseline;
-    use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder};
+    use crate::test_support::{MemoryStore, NoopSink};
     use async_trait::async_trait;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
