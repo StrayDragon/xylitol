@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ContextInjectConfig {
     pub global: Vec<InjectorConfig>,
     pub project: Vec<InjectorConfig>,
@@ -56,6 +56,8 @@ impl ContextInjectConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(rename = "ContextInjectorConfig")]
 pub struct InjectorConfig {
     pub id: String,
     pub point: InjectorPoint,
@@ -72,6 +74,7 @@ pub struct InjectorConfig {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "ContextInjectPoint")]
 pub enum InjectorPoint {
     SessionStart,
     SessionShutdown,
@@ -84,6 +87,7 @@ pub enum InjectorPoint {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "ContextInjectPlacement")]
 pub enum Placement {
     #[default]
     HistoryRow,
@@ -92,11 +96,41 @@ pub enum Placement {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "ContextInjectDedup")]
 pub enum DedupMode {
     #[default]
     None,
     LatestWins,
     SuppressIfUnchanged,
+}
+
+pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
+    xylitol_plugin_sdk::config_section::ConfigSection {
+        key: "context_inject",
+        schema: || {
+            serde_json::to_value(schemars::schema_for!(ContextInjectConfig))
+                .expect("context_inject schema")
+        },
+        default: || {
+            serde_json::to_value(ContextInjectConfig::default()).expect("context_inject default")
+        },
+    }
+}
+
+#[cfg(test)]
+mod section_decl_tests {
+    use super::*;
+
+    #[test]
+    fn context_inject_section_declares_key_schema_default() {
+        let section = config_section();
+        assert_eq!(section.key, "context_inject");
+        assert!((section.schema)().is_object());
+        assert_eq!(
+            (section.default)(),
+            serde_json::to_value(ContextInjectConfig::default()).expect("context_inject default")
+        );
+    }
 }
 
 #[cfg(test)]

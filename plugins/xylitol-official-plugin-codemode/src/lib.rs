@@ -1,3 +1,4 @@
+pub mod config;
 mod declarations;
 mod middleware;
 mod plugin;

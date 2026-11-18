@@ -1,8 +1,9 @@
 use crate::bdd::fixtures::*;
 use crate::bdd::steps_agent_profile::{AgentProfileBdd, agent_profile_bdd};
-use crate::bdd::steps_runtime_config::{RcSnap, rc_snap};
+use crate::bdd::steps_runtime_config::{RcBootBdd, RcSnap, rc_boot_bdd, rc_snap};
 use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
+use serial_test::serial;
 
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
@@ -193,3 +194,17 @@ fn test_c3002_profile_persona(ws: Workspace, agent_profile_bdd: AgentProfileBdd)
     name = "未知预设硬失败"
 )]
 fn test_c3002_profile_missing(ws: Workspace, agent_profile_bdd: AgentProfileBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "未知顶层键硬失败"
+)]
+#[serial(env_global)]
+async fn test_rc_unknown_key_hard_fail(ws: Workspace, rc_boot_bdd: RcBootBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "未知键放宽为警告"
+)]
+#[serial(env_global)]
+async fn test_rc_unknown_key_warn(ws: Workspace, rc_boot_bdd: RcBootBdd) {}

@@ -1,4 +1,4 @@
-use xylitol_official_plugin_config::types::{OtelConfig, OtelExporterKind};
+use crate::config::{OtelConfig, OtelExporterKind};
 
 /// `install` caller is `cfg(feature = "otel")`.
 #[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
@@ -140,7 +140,7 @@ pub mod install {
     use opentelemetry_sdk::trace::{SpanData, SpanExporter as SdkSpanExporter};
 
     use super::*;
-    use xylitol_official_plugin_config::types::OtelHttpProtocol;
+    use crate::config::OtelHttpProtocol;
 
     #[derive(Debug, thiserror::Error)]
     #[error("{0}")]
@@ -435,7 +435,7 @@ mod tests {
     fn lab_live_langfuse_otlp_json_http1_smoke() {
         let cfg = OtelConfig {
             exporter: OtelExporterKind::OtlpHttp,
-            protocol: xylitol_official_plugin_config::types::OtelHttpProtocol::HttpJson,
+            protocol: crate::config::OtelHttpProtocol::HttpJson,
             environment: Some("dev".into()),
             service_name: Some("xylitol-smoke".into()),
             ..OtelConfig::default()

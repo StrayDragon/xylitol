@@ -378,7 +378,7 @@ fn t_c2826_no_gate_no_export() {}
 #[cfg(feature = "otel")]
 #[when("以合法 otlp-http 配置尝试构建 OTLP reporter")]
 async fn w_c2826_build_reporter_ok(otel_bdd: &OtelBdd) {
-    use xylitol_kernel::config::types::{OtelConfig, OtelExporterKind};
+    use xylitol_official_plugin_obs::config::{OtelConfig, OtelExporterKind};
     let cfg = OtelConfig {
         exporter: OtelExporterKind::OtlpHttp,
         endpoint: Some("http://127.0.0.1:9/api/public/otel".into()),
@@ -400,7 +400,7 @@ fn t_c2826_reporter_built(otel_bdd: &OtelBdd) {
 
 #[when("以缺失 endpoint 的 otlp-http 配置尝试构建 OTLP reporter")]
 async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
-    use xylitol_kernel::config::types::{OtelConfig, OtelExporterKind};
+    use xylitol_official_plugin_obs::config::{OtelConfig, OtelExporterKind};
     let cfg = OtelConfig {
         exporter: OtelExporterKind::OtlpHttp,
         endpoint: None,

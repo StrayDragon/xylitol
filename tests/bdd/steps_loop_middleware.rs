@@ -424,7 +424,7 @@ pub(crate) fn g_before_tool_rewrite(agent: &AgentState, ws: &Workspace) {
         }))
         .expect("register rewrite-bash");
     let mut runner = ar_make_runner(agent, ws);
-    let permission = xylitol_official_plugin_config::types::PermissionConfig {
+    let permission_config = xylitol_official_plugin_config::types::PermissionConfig {
         enabled: true,
         backend: xylitol_official_plugin_config::types::PermissionBackend::Glob,
         filesystem: xylitol_official_plugin_config::types::PermissionFilesystemConfig {
@@ -439,8 +439,8 @@ pub(crate) fn g_before_tool_rewrite(agent: &AgentState, ws: &Workspace) {
         process: xylitol_official_plugin_config::types::PermissionProcessConfig {
             allowed_paths: vec![],
         },
-    }
-    .to_permission();
+    };
+    let permission = xylitol_kernel::bootstrap::build_permission_from_config(&permission_config);
     runner.set_permission(permission);
     runner.set_loop_middleware(Some(registry));
     set_fake_text("ack");
@@ -1444,7 +1444,7 @@ impl LoopMiddleware for CompactOnce {
 }
 
 fn permission_denying_write(path_glob: &str) -> Arc<dyn xylitol_plugin_sdk::XyPermission> {
-    xylitol_official_plugin_config::types::PermissionConfig {
+    let config = xylitol_official_plugin_config::types::PermissionConfig {
         enabled: true,
         backend: xylitol_official_plugin_config::types::PermissionBackend::Glob,
         filesystem: xylitol_official_plugin_config::types::PermissionFilesystemConfig {
@@ -1459,8 +1459,8 @@ fn permission_denying_write(path_glob: &str) -> Arc<dyn xylitol_plugin_sdk::XyPe
         process: xylitol_official_plugin_config::types::PermissionProcessConfig {
             allowed_paths: vec![],
         },
-    }
-    .to_permission()
+    };
+    xylitol_kernel::bootstrap::build_permission_from_config(&config)
 }
 
 #[given("注册 before_tool 中间件把 read 路由到 write 且权限引擎拒绝该写入路径")]

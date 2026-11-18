@@ -472,6 +472,10 @@ mod tests {
             "mcp_servers",
             "lsp",
             "dap",
+            "compaction",
+            "codemode",
+            "context_inject",
+            "otel",
         ] {
             sections.push(xylitol_plugin_sdk::config_section::ConfigSection {
                 key,
@@ -916,40 +920,6 @@ compaction:
             .expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("plan mode has been removed"), "got: {msg}");
-    }
-
-    #[test]
-    #[serial(env_global)]
-    fn codemode_section_defaults_and_rejects_unknown_runtime() {
-        let home = tempfile::tempdir().unwrap();
-        let global = home.path().join(".config").join("xylitol");
-        std::fs::create_dir_all(&global).unwrap();
-        std::fs::write(
-            global.join("config.yaml"),
-            "codemode:\n  enabled: true\n  fuel: 42\n",
-        )
-        .unwrap();
-        let entries = [
-            ("HOME", home.path().to_str().unwrap()),
-            ("XYLITOL_CONFIG_DIR", global.to_str().unwrap()),
-            ("XYLITOL_PROJECT_DIR", home.path().to_str().unwrap()),
-        ];
-        let cfg =
-            load_app_config_with(None, env_map(&entries), None, &test_sections()).expect("load");
-        let codemode: xylitol_plugin_sdk::CodemodeConfig =
-            cfg.section("codemode").expect("section").expect("present");
-        assert!(codemode.enabled);
-        assert_eq!(codemode.fuel, 42);
-        assert_eq!(codemode.max_nested_calls, 100);
-
-        std::fs::write(
-            global.join("config.yaml"),
-            "codemode:\n  runtime: wasmtime2\n",
-        )
-        .unwrap();
-        let err = load_app_config_with(None, env_map(&entries), None, &test_sections())
-            .expect_err("runtime");
-        assert!(err.to_string().contains("codemode"), "got: {err}");
     }
 
     #[test]

@@ -10,7 +10,6 @@ publish = false
 
 [dependencies]
 xylitol-plugin-sdk = { workspace = true }
-xylitol-runtime = { workspace = true }
 dirs = { workspace = true }
 jsonschema = { workspace = true }
 log = { workspace = true }

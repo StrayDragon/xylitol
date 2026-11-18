@@ -4,12 +4,14 @@ use std::sync::Arc;
 
 use crate::composition::{BuildAgentOptions, build_agent};
 use xylitol_official_plugin_config::loader::load_app_config_detailed_with;
+use xylitol_official_plugin_config::types::PermissionConfig;
 use xylitol_official_plugin_obs as timing;
 use xylitol_official_plugin_session::LogSessionStore;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::model::{XyModelMeta, default_input_modalities};
 use xylitol_runtime::agent::ModelRegistry;
 use xylitol_runtime::agent::model::resolver;
+use xylitol_runtime::permission::{FilesystemRules, NetworkRules, PermissionRules, ProcessRules};
 
 pub(crate) fn process_get_env(k: &str) -> Option<String> {
     if let Ok(v) = std::env::var(k) {
@@ -602,6 +604,26 @@ fn resolve_tool_features(
     features
 }
 
+pub fn build_permission_from_config(
+    pc: &PermissionConfig,
+) -> Arc<dyn xylitol_plugin_sdk::XyPermission> {
+    xylitol_runtime::permission::build_permission(&PermissionRules {
+        enabled: pc.enabled,
+        filesystem: FilesystemRules {
+            read_allowed: pc.filesystem.read_allowed.clone(),
+            write_allowed: pc.filesystem.write_allowed.clone(),
+            write_denied: pc.filesystem.write_denied.clone(),
+        },
+        network: NetworkRules {
+            allowed_domains: pc.network.allowed_domains.clone(),
+            denied_domains: pc.network.denied_domains.clone(),
+        },
+        process: ProcessRules {
+            allowed_paths: pc.process.allowed_paths.clone(),
+        },
+    })
+}
+
 pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, BootstrapError> {
     resolve_assembly_with(
         input,
@@ -715,7 +737,7 @@ pub fn resolve_assembly_with(
             sc.permission
                 .as_ref()
                 .filter(|pc| pc.enabled)
-                .map(|pc| pc.to_permission())
+                .map(build_permission_from_config)
         })
     });
 

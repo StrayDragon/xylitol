@@ -13,7 +13,7 @@ impl Plugin for ObsPlugin {
     }
 
     async fn apply(&self, _: &Ctx, cfg: Arc<ConfigService>) -> Result {
-        let otel: xylitol_official_plugin_config::types::OtelConfig =
+        let otel: crate::config::OtelConfig =
             cfg.app.section_or_default("otel").unwrap_or_default();
         crate::init_logging(&cfg.agent_dir, &otel);
         Ok(())

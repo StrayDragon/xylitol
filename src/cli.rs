@@ -44,7 +44,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         &xylitol_kernel::config_sections::all(),
     )
     .map(|c| {
-        c.section_or_default::<xylitol_kernel::config::types::OtelConfig>("otel")
+        c.section_or_default::<xylitol_kernel::obs::config::OtelConfig>("otel")
             .unwrap_or_default()
     })
     .unwrap_or_default();
