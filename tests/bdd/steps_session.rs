@@ -2,6 +2,8 @@ use crate::bdd::fixtures::*;
 use crate::bdd::helpers::{result_ok_str, strip_quotes};
 use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
+use xylitol_official_plugin_session::{LabelEntry, ModelChangeEntry, ThinkingLevelChangeEntry};
+use xylitol_plugin_sdk::XySessionStore as _;
 
 fn bdd_provider_for(model: &str) -> &'static str {
     let m = model.to_ascii_lowercase();
@@ -12,6 +14,81 @@ fn bdd_provider_for(model: &str) -> &'static str {
     } else {
         "unknown"
     }
+}
+
+fn model_change_entry(provider: &str, model_id: &str) -> SessionEntry {
+    SessionEntry::ModelChange(ModelChangeEntry {
+        base: EntryBase {
+            entry_type: "modelChange".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: 0,
+        },
+        provider: provider.to_string(),
+        model_id: model_id.to_string(),
+    })
+}
+
+fn thinking_level_change_entry(level: &str) -> SessionEntry {
+    SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
+        base: EntryBase {
+            entry_type: "thinkingLevelChange".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: 0,
+        },
+        thinking_level: level.to_string(),
+    })
+}
+
+fn label_change_entry(target_id: &str, label: Option<&str>) -> SessionEntry {
+    SessionEntry::Label(LabelEntry {
+        base: EntryBase {
+            entry_type: "label".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: 0,
+        },
+        target_id: target_id.to_string(),
+        label: label.map(str::to_string),
+    })
+}
+
+async fn store_append_model_change(
+    mgr: &LogSessionStore,
+    sid: &str,
+    provider: &str,
+    model_id: &str,
+) {
+    let entry = model_change_entry(provider, model_id);
+    mgr.append_session_entry(sid, &entry).await.unwrap();
+}
+
+async fn store_append_thinking_level_change(mgr: &LogSessionStore, sid: &str, level: &str) {
+    let entry = thinking_level_change_entry(level);
+    mgr.append_session_entry(sid, &entry).await.unwrap();
+}
+
+async fn store_append_label_change(
+    mgr: &LogSessionStore,
+    sid: &str,
+    target_id: &str,
+    label: Option<&str>,
+) {
+    let entry = label_change_entry(target_id, label);
+    mgr.append_session_entry(sid, &entry).await.unwrap();
+}
+
+async fn store_label_of(mgr: &LogSessionStore, sid: &str, target_id: &str) -> Option<String> {
+    let entries = mgr.load_entries(sid).await.unwrap_or_default();
+    for entry in entries.iter().rev() {
+        if let SessionEntry::Label(label) = entry
+            && label.target_id == target_id
+        {
+            return label.label.clone();
+        }
+    }
+    None
 }
 
 fn message_entry(id: &str, parent_id: Option<&str>, role: &str, content: &str) -> SessionEntry {
@@ -26,7 +103,7 @@ fn message_entry(id: &str, parent_id: Option<&str>, role: &str, content: &str) -
     })
 }
 
-async fn seed_linked_messages(mgr: &SessionManager, sid: &str, count: u32) {
+async fn seed_linked_messages(mgr: &LogSessionStore, sid: &str, count: u32) {
     for i in 0..count {
         let id = format!("msg-{i}");
         let parent = if i == 0 {
@@ -39,14 +116,14 @@ async fn seed_linked_messages(mgr: &SessionManager, sid: &str, count: u32) {
         } else {
             ("user", format!("message {i}"))
         };
-        mgr.append_with_id(sid, &message_entry(&id, parent.as_deref(), role, &content))
+        mgr.append_session_entry(sid, &message_entry(&id, parent.as_deref(), role, &content))
             .await
             .unwrap();
     }
 }
 
 async fn fork_with_branch_summary(
-    mgr: &SessionManager,
+    mgr: &LogSessionStore,
     parent_id: &str,
     child_id: &str,
     at_entry_id: &str,
@@ -103,14 +180,14 @@ async fn _w_session_append(sess: &XySessionStore, msg: String) {
         },
         message: serde_json::json!({"role":"user","content":msg}),
     });
-    mgr.append(&sid, &e).await.unwrap();
+    mgr.append_session_entry(&sid, &e).await.unwrap();
 }
 
 #[when("加载会话 {id:string}")]
 async fn _w_session_load(sess: &XySessionStore, id: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&id).await.unwrap();
+    let entries = mgr.load_entries(&id).await.unwrap();
     sess.entries.replace(entries);
 }
 
@@ -157,7 +234,7 @@ async fn _w_session_fork(sess: &XySessionStore, n: u32, id: String) {
     let at = format!("msg-{}", n - 1);
     fork_with_branch_summary(&mgr, &parent, &id, &at, &id).await;
     sess.current_id.replace(Some(id.clone()));
-    sess.entries.replace(mgr.load(&id).await.unwrap());
+    sess.entries.replace(mgr.load_entries(&id).await.unwrap());
 }
 
 #[given("存在会话树: {tree}")]
@@ -184,7 +261,7 @@ async fn _g_session_tree(sess: &XySessionStore, tree: String) {
     }
     let leaf = chain.last().unwrap().clone();
     sess.current_id.replace(Some(leaf.clone()));
-    sess.entries.replace(mgr.load(&leaf).await.unwrap());
+    sess.entries.replace(mgr.load_entries(&leaf).await.unwrap());
 }
 
 #[when("导航到 {target}")]
@@ -192,11 +269,10 @@ async fn _w_session_nav_to(sess: &XySessionStore, target: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let target = strip_quotes(&target);
-    mgr.set_active_session(&target);
-    if let Some(leaf) = mgr.get_leaf_id(&target) {
-        mgr.navigate_tree(&target, Some(&leaf));
+    if let Some(leaf) = mgr.leaf_id(&target) {
+        mgr.set_leaf(&target, Some(&leaf));
     }
-    let entries = mgr.load(&target).await.unwrap();
+    let entries = mgr.load_entries(&target).await.unwrap();
     sess.current_id.replace(Some(target));
     sess.entries.replace(entries);
 }
@@ -212,10 +288,8 @@ async fn _w_session_model_switch(sess: &XySessionStore, from: String, to: String
         .expect("current session for model switch");
     let _ = from;
     let to = strip_quotes(&to);
-    mgr.append_model_change(&sid, bdd_provider_for(&to), &to)
-        .await
-        .unwrap();
-    sess.entries.replace(mgr.load(&sid).await.unwrap());
+    store_append_model_change(&mgr, &sid, bdd_provider_for(&to), &to).await;
+    sess.entries.replace(mgr.load_entries(&sid).await.unwrap());
 }
 
 #[when("切换思考级别为 {level}")]
@@ -228,10 +302,8 @@ async fn _w_session_thinking_switch(sess: &XySessionStore, level: String) {
         .clone()
         .expect("current session for thinking switch");
     let level = strip_quotes(&level);
-    mgr.append_thinking_level_change(&sid, &level)
-        .await
-        .unwrap();
-    sess.entries.replace(mgr.load(&sid).await.unwrap());
+    store_append_thinking_level_change(&mgr, &sid, &level).await;
+    sess.entries.replace(mgr.load_entries(&sid).await.unwrap());
 }
 
 #[when("向会话追加 {n:u32} 条不同类型的记录")]
@@ -248,45 +320,36 @@ async fn _w_session_append_n(sess: &XySessionStore, n: u32) {
         match i % 3 {
             0 => {
                 let id = format!("extra-msg-{i}");
-                mgr.append_with_id(
+                mgr.append_session_entry(
                     &sid,
-                    &message_entry(
-                        &id,
-                        mgr.get_leaf_id(&sid).as_deref(),
-                        "user",
-                        &format!("x{i}"),
-                    ),
+                    &message_entry(&id, mgr.leaf_id(&sid).as_deref(), "user", &format!("x{i}")),
                 )
                 .await
                 .unwrap();
             }
             1 => {
-                mgr.append_model_change(&sid, "openai", "gpt-4o")
-                    .await
-                    .unwrap();
+                store_append_model_change(&mgr, &sid, "openai", "gpt-4o").await;
             }
             _ => {
-                mgr.append_thinking_level_change(&sid, "high")
-                    .await
-                    .unwrap();
+                store_append_thinking_level_change(&mgr, &sid, "high").await;
             }
         }
     }
-    let leaf = mgr.get_leaf_id(&sid);
-    mgr.append_with_id(
+    let leaf = mgr.leaf_id(&sid);
+    mgr.append_session_entry(
         &sid,
         &message_entry("flush-asst", leaf.as_deref(), "assistant", "ok"),
     )
     .await
     .unwrap();
-    sess.entries.replace(mgr.load(&sid).await.unwrap());
+    sess.entries.replace(mgr.load_entries(&sid).await.unwrap());
 }
 
 #[then("会话 {id:string} 包含 {count:u32} 条记录")]
 async fn _t_session_id_has_n(sess: &XySessionStore, id: String, count: u32) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&id).await.unwrap();
+    let entries = mgr.load_entries(&id).await.unwrap();
     assert_eq!(
         count_messages(&entries),
         count as usize,
@@ -298,7 +361,7 @@ async fn _t_session_id_has_n(sess: &XySessionStore, id: String, count: u32) {
 async fn _t_session_has_branch_summary(sess: &XySessionStore, id: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&id).await.unwrap();
+    let entries = mgr.load_entries(&id).await.unwrap();
     assert!(
         entries
             .iter()
@@ -404,7 +467,7 @@ async fn _t_session_context_branches(sess: &XySessionStore) {
         .expect("current session for tree context");
     let mut summaries = Vec::new();
     loop {
-        let entries = mgr.load(&sid).await.unwrap();
+        let entries = mgr.load_entries(&sid).await.unwrap();
         for e in &entries {
             if let SessionEntry::BranchSummary(b) = e {
                 summaries.push(b.summary.clone());
@@ -434,7 +497,7 @@ async fn _w_session_set_label(sess: &XySessionStore, label: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = sess.current_id.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap();
+    let entries = mgr.load_entries(&sid).await.unwrap();
     let last_id = entries
         .iter()
         .rev()
@@ -445,9 +508,7 @@ async fn _w_session_set_label(sess: &XySessionStore, label: String) {
         })
         .and_then(|e| e.entry_id().map(String::from))
         .expect("no entries to label");
-    mgr.append_label_change(&sid, &last_id, Some(&label))
-        .await
-        .unwrap();
+    store_append_label_change(&mgr, &sid, &last_id, Some(&label)).await;
 }
 
 #[when("清除该记录的标签")]
@@ -455,7 +516,7 @@ async fn _w_session_clear_label(sess: &XySessionStore) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = sess.current_id.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap();
+    let entries = mgr.load_entries(&sid).await.unwrap();
     let last_id = entries
         .iter()
         .rev()
@@ -466,7 +527,7 @@ async fn _w_session_clear_label(sess: &XySessionStore) {
         })
         .and_then(|e| e.entry_id().map(String::from))
         .expect("no entries to clear label");
-    mgr.append_label_change(&sid, &last_id, None).await.unwrap();
+    store_append_label_change(&mgr, &sid, &last_id, None).await;
 }
 
 #[then("该记录的标签为 {expected:string}")]
@@ -474,7 +535,7 @@ async fn _t_session_label_is(sess: &XySessionStore, expected: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = sess.current_id.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap();
+    let entries = mgr.load_entries(&sid).await.unwrap();
     let last_id = entries
         .iter()
         .rev()
@@ -485,7 +546,7 @@ async fn _t_session_label_is(sess: &XySessionStore, expected: String) {
         })
         .and_then(|e| e.entry_id())
         .expect("no entries");
-    let label = mgr.get_label(&sid, last_id).await.unwrap();
+    let label = store_label_of(&mgr, &sid, &last_id).await;
     assert_eq!(label, Some(expected), "label mismatch");
 }
 
@@ -494,7 +555,7 @@ async fn _t_session_no_label(sess: &XySessionStore) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = sess.current_id.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap();
+    let entries = mgr.load_entries(&sid).await.unwrap();
     let last_id = entries
         .iter()
         .rev()
@@ -505,7 +566,7 @@ async fn _t_session_no_label(sess: &XySessionStore) {
         })
         .and_then(|e| e.entry_id())
         .expect("no entries");
-    let label = mgr.get_label(&sid, last_id).await.unwrap();
+    let label = store_label_of(&mgr, &sid, &last_id).await;
     assert!(label.is_none(), "expected no label, got {:?}", label);
 }
 
@@ -549,7 +610,7 @@ async fn append_typed_message(sess: &XySessionStore, role: &str, msg: &str) {
     sess.ensure_mgr();
     let id = sess.current_id.borrow().clone().expect("current session");
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let n = mgr.load(&id).await.unwrap_or_default().len();
+    let n = mgr.load_entries(&id).await.unwrap_or_default().len();
     let entry = SessionEntry::Message(MessageEntry {
         base: EntryBase {
             entry_type: "message".into(),
@@ -562,7 +623,7 @@ async fn append_typed_message(sess: &XySessionStore, role: &str, msg: &str) {
             "content": [{"type": "text", "text": msg}]
         }),
     });
-    mgr.append_with_id(&id, &entry).await.unwrap();
+    mgr.append_session_entry(&id, &entry).await.unwrap();
 }
 
 #[when("向会话追加用户消息 {msg:string}")]
@@ -612,7 +673,7 @@ fn serialized_entries(entries: &[SessionEntry]) -> Vec<String> {
 #[then("会话 {id:string} 包含文本 {text:string}")]
 async fn then_session_has_text(sess: &XySessionStore, id: String, text: String) {
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let all = serialized_entries(&mgr.load(&id).await.unwrap());
+    let all = serialized_entries(&mgr.load_entries(&id).await.unwrap());
     assert!(
         all.iter().any(|s| s.contains(&text)),
         "{text} missing in {} entries:\n{}",
@@ -624,7 +685,7 @@ async fn then_session_has_text(sess: &XySessionStore, id: String, text: String) 
 #[then("会话 {id:string} 不含文本 {text:string}")]
 async fn then_session_lacks_text(sess: &XySessionStore, id: String, text: String) {
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let all = serialized_entries(&mgr.load(&id).await.unwrap());
+    let all = serialized_entries(&mgr.load_entries(&id).await.unwrap());
     assert!(
         all.iter().all(|s| !s.contains(&text)),
         "s9: forked child must not contain post-cutoff text {text}:\n{}",
@@ -635,7 +696,7 @@ async fn then_session_lacks_text(sess: &XySessionStore, id: String, text: String
 #[then("会话 {id:string} 的 branch_summary 摘要包含 {text:string}")]
 async fn then_summary_mentions(sess: &XySessionStore, id: String, text: String) {
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&id).await.unwrap();
+    let entries = mgr.load_entries(&id).await.unwrap();
     let summary = entries
         .iter()
         .find_map(|e| match e {
@@ -704,7 +765,7 @@ async fn append_bash_execution(sess: &XySessionStore, cmd: &str, out: &str) {
     sess.ensure_mgr();
     let id = sess.current_id.borrow().clone().expect("current session");
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let n = mgr.load(&id).await.unwrap_or_default().len();
+    let n = mgr.load_entries(&id).await.unwrap_or_default().len();
     let entry = SessionEntry::Message(MessageEntry {
         base: EntryBase {
             entry_type: "message".into(),
@@ -718,7 +779,7 @@ async fn append_bash_execution(sess: &XySessionStore, cmd: &str, out: &str) {
             "output": out
         }),
     });
-    mgr.append_with_id(&id, &entry).await.unwrap();
+    mgr.append_session_entry(&id, &entry).await.unwrap();
 }
 
 #[when("导出会话 {id:string} 为 JSONL 文件 {file:string}")]
@@ -727,7 +788,7 @@ async fn when_export_jsonl(sess: &XySessionStore, id: String, file: String) {
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let path = tmp_root(sess).join(&file);
     exporter()
-        .export_to_jsonl(&mgr, &id, &path)
+        .export_to_jsonl(&*mgr, &id, &path)
         .await
         .unwrap_or_else(|e| panic!("ex2 export jsonl: {e}"));
 }
@@ -742,13 +803,13 @@ fn then_export_file_contains(sess: &XySessionStore, file: String, text: String) 
 #[when("把 JSONL 文件 {file:string} 导入全新会话存储为 {id:string}")]
 async fn when_import_jsonl_fresh_store(sess: &XySessionStore, file: String, id: String) {
     let root = tmp_root(sess);
-    let fresh = SessionManager::new(root.join("imported-sessions"));
+    let fresh = LogSessionStore::new(root.join("imported-sessions"));
     let returned = exporter()
         .import_from_jsonl(&fresh, &root.join(&file))
         .await
         .unwrap_or_else(|e| panic!("ex3 import jsonl: {e}"));
     assert_eq!(returned, id, "ex3: header-reused session id must match");
-    sess.second_mgr.replace(Some(fresh));
+    sess.second_mgr.replace(Some(std::sync::Arc::new(fresh)));
 }
 
 #[then("导入存储中会话 {id:string} 包含文本 {text:string}")]
@@ -759,7 +820,7 @@ async fn then_imported_has_text(sess: &XySessionStore, id: String, text: String)
         .as_ref()
         .expect("imported store")
         .clone();
-    let all = serialized_entries(&mgr.load(&id).await.unwrap());
+    let all = serialized_entries(&mgr.load_entries(&id).await.unwrap());
     assert!(
         all.iter().any(|s| s.contains(&text)),
         "ex3: imported entries must contain {text:?}:\n{}",
@@ -773,7 +834,7 @@ async fn when_export_html(sess: &XySessionStore, id: String, file: String) {
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let path = tmp_root(sess).join(&file);
     exporter()
-        .export_to_html(&mgr, &id, &path)
+        .export_to_html(&*mgr, &id, &path)
         .await
         .unwrap_or_else(|e| panic!("ex1 export html: {e}"));
 }
@@ -842,7 +903,7 @@ async fn when_append_tool_result(sess: &XySessionStore, call_id: String, text: S
     sess.ensure_mgr();
     let id = sess.current_id.borrow().clone().expect("current session");
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let n = mgr.load(&id).await.unwrap_or_default().len();
+    let n = mgr.load_entries(&id).await.unwrap_or_default().len();
     let am = AgentMessage::tool_result(call_id, "read", vec![AgentPart::text(text)], false);
     let entry = SessionEntry::Message(MessageEntry {
         base: EntryBase {
@@ -853,7 +914,7 @@ async fn when_append_tool_result(sess: &XySessionStore, call_id: String, text: S
         },
         message: serde_json::to_value(&am).expect("serialize AgentMessage"),
     });
-    mgr.append_with_id(&id, &entry).await.unwrap();
+    mgr.append_session_entry(&id, &entry).await.unwrap();
 }
 
 #[then("会话 {id:string} 的磁盘行含 toolCallId 且不含 toolUseId")]
@@ -871,8 +932,7 @@ async fn then_tool_call_id_key(sess: &XySessionStore, id: String) {
 #[when("调用分支摘要生成于空切点集合")]
 async fn when_summary_empty_set(sess: &XySessionStore) {
     sess.ensure_mgr();
-    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let summary = mgr.generate_branch_summary(&[]);
+    let summary = xylitol_official_plugin_session::generate_branch_summary(&[]);
     sess.last_result
         .replace(Some(Ok(format!("summary-len={}", summary.chars().count()))));
 }
@@ -912,7 +972,7 @@ async fn plant_jsonl_with_extra_line(sess: &XySessionStore, id: &str, extra_line
                 "content": [{"type": "text", "text": text}]
             }),
         });
-        mgr.append_with_id(id, &entry).await.unwrap();
+        mgr.append_session_entry(id, &entry).await.unwrap();
     }
     let path = active_session_file(sess, id);
     use std::io::Write;
@@ -1157,14 +1217,14 @@ async fn w_r1950_b_writes(sess: &XySessionStore) {
     sess.lock_probe.set(code);
     if code == Some(0) {
         let dir = sess_dir(sess);
-        let b = SessionManager::new(dir);
+        let b = LogSessionStore::new(dir);
         let result = b
-            .append(&id, &message_entry("m-b", None, "assistant", "from-b"))
+            .append_session_entry(&id, &message_entry("m-b", None, "assistant", "from-b"))
             .await;
         sess.last_result.replace(Some(
             result.map(|_| "ok".into()).map_err(XyDriverError::from),
         ));
-        sess.second_mgr.replace(Some(b));
+        sess.second_mgr.replace(Some(std::sync::Arc::new(b)));
     }
 }
 

@@ -7,7 +7,7 @@ use xylitol_plugin_sdk::XySessionStore;
 fn make_driver() -> XyInProcessDriver {
     let agent = build_agent(BuildAgentOptions::default()).expect("build");
     let store: Arc<dyn XySessionStore> =
-        Arc::new(xylitol_official_plugin_session::SessionManager::new(
+        Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
             tempfile::tempdir().unwrap().path().join("sessions"),
         ));
     assemble_driver(agent, store)

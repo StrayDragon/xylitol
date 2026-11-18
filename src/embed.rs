@@ -67,7 +67,7 @@ mod tests {
         )
         .expect("build agent");
         let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
-            std::sync::Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+            std::sync::Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
         with_loop_registry(assemble_driver(runtime, store), registry)
     }
 }

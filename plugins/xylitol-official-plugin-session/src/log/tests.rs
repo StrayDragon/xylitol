@@ -766,3 +766,54 @@ async fn maintenance_is_idempotent_and_heals_dirty_state() {
         second.sessions[0].suggested_threshold_bytes
     );
 }
+
+#[tokio::test]
+async fn load_validated_passes_when_stored_cwd_exists() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    store.create("s", Some("."), None).await.expect("create");
+    append(&store, "s", &msg("u1", None, "user", "hi"), true)
+        .await
+        .expect("append");
+    let entries = store
+        .load_validated("s", ".")
+        .await
+        .expect("validated load");
+    assert!(!entries.is_empty());
+}
+
+#[tokio::test]
+async fn load_validated_fallback_rescues_missing_cwd() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let fallback = tempfile::tempdir().expect("fallback");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    store
+        .create("s", Some("/definitely-missing/xylitol-cwd"), None)
+        .await
+        .expect("create");
+    append(&store, "s", &msg("u1", None, "user", "hi"), true)
+        .await
+        .expect("append");
+    let entries = store
+        .load_validated("s", fallback.path().to_str().expect("utf8"))
+        .await
+        .expect("fallback must rescue");
+    assert!(!entries.is_empty());
+}
+
+#[tokio::test]
+async fn load_validated_error_carries_both_cwd_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    store
+        .create("s", Some("/definitely-missing/xylitol-cwd"), None)
+        .await
+        .expect("create");
+    let err = store
+        .load_validated("s", "/also-missing/fallback")
+        .await
+        .expect_err("both missing must fail");
+    let text = err.to_string();
+    assert!(text.contains("/definitely-missing/xylitol-cwd"), "{text}");
+    assert!(text.contains("/also-missing/fallback"), "{text}");
+}

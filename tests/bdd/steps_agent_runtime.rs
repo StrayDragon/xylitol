@@ -943,7 +943,7 @@ pub(crate) fn bdd_batch_make_runner(
     ar_register_fake(agent, "ar-batch");
     let rounds = bdd_batch_rounds(calls);
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
+    let mgr = LogSessionStore::new(dir.keep());
     let store: Arc<dyn XySessionStore> = Arc::new(mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(xylitol_kernel::event::EventBus::new());
     let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
@@ -1367,7 +1367,7 @@ fn c2826_driver() -> (
         xylitol_kernel::composition::BuildAgentOptions::default(),
     )
     .expect("build agent for reload seam");
-    let mgr = xylitol_official_plugin_session::SessionManager::new(
+    let mgr = xylitol_official_plugin_session::LogSessionStore::new(
         tempfile::tempdir().unwrap().path().join("sessions"),
     );
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);

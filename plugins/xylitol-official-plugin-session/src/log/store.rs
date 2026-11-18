@@ -24,6 +24,16 @@ const UNFLUSHED_FORK_ERR: &str = "This session has not been saved yet. Wait for 
 
 #[async_trait]
 impl XySessionStore for LogSessionStore {
+    async fn load_validated(
+        &self,
+        session_id: &str,
+        fallback_cwd: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        let entries = self.load_entries(session_id).await?;
+        assert_session_cwd_exists(&entries, fallback_cwd)?;
+        Ok(entries)
+    }
+
     async fn exists(&self, session_id: &str) -> bool {
         match self.mode {
             StoreMode::InMemory => {
@@ -404,7 +414,36 @@ async fn fork_impl(
     Ok(())
 }
 
-pub(crate) fn generate_branch_summary(skipped_entries: &[SessionEntry]) -> String {
+fn assert_session_cwd_exists(
+    entries: &[SessionEntry],
+    fallback_cwd: &str,
+) -> Result<(), XySessionStoreError> {
+    let header = entries.iter().find_map(|entry| match entry {
+        SessionEntry::Header(header) => Some(header),
+        _ => None,
+    });
+    let Some(header) = header else {
+        return Ok(());
+    };
+    let cwd = if header.cwd.is_empty() {
+        "."
+    } else {
+        &header.cwd
+    };
+    let cwd_path = std::path::Path::new(cwd);
+    if cwd_path.is_dir() {
+        return Ok(());
+    }
+    let fallback_path = std::path::Path::new(fallback_cwd);
+    if fallback_path.is_dir() {
+        return Ok(());
+    }
+    Err(XySessionStoreError::validation(format!(
+        "Session working directory '{cwd}' does not exist. Fallback '{fallback_cwd}' also not found."
+    )))
+}
+
+pub fn generate_branch_summary(skipped_entries: &[SessionEntry]) -> String {
     if skipped_entries.is_empty() {
         return String::new();
     }

@@ -53,6 +53,15 @@ pub trait XySessionStore: Send + Sync {
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError>;
 
+    async fn load_validated(
+        &self,
+        session_id: &str,
+        fallback_cwd: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        let _ = fallback_cwd;
+        self.load_entries(session_id).await
+    }
+
     async fn load_entries_page(
         &self,
         session_id: &str,

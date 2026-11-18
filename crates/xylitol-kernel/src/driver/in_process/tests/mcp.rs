@@ -44,7 +44,7 @@ fn mcp_progress_needs_ui_refresh(
 
 async fn begin_session_prepare_empty_settles_immediately() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     assert!(!driver.mcp_blocks_agent());
@@ -61,7 +61,7 @@ async fn begin_session_prepare_empty_settles_immediately() {
 #[tokio::test]
 async fn poll_complete_armed_gate_freezes_tools_table() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     driver.begin_session_prepare().await;
@@ -79,7 +79,7 @@ async fn poll_complete_armed_gate_freezes_tools_table() {
 
 async fn mcp_settle_defers_system_prompt_off_tick() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
     attach_mcp(&mut driver, vec![bad_mcp("bad")]);
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
@@ -145,7 +145,7 @@ async fn mcp_settle_defers_system_prompt_off_tick() {
 
 async fn leaving_mcp_gate_must_signal_ui_refresh() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     attach_mcp(&mut driver, vec![bad_mcp("bad")]);
@@ -189,7 +189,7 @@ async fn settle_mcp_gate(driver: &mut XyInProcessDriver) {
 #[tokio::test]
 async fn new_session_reengages_mcp_first_turn_gate() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     attach_mcp(&mut driver, vec![bad_mcp("bad")]);
@@ -207,7 +207,7 @@ async fn new_session_reengages_mcp_first_turn_gate() {
 #[tokio::test]
 async fn fork_session_reengages_mcp_first_turn_gate() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store.clone()).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     attach_mcp(&mut driver, vec![bad_mcp("bad")]);
@@ -348,7 +348,7 @@ fn mcp_tools_pending_clears_after_freeze_when_complete() {
 
 async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     assert!(!driver.is_tools_frozen());
@@ -371,7 +371,7 @@ async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
 
 async fn reload_re_freezes_tools() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     driver.ensure_tool_table_frozen().await;
@@ -397,7 +397,7 @@ async fn reload_re_freezes_tools() {
 
 async fn arm_tool_freeze_gate_empty_mcp_freezes_immediately() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     assert!(!driver.is_tools_frozen());
@@ -471,7 +471,7 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let seen_b = seen.clone();
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut reg = xylitol_runtime::agent::model::registry::ModelRegistry::new();
     reg.register(XyModelMeta {

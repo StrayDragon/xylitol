@@ -2,6 +2,7 @@ use crate::bdd::fixtures::*;
 use crate::bdd::helpers::*;
 use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
+use xylitol_plugin_sdk::XySessionStore as _;
 
 #[given("配置了 mock 模型 {name:string}")]
 pub(crate) fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: String) {
@@ -169,10 +170,9 @@ pub(crate) fn _g_agent_no_thinking(agent: &AgentState) {
 pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let _ = verb;
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
+    let mgr = std::sync::Arc::new(LogSessionStore::new(dir.keep()));
     let sid = "thinking-switch-test".to_string();
-    let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
-        std::sync::Arc::new(mgr.clone());
+    let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = mgr.clone();
     let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         std::sync::Arc::new(xylitol_kernel::event::EventBus::new());
     let mut session = AgentCapabilities::new(
@@ -219,10 +219,11 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
 
 mod thinking_persist {
     use std::cell::RefCell;
-    use xylitol_official_plugin_session::SessionManager;
+    use xylitol_official_plugin_session::LogSessionStore;
     thread_local! {
         pub static SID: RefCell<Option<String>> = const { RefCell::new(None) };
-        pub static MGR: RefCell<Option<SessionManager>> = const { RefCell::new(None) };
+        pub static MGR: RefCell<Option<std::sync::Arc<LogSessionStore>>> =
+            const { RefCell::new(None) };
     }
 }
 
@@ -251,7 +252,7 @@ pub(crate) async fn _t_agent_thinking_saved(_agent: &AgentState) {
     let mgr = thinking_persist::MGR
         .with(|m| m.borrow().clone())
         .expect("thinking session mgr");
-    let entries = mgr.load(&sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(&sid).await.unwrap_or_default();
     assert!(
         entries
             .iter()
@@ -353,7 +354,7 @@ pub(crate) async fn _g_agent_turn_done(sess: &XySessionStore) {
 pub(crate) async fn _w_agent_load_session_file(sess: &XySessionStore) {
     let sid = sess.current_id.borrow().clone().unwrap();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(&sid).await.unwrap_or_default();
     sess.entries.replace(entries);
 }
 
@@ -426,9 +427,8 @@ pub(crate) fn t_m10_rejected_thinking_level(agent: &AgentState) {
 pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     let level = strip_quotes(&level);
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
-        std::sync::Arc::new(mgr.clone());
+        std::sync::Arc::new(LogSessionStore::new(dir.keep()));
     let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         std::sync::Arc::new(xylitol_kernel::event::EventBus::new());
     let mut session = AgentCapabilities::new(

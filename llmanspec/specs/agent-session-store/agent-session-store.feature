@@ -13,7 +13,7 @@
 
   @req:r1090
   规则: 追加日志存储
-    SessionManager 须将会话持久化为追加式 JSONL 日志目录（位于 ~/.xylitol/sessions/<id>/log/）：每行一个 JSON entry（含 seq 可选字段），首行 header 内嵌 format 字段（现行日志格式名）；manifest 与 index 均为可丢弃缓存，恢复真值只来自 log 行。轮转只在 turn 边界或压缩点发生；不得把 manifest 当作恢复 SSOT。
+    会话存储 须将会话持久化为追加式 JSONL 日志目录（位于 ~/.xylitol/sessions/<id>/log/）：每行一个 JSON entry（含 seq 可选字段），首行 header 内嵌 format 字段（现行日志格式名）；manifest 与 index 均为可丢弃缓存，恢复真值只来自 log 行。轮转只在 turn 边界或压缩点发生；不得把 manifest 当作恢复 SSOT。
 
     场景: 创建加载
       假如 会话存储目录已初始化
@@ -31,7 +31,7 @@
 
   @req:r1097
   规则: 条目类型
-    SessionManager 须支持条目类型（JSONL type 判别为 camelCase）：message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo；bang-bash 不作为顶层 type，而走 message+role=bashExecution。不得将 snake_case type 标签（如 branch_summary、bash_execution）视为合法 SSOT。
+    会话存储 须支持条目类型（JSONL type 判别为 camelCase）：message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo；bang-bash 不作为顶层 type，而走 message+role=bashExecution。不得将 snake_case type 标签（如 branch_summary、bash_execution）视为合法 SSOT。
 
     场景: 模型变更
       假如 存在会话 "model-test"
@@ -59,7 +59,7 @@
 
   @req:r1105
   规则: CRUD
-    SessionManager 须支持 create、append、load、list、exists 操作。
+    会话存储 须支持 create、append、load、list、exists 操作。
 
     场景: 列表会话
       假如 存在会话 "session-a"
@@ -79,7 +79,7 @@
 
   @req:r1107
   规则: 会话树
-    SessionManager 须维护 parent/child 会话链接：fork 创建子分支，branchSummary 引用父条目。
+    会话存储 须维护 parent/child 会话链接：fork 创建子分支，branchSummary 引用父条目。
 
     场景: 分叉
       假如 存在会话 "parent" 包含 10 条记录
@@ -117,7 +117,7 @@
 
   @req:r1110
   规则: 会话 fork
-    SessionManager 须支持 fork(parent_id, child_id, at_entry_id)，将父当前 leaf 路径以 copy-on-write 引用到子会话：子会话头 须记录 parentSession 与 forkAtEntryId，并 append branch_summary；子会话 不得复制父条目或重写父条目 id。加载子会话时 须沿父会话 log 读取祖先条目（树视图穿透），LLM 视图 须沿 parent 链折叠。System 须支持 fork_session(at_entry_id)：经 SessionManager::fork() 创建新子会话并返回子 session id。非 fork 创建的会话头 不得写入切点字段；加载缺少该切点字段的旧会话文件时 须视为无切点，不得因此失败。
+    会话存储 须支持 fork(parent_id, child_id, at_entry_id)，将父当前 leaf 路径以 copy-on-write 引用到子会话：子会话头 须记录 parentSession 与 forkAtEntryId，并 append branch_summary；子会话 不得复制父条目或重写父条目 id。加载子会话时 须沿父会话 log 读取祖先条目（树视图穿透），LLM 视图 须沿 parent 链折叠。System 须支持 fork_session(at_entry_id)：经会话存储 fork() 创建新子会话并返回子 session id。非 fork 创建的会话头 不得写入切点字段；加载缺少该切点字段的旧会话文件时 须视为无切点，不得因此失败。
 
     场景: 分叉复制裁切点与摘要
       假如 存在会话 "parent" 包含 6 条记录
@@ -195,7 +195,7 @@
 
   @req:r1094
   规则: CWD 校验与回退
-    从磁盘加载会话时 SessionManager 须校验存储 CWD 存在且可访问；创建/导入会话时同样 须校验工作目录可访问；不可用时 须尝试 fallback cwd，其一可用即继续。两者均不可用时 须返回可操作校验错误，消息 须同时携带存储 cwd 与 fallback cwd；面向用户的 CWD 错误信息 即该可操作校验错误文本（引导用户落到 fallback cwd）。CLI 与 RPC 模式 须在恢复会话前完成同一校验。
+    从磁盘加载会话时，会话存储 须校验存储 CWD 存在且可访问；创建/导入会话时同样 须校验工作目录可访问；不可用时 须尝试 fallback cwd，其一可用即继续。两者均不可用时 须返回可操作校验错误，消息 须同时携带存储 cwd 与 fallback cwd；面向用户的 CWD 错误信息 即该可操作校验错误文本（引导用户落到 fallback cwd）。CLI 与 RPC 模式 须在恢复会话前完成同一校验。
 
     场景: 已存工作目录可访问加载
       假如 会话存储目录已初始化
@@ -240,7 +240,7 @@
 
   @req:r1098
   规则: session-load-skip-warn
-    load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 须跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn 须至多 3 条，超出后 须以单条省略标记（如 ...）收敛，不得刷屏。尾部半行 须截断。header 的 version 不等于 SESSION_VERSION（7）或 format 不等于现行日志格式名时 须拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），不得静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager 须共用此策略。
+    load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 须跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn 须至多 3 条，超出后 须以单条省略标记（如 ...）收敛，不得刷屏。尾部半行 须截断。header 的 version 不等于 SESSION_VERSION（7）或 format 不等于现行日志格式名时 须拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），不得静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与会话存储 须共用此策略。
 
     场景: 加载跳过无法解析行
       假如 目录中植入含坏 JSON 行的现行日志格式会话 "mixed"
@@ -338,7 +338,7 @@
 
   @req:r1093
   规则: 写路径与 fsync
-    Persisted SessionManager 须在 create 时写入 header 行，append 时立即追加一行；fsync 粒度须为 turn 边界批量（assistant 最终答复、用户消息、compaction 提交），崩溃最多丢正在进行的 turn，尾部半行须在打开快检时截断。InMemory backend 不得写文件。
+    Persisted 会话存储 须在 create 时写入 header 行，append 时立即追加一行；fsync 粒度须为 turn 边界批量（assistant 最终答复、用户消息、compaction 提交），崩溃最多丢正在进行的 turn，尾部半行须在打开快检时截断。InMemory backend 不得写文件。
 
     场景: 创建即写头且首次追加可读
       假如 会话存储目录已初始化

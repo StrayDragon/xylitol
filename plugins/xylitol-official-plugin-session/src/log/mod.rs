@@ -18,7 +18,7 @@ use crate::types::SessionEntry;
 use layout::{CachedManifest, Layout};
 pub use lock::SESSION_WRITE_LOCK_FILENAME;
 use lock::SessionWriteLock;
-pub(crate) use store::generate_branch_summary;
+pub use store::generate_branch_summary;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::XySessionStoreError;
 use xylitol_plugin_sdk::session::SessionProfile;
@@ -240,7 +240,7 @@ impl LogSessionStore {
         self.layout.legacy_path(session_id)
     }
 
-    pub(crate) fn exists_sync(&self, session_id: &str) -> bool {
+    pub fn exists_sync(&self, session_id: &str) -> bool {
         match self.mode {
             StoreMode::InMemory => lock_rwlock_read(&self.memory).contains_key(session_id),
             StoreMode::Persisted => self.layout.log_dir(session_id).exists(),
@@ -257,6 +257,13 @@ impl LogSessionStore {
             return self.layout.log_file(session_id, manifest.active_file);
         }
         self.layout.log_file(session_id, 1)
+    }
+
+    pub fn get_session_file(&self, session_id: &str) -> Result<PathBuf, XySessionStoreError> {
+        if !self.exists_sync(session_id) {
+            return Err(XySessionStoreError::not_found(session_id));
+        }
+        Ok(self.active_log_file(session_id))
     }
 
     pub fn backend(&self) -> crate::types::SessionBackend {

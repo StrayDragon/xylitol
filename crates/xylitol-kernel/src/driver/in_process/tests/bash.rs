@@ -65,7 +65,7 @@ async fn relay_replaces_invalid_bytes_without_blocking() {
 #[tokio::test]
 async fn sink_cancel_reaches_execute_bash_out_of_band() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _scope) = build_test_driver(store).await;
     let (tx, _rx) = tokio::sync::mpsc::channel(8);
     let cancel = tokio_util::sync::CancellationToken::new();

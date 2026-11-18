@@ -2,6 +2,7 @@ use crate::bdd::fixtures::*;
 use crate::bdd::helpers::*;
 use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
+use xylitol_plugin_sdk::XySessionStore as _;
 
 mod comp_fixture {
     use std::cell::RefCell;
@@ -48,7 +49,7 @@ pub(crate) async fn comp_run_compact(
         ..Default::default()
     };
     let result = compact_session(
-        &mgr,
+        &*mgr,
         sid,
         &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
             model, "fake",
@@ -66,7 +67,7 @@ pub(crate) async fn comp_run_compact(
                 .last_result
                 .replace(Some(Ok(format!("compacted:{}", entry.summary.len()))));
             comp_fixture::LAST_COMPACTION.with(|c| c.replace(Some(entry.clone())));
-            let entries = mgr.load(sid).await.unwrap_or_default();
+            let entries = mgr.load_entries(sid).await.unwrap_or_default();
             sess.entries.replace(entries);
             sess.current_id.replace(Some(sid.to_string()));
         }
@@ -293,7 +294,7 @@ pub(crate) async fn _g_comp_navigate_branch(sess: &XySessionStore) {
         message: serde_json::json!({"role":"assistant","content":"ok"}),
     });
     let _ = mgr.append(sid, &assistant).await;
-    let entries = mgr.load(sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(sid).await.unwrap_or_default();
     let skipped: Vec<SessionEntry> = entries
         .iter()
         .filter(|e| matches!(e, SessionEntry::Message(_)))
@@ -311,9 +312,8 @@ pub(crate) async fn _g_comp_navigate_branch(sess: &XySessionStore) {
 #[when("生成分支摘要")]
 pub(crate) fn _w_comp_branch_summary(agent: &AgentState, sess: &XySessionStore) {
     sess.ensure_mgr();
-    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let skipped = comp_fixture::BRANCH_SKIPPED.with(|s| s.borrow().clone());
-    let summary = mgr.generate_branch_summary(&skipped);
+    let summary = xylitol_official_plugin_session::generate_branch_summary(&skipped);
     agent.last_result.replace(Some(Ok(summary)));
 }
 

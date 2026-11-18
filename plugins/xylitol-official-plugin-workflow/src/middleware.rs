@@ -603,7 +603,7 @@ mod tests {
     #[tokio::test]
     async fn workflow_write_success_reloads_and_injects_step() {
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
         store.create("s1", Some("."), None).await.expect("create");
         store
             .append_session_entry("s1", &workflow().to_custom_entry_shell())
@@ -809,7 +809,7 @@ mod nested_tests {
         config: WorkflowConfig,
     ) -> (Arc<dyn XySessionStore>, Arc<dyn LoopMiddleware>) {
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
         store.create("s1", Some("."), None).await.expect("create");
         store
             .append_session_entry("s1", &workflow.to_custom_entry_shell())
@@ -898,7 +898,7 @@ mod nested_tests {
 
     async fn seeded_concrete(workflow: Workflow) -> (Arc<dyn XySessionStore>, WorkflowMiddleware) {
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
         store.create("s1", Some("."), None).await.expect("create");
         store
             .append_session_entry("s1", &workflow.to_custom_entry_shell())

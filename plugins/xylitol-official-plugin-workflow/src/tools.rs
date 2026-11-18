@@ -369,7 +369,7 @@ mod tests {
 
     async fn gateway() -> (Arc<SessionWorkflowGateway>, Arc<dyn XySessionStore>) {
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
         store.create("s1", Some("."), None).await.expect("create");
         let gateway = SessionWorkflowGateway::new(store.clone());
         gateway.bind_session(Some("s1".into())).await;
@@ -705,7 +705,7 @@ mod tests {
     #[test]
     fn workflow_tools_expose_fail_tool() {
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
         let gateway = SessionWorkflowGateway::new(store);
         let tools = workflow_tools(gateway, 4, 100);
         let names: Vec<_> = tools.iter().map(|tool| tool.name()).collect();

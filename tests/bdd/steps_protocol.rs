@@ -457,11 +457,11 @@ fn t_compaction_end_fidelity(protocol_bdd: &ProtocolBdd) {
 async fn w_import_missing_file(protocol_bdd: &ProtocolBdd) {
     use xylitol::SessionExporter;
     use xylitol_kernel::export::StdExportIo;
-    use xylitol_official_plugin_session::SessionManager;
+    use xylitol_official_plugin_session::LogSessionStore;
     let dir = tempfile::tempdir().unwrap();
     let sessions = dir.path().join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();
-    let mgr = SessionManager::new(sessions);
+    let mgr = LogSessionStore::new(sessions);
     let exporter = SessionExporter::new(Some(std::sync::Arc::new(StdExportIo::new())));
     let missing = dir.path().join("definitely-missing.jsonl");
     let e1 = exporter
