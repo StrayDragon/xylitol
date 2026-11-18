@@ -6,6 +6,7 @@ use super::error::LoadError;
 use super::paths::ConfigPaths;
 use super::secret_env::SecretMap;
 use super::types::{AppConfig, ModelsConfig};
+use xylitol_plugin_sdk::config_section::ConfigSection;
 
 #[derive(Debug, Clone)]
 pub struct LoadedAppConfig {
@@ -13,11 +14,17 @@ pub struct LoadedAppConfig {
     pub from_yaml_layers: bool,
 }
 
-pub fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
-    Ok(load_app_config_detailed(cli_config)?.config)
+pub fn load_app_config(
+    cli_config: Option<&Path>,
+    sections: &[ConfigSection],
+) -> Result<AppConfig, LoadError> {
+    Ok(load_app_config_detailed(cli_config, sections)?.config)
 }
 
-pub fn load_app_config_detailed(cli_config: Option<&Path>) -> Result<LoadedAppConfig, LoadError> {
+pub fn load_app_config_detailed(
+    cli_config: Option<&Path>,
+    sections: &[ConfigSection],
+) -> Result<LoadedAppConfig, LoadError> {
     load_app_config_detailed_with(
         cli_config,
         |k| {
@@ -30,6 +37,7 @@ pub fn load_app_config_detailed(cli_config: Option<&Path>) -> Result<LoadedAppCo
             None
         },
         std::env::current_dir().ok().as_deref(),
+        sections,
     )
 }
 
@@ -37,23 +45,26 @@ pub fn load_app_config_with(
     cli_config: Option<&Path>,
     get_env: impl Fn(&str) -> Option<String>,
     cwd: Option<&Path>,
+    sections: &[ConfigSection],
 ) -> Result<AppConfig, LoadError> {
-    Ok(load_app_config_detailed_with(cli_config, get_env, cwd)?.config)
+    Ok(load_app_config_detailed_with(cli_config, get_env, cwd, sections)?.config)
 }
 
 pub fn load_app_config_detailed_with(
     cli_config: Option<&Path>,
     get_env: impl Fn(&str) -> Option<String>,
     cwd: Option<&Path>,
+    sections: &[ConfigSection],
 ) -> Result<LoadedAppConfig, LoadError> {
     let paths = ConfigPaths::discover_with(get_env, cwd);
-    load_from_paths(&paths, cli_config)
+    load_from_paths(&paths, cli_config, sections)
 }
 
 fn merge_config_layers(
     paths: &ConfigPaths,
     cli_config: Option<&Path>,
     secrets: &super::secret_env::SecretMap,
+    sections: &[ConfigSection],
 ) -> Result<(Value, bool), LoadError> {
     let mut merged = Value::Null;
     let mut from_yaml_layers = false;
@@ -72,6 +83,7 @@ fn merge_config_layers(
         &mut from_yaml_layers,
         &paths.global_dir.join("conf.d"),
         secrets,
+        sections,
     )?;
 
     if let Some(proj_dir) = &paths.project_dir {
@@ -86,6 +98,7 @@ fn merge_config_layers(
             &mut from_yaml_layers,
             &proj_dir.join("conf.d"),
             secrets,
+            sections,
         )?;
     }
 
@@ -116,6 +129,7 @@ fn merge_drop_in_dir(
     from_yaml_layers: &mut bool,
     dir: &Path,
     secrets: &super::secret_env::SecretMap,
+    sections: &[ConfigSection],
 ) -> Result<(), LoadError> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Ok(());
@@ -132,7 +146,7 @@ fn merge_drop_in_dir(
         let mut value = load_and_render(&path, secrets).map_err(with_path)?;
         expand_merge_keys(&mut value).map_err(with_path)?;
         strip_anchor_carriers(&mut value);
-        super::validate::validate_merged_config(&value).map_err(with_path)?;
+        super::validate::validate_merged_config(&value, sections).map_err(with_path)?;
         deep_merge(merged, value);
         *from_yaml_layers = true;
     }
@@ -228,6 +242,7 @@ fn expand_merge_keys(value: &mut Value) -> Result<(), LoadError> {
 fn load_from_paths(
     paths: &ConfigPaths,
     cli_config: Option<&Path>,
+    sections: &[ConfigSection],
 ) -> Result<LoadedAppConfig, LoadError> {
     let (secrets, injected) = super::secret_env::load_secret_env_files(paths);
     if injected > 0 {
@@ -237,7 +252,8 @@ fn load_from_paths(
         );
     }
 
-    let (mut merged, from_yaml_layers) = merge_config_layers(paths, cli_config, &secrets)?;
+    let (mut merged, from_yaml_layers) =
+        merge_config_layers(paths, cli_config, &secrets, sections)?;
     strip_anchor_carriers(&mut merged);
 
     if merged.is_null() {
@@ -254,16 +270,12 @@ fn load_from_paths(
         .map(|map| {
             map.keys()
                 .filter(|key| key.as_str() != "xylitol")
-                .filter(|key| {
-                    !super::sections::sections()
-                        .iter()
-                        .any(|section| section.key == key.as_str())
-                })
+                .filter(|key| !sections.iter().any(|section| section.key == key.as_str()))
                 .cloned()
                 .collect()
         })
         .unwrap_or_default();
-    super::validate::validate_merged_config(&merged)?;
+    super::validate::validate_merged_config(&merged, sections)?;
     validate_app_config(&config)?;
     expand_model_config_expressions(&mut config)?;
     Ok(LoadedAppConfig {
@@ -449,6 +461,26 @@ pub(crate) fn deep_merge(base: &mut Value, overlay: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_sections() -> Vec<xylitol_plugin_sdk::config_section::ConfigSection> {
+        let mut sections = crate::sections::core_sections().to_vec();
+        for key in [
+            "hooks",
+            "loop_policies",
+            "todo",
+            "workflow",
+            "mcp_servers",
+            "lsp",
+            "dap",
+        ] {
+            sections.push(xylitol_plugin_sdk::config_section::ConfigSection {
+                key,
+                schema: || serde_json::json!({ "type": ["object", "array"] }),
+                default: || serde_json::Value::Null,
+            });
+        }
+        sections
+    }
     use serde_json::json;
     use serial_test::serial;
     use std::collections::HashMap;
@@ -559,19 +591,17 @@ mod tests {
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
+        let cfg =
+            load_app_config_with(None, env_map(&entries), None, &test_sections()).expect("load");
         let servers = cfg
-            .section::<Option<Vec<crate::types::McpServerConfig>>>("mcp_servers")
+            .section::<Option<serde_json::Value>>("mcp_servers")
             .unwrap()
             .expect("mcp_servers")
             .expect("servers");
+        let servers = servers.as_array().expect("servers array");
         assert_eq!(servers.len(), 1);
-        assert_eq!(servers[0].name, "demo");
-        let headers = servers[0].headers.as_ref().expect("headers");
-        assert_eq!(
-            headers.get("CONTEXT7_API_KEY").map(String::as_str),
-            Some("secret-value")
-        );
+        assert_eq!(servers[0]["name"], "demo");
+        assert_eq!(servers[0]["headers"]["CONTEXT7_API_KEY"], "secret-value");
     }
 
     #[test]
@@ -726,7 +756,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s.as_str()),
             ("XYLITOL_PROJECT_DIR", project_s.as_str()),
         ];
-        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
+        let cfg =
+            load_app_config_with(None, env_map(&entries), None, &test_sections()).expect("load");
         assert!(
             cfg.section_or_default::<crate::types::ModelsConfig>("models")
                 .unwrap()
@@ -740,7 +771,8 @@ compaction:
             "models:\n  default_model: from-yaml\n  entries:\n    from-yaml:\n      provider: fake\n      model: fake\n",
         )
         .unwrap();
-        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load with yaml");
+        let cfg = load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect("load with yaml");
         assert_eq!(
             cfg.section_or_default::<crate::types::ModelsConfig>("models")
                 .unwrap()
@@ -766,7 +798,7 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        load_app_config_with(None, env_map(&entries), None)
+        load_app_config_with(None, env_map(&entries), None, &test_sections())
     }
 
     #[test]
@@ -867,25 +899,6 @@ compaction:
     }
 
     #[test]
-    fn feature_plugin_defaults_are_stable() {
-        let config = AppConfig::default();
-        assert!(
-            config
-                .section_or_default::<crate::types::TodoConfig>("todo")
-                .unwrap()
-                .is_active(),
-            "todo plugin is default-on"
-        );
-        assert!(
-            !config
-                .section_or_default::<crate::types::WorkflowConfig>("workflow")
-                .unwrap()
-                .is_active(),
-            "workflow plugin is opt-in"
-        );
-    }
-
-    #[test]
     #[serial(env_global)]
     fn plan_mode_config_rejected_after_removal() {
         let home = tempfile::tempdir().unwrap();
@@ -899,7 +912,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let err = load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("plan mode has been removed"), "got: {msg}");
     }
@@ -920,7 +934,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global.to_str().unwrap()),
             ("XYLITOL_PROJECT_DIR", home.path().to_str().unwrap()),
         ];
-        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
+        let cfg =
+            load_app_config_with(None, env_map(&entries), None, &test_sections()).expect("load");
         let codemode: xylitol_plugin_sdk::CodemodeConfig =
             cfg.section("codemode").expect("section").expect("present");
         assert!(codemode.enabled);
@@ -932,7 +947,8 @@ compaction:
             "codemode:\n  runtime: wasmtime2\n",
         )
         .unwrap();
-        let err = load_app_config_with(None, env_map(&entries), None).expect_err("runtime");
+        let err = load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect_err("runtime");
         assert!(err.to_string().contains("codemode"), "got: {err}");
     }
 
@@ -954,7 +970,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let err = load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("todo_progress"), "got: {msg}");
         assert!(msg.contains("todo.progress"), "got: {msg}");
@@ -978,7 +995,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let err = load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("models.zen.preset"), "got: {msg}");
         assert!(msg.contains("xylitol config schema"), "got: {msg}");
@@ -1002,7 +1020,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let err = load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("provider_presets"), "got: {msg}");
         assert!(msg.contains("xylitol config schema"), "got: {msg}");
@@ -1026,7 +1045,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        load_app_config_with(None, env_map(&entries), None).expect("explicit fields load");
+        load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect("explicit fields load");
     }
 
     #[test]
@@ -1047,7 +1067,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let err = load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("loop_example"), "got: {msg}");
         assert!(msg.contains("loop_policies"), "got: {msg}");
@@ -1077,7 +1098,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        let config = load_app_config_with(None, env_map(&entries), None).expect("load");
+        let config =
+            load_app_config_with(None, env_map(&entries), None, &test_sections()).expect("load");
         let models: ModelsConfig = config.section_or_default("models").unwrap();
         assert!(models.entries.contains_key("base"));
         assert!(models.entries.contains_key("generated"));
@@ -1107,7 +1129,8 @@ compaction:
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let err = load_app_config_with(None, env_map(&entries), None, &test_sections())
+            .expect_err("reject");
         let msg = err.to_string();
         assert!(msg.contains("broken.yaml"), "got: {msg}");
     }

@@ -10,7 +10,8 @@ pub async fn run(action: SessionsAction) -> Result<(), String> {
                 Some(dir) => PathBuf::from(dir),
                 None => {
                     let loaded =
-                        load_app_config_detailed(None).map_err(|error| error.to_string())?;
+                        load_app_config_detailed(None, &xylitol_kernel::config_sections::all())
+                            .map_err(|error| error.to_string())?;
                     let config: xylitol_official_plugin_session::plugin::SessionPluginConfig =
                         loaded
                             .config

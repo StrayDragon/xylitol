@@ -67,3 +67,32 @@ impl LoopPoliciesConfig {
         self.enabled
     }
 }
+
+pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
+    xylitol_plugin_sdk::config_section::ConfigSection {
+        key: "loop_policies",
+        schema: || {
+            serde_json::to_value(schemars::schema_for!(LoopPoliciesConfig))
+                .expect("loop_policies schema")
+        },
+        default: || {
+            serde_json::to_value(LoopPoliciesConfig::default()).expect("loop_policies default")
+        },
+    }
+}
+
+#[cfg(test)]
+mod section_decl_tests {
+    use super::*;
+
+    #[test]
+    fn loop_policies_section_declares_key_schema_default() {
+        let section = config_section();
+        assert_eq!(section.key, "loop_policies");
+        assert!((section.schema)().is_object());
+        assert_eq!(
+            (section.default)(),
+            serde_json::to_value(LoopPoliciesConfig::default()).expect("loop_policies default")
+        );
+    }
+}

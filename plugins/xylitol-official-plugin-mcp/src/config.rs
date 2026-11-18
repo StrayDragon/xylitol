@@ -512,3 +512,27 @@ mod tests {
         assert!(zero.validate().unwrap_err().contains("call_timeout_ms"));
     }
 }
+
+pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
+    xylitol_plugin_sdk::config_section::ConfigSection {
+        key: "mcp_servers",
+        schema: || {
+            serde_json::to_value(schemars::schema_for!(Vec<McpServerConfig>))
+                .expect("mcp_servers schema")
+        },
+        default: || serde_json::Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod section_decl_tests {
+    use super::*;
+
+    #[test]
+    fn mcp_servers_section_declares_key_and_null_default() {
+        let section = config_section();
+        assert_eq!(section.key, "mcp_servers");
+        assert!((section.schema)().is_object());
+        assert!((section.default)().is_null());
+    }
+}

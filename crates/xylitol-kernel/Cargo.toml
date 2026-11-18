@@ -64,3 +64,7 @@ server = ["xylitol-serve/listen", "dep:semver"]
 mcp = ["xylitol-official-plugin-mcp/mcp"]
 fff = ["dep:xylitol-official-plugin-tools-fff"]
 otel = ["xylitol-official-plugin-obs/otel"]
+
+[[bin]]
+name = "gen-config-schema"
+path = "src/bin/gen-config-schema.rs"

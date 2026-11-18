@@ -454,11 +454,12 @@ impl AppConfig {
         }
     }
 
-    pub fn validate_unknown_keys(&self, extra_keys: &[String]) -> Result<(), LoadError> {
-        let known: HashSet<&str> = super::sections::sections()
-            .iter()
-            .map(|section| section.key)
-            .collect();
+    pub fn validate_unknown_keys(
+        &self,
+        extra_keys: &[String],
+        known_sections: &[xylitol_plugin_sdk::config_section::ConfigSection],
+    ) -> Result<(), LoadError> {
+        let known: HashSet<&str> = known_sections.iter().map(|section| section.key).collect();
         let unknown: Vec<&String> = self
             .unknown_keys
             .iter()
@@ -668,11 +669,6 @@ impl AppConfig {
     }
 }
 
-pub use xylitol_official_plugin_hooks::{HookEntry, HooksConfig};
-pub use xylitol_official_plugin_loop_policies::LoopPoliciesConfig;
-pub use xylitol_official_plugin_todo::TodoConfig;
-pub use xylitol_official_plugin_workflow::WorkflowConfig;
-
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct TrustConfig {
@@ -812,12 +808,6 @@ pub struct SessionConfig {
     #[serde(default)]
     pub stage_name: StageNameConfig,
 }
-
-pub use xylitol_official_plugin_dap::DapPluginConfig;
-pub use xylitol_official_plugin_lsp::LspPluginConfig;
-pub use xylitol_official_plugin_mcp::{
-    McpOAuthConfig, McpOAuthKeychain, McpScope, McpServerConfig, McpTransportKind,
-};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -1359,7 +1349,8 @@ otel:
 "#,
         )
         .expect("yaml shape");
-        let err = crate::validate::validate_merged_config(&value).unwrap_err();
+        let err = crate::validate::validate_merged_config(&value, crate::sections::core_sections())
+            .unwrap_err();
         assert!(err.to_string().contains("otel"), "unexpected: {err}");
     }
 
@@ -1475,7 +1466,8 @@ tui:
 "#,
         )
         .expect("yaml shape");
-        let err = crate::validate::validate_merged_config(&value).unwrap_err();
+        let err = crate::validate::validate_merged_config(&value, crate::sections::core_sections())
+            .unwrap_err();
         assert!(err.to_string().contains("tui"), "unexpected: {err}");
     }
 
@@ -1534,7 +1526,8 @@ tool_batch:
 "#,
         )
         .expect("yaml shape");
-        let err = crate::validate::validate_merged_config(&value).unwrap_err();
+        let err = crate::validate::validate_merged_config(&value, crate::sections::core_sections())
+            .unwrap_err();
         assert!(err.to_string().contains("tool_batch"), "unexpected: {err}");
     }
 
@@ -1549,7 +1542,8 @@ tool_batch:
 "#,
         )
         .expect("yaml shape");
-        let err = crate::validate::validate_merged_config(&value).unwrap_err();
+        let err = crate::validate::validate_merged_config(&value, crate::sections::core_sections())
+            .unwrap_err();
         assert!(
             err.to_string().contains("tool_batch"),
             "MCP allowlist / patterns fields must not be accepted: {err}"
@@ -1659,14 +1653,12 @@ dap:
 "#,
         )
         .expect("lsp/dap config");
-        let lsp = get::<Option<LspPluginConfig>>(&cfg, "lsp").expect("lsp");
-        assert_eq!(lsp.backend, "basedpyright-langserver --stdio");
-        assert_eq!(lsp.language, "python");
-        assert!(lsp.compression);
-        let dap = get::<Option<DapPluginConfig>>(&cfg, "dap").expect("dap");
-        assert_eq!(dap.backend, "python3 -m debugpy.adapter");
-        assert_eq!(dap.cwd.as_deref(), Some("/tmp/project"));
-        assert!(dap.compression);
+        let lsp = get::<Option<serde_json::Value>>(&cfg, "lsp").expect("lsp");
+        assert_eq!(lsp["backend"], "basedpyright-langserver --stdio");
+        assert_eq!(lsp["language"], "python");
+        let dap = get::<Option<serde_json::Value>>(&cfg, "dap").expect("dap");
+        assert_eq!(dap["backend"], "python3 -m debugpy.adapter");
+        assert_eq!(dap["cwd"], "/tmp/project");
     }
 
     #[test]
@@ -1698,8 +1690,8 @@ subagent:
 ",
         )
         .expect("minimal config");
-        assert!(get::<Option<LspPluginConfig>>(&cfg, "lsp").is_none());
-        assert!(get::<Option<DapPluginConfig>>(&cfg, "dap").is_none());
+        assert!(get::<Option<serde_json::Value>>(&cfg, "lsp").is_none());
+        assert!(get::<Option<serde_json::Value>>(&cfg, "dap").is_none());
     }
 
     #[test]

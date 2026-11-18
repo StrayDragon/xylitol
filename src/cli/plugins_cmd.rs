@@ -165,7 +165,7 @@ fn find_plugin_binary_in_dirs(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
 }
 
 fn load_settings() -> PluginsSettings {
-    xylitol_kernel::config::loader::load_app_config(None)
+    xylitol_kernel::config::loader::load_app_config(None, &xylitol_kernel::config_sections::all())
         .ok()
         .and_then(|config| config.sections.get("plugins").cloned())
         .and_then(|value| serde_json::from_value(value).ok())

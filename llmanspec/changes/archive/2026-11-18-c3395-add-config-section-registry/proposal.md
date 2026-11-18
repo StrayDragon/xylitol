@@ -2,6 +2,9 @@
 depends_on: []
 title: "配置节注册表：声明归插件、聚合归核心"
 needs_specs_change: false
+branch: sdd/c3395-add-config-section-registry
+base_branch: main
+base_sha: b9ccd922bc127499964474927688d658d02f12df
 ---
 
 # 配置节注册表：声明归插件、聚合归核心

@@ -140,7 +140,7 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
             .clone();
         config
             .app
-            .validate_unknown_keys(&external_keys)
+            .validate_unknown_keys(&external_keys, &crate::config_sections::all())
             .map_err(|error| kernel_failed(error.to_string()))?;
     }
     Ok((ctx, loader))
@@ -162,6 +162,7 @@ fn rutis_error_sink() -> ErrorSink {
 async fn mount_core(ctx: &Ctx, opts: &BootOptions) -> Result<(), BootstrapError> {
     let config = ctx.plugin(xylitol_official_plugin_config::plugin::ConfigPlugin {
         config_path: opts.config_path.clone(),
+        sections: crate::config_sections::all(),
     });
     config.await.map_err(cordis_to_bootstrap)?;
 
@@ -198,9 +199,7 @@ fn default_rows(
         .as_ref()
         .and_then(|cfg| {
             cfg.app
-                .section::<Vec<xylitol_official_plugin_config::types::McpServerConfig>>(
-                    "mcp_servers",
-                )
+                .section::<Vec<xylitol_official_plugin_mcp::McpServerConfig>>("mcp_servers")
                 .ok()
                 .flatten()
         })
@@ -282,7 +281,7 @@ fn external_plugin_specs(ctx: &Ctx) -> Vec<ExternalPluginConfig> {
 
 fn base_rows(
     opts: &BootOptions,
-    mcp_servers: Vec<xylitol_official_plugin_config::types::McpServerConfig>,
+    mcp_servers: Vec<xylitol_official_plugin_mcp::McpServerConfig>,
 ) -> Vec<serde_json::Value> {
     vec![
         session_row(opts),
@@ -313,7 +312,7 @@ fn optional_plugin_rows(
         return Vec::new();
     };
     let mut rows = Vec::new();
-    let loop_policies: xylitol_official_plugin_config::types::LoopPoliciesConfig = config
+    let loop_policies: xylitol_official_plugin_loop_policies::LoopPoliciesConfig = config
         .app
         .section_or_default("loop_policies")
         .unwrap_or_default();
@@ -324,7 +323,7 @@ fn optional_plugin_rows(
             "config": loop_policies,
         }));
     }
-    let todo: xylitol_official_plugin_config::types::TodoConfig =
+    let todo: xylitol_official_plugin_todo::TodoConfig =
         config.app.section_or_default("todo").unwrap_or_default();
     if todo.is_active() {
         rows.push(serde_json::json!({
@@ -333,7 +332,7 @@ fn optional_plugin_rows(
             "config": todo,
         }));
     }
-    let workflow: xylitol_official_plugin_config::types::WorkflowConfig = config
+    let workflow: xylitol_official_plugin_workflow::WorkflowConfig = config
         .app
         .section_or_default("workflow")
         .unwrap_or_default();
@@ -371,7 +370,7 @@ fn lsp_dap_rows(
     config: &xylitol_official_plugin_config::plugin::ConfigService,
 ) -> Vec<serde_json::Value> {
     let mut rows = Vec::new();
-    let lsp: Option<xylitol_official_plugin_config::types::LspPluginConfig> =
+    let lsp: Option<xylitol_official_plugin_lsp::LspPluginConfig> =
         config.app.section("lsp").ok().flatten();
     if let Some(lsp) = lsp.as_ref() {
         rows.push(serde_json::json!({
@@ -380,7 +379,7 @@ fn lsp_dap_rows(
             "config": lsp,
         }));
     }
-    let dap: Option<xylitol_official_plugin_config::types::DapPluginConfig> =
+    let dap: Option<xylitol_official_plugin_dap::DapPluginConfig> =
         config.app.section("dap").ok().flatten();
     if let Some(dap) = dap.as_ref() {
         rows.push(serde_json::json!({

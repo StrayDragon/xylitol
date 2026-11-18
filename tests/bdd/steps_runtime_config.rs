@@ -405,7 +405,7 @@ fn t_rc_mcp(rc_snap: &RcSnap) {
     let cfg = rc_snap.app_config.borrow();
     let cfg = cfg.as_ref().expect("app config");
     assert!(
-        cfg.section::<Vec<xylitol_kernel::config::types::McpServerConfig>>("mcp_servers")
+        cfg.section::<Vec<xylitol_official_plugin_mcp::McpServerConfig>>("mcp_servers")
             .unwrap()
             .is_none()
     );
@@ -528,8 +528,12 @@ fn t_rc_docs(rc_snap: &RcSnap) {
 
 #[when("生成配置 schema 并与仓库产物比较")]
 pub(crate) fn w_config_schema_render(rc_snap: &RcSnap) {
-    let rendered = xylitol_kernel::config::validate::render_app_config_schema();
-    let again = xylitol_kernel::config::validate::render_app_config_schema();
+    let rendered = xylitol_kernel::config::validate::render_app_config_schema(
+        &xylitol_kernel::config_sections::all(),
+    );
+    let again = xylitol_kernel::config::validate::render_app_config_schema(
+        &xylitol_kernel::config_sections::all(),
+    );
     assert_eq!(rendered, again, "schema rendering MUST be idempotent");
     let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("configs")
@@ -555,7 +559,9 @@ pub(crate) fn t_config_schema_same_source(rc_snap: &RcSnap) {
 
 #[when("读取仓库配置 schema 的顶层属性")]
 pub(crate) fn w_config_schema_top_level(rc_snap: &RcSnap) {
-    let rendered = xylitol_kernel::config::validate::render_app_config_schema();
+    let rendered = xylitol_kernel::config::validate::render_app_config_schema(
+        &xylitol_kernel::config_sections::all(),
+    );
     let value: serde_json::Value =
         serde_json::from_str(&rendered).expect("config schema must be valid JSON");
     let props = value
@@ -684,6 +690,7 @@ fn w_rc_load_legacy(ws: &crate::bdd::fixtures::Workspace, tokenizer_bdd: &Tokeni
         Some(std::path::Path::new(&path)),
         env_probe,
         None,
+        &xylitol_kernel::config_sections::all(),
     ) {
         Ok(_) => {
             tokenizer_bdd.cfg_ok.set(true);

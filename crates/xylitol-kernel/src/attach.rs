@@ -604,7 +604,7 @@ impl Default for EnsureHostOpts {
 pub fn autostart_policy(
     config_path: Option<&std::path::Path>,
 ) -> (xylitol_serve::ServeLifecycle, Duration, Option<Duration>) {
-    let serve = crate::config::loader::load_app_config(config_path)
+    let serve = crate::config::loader::load_app_config(config_path, &crate::config_sections::all())
         .map(|cfg| {
             cfg.section_or_default::<xylitol_official_plugin_config::types::ServeConfig>("serve")
                 .unwrap_or_default()

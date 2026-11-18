@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use xylitol_official_plugin_config::types::{
+use xylitol_official_plugin_mcp::config::{
     McpOAuthConfig, McpScope, McpServerConfig, McpTransportKind,
 };
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::driver::XyDriverError;
-use xylitol_official_plugin_config::types::HooksConfig;
+use xylitol_official_plugin_hooks::HooksConfig;
 use xylitol_official_plugin_session::LogSessionStore;
 use xylitol_plugin_sdk::{XyBatchMode, XyEventSink, XyPermission, XySessionStore};
 use xylitol_runtime::agent::AgentRuntime;

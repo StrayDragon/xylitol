@@ -41,6 +41,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let early_otel = xylitol_kernel::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
+        &xylitol_kernel::config_sections::all(),
     )
     .map(|c| {
         c.section_or_default::<xylitol_kernel::config::types::OtelConfig>("otel")
@@ -318,6 +319,7 @@ async fn run_product_tui_attached(
     }));
     let (seed_n, activity_fold) = match xylitol_kernel::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
+        &xylitol_kernel::config_sections::all(),
     ) {
         Ok(c) => {
             let tui: xylitol_kernel::config::types::TuiConfig =

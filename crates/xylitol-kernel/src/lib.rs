@@ -1,6 +1,7 @@
 pub mod assembly;
 pub mod bootstrap;
 pub mod composition;
+pub mod config_sections;
 pub mod mcp_spec;
 
 pub mod admit;

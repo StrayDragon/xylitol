@@ -15,6 +15,7 @@ pub struct ConfigService {
 
 pub struct ConfigPlugin {
     pub config_path: Option<PathBuf>,
+    pub sections: Vec<xylitol_plugin_sdk::config_section::ConfigSection>,
 }
 
 impl Plugin for ConfigPlugin {
@@ -25,7 +26,7 @@ impl Plugin for ConfigPlugin {
     }
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
-        let loaded = load_app_config_detailed(self.config_path.as_deref())?;
+        let loaded = load_app_config_detailed(self.config_path.as_deref(), &self.sections)?;
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let agent_dir = dirs::home_dir()
             .unwrap_or_else(std::env::temp_dir)

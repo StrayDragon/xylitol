@@ -5,6 +5,7 @@ pub mod compaction_config;
 pub mod compaction_error;
 pub mod compaction_settings;
 pub mod compat;
+pub mod config_section;
 pub mod dto;
 pub mod error;
 pub mod file_lock;

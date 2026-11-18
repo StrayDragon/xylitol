@@ -6,7 +6,9 @@ use xylitol_kernel::config::loader::load_app_config_detailed;
 pub fn run(action: ConfigAction) -> Result<(), String> {
     match action {
         ConfigAction::Schema { domain, ts: _ } => {
-            let schema = xylitol_kernel::config::validate::render_app_config_schema();
+            let schema = xylitol_kernel::config::validate::render_app_config_schema(
+                &xylitol_kernel::config_sections::all(),
+            );
             if let Some(domain) = domain {
                 let mut value: serde_json::Value =
                     serde_json::from_str(&schema).map_err(|e| e.to_string())?;
@@ -30,8 +32,11 @@ pub fn run(action: ConfigAction) -> Result<(), String> {
             Ok(())
         }
         ConfigAction::Check { path, warn } => {
-            let loaded = load_app_config_detailed(path.as_deref().map(Path::new))
-                .map_err(|e| e.to_string())?;
+            let loaded = load_app_config_detailed(
+                path.as_deref().map(Path::new),
+                &xylitol_kernel::config_sections::all(),
+            )
+            .map_err(|e| e.to_string())?;
             let unknown = loaded.config.unknown_keys.clone();
             let codemode: xylitol_plugin_sdk::CodemodeConfig = loaded
                 .config
@@ -66,7 +71,8 @@ pub fn run(action: ConfigAction) -> Result<(), String> {
             }
         }
         ConfigAction::Show { resolved: _ } => {
-            let loaded = load_app_config_detailed(None).map_err(|e| e.to_string())?;
+            let loaded = load_app_config_detailed(None, &xylitol_kernel::config_sections::all())
+                .map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&loaded.config).map_err(|e| e.to_string())?
