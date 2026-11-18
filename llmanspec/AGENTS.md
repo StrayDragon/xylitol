@@ -107,6 +107,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 1. **Draft 可独提或一批提**：可从 GitHub feature request 等意向一次 `change new` 多个草案并 `chore(sdd): draft …` 入库；**不**要求与实现同提。
 2. **闭环收尾优先 `finalize`**（单 `archive(sdd): <id>` auto commit），减少礼仪 commit。
 3. **产品 vs 流程**：实现用 `feat`/`fix`/`refactor`；SDD 礼仪用 `chore(sdd):` / `docs(sdd):`。
+4. **触碰生产代码的 archive / finalize 必须附实跑证据**：改动 `crates/`、`plugins/`、`src/`、`tests/` 非文档文件的 change，归档或闭环提交前 **必须**实跑目标 crate 的 `cargo nextest`（全量 `just qa` 更佳），tasks 里勾选的「套件绿」**不得**替代实跑输出；测试同步拖欠会造成 main 红色窗口（先例：c3347，勘误见其归档提案 2026-11-17 勘误节）。
 
 ### stage 四档
 

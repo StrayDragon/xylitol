@@ -29,3 +29,9 @@ c3345 交付后真机复现两个残余症状:
 
 - crates:`xylitol-runtime`(prepare.rs 轮询 + 单测)、`xylitol-app-tui`(remote.rs payload 注入 + 诊断日志)、`xylitol-official-plugin-mcp`、`xylitol-serve`(诊断日志)。
 - 复验:tmux 真机——全新 host 空闲 50s tray 仅启动期一次合法迁移零抖动;准备期提交全流程(Assembling + Follow-up 条 + cue 常驻 → 冻结后自动上行 → 流式)。
+
+## 勘误（2026-11-18，归档后实证复核；正文保留原样）
+
+1. **t2「session_id 注入修复 tray 闪回」机制不成立**：父提交 `remote.rs` 的 `unary()` 已内置 `self.with_session(payload)`，session_id 在本 change 之前即随载荷注入，t2 为空操作、线上载荷零变化。闪回若仍复现，归因应指向轮询被动化路径，待产品侧复测。
+2. **t3 四个诊断日志点仅落地两个**：serve watch push 与端侧 downlink apply 已落；mcp hub `ensure_for` / `update_snapshot` 的 debug 日志从未落地（`hub.rs` 在本 change 父提交、提交时点与 HEAD 三处 `debug!` 计数均为零；`ensure_for` 符号系 c3228/c3270 时代产物，与日志无关）。
+3. **归档时存在红色测试窗口（2026-11-18 于 d1ca28e 实跑复现）**：occupancy fixture 4 测试中 `arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window`（超时守卫 panic：tools_table_frozen=false）与 `arm_tool_freeze_conflict_falls_back_lease_free_not_stuck` 在本归档提交至 fb0604b 之间于 main 上失败，fb0604b 翻转断言后修复；HEAD 复跑 4/4 通过。tasks t4「套件绿」在归档时点不成立。
