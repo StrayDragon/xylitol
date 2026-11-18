@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 fn secs_between(start: Instant, end: Instant) -> Option<u64> {
