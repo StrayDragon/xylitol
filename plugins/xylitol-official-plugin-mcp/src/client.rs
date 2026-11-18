@@ -10,7 +10,7 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use super::resource_cache::{ResourceCache, parse_resource_content};
-use super::types::{McpServerConfig, McpTransportKind};
+use super::config::{McpServerConfig, McpTransportKind};
 use crate::config::McpOAuthConfig;
 use crate::credential_store::OAuthCredentialStore;
 use xylitol_plugin_sdk::mcp::McpResourceContent;

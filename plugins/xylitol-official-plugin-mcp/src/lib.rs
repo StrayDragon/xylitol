@@ -8,7 +8,6 @@ mod resource_cache;
 #[cfg(feature = "mcp")]
 mod subscription;
 pub mod truncate;
-pub(crate) mod types;
 
 pub use adapter::McpToolAdapter;
 pub use assemble::{connect_and_discover, connect_and_discover_at, mcp_enabled};
