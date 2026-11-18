@@ -175,17 +175,8 @@ async fn mount_core(ctx: &Ctx, opts: &BootOptions) -> Result<(), BootstrapError>
     let trust = ctx.plugin(core::trust::TrustPlugin);
     trust.await.map_err(cordis_to_bootstrap)?;
 
-    let session_host = ctx.plugin(core::session_host::SessionHostPlugin);
-    session_host.await.map_err(cordis_to_bootstrap)?;
-
     let agent = ctx.plugin(core::agent_react::AgentReactPlugin);
     agent.await.map_err(cordis_to_bootstrap)?;
-
-    let tools = ctx.plugin(core::tool_table::ToolTablePlugin);
-    tools.await.map_err(cordis_to_bootstrap)?;
-
-    let driver = ctx.plugin(core::driver::DriverPlugin);
-    driver.await.map_err(cordis_to_bootstrap)?;
     Ok(())
 }
 
@@ -219,7 +210,6 @@ fn default_rows(
     insert.push(serde_json::json!({ "id": "tools-fff", "name": "tools-fff" }));
     insert.extend(optional_plugin_rows(config.as_deref()));
     insert.extend(external_rows(external_specs));
-    insert.push(profile_row(opts.profile));
     serde_json::from_value(serde_json::json!([{ "insert": insert }])).unwrap_or_default()
 }
 
@@ -390,15 +380,6 @@ fn lsp_dap_rows(
         }));
     }
     rows
-}
-
-fn profile_row(profile: Profile) -> serde_json::Value {
-    match profile {
-        Profile::Print | Profile::Embed => {
-            serde_json::json!({ "id": "app-print", "name": "app-print" })
-        }
-        Profile::Host => serde_json::json!({ "id": "serve", "name": "serve" }),
-    }
 }
 
 async fn wait_active(ctx: &Ctx, loader: &Loader) -> Result<(), BootstrapError> {
