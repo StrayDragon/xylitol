@@ -5,7 +5,8 @@ use std::sync::Arc;
 use crate::composition::{BuildAgentOptions, build_agent};
 use xylitol_official_plugin_config::loader::load_app_config_detailed_with;
 use xylitol_official_plugin_obs as timing;
-use xylitol_official_plugin_session::SessionManager;
+use xylitol_official_plugin_session::LogSessionStore;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::model::{XyModelMeta, default_input_modalities};
 use xylitol_runtime::agent::ModelRegistry;
 use xylitol_runtime::agent::model::resolver;
@@ -286,6 +287,7 @@ pub enum BootstrapError {
     BuildFailed(String),
     KernelFailed(String),
     AgentProfileNotFound(String),
+    SessionValidation(String),
 }
 
 impl BootstrapError {
@@ -303,6 +305,7 @@ impl BootstrapError {
             BootstrapError::AgentProfileNotFound(name) => {
                 format!("agent profile `{name}` not found (check `agents.profiles` in config)")
             }
+            BootstrapError::SessionValidation(message) => message.clone(),
         }
     }
 }
@@ -430,17 +433,26 @@ pub(crate) fn build_model_registry(
 fn restore_session(
     input: &BootstrapInput,
     agent_home: &Path,
+    cwd: &str,
     warnings: &mut Vec<BootstrapWarning>,
-) -> bool {
+) -> Result<bool, BootstrapError> {
     let sessions_dir = agent_home.join("sessions");
     let session_mgr = if input.ephemeral_sessions {
-        SessionManager::in_memory()
+        LogSessionStore::in_memory()
     } else {
         std::fs::create_dir_all(&sessions_dir).ok();
-        SessionManager::new(sessions_dir.clone())
+        LogSessionStore::new(sessions_dir.clone())
     };
     let session_file_exists = match input.session.as_deref() {
-        Some(session_id) => session_mgr.exists_sync(session_id),
+        Some(session_id) => {
+            if !session_mgr.exists_sync(session_id) {
+                false
+            } else {
+                block_on(session_mgr.load_validated(session_id, cwd))
+                    .map_err(|error| BootstrapError::SessionValidation(error.to_string()))?;
+                true
+            }
+        }
         None => false,
     };
     if let Some(ref session_arg) = input.session
@@ -451,7 +463,7 @@ fn restore_session(
             path: sessions_dir.display().to_string(),
         });
     }
-    session_file_exists
+    Ok(session_file_exists)
 }
 
 fn resolve_project_trust(
@@ -629,19 +641,18 @@ pub fn resolve_assembly_with(
     }
 
     let agent_home = xylitol_home_dir(&get_env);
-    let session_file_exists = restore_session(input, &agent_home, &mut warnings);
+    let cwd_path = cwd
+        .map(Path::to_path_buf)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default();
+    let cwd = cwd_path.to_string_lossy().to_string();
+    let session_file_exists = restore_session(input, &agent_home, &cwd, &mut warnings)?;
     timing::time("session.restore");
 
     let profile = resolve_profile_assembly(app_config.as_ref(), input.agent_profile.as_deref())?;
     let config_system_prompt = profile.system_prompt;
     let default_profile_model = profile.model;
     let profile_tools = profile.tools;
-
-    let cwd_path = cwd
-        .map(Path::to_path_buf)
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_default();
-    let cwd = cwd_path.to_string_lossy().to_string();
 
     let trust_config = app_config
         .as_ref()

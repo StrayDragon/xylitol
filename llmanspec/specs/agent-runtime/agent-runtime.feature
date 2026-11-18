@@ -58,7 +58,7 @@
 
   @req:r1056
   规则: sessionstore-eventsink
-    protocol 须提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。端口存在性由类型系统与组合根覆盖，不得为 trait 存在性单独扩 BDD step。
+    protocol 须提供 SessionStore 与 EventSink；会话存储 / EventBus 为实现。端口存在性由类型系统与组合根覆盖，不得为 trait 存在性单独扩 BDD step。
     场景: 端口产出Xy事件
       假如 消费事件流
       当 轮询

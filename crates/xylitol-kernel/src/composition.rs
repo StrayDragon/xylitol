@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::driver::XyDriverError;
 use xylitol_official_plugin_config::types::HooksConfig;
-use xylitol_official_plugin_session::SessionManager;
+use xylitol_official_plugin_session::LogSessionStore;
 use xylitol_plugin_sdk::{XyBatchMode, XyEventSink, XyPermission, XySessionStore};
 use xylitol_runtime::agent::AgentRuntime;
 use xylitol_runtime::agent::QueueMode;
@@ -59,9 +59,9 @@ impl Default for BuildAgentOptions {
 pub fn build_baseline(
     options: BuildAgentOptions,
 ) -> Result<xylitol_runtime::agent::RuntimeBaseline, XyDriverError> {
-    let sessions_dir = SessionManager::default_dir();
+    let sessions_dir = LogSessionStore::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
-    let session_mgr = SessionManager::new(sessions_dir);
+    let session_mgr = LogSessionStore::new(sessions_dir);
     build_baseline_with_store(options, Arc::new(session_mgr))
 }
 
@@ -185,7 +185,7 @@ mod tests {
     async fn reload_empty_is_zero_cost_no_manager() {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::new(
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
@@ -214,7 +214,7 @@ mod tests {
     async fn reload_pre_cancelled_preserves_manager_and_tools() {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::new(
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
@@ -259,7 +259,7 @@ mod tests {
 
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::new(
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
@@ -319,7 +319,7 @@ mod tests {
 
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::new(
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
@@ -440,7 +440,7 @@ mod tests {
 
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::new(
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
@@ -497,7 +497,7 @@ mod tests {
     async fn real_mcp_reload_add_then_remove_updates_provider_tools() {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::new(
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
@@ -550,7 +550,7 @@ mod tests {
     async fn real_mcp_reload_can_expand_tools_on_same_server() {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> =
-            Arc::new(xylitol_official_plugin_session::SessionManager::new(
+            Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);

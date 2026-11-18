@@ -5,6 +5,7 @@ use crate::bdd::steps_compaction::{
     _g_comp_navigate_branch, comp_run_compact, comp_seed_turns, compaction_entry_from_sess,
 };
 use rstest_bdd_macros::{given, then, when};
+use xylitol_plugin_sdk::XySessionStore as _;
 
 #[given("存在可信 XyUsage 锚点")]
 pub(crate) fn g_comp_usage(agent: &AgentState) {
@@ -270,7 +271,7 @@ pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionSto
         ..Default::default()
     };
     let result = compact_session(
-        &mgr,
+        &*mgr,
         &sid,
         &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
             model, "fake",
@@ -339,7 +340,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
         ..Default::default()
     };
     let entry = compact_session(
-        &mgr,
+        &*mgr,
         sid,
         &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
             model, "fake",
@@ -352,7 +353,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
     )
     .await
     .expect("compact");
-    let loaded = mgr.load(sid).await.unwrap_or_default();
+    let loaded = mgr.load_entries(sid).await.unwrap_or_default();
     let compact_at = loaded
         .iter()
         .rposition(|e| matches!(e, SessionEntry::Compaction(_)))
@@ -805,7 +806,7 @@ pub(crate) async fn g_comp_leaf_branch_sibling(sess: &XySessionStore) {
             message: serde_json::to_value(AgentMessage::user("leaf tip")).unwrap(),
         }),
     ] {
-        mgr.append_with_id(sid, &e).await.unwrap();
+        mgr.append_session_entry(sid, &e).await.unwrap();
     }
     sess.current_id.replace(Some(sid.to_string()));
 }
@@ -921,7 +922,7 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
         ..Default::default()
     };
     let result = compact_session(
-        &mgr,
+        &*mgr,
         sid,
         &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
             model, "fake",
@@ -945,7 +946,7 @@ pub(crate) async fn t_comp_summarized_entry(sess: &XySessionStore) {
     let sid = "summarize-c3";
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(sid).await.unwrap_or_default();
     let compaction = entries.iter().find_map(|e| match e {
         SessionEntry::Compaction(c) => Some(c),
         _ => None,
@@ -1000,7 +1001,7 @@ pub(crate) async fn w_comp_generate_summary(agent: &AgentState, sess: &XySession
     let sid = sess.current_id.borrow().clone().expect("session id");
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(&sid).await.unwrap_or_default();
     let messages: Vec<_> = entries
         .iter()
         .filter_map(|e| e.as_agent_message())
@@ -1106,7 +1107,7 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
         ..Default::default()
     };
     let result = compact_session(
-        &mgr,
+        &*mgr,
         sid,
         &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
             model, "fake",
@@ -1135,7 +1136,7 @@ pub(crate) async fn t_comp_agent_entry_written(agent: &AgentState, sess: &XySess
     let sid = "comp-agent-test";
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(sid).await.unwrap_or_default();
     assert!(
         entries
             .iter()
@@ -1181,7 +1182,7 @@ pub(crate) async fn w_comp_load_session(sess: &XySessionStore) {
     let sid = COMP_PERSIST_SID;
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(sid).await.unwrap_or_default();
     sess.entries.replace(entries);
 }
 
@@ -1232,7 +1233,7 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
 
     let sid = "comp-iterative";
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(sid).await.unwrap_or_default();
     let prev = entries.iter().find_map(|e| match e {
         SessionEntry::Compaction(c) => Some(c.summary.clone()),
         _ => None,
@@ -1551,7 +1552,7 @@ async fn c2811_run_compact_summary(agent: &AgentState, sess: &XySessionStore, le
         });
         let _ = mgr.append(sid, &e).await;
     }
-    let result = compact_session(&mgr, sid, &binding, &settings, None, 0, None, None).await;
+    let result = compact_session(&*mgr, sid, &binding, &settings, None, 0, None, None).await;
     agent.last_result.replace(Some(
         result
             .map(|e| {

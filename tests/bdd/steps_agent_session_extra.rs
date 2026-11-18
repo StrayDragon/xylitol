@@ -10,6 +10,7 @@ use crate::bdd::steps_agent::{
 use crate::bdd::steps_agent_runtime::ar_register_fake;
 use crate::bdd::steps_domain_compaction_extra::make_test_capabilities;
 use rstest_bdd_macros::{given, then, when};
+use xylitol_plugin_sdk::XySessionStore as _;
 
 #[given("cwd 树存在 AGENTS.md")]
 pub(crate) fn g_sess_agents(ws: &Workspace) {
@@ -105,7 +106,7 @@ pub(crate) async fn w_sess_seed(sess: &XySessionStore) {
     let sid = sess.current_id.borrow().clone().expect("session id");
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(&sid).await.unwrap_or_default();
     sess.entries.replace(entries);
 }
 
@@ -176,7 +177,7 @@ pub(crate) async fn w_sess_as_msg(sess: &XySessionStore) {
     let sid = sess.current_id.borrow().clone().expect("session id");
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(&sid).await.unwrap_or_default();
     sess.entries.replace(entries);
 }
 
@@ -384,7 +385,7 @@ pub(crate) fn g_switch_model_setup(agent: &AgentState) {
 #[when("调用 cycleForward")]
 pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = xylitol_official_plugin_session::SessionManager::new(dir.keep());
+    let mgr = xylitol_official_plugin_session::LogSessionStore::new(dir.keep());
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(mgr);
     let sink: std::sync::Arc<dyn xylitol::XyEventSink> =
         std::sync::Arc::new(xylitol_kernel::event::EventBus::new());
@@ -646,7 +647,7 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
     let _ = mgr.create(sid, Some("."), None).await;
     reset_fake_state();
     set_fake_text("assistant reply");
-    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = mgr;
     let mut caps = make_test_capabilities(agent, store.clone());
     let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
     if let Some(id) = first_model_id {
@@ -663,7 +664,7 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
 pub(crate) async fn w_sess_load_entries(sess: &XySessionStore) {
     let sid = sess.current_id.borrow().clone().unwrap();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let entries = mgr.load(&sid).await.unwrap_or_default();
+    let entries = mgr.load_entries(&sid).await.unwrap_or_default();
     sess.entries.replace(entries);
 }
 
@@ -697,7 +698,7 @@ pub(crate) async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStor
     let sid = "persist-tool-result";
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(sid, Some("."), None).await;
-    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = mgr;
     let mut caps = make_test_capabilities(agent, store);
     let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
     if let Some(id) = first_model_id {
@@ -852,7 +853,7 @@ pub(crate) fn t_sess_resume_ok(sess: &XySessionStore) {
 #[given("AgentCapabilities 与 SessionExporter 已构造")]
 pub(crate) fn g_sess_resp_separated(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
+    let mgr = LogSessionStore::new(dir.keep());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let _caps = make_test_capabilities(agent, store);
     agent.last_result.replace(Some(Ok("constructed".into())));
@@ -908,7 +909,7 @@ pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStor
 
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("out.html");
-    let mgr = SessionManager::new(dir.path().join("sessions"));
+    let mgr = LogSessionStore::new(dir.path().join("sessions"));
     let sid = "export-test";
     let _ = mgr.create(sid, Some("."), None).await;
     let mock = sess_export::MOCK
@@ -959,7 +960,7 @@ pub(crate) fn g_sess_no_bash(_agent: &AgentState) {}
 pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
     use xylitol_kernel::driver::BangExecHandler;
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
+    let mgr = LogSessionStore::new(dir.keep());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let bang = BangExecHandler::new(None);
     let result = bang
@@ -1036,7 +1037,7 @@ async fn append_interrupted_bash_row(
         m.base.id = id.into();
         m.base.timestamp = 1704067200000;
     }
-    let _ = mgr.append(&sid, &entry).await;
+    let _ = mgr.append_session_entry(&sid, &entry).await;
 }
 
 fn interrupted_user_texts(rows: &[xylitol_plugin_sdk::message::XyLlmMessage]) -> Vec<String> {
@@ -1119,7 +1120,7 @@ pub(crate) async fn w_sess_build_llm_history(agent: &AgentState, sess: &XySessio
     let sid = sess.current_id.borrow().clone().expect("session id");
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = mgr;
     let caps = make_test_capabilities(agent, store);
     let first = caps
         .load_conversation_history(&sid)

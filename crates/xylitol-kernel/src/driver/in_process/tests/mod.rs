@@ -3,7 +3,7 @@ use xylitol_official_plugin_provider_openai::provider::{ObsSessionContext, ObsSe
 
 use super::*;
 use crate::event::EventBus;
-use xylitol_official_plugin_session::SessionManager;
+use xylitol_official_plugin_session::LogSessionStore;
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 use xylitol_runtime::XyDriver;
@@ -32,7 +32,7 @@ fn entry_ms(id: &str) -> u64 {
             % 1_000_000
 }
 
-async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, ObsSessionScope) {
+async fn build_test_driver(store: Arc<LogSessionStore>) -> (XyInProcessDriver, ObsSessionScope) {
     let scope = ObsSessionScope::enter(ObsSessionContext::default());
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut agent = AgentBuilder::new(
@@ -65,7 +65,7 @@ mod trust;
 #[tokio::test]
 async fn assemble_driver_full_with_custom_ops_builds_driver() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut agent = AgentBuilder::new(
         xylitol_runtime::agent::model::registry::ModelRegistry::new(),
@@ -113,7 +113,8 @@ fn test_gateways(
 #[test]
 fn compose_tools_prefers_fff_and_restores_builtin_when_disabled() {
     let dir = tempfile::tempdir().unwrap();
-    let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store: Arc<dyn XySessionStore> =
+        Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (todo, workflow, automation) = test_gateways(store);
 
     let mut static_tools = xylitol_official_plugin_tools::core_tools();
@@ -153,7 +154,8 @@ fn compose_tools_prefers_fff_and_restores_builtin_when_disabled() {
 #[test]
 fn compose_tools_falls_back_to_core_when_registry_empty() {
     let dir = tempfile::tempdir().unwrap();
-    let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store: Arc<dyn XySessionStore> =
+        Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (todo, workflow, automation) = test_gateways(store);
     let context = DriverContext {
         project_root: dir.path().to_path_buf(),
@@ -174,7 +176,7 @@ fn compose_tools_falls_back_to_core_when_registry_empty() {
 #[tokio::test]
 async fn capability_overlay_ends_frozen_with_consistent_snapshot() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _scope) = build_test_driver(store).await;
 
     let tools = ToolSet::from_iter(xylitol_official_plugin_tools::default_tools());

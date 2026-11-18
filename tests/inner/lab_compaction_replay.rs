@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use xylitol_plugin_sdk::XyEventSink;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::session::SessionEntry;
@@ -50,11 +51,13 @@ async fn lab_compaction_replay_floor_invariants() {
     let entries = load_fixture_entries(&fixture).expect("fixture loads");
     assert!(!entries.is_empty(), "fixture must contain entries");
 
-    let mgr = xylitol_official_plugin_session::SessionManager::in_memory();
+    let mgr = xylitol_official_plugin_session::LogSessionStore::in_memory();
     let sid = "lab-replay";
     mgr.create(sid, Some("."), None).await.unwrap();
     for entry in &entries {
-        mgr.append(sid, entry).await.expect("append fixture entry");
+        mgr.append_session_entry(sid, entry)
+            .await
+            .expect("append fixture entry");
     }
 
     let sink = Arc::new(RecordingSink(Mutex::new(Vec::new())));
@@ -150,7 +153,7 @@ async fn lab_compaction_replay_floor_invariants() {
             } else {
                 AgentMessage::assistant(body)
             };
-            mgr.append(
+            mgr.append_session_entry(
                 sid,
                 &SessionEntry::Message(xylitol_plugin_sdk::session::MessageEntry {
                     base: xylitol_plugin_sdk::session::EntryBase {

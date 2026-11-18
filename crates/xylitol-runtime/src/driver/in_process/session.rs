@@ -37,6 +37,8 @@ impl super::XyInProcessDriver {
         if !self.store.exists(session_id).await {
             return Err(XyDriverError::not_found(session_id.to_string()));
         }
+        let fallback_cwd = self.agent.cwd();
+        self.store.load_validated(session_id, fallback_cwd).await?;
         let (ty, phase, ctx) =
             crate::agent::runtime::script_hook_ctx::session_before_switch("resume", session_id);
         self.agent.script_hook_cancel(ty, phase, ctx).await?;
@@ -408,7 +410,14 @@ mod switch_hub_release_tests {
         hub: Arc<dyn SessionPrepareHub>,
         model: Arc<dyn xylitol_plugin_sdk::XyModel>,
     ) -> XyInProcessDriver {
-        let store: Arc<dyn XySessionStore> = Arc::new(MemoryStore::new());
+        release_test_driver_with(hub, model, Arc::new(MemoryStore::new()))
+    }
+
+    fn release_test_driver_with(
+        hub: Arc<dyn SessionPrepareHub>,
+        model: Arc<dyn xylitol_plugin_sdk::XyModel>,
+        store: Arc<dyn XySessionStore>,
+    ) -> XyInProcessDriver {
         let baseline = RuntimeBaseline {
             store: store.clone(),
             sink: Arc::new(NoopSink),
@@ -477,6 +486,150 @@ mod switch_hub_release_tests {
         let switched = driver.switch_session("b").await;
         assert!(switched.is_ok(), "idle switch must succeed: {switched:?}");
         assert_eq!(hub.released(), vec!["a".to_string()]);
+    }
+
+    struct CwdGateStore {
+        inner: MemoryStore,
+        reject: Vec<String>,
+    }
+
+    #[async_trait]
+    impl XySessionStore for CwdGateStore {
+        async fn exists(&self, session_id: &str) -> bool {
+            XySessionStore::exists(&self.inner, session_id).await
+        }
+
+        async fn load_entries(
+            &self,
+            session_id: &str,
+        ) -> Result<
+            Vec<xylitol_plugin_sdk::session::SessionEntry>,
+            xylitol_plugin_sdk::error::XySessionStoreError,
+        > {
+            XySessionStore::load_entries(&self.inner, session_id).await
+        }
+
+        async fn load_validated(
+            &self,
+            session_id: &str,
+            fallback_cwd: &str,
+        ) -> Result<
+            Vec<xylitol_plugin_sdk::session::SessionEntry>,
+            xylitol_plugin_sdk::error::XySessionStoreError,
+        > {
+            if self.reject.iter().any(|id| id == session_id) {
+                return Err(xylitol_plugin_sdk::error::XySessionStoreError::validation(
+                    "Session working directory '/definitely-missing/xylitol-cwd' does not exist. Fallback '/also-missing/fallback' also not found."
+                        .to_string(),
+                ));
+            }
+            XySessionStore::load_validated(&self.inner, session_id, fallback_cwd).await
+        }
+
+        async fn append_session_entry(
+            &self,
+            session_id: &str,
+            entry: &xylitol_plugin_sdk::session::SessionEntry,
+        ) -> Result<(), xylitol_plugin_sdk::error::XySessionStoreError> {
+            XySessionStore::append_session_entry(&self.inner, session_id, entry).await
+        }
+
+        async fn build_session_context(
+            &self,
+            session_id: &str,
+        ) -> Result<
+            xylitol_plugin_sdk::session::SessionContext,
+            xylitol_plugin_sdk::error::XySessionStoreError,
+        > {
+            XySessionStore::build_session_context(&self.inner, session_id).await
+        }
+
+        async fn create(
+            &self,
+            id: &str,
+            cwd: Option<&str>,
+            parent: Option<&str>,
+        ) -> Result<(), xylitol_plugin_sdk::error::XySessionStoreError> {
+            XySessionStore::create(&self.inner, id, cwd, parent).await
+        }
+
+        async fn fork(
+            &self,
+            parent_id: &str,
+            child_id: &str,
+            at_entry_id: &str,
+            position: xylitol_plugin_sdk::session::ForkPosition,
+        ) -> Result<(), xylitol_plugin_sdk::error::XySessionError> {
+            XySessionStore::fork(&self.inner, parent_id, child_id, at_entry_id, position).await
+        }
+
+        async fn load_leaf_branch(
+            &self,
+            session_id: &str,
+        ) -> Result<
+            Vec<xylitol_plugin_sdk::session::SessionEntry>,
+            xylitol_plugin_sdk::error::XySessionStoreError,
+        > {
+            XySessionStore::load_leaf_branch(&self.inner, session_id).await
+        }
+
+        async fn build_context_entries(
+            &self,
+            session_id: &str,
+        ) -> Result<
+            Vec<xylitol_plugin_sdk::session::SessionEntry>,
+            xylitol_plugin_sdk::error::XySessionStoreError,
+        > {
+            XySessionStore::build_context_entries(&self.inner, session_id).await
+        }
+
+        fn set_leaf(&self, session_id: &str, entry_id: Option<&str>) {
+            XySessionStore::set_leaf(&self.inner, session_id, entry_id);
+        }
+
+        fn leaf_id(&self, session_id: &str) -> Option<String> {
+            XySessionStore::leaf_id(&self.inner, session_id)
+        }
+    }
+
+    #[tokio::test]
+    async fn switch_session_rejects_when_cwd_validation_fails() {
+        let hub = RecordingHub::new();
+        let model: Arc<dyn xylitol_plugin_sdk::XyModel> = Arc::new(HoldModel {
+            gate: Arc::new(tokio::sync::Notify::new()),
+        });
+        let store: Arc<dyn XySessionStore> = Arc::new(CwdGateStore {
+            inner: MemoryStore::new(),
+            reject: vec!["b".to_string()],
+        });
+        let mut driver = release_test_driver_with(hub, model, store);
+        driver.store.create("b", None, None).await.expect("seed b");
+        driver.agent.bind_session("a").expect("bind a");
+        let switched = driver.switch_session("b").await;
+        let err = switched.expect_err("lost cwd must reject the switch");
+        let text = err.to_string();
+        assert!(text.contains("/definitely-missing/xylitol-cwd"), "{text}");
+        assert!(text.contains("/also-missing/fallback"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn switch_session_passes_when_cwd_validation_ok() {
+        let hub = RecordingHub::new();
+        let model: Arc<dyn xylitol_plugin_sdk::XyModel> = Arc::new(HoldModel {
+            gate: Arc::new(tokio::sync::Notify::new()),
+        });
+        let store: Arc<dyn XySessionStore> = Arc::new(CwdGateStore {
+            inner: MemoryStore::new(),
+            reject: Vec::new(),
+        });
+        let mut driver = release_test_driver_with(hub, model, store);
+        driver.store.create("b", None, None).await.expect("seed b");
+        driver.agent.bind_session("a").expect("bind a");
+        let switched = driver.switch_session("b").await;
+        assert!(
+            switched.is_ok(),
+            "validated load must let the switch proceed: {switched:?}"
+        );
     }
 
     #[tokio::test]

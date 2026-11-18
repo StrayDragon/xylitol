@@ -14,7 +14,8 @@ fn _g_session_dir(sess: &XySessionStore) {
     let d = dir.path().join("sessions");
     std::fs::create_dir_all(&d).ok();
     sess.sessions_dir.replace(Some(d.clone()));
-    sess.mgr.replace(Some(SessionManager::new(d)));
+    sess.mgr
+        .replace(Some(std::sync::Arc::new(LogSessionStore::new(d))));
 }
 
 #[given("存在文件 {path:string}")]

@@ -75,7 +75,7 @@ fn capture_runner(
     Arc<Mutex<Option<String>>>,
 ) {
     let dir = tempfile::tempdir().expect("tempdir");
-    let mgr = xylitol_official_plugin_session::SessionManager::new(dir.keep());
+    let mgr = xylitol_official_plugin_session::LogSessionStore::new(dir.keep());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         Arc::new(xylitol_kernel::event::EventBus::new());

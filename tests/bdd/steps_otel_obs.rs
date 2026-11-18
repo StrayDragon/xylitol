@@ -540,7 +540,7 @@ async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, ot
         },
     )
     .compact(
-        &mgr,
+        &*mgr,
         COMP_RETAIN_SID,
         &binding,
         sink.as_ref(),

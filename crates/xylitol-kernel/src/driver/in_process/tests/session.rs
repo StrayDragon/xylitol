@@ -6,7 +6,7 @@ async fn new_session_uses_primary_workspace() {
     let dir = tempfile::tempdir().unwrap();
     let primary = dir.path().join("primary");
     std::fs::create_dir_all(&primary).unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store.clone()).await;
     driver.enable_reload_state(primary.clone(), dir.path().join(".xylitol"), true);
     let id = driver.new_session().await.unwrap();
@@ -25,7 +25,7 @@ async fn new_session_uses_primary_workspace() {
 
 async fn switch_session_restores_sticky_thinking_without_rewriting() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store.clone()).await;
     let target = "restored-thinking";
     store.create(target, Some("."), None).await.unwrap();
@@ -61,7 +61,7 @@ async fn switch_session_restores_sticky_thinking_without_rewriting() {
 
 async fn in_process_session_tree_ensures_missing_session() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut agent = AgentBuilder::new(
         xylitol_runtime::agent::model::registry::ModelRegistry::new(),
@@ -94,7 +94,7 @@ async fn in_process_session_tree_ensures_missing_session() {
 
 async fn in_process_session_tree_returns_parent_child() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
 
@@ -133,7 +133,7 @@ async fn in_process_session_tree_returns_parent_child() {
 
 async fn in_process_travel_user_sets_parent_leaf_and_editor_text() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
 
@@ -160,7 +160,7 @@ async fn in_process_travel_user_sets_parent_leaf_and_editor_text() {
 
 async fn in_process_travel_non_user_sets_leaf_without_editor_text() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
 
@@ -189,7 +189,7 @@ async fn in_process_travel_non_user_sets_leaf_without_editor_text() {
 
 async fn unsupported_tree_kind_returns_err_without_changing_leaf() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
     XySessionStore::set_leaf(store.as_ref(), &sid, Some("keep"));
@@ -258,7 +258,7 @@ async fn after_run_session_tree_reflects_persisted_turn() {
     }
 
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut reg = xylitol_runtime::agent::model::registry::ModelRegistry::new();
     reg.register(XyModelMeta {
@@ -319,7 +319,7 @@ async fn after_run_session_tree_reflects_persisted_turn() {
 
 async fn fork_accepts_persisted_session_via_driver() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
     let path = store.get_session_file(&sid).expect("persisted path");
@@ -409,7 +409,7 @@ async fn concurrent_run_rejects_second_with_busy() {
     let calls = Arc::new(AtomicUsize::new(0));
     let calls_b = calls.clone();
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut reg = xylitol_runtime::agent::model::registry::ModelRegistry::new();
     reg.register(XyModelMeta {
@@ -492,7 +492,7 @@ async fn concurrent_run_rejects_second_with_busy() {
 #[tokio::test]
 async fn reader_switch_session_never_touches_obs_slot() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let target = "reader-target";
     store.create(target, Some("."), None).await.unwrap();
 
@@ -513,7 +513,7 @@ async fn reader_switch_session_never_touches_obs_slot() {
 #[tokio::test]
 async fn in_process_get_messages_returns_active_session_entries() {
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
     let (driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
     store

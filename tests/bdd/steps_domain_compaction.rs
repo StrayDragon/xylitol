@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::sync::Arc;
+use xylitol_plugin_sdk::XySessionStore as _;
 
 use crate::bdd::fixtures::AgentState;
 use crate::bdd::prelude::*;
@@ -8,7 +9,7 @@ use rstest_bdd_macros::{given, then, when};
 use xylitol_kernel::provider::ScenarioStep;
 use xylitol_kernel::provider::fake_xy_model;
 use xylitol_official_plugin_compaction::cut_detector::estimate_tokens_entry_for_cut;
-use xylitol_official_plugin_session::SessionManager;
+use xylitol_official_plugin_session::LogSessionStore;
 use xylitol_official_plugin_tools::default_tools;
 use xylitol_plugin_sdk::XyModel;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
@@ -176,7 +177,7 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
     use xylitol_plugin_sdk::XyEventSink;
     use xylitol_plugin_sdk::XySessionStore;
 
-    let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let mgr = LogSessionStore::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let sid = "c2844-overflow";
     mgr.create(sid, Some("."), None).await.unwrap();
     for i in 0..60 {
@@ -195,7 +196,7 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
 
     let mut reg = xylitol_runtime::agent::model::registry::ModelRegistry::new();
     reg.register(small_window_meta("overflow-fake"));
-    let store: Arc<dyn XySessionStore> = Arc::new(mgr.clone());
+    let store: Arc<dyn XySessionStore> = Arc::new(mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(xylitol_kernel::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         reg,
@@ -298,8 +299,8 @@ async fn g_c2844_reasoning_store(
     sess: &crate::bdd::fixtures::XySessionStore,
     compaction_probe: &CompactionProbe,
 ) {
-    use xylitol_official_plugin_session::SessionManager;
-    let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    use xylitol_official_plugin_session::LogSessionStore;
+    let mgr = LogSessionStore::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let sid = "c2844-reasoning";
     mgr.create(sid, Some("."), None).await.unwrap();
     for i in 0..120 {
@@ -320,7 +321,7 @@ async fn g_c2844_reasoning_store(
     }
     let _ = sess;
     compaction_probe.store.replace(Some((
-        Arc::new(mgr.clone()) as Arc<dyn xylitol_plugin_sdk::XySessionStore>,
+        Arc::new(mgr) as Arc<dyn xylitol_plugin_sdk::XySessionStore>,
         sid.to_string(),
     )));
 }

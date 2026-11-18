@@ -5,7 +5,7 @@ use std::sync::Arc;
 use xylitol::XyDriverError;
 use xylitol_kernel::config::types::HookEntry;
 use xylitol_official_plugin_hooks::DispatchResult;
-use xylitol_official_plugin_session::{SessionEntry, SessionManager};
+use xylitol_official_plugin_session::{LogSessionStore, SessionEntry};
 use xylitol_runtime::agent::capabilities::{ContextUsage, ModelRegistry};
 use xylitol_runtime::agent::runtime::XyEvent;
 
@@ -48,12 +48,12 @@ impl Workspace {
 }
 
 pub struct XySessionStore {
-    pub mgr: RefCell<Option<SessionManager>>,
+    pub mgr: RefCell<Option<Arc<LogSessionStore>>>,
     pub entries: RefCell<Vec<SessionEntry>>,
     pub current_id: RefCell<Option<String>>,
     pub last_result: RefCell<Option<Result<String, XyDriverError>>>,
     pub sessions_dir: RefCell<Option<std::path::PathBuf>>,
-    pub second_mgr: RefCell<Option<SessionManager>>,
+    pub second_mgr: RefCell<Option<Arc<LogSessionStore>>>,
     pub lock_probe: Cell<Option<i32>>,
 }
 impl XySessionStore {
@@ -75,7 +75,7 @@ impl XySessionStore {
             std::fs::create_dir_all(&d).ok();
             self.sessions_dir.replace(Some(d.clone()));
             std::mem::forget(dir);
-            self.mgr.replace(Some(SessionManager::new(d)));
+            self.mgr.replace(Some(Arc::new(LogSessionStore::new(d))));
         }
     }
 }

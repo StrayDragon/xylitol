@@ -52,7 +52,7 @@ pub fn t2_caps_bdd() -> T2CapsBdd {
 
 fn t2_make_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::bdd::fixtures::AgentState) {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = xylitol_official_plugin_session::SessionManager::new(dir.keep());
+    let mgr = xylitol_official_plugin_session::LogSessionStore::new(dir.keep());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let caps = crate::bdd::steps_domain_compaction_extra::make_test_capabilities(agent, store);
     *t2_caps_bdd.caps.borrow_mut() = Some(caps);

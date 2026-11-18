@@ -2,6 +2,9 @@
 depends_on: []
 title: 会话存储单路径收敛并接线恢复前 CWD 校验
 needs_specs_change: true
+branch: sdd/c3371-refactor-unify-session-store
+base_branch: main
+base_sha: 086e044208ded652c9bacd3dd9b089535f029d7d
 ---
 
 ## Why

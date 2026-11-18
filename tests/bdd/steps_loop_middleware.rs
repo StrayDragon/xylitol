@@ -1802,7 +1802,7 @@ fn compact_runner(
     reset_fake_state();
     crate::bdd::steps_agent_runtime::ar_register_fake(agent, "ar-compact");
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
+    let mgr = LogSessionStore::new(dir.keep());
     let store: Arc<dyn XySessionStore> = Arc::new(mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(xylitol_kernel::event::EventBus::new());
     let builder: XyModelBuilder = Arc::new(xylitol_kernel::provider::factory::build_provider);
@@ -2108,7 +2108,7 @@ thread_local! {
 #[given("workflow 插件启用且写入含一个 pending 任务的 workflow")]
 pub(crate) fn g_workflow_tool_write() {
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
-        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+        Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
     futures::executor::block_on(store.create("s-workflow-tool", Some("."), None)).expect("create");
     let gateway = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone());
     futures::executor::block_on(gateway.bind_session(Some("s-workflow-tool".into())));
@@ -2200,7 +2200,7 @@ pub(crate) fn g_nested_workflow_child_completed() {
     use xylitol_plugin_sdk::session::{Workflow, WorkflowTaskStatus};
 
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
-        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+        Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
     futures::executor::block_on(store.create("s-nested", Some("."), None)).expect("create");
     let child = Workflow {
         goal: "child".into(),
@@ -2265,7 +2265,7 @@ pub(crate) fn g_workflow_fail_ready() {
     use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowTask, WorkflowTaskStatus};
 
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
-        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+        Arc::new(xylitol_official_plugin_session::LogSessionStore::in_memory());
     futures::executor::block_on(store.create("s-workflow-fail", Some("."), None)).expect("create");
     let workflow = Workflow {
         goal: "ship".into(),

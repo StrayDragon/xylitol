@@ -485,7 +485,7 @@ mod tests {
         };
         let dir = tempfile::tempdir().expect("tempdir");
         let store: Arc<dyn XySessionStore> = Arc::new(
-            xylitol_official_plugin_session::SessionManager::new(dir.keep()),
+            xylitol_official_plugin_session::LogSessionStore::new(dir.keep()),
         );
         store.create(session_id, None, None).await.expect("create");
         let entry = SessionEntry::Message(MessageEntry {
@@ -539,7 +539,7 @@ mod tests {
     async fn fresh_session_skips_shutdown_backfill() {
         let dir = tempfile::tempdir().expect("tempdir");
         let store: Arc<dyn XySessionStore> = Arc::new(
-            xylitol_official_plugin_session::SessionManager::new(dir.keep()),
+            xylitol_official_plugin_session::LogSessionStore::new(dir.keep()),
         );
         store.create("fresh", None, None).await.expect("create");
         let registry = Arc::new(ContextInjectorRegistry::new());

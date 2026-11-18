@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use xylitol::XyDriverError;
 use xylitol_official_plugin_hooks::{HookDispatcher, HookEvent, HookPhase};
-use xylitol_official_plugin_session::SessionManager;
+use xylitol_official_plugin_session::LogSessionStore;
 use xylitol_runtime::agent::capabilities::AgentCapabilities;
 use xylitol_runtime::agent::runtime::AgentRuntime;
 use xylitol_runtime::agent::tools::ToolSet;
@@ -40,9 +40,9 @@ pub(crate) fn make_agent_with_store(
     agent: &AgentState,
 ) -> (AgentRuntime, Arc<dyn xylitol_plugin_sdk::XySessionStore>) {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
-    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr.clone());
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
+        Arc::new(LogSessionStore::new(dir.keep()));
     let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         Arc::new(xylitol_kernel::event::EventBus::new());
     let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = if agent.real_hooks.get() {

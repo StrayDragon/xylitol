@@ -25,7 +25,7 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
         return;
     }
     let dir = tempfile::tempdir().unwrap();
-    let mgr = xylitol_official_plugin_session::SessionManager::new(dir.path().to_path_buf());
+    let mgr = xylitol_official_plugin_session::LogSessionStore::new(dir.path().to_path_buf());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let sid = "s-todo-c2827".to_string();
     let sid2 = sid.clone();

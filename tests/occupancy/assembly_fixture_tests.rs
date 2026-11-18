@@ -1641,7 +1641,7 @@ async fn model_tool_runs_in_client_workspace() {
 
     let dir = tempfile::tempdir().expect("tmp");
     let store: Arc<dyn XySessionStore> =
-        Arc::new(xylitol_official_plugin_session::SessionManager::new(
+        Arc::new(xylitol_official_plugin_session::LogSessionStore::new(
             std::env::temp_dir()
                 .join(format!("xylitol-host-ws-{}", uuid::Uuid::new_v4()))
                 .join("sessions"),

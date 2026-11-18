@@ -77,7 +77,7 @@ async fn g_snapshot_baseline(context_inject_bdd: &ContextInjectBdd) {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("B.md");
     std::fs::write(&path, "B").expect("skill content");
-    let manager = xylitol_official_plugin_session::SessionManager::new(dir.keep());
+    let manager = xylitol_official_plugin_session::LogSessionStore::new(dir.keep());
     *context_inject_bdd.store.borrow_mut() = Some(Arc::new(manager));
     *context_inject_bdd.skill_path.borrow_mut() = Some(path);
     *context_inject_bdd.session_id.borrow_mut() = "ctx-bdd".into();
@@ -153,7 +153,7 @@ async fn g_reminder_row_before_user(reminder_projection: &ReminderProjectionBdd)
     use xylitol_plugin_sdk::session::{CustomMessageEntry, EntryBase, MessageEntry, SessionEntry};
 
     let dir = tempfile::tempdir().expect("tempdir");
-    let manager = xylitol_official_plugin_session::SessionManager::new(dir.keep());
+    let manager = xylitol_official_plugin_session::LogSessionStore::new(dir.keep());
     let store: Arc<dyn XySessionStore> = Arc::new(manager);
     let session_id = "reminder-order".to_string();
     store

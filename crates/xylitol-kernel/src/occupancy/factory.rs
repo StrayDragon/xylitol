@@ -379,7 +379,7 @@ fn host_state_for_test_with(
     let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
     let sessions = dir.join("sessions");
     let store: Arc<dyn XySessionStore> = Arc::new(
-        xylitol_official_plugin_session::SessionManager::new(sessions.clone()),
+        xylitol_official_plugin_session::LogSessionStore::new(sessions.clone()),
     );
     let mut options = crate::composition::BuildAgentOptions::default();
     if let Some(model_id) = default_model_id {

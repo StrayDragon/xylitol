@@ -126,7 +126,7 @@ fn build_ports(
 ) -> Result<xylitol_runtime::agent::RuntimeBaseline, Box<dyn std::error::Error>> {
     if let Some(dir) = &config.sessions_dir {
         let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(
-            xylitol_official_plugin_session::SessionManager::new(dir.clone()),
+            xylitol_official_plugin_session::LogSessionStore::new(dir.clone()),
         );
         Ok(crate::composition::build_baseline_with_store(
             assembly.into_build_options(),

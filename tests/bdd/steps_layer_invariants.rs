@@ -611,7 +611,7 @@ pub(crate) fn w_session_store_port_impl() {
     assert_layer_invariants();
 }
 
-#[then("infra SessionManager 实现协议端口")]
+#[then("infra 会话存储实现协议端口")]
 pub(crate) fn t_session_store_port_impl() {
     assert_layer_invariants();
 }
