@@ -94,6 +94,59 @@ impl AutomationEngine {
         self.pending.is_some()
     }
 
+    async fn pending_skip_action(
+        &mut self,
+        index: &AutomationIndex,
+        now: DateTime<Local>,
+    ) -> Result<Option<AutomationAction>, AutomationEngineError> {
+        let Some(pending) = self.pending.clone() else {
+            return Ok(None);
+        };
+        let state = index
+            .schedules
+            .iter()
+            .find(|schedule| schedule.schedule_id == pending.schedule_id)
+            .map(|schedule| schedule.state);
+        if matches!(state, Some(ScheduleState::Active)) {
+            return Ok(None);
+        }
+        let reason = pending_skip_reason(state);
+        self.append(&AutomationFact::RunSkipped {
+            trigger_id: pending.trigger_id,
+            reason,
+            skipped_at: now.timestamp(),
+        })
+        .await?;
+        self.pending = None;
+        self.factor_exhausted_fact(&pending.schedule_id, state, now)
+            .await?;
+        Ok(Some(AutomationAction::Skipped {
+            schedule_id: pending.schedule_id,
+            reason,
+        }))
+    }
+
+    async fn factor_exhausted_fact(
+        &mut self,
+        schedule_id: &str,
+        state: Option<ScheduleState>,
+        now: DateTime<Local>,
+    ) -> Result<(), AutomationEngineError> {
+        if state == Some(ScheduleState::Exhausted)
+            && self.exhausted_factored.insert(schedule_id.to_string())
+        {
+            self.append(&AutomationFact::ScheduleStateChanged {
+                schedule_id: schedule_id.to_string(),
+                state: ScheduleState::Exhausted,
+                reason: Some("max_ticks exhausted".into()),
+                actor: "engine".into(),
+                at: now.timestamp(),
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
     pub async fn tick(
         &mut self,
         now: DateTime<Local>,
@@ -108,42 +161,8 @@ impl AutomationEngine {
         let index = AutomationIndex::load(&entries, &self.branch_id);
         let mut actions = Vec::new();
 
-        if let Some(pending) = self.pending.clone() {
-            let state = index
-                .schedules
-                .iter()
-                .find(|schedule| schedule.schedule_id == pending.schedule_id)
-                .map(|schedule| schedule.state);
-            if !matches!(state, Some(ScheduleState::Active)) {
-                let reason = match state {
-                    Some(ScheduleState::Paused) => SkipReason::Paused,
-                    Some(ScheduleState::Exhausted) => SkipReason::Exhausted,
-                    _ => SkipReason::Cancelled,
-                };
-                self.append(&AutomationFact::RunSkipped {
-                    trigger_id: pending.trigger_id,
-                    reason,
-                    skipped_at: now.timestamp(),
-                })
-                .await?;
-                self.pending = None;
-                if state == Some(ScheduleState::Exhausted)
-                    && self.exhausted_factored.insert(pending.schedule_id.clone())
-                {
-                    self.append(&AutomationFact::ScheduleStateChanged {
-                        schedule_id: pending.schedule_id.clone(),
-                        state: ScheduleState::Exhausted,
-                        reason: Some("max_ticks exhausted".into()),
-                        actor: "engine".into(),
-                        at: now.timestamp(),
-                    })
-                    .await?;
-                }
-                actions.push(AutomationAction::Skipped {
-                    schedule_id: pending.schedule_id,
-                    reason,
-                });
-            }
+        if let Some(action) = self.pending_skip_action(&index, now).await? {
+            actions.push(action);
         }
 
         let restart_cutoff = self.started_at.unwrap_or(now.timestamp());
@@ -324,6 +343,14 @@ impl AutomationEngine {
             .append_session_entry(&self.session_id, &fact.to_custom_entry())
             .await
             .map_err(|e| AutomationEngineError::Store(e.to_string()))
+    }
+}
+
+fn pending_skip_reason(state: Option<ScheduleState>) -> SkipReason {
+    match state {
+        Some(ScheduleState::Paused) => SkipReason::Paused,
+        Some(ScheduleState::Exhausted) => SkipReason::Exhausted,
+        _ => SkipReason::Cancelled,
     }
 }
 
