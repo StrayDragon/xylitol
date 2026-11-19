@@ -14,7 +14,7 @@ crate 边界按替换、开关、生命周期划，不得按 `app / agent / infr
 
 ```mermaid
 flowchart TB
-  subgraph contracts["1 契约叶 · tui 与 sdk、protocol 互不依赖；sdk 到 protocol 单向（Command 词表）"]
+  subgraph contracts["1 契约叶 · tui 与 sdk、protocol 互不依赖；sdk 到 protocol 单向允许（Command 词表，现状未依赖）"]
     direction LR
     xylitol_plugin_sdk["xylitol-plugin-sdk<br/>词表 + 端口 + rt"]
     xylitol_protocol["xylitol-protocol<br/>JSON-RPC 信封"]
@@ -114,7 +114,7 @@ flowchart TB
   xylitol --> xylitol_app_tui
 ```
 
-图中虚线 = 配置驱动、trust 门禁的外进程插件；只贡献工具，不替换内核 / 官方插件名。
+图中虚线 = 配置驱动、trust 门禁的外进程插件；只贡献工具，不替换内核 / 官方插件名。根包直依以根 `Cargo.toml` 为准（图中只画主干，另含 runtime、sdk、protocol、serve 与官方插件）。
 
 rutis 落点：只出现在 `xylitol-plugin-sdk` 与 `xylitol-kernel` 的 `Cargo.toml`（版本精确锁，以两处 `Cargo.toml` 为准）；`rutis-loader` 只在 kernel；官方插件与 runtime 只依赖 sdk（经 `xylitol_plugin_sdk::rt`），不得 `use rutis`；产品端不得依赖 rutis。
 
@@ -125,7 +125,7 @@ rutis 用法：一张监听器表、发射方选 mode；`Call::next` 仅 waterfa
 | `xylitol-plugin-sdk` | 词表 + 端口 + 错误 + `rt` 再导出。插件作者只依赖这一包；可单向依赖 `xylitol-protocol` 的 Command 词表（翻译合约落点） | 承担信封职责（JSON-RPC envelope / 分派）；放 HTTP / 传输栈 / 假模型 / 观测写出；再拆 `xylitol-types` |
 | `xylitol-protocol` | 四象限信封（JSON-RPC 2.0 文本）+ `PROTOCOL_VERSION`（仅 `host.describe` 协商） | 认识端口；认识 `XyEvent`；承接 plugin-sdk；依赖 wire / runtime |
 | `xylitol-runtime` | `XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入 + 资源发现 + 权限后端。进程内直调合法 | 依赖官方插件；依赖信封或 wire 映射；`use rutis` |
-| `xylitol-kernel` | `Kernel::boot`；核心插件挂载；loader rows；admit；`Command` 经 `xylitol-protocol` | 依赖 `xylitol-app-tui`；把每 token delta 送上 rutis 总线 |
+| `xylitol-kernel` | `boot` 构造 `Kernel`；核心插件挂载；loader rows；admit；`Command` 经 `xylitol-protocol` | 依赖 `xylitol-app-tui`；把每 token delta 送上 rutis 总线 |
 | `xylitol-serve` | 监听；JSON-RPC 分派（`POST /rpc` / `WS /rpc` / healthz）；`XyEvent` 经 `xylitol-wire` 映射 | 自写 `XyEvent` 与 wire 的映射；把映射放进 protocol / plugin-sdk / runtime |
 | `xylitol-wire` | `XyEvent` 与 wire `Event` 的唯一映射（逐变体显式、无 catch-all）；依赖 protocol + plugin-sdk | 依赖 runtime / serve / app-tui；serde 往返代替显式映射；静默吞掉映射失败 |
 | `xylitol-official-plugin-*` | 只依赖 plugin-sdk（config/obs 可依赖 sdk + 配置类型）。依赖用端口 / 服务声明 | 插件之间 `use` 实现；依赖 protocol；客户端进这个前缀 |
@@ -155,7 +155,7 @@ subagent 与外进程插件（`external_plugins`）配置启用；外进程插�
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`TurnId` 仅运行时内部，不得进 `XyEvent` / 信封。
 
-每个 crate 内部仍守依赖方向（runtime 不依赖官方插件、不依赖信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。监听在 `xylitol-serve`；`XyEvent` 与 wire 的映射在 `xylitol-wire`。
+每个 crate 内部仍守依赖方向（runtime 不依赖官方插件、不依赖信封；插件之间不得 `use`，只经服务 / 事件）。
 
 会话槽生命周期（占用、linger、单写者在 `xylitol-serve`）：
 
@@ -295,7 +295,7 @@ Skill / extension slash 尚未交付：需要时在端或 `XyDriver` 侧注册�
 
 外进程插件最小切片已交付（配置驱动、trust 门禁、JSON-RPC stdio 工具桥）；不得为未交付的市场、签名、dylib、同进程静态链入预埋清单、注册中心、dylib、空壳 `Xy*` 或「已是统一口再包一层」。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 gpui / 语音端预埋空壳 crate。
 
-Trust / Permission / MCP / LSP / DAP / subagent / 外进程插件产品语义：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`、`infra-lsp/`、`infra-dap/`、`agent-subagent/`、`infra-plugin/`。边界：Trust 门禁项目本地资源；工具开箱 allow-all；MCP 有配置才装配并支持重载；外进程插件须显式 `trusted: true`。
+Trust / Permission / MCP / LSP / DAP / subagent / 外进程插件产品语义：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`、`infra-lsp/`、`infra-dap/`、`agent-subagent/`、`infra-plugin/`。边界：Trust 门禁项目本地资源；工具开箱 allow-all；MCP 有配置才装配并支持重载。
 
 ## Provider 与消息
 
@@ -305,7 +305,7 @@ Trust / Permission / MCP / LSP / DAP / subagent / 外进程插件产品语义：
 |---|---|
 | LLM 叶（Message/Part/Usage 等） | 词表薄留（plugin-sdk） |
 | `AgentMessage` / `EnvMessage` / `XyEvent` | plugin-sdk |
-| `project_for_llm` | runtime |
+| `project_for_llm` | plugin-sdk（`llm_project` 模块；runtime 经 `pub use` 再导出） |
 | HTTP / SSE / 厂商 SDK | 对应方言插件 |
 | Fake `XyModel` | 测试支持，不进内核 |
 

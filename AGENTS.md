@@ -34,13 +34,17 @@ flowchart LR
 
 ## 产品定调
 
-个人开箱即用的 coding harness。第三方外进程插件最小切片已交付（配置驱动、trust 门禁、JSON-RPC stdio 工具桥）；插件市场、签名、dylib、同进程静态链入未交付，不得写成现行必须。现行扩展入口 = 官方插件 + 配置 + MCP / shell hook + `external_plugins`。`xylitol-tui` 是源自 pi-tui 的独立 fork，不追平上游。
+个人开箱即用的 coding harness。第三方外进程插件最小切片已交付（配置驱动、trust 门禁、JSON-RPC stdio 工具桥）；插件市场、签名、dylib、同进程静态链入未交付，不得写成现行必须。
+
+现行扩展入口 = 官方插件 + 配置 + MCP / shell hook + `external_plugins`。
+
+`xylitol-tui` 是源自 pi-tui 的独立 fork，不追平上游。
 
 | 关注点 | 现行规则 | 真源 |
 |---|---|---|
 | Trust / 配置后置 | Trust 门禁项目本地资源是否加载，工具开箱 allow-all；外进程插件须显式 `trusted: true`；集成件装配策略见下「开箱与配置后置」 | `llmanspec/specs/domain-security/` 等；实现边界 `src/AGENTS.md` |
 | Loop 参与 | 官方插件经 rutis 生命周期注册 loop 中间件参与 ReAct 决策；core 持 turn 边界、取消、权限终裁；插件不得整段替换 loop；外进程插件只贡献工具 | `llmanspec/specs/agent-runtime/`；`src/AGENTS.md`「Loop 中间件」 |
-| 产品端 | Print 与 TUI（TTY 默认）已开放；TUI 默认确保并 attach 本机 Host；Print 与库嵌入可同进程 | `crates/xylitol-app-tui/src/AGENTS.md`；`llmanspec/specs/protocol-app/`、`server-core/` |
+| 产品端 | Print 与 TUI（TTY 默认）已开放；Print 与库嵌入可同进程（本机 Host 行为见「开箱与配置后置」） | `crates/xylitol-app-tui/src/AGENTS.md`；`llmanspec/specs/protocol-app/`、`server-core/` |
 | CS 角色 | 端是 client（键、画、TTY）；模型 / 会话 / MCP / trust 是 host；跨进程走四象限 JSON-RPC 2.0 文本信封 | `src/AGENTS.md` |
 | 跨端公共体验 | 已开放端动作语义一套；未开放端见 GitHub FR，不得写成现行必须 | `llmanspec/specs/protocol-app/`、`user-experience/` |
 | TUI 呈现 | 信息呈现固定词；视觉色板（`just qa-check-tui-tokens` 对照 Palette） | `llmanspec/specs/app-tui-fixed-zone/`；`crates/xylitol-app-tui/src/DESIGN.md` |
@@ -65,7 +69,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，不按 `app / agent 
 | `xylitol-plugin-sdk` | 词表 + 端口 + 错误 + `rt` 再导出（插件作者只依赖这一包） |
 | `xylitol-protocol` | 四象限信封（JSON-RPC 2.0 文本）+ `PROTOCOL_VERSION`。不认识端口，不认识 `XyEvent` |
 | `xylitol-runtime` | 执行权威：`XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入。不依赖信封 |
-| `xylitol-kernel` | 进程内核：`Kernel::boot`、核心插件、Builtins、admit。`rutis-loader` 只在这里 |
+| `xylitol-kernel` | 进程内核：`boot` 构造 `Kernel`、核心插件、Builtins、admit。`rutis-loader` 只在这里 |
 | `xylitol-serve` | 载体：监听 + JSON-RPC 分派；Host profile 插件 |
 | `xylitol-wire` | `XyEvent` 与 wire `Event` 的唯一映射（依赖 protocol + sdk） |
 | `xylitol-official-plugin-*` | 官方可替换插件，一能力一包（成员见 `src/AGENTS.md` crate 图）。不是市场，不是 dylib |
@@ -98,7 +102,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，不按 `app / agent 
 
 交付 OpenAI 兼容与 Anthropic Messages 两族（OAuth 等纳入是显式决策，不默认承诺）；网关 courtesy（如 Zen 会话归因）允许。产品细则 `llmanspec/specs/infra-provider/`；开闭规则（业务只依赖 `XyModel`，新兼容端 = 方言插件 / 配置）见 `src/AGENTS.md`「Provider 与消息」。
 
-模型配置面是跨仓契约：`models.entries` 与 thinking 档位（`thinking_level_map`）形状同时被 `StrayDragon/x-magpie` 的 `packages/xylitol` 连接器消费，它渲染 `conf.d/magpie-models.yaml` 供本仓加载。改模型条目 schema 或生成形状时 **必须** 同步适配该连接器并跑其 `just check`，不得只改本仓使生成文件失效。
+模型配置面是跨仓契约：`models.entries` 与 thinking 档位（`thinking_level_map`）形状同时被 `StrayDragon/x-magpie` 的 `packages/xylitol` 连接器消费，它渲染 `conf.d/magpie-models.yaml` 供本仓加载。改模型条目 schema 或生成形状时必须同步适配该连接器并跑其 `just check`，不得只改本仓使生成文件失效。
 
 ## 命令与验证
 
@@ -109,7 +113,9 @@ Host 侧 crate 边界按替换、开关、生命周期划，不按 `app / agent 
 - 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，不新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `crates/xylitol-tui/justfile`。
 - 门禁组成细则见 `xylitol-dev` skill `references/qa-gates.md`。
 - Python 解释器：门禁脚本需 Python 3.11 以上（`tomllib`），只依赖标准库；`justfile` 与 BDD step 自动挑选可用解释器。
-- 注释闸（uncomment，只读）：策略见根 `.uncomment.toml`；`just qa` 经 `scripts/check_uncomment.py` 只跑 `uncomment --check --changed-lines`，不删注释、不 `--fix`。默认移除行内说明与 doc 注释；保留 TODO/FIXME、工具指令与 `~keep`。追溯以 specs 与提交信息为 SSOT，改动行上不得新增可移除注释。`uncomment` 须在 PATH（`uv tool install uncomment` 或 `pipx install uncomment`），未安装时闸报错而非跳过。`XYLITOL_SKIP_UNCOMMENT=1` 仅为工具确实无法安装时的应急口，不作常规跑法。
+- 注释闸接线（uncomment，只读）：策略见根 `.uncomment.toml`；`just qa` 经 `scripts/check_uncomment.py` 只跑 `uncomment --check --changed-lines`，不删注释、不 `--fix`。
+- 注释保留项：TODO/FIXME、工具指令与 `~keep`；默认移除行内说明与 doc 注释。追溯以 specs 与提交信息为 SSOT，改动行上不得新增可移除注释。
+- `uncomment` 须在 PATH（`uv tool install uncomment` 或 `pipx install uncomment`），未安装时闸报错而非跳过；`XYLITOL_SKIP_UNCOMMENT=1` 仅为工具确实无法安装时的应急口，不作常规跑法。
 
 ### 试验 / 真实网关验证命名（`lab_`）
 
@@ -117,7 +123,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，不按 `app / agent 
 
 ## Worktree 并行开发
 
-- 同 crate 的不同 worktree **不得**共用 `CARGO_TARGET_DIR`（Cargo fingerprint 不区分包绝对路径，会错误复用别的树编出的产物）。
+- 同 crate 的不同 worktree 不得共用 `CARGO_TARGET_DIR`（Cargo fingerprint 不区分包绝对路径，会错误复用别的树编出的产物）。
 - Linux 开发链接走 mold；`-Zshare-generics` 与 mold 写在同一份 `.cargo/config.toml`（`[target]` rustflags 会覆盖 `[build]`，不得拆开）。
 
 ## 提交与测试
@@ -129,7 +135,15 @@ Host 侧 crate 边界按替换、开关、生命周期划，不按 `app / agent 
 
 ## Skills
 
-团队开发规范（门禁 / 测试分层 / 文档落点 / 提交协作 / 依赖候选 / 工具链 bump / TUI 验证 / 观测排障）总入口：`xylitol-dev`（正文在 `references/`）。SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 参考：`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。构建 / 磁盘调优：按当次 rust 版本即时调研，不固化结论。
+| skill | 用途 | 位置 |
+|---|---|---|
+| `xylitol-dev` | 团队开发规范总入口（门禁 / 测试分层 / 文档落点 / 提交协作 / 依赖候选 / 工具链 bump / TUI 验证 / 观测排障） | `.agents/skills/`（正文在 `references/`） |
+| `llman-sdd-*` | SDD 流程（含 `llman-sdd-quick` 快速路径） | `.agents/skills/` |
+| `l8ng-write-surface` / `l8ng-audit-dead-code` / `l8ng-write-tui` | 应用端 | `~/.config/llman/skills/`（不在本仓库，避免漂移） |
+| `l8ng-terminal-tui-differential-rendering` | TUI 参考 | 同上 |
+| `langfuse` | 外部锁定 | 经 `skills-lock.json` 管理 |
+
+构建 / 磁盘调优：按当次 rust 版本即时调研，不固化结论。
 
 ## 编写与维护 AGENTS.md
 

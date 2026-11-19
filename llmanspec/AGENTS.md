@@ -11,7 +11,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 `src/AGENTS.md`，不在此重复；BDD 配置真源在 `llmanspec/config.yaml` 的 `specs:` 段。
 
 > 写作原则：只写稳定规则与硬约束（有 specs/changes 代码事实支撑）。进度、当前 active
-> 清单、行数等易腐内容不写——查 `llman-sdd list` / `llman-sdd status`。
+> 清单、行数等易腐内容不写——查 `llman-sdd list` / `llman-sdd show`。
 
 ## Artifact 规则
 
@@ -21,7 +21,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
   - `verb` 取 `add` / `update` / `remove` / `refactor` / `fix`（新 change 五选一；冻结档案存在历史 verb，不作范本）。
   - `priority` 为整数，建议用 5 的倍数（c05/c10/c1200）预留加塞间隙，非强制；需要插队时直接占用相邻空位。priority 必须唯一。预览下一个可用号：`llman-sdd change next-id`；`change new --from <id> --dry-run` 只渲染 id 不落盘。
 - priority 是建议性排序：实际执行先沿 `depends_on` 依赖边，priority 仅作并列时的 tiebreaker。
-- frontmatter：每个 `proposal.md` 必须含 YAML frontmatter。合法字段以 `llman-sdd` 工具 schema 为准：`depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_branch` / `base_sha` / `needs_specs_change`；`status`、`title`、`priority`、`author` 等会被 `llman-sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）。
+- frontmatter：每个 `proposal.md` 必须含 YAML frontmatter。合法字段以 `llman-sdd` 工具 schema 为准：`title`（非空概念式标题，必填）/ `depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_branch` / `base_sha` / `needs_specs_change`；`status`、`priority`、`author` 等集外字段会被 `llman-sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）。
 - 依赖门禁：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
 - 原子性：每个 change 独立可校验、可归档。
 
@@ -56,16 +56,16 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## 语言
 
-- spec 的 `purpose` / requirement statement / scenario 步骤必须中文；技术标识符（类型名、路径、命令、req_id）保留英文。`规则:` 标题用术语表标准词写需求句。嵌套 `场景:` 名写这一例在测什么的独立中文名；不得英文 kebab，不得复制规则标题。
-- 单轨 feature-as-spec：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；validate 只读取 `.feature`。文件头部注释 `# language:` 与 `# purpose:` 必备；capability 由 `specs/<capability>/` 目录名承载。
+- spec 的 `purpose` / requirement statement / scenario 步骤必须中文；技术标识符（类型名、路径、命令、req_id）保留英文。`规则:` 标题用中文标准词写需求句，存量英文 kebab 标题随触清。嵌套 `场景:` 名写这一例在测什么的独立中文名；不得英文 kebab，不得复制规则标题。
+- 单轨 feature-as-spec：每个 capability 恰好一个 live `.feature` 文件，validate 只读取 `.feature`；目录形态 `llmanspec/specs/<capability>/<capability>.feature` 为主，工具兼容扁平 `llmanspec/specs/<capability>.feature`。文件头部注释 `# language:` 与 `# purpose:` 必备。
 - 场景语义完整格式以 `llman-sdd-propose` / `llman-sdd-ff` skill 内嵌 feature-contract 为 SSOT：
   - `@req:<id>` 挂 `规则:` 块头，是全局唯一需求句柄（validate 查重）。
   - 嵌套 `场景:`（假如/当/那么）是可执行示例，由 `tests/bdd` 的 `#[scenario]` 按精确名与步骤文本绑定。
   - 无嵌套场景即裸规则（review `pending` 计量）；只有无法程序化表达的需求才保留，理由记 proposal / design。
   - 增删改既有 `规则:` 块走 WARNING 报告制，不阻断 validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
-- 情态动词词表（对齐 STC 简明技术中文词表强度词条）：约束 statement 用中文情态——要求 `必须`，否定 `不得`／`禁止`，推荐 `宜`；避免 `应`／`应当`／`应该`／`务必`／`一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
-- `背景:`（Background）**必须**紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
-- 在非默认 feature 分支直接编辑 live `.feature`，随后 `llman-sdd change attach`、`llman-sdd change finalize`（自动合并进基准分支 + 归档改名 + 单提交；目标 `--into` 优先于 `base_branch`，再默认分支；方式 `--method` 优先于 `sdd.merge_method` 缺省 squash）。禁止 `solidify`、`change delta`、新建 `*.feature.delta.toon`。
+- 情态动词词表（对齐 STC 简明技术中文词表强度词条）：约束 statement 用中文情态——要求 `必须`，否定 `不得` / `禁止`，推荐 `宜`；避免 `应` / `应当` / `应该` / `务必` / `一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
+- `背景:`（Background）必须紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
+- 在非默认 feature 分支直接编辑 live `.feature`，随后 `llman-sdd change attach`、`llman-sdd change finalize`（收口行为见「finalize 提交序」）。禁止 `solidify`、`change delta`、新建 `*.feature.delta.toon`。
 
 ## 版本化命名
 
@@ -98,10 +98,10 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 - finalize 不要求干净树。
 - 审计仍可用：`git diff base_sha..HEAD` + `branch`。
+- 合并目标：`--into` 优先于 `base_branch`，再默认分支；合并方式 `--method` 优先于 `sdd.merge_method`（缺省 squash）。
 - 合并目标已被其他 worktree 占用时：输出 WARNING + 手动命令指引，不回滚 rename。
 - 仅密封（merge + rename）不收实现时用 `llman-sdd change archive <id>`；保留 feature 多 commit 历史可 `--method ff` 或配置 `sdd.merge_method: ff`。
-- 结构门禁先跑：`llman-sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / finalize。
-- `finalize` / `archive` 的 `--no-interactive`：接受并忽略。
+- 结构门禁先跑：`llman-sdd validate <cap|change> --strict`（快，默认跳过 BDD 全量 harness）；再跑带 BDD 的全量 validate / finalize。
 
 ### 提交卫生
 
@@ -120,7 +120,7 @@ stage 四档：`draft`（仅 proposal）、`designed`（+design）、`planned`�
 
 ## delayed-changes（搁置提案）
 
-`llmanspec/delayed-changes/` 收纳未启动的搁置提案（可按 `tui/`、`models/`、`tools/` 等分类）：
+`llmanspec/delayed-changes/` 收纳未启动的搁置提案（可按 `tui/`、`workspace/` 等分类）：
 
 - park 内只放 proposal / design / tasks / research 等规划工件；禁止 `specs/`（spec landing 只发生在 propose 之后）。
 - 启动实现 = 经 propose / ff 正式化迁回 `changes/`；归档时必须删除 delayed 副本（一 id 一处真值）。
