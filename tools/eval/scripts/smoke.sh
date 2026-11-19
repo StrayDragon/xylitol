@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Eval smoke: run the smoke-task fixture via the local Harbor wrapper and verify reward.
 set -euo pipefail
 
 mode="run"

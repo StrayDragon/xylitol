@@ -1,3 +1,4 @@
+'''Tests for the SWE-bench grader adapter.'''
 import json
 from pathlib import Path
 

@@ -1,3 +1,4 @@
+'''Tests for dataset loading and selection.'''
 from pathlib import Path
 
 import pytest

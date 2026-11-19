@@ -1,3 +1,4 @@
+'''Tests for xylitol_eval.agent config rendering.'''
 from pathlib import Path
 
 from xylitol_eval.agent import render_xylitol_config

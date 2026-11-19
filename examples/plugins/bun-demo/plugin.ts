@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Bun external-plugin demo: echo and add tools over stdio JSON-RPC.
 type ToolSpec = {
   name: string;
   description: string;

@@ -1,3 +1,4 @@
+'''Tests for run report writing and summary.'''
 import json
 
 from xylitol_eval.report import InstanceResult, RunReport, write_run_json, write_summary

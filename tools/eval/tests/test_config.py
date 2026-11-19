@@ -1,3 +1,4 @@
+'''Tests for eval configuration loading and validation.'''
 from pathlib import Path
 
 import pytest

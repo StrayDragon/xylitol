@@ -1,3 +1,4 @@
+'''Tests for patch collection and prediction serialization.'''
 import json
 
 from xylitol_eval.patch import read_predictions, write_prediction

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
 # Build a static musl Linux binary for Harbor tasks.
 # The build base is an amd64 Ubuntu image; override with
 # XYLITOL_EVAL_BUILD_IMAGE when Docker Hub is unreachable.
+set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 out_dir="${repo_root}/target/eval-bin"

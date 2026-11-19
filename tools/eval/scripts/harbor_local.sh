@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
 # Local-only Harbor wrapper. Do not wire this into CI.
 #
 # - translates a loopback HTTP(S) proxy to host.docker.internal so Pi/nvm and
@@ -8,6 +6,7 @@ set -euo pipefail
 # - adds NO_PROXY for the magpie gateway so model calls stay direct;
 # - refuses proxy URLs with credentials because `--ae` lands in argv;
 # - caps local Harbor concurrency at 3 (default 3).
+set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 harbor_bin="${HARBOR_BIN:-/tmp/harbor-venv/bin/harbor}"
