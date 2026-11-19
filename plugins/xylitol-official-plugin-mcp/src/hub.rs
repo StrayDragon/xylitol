@@ -1398,4 +1398,43 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert!(hub.state.claims.lock().await.is_empty());
     }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_returns_result_when_ensure_completes_in_time() {
+        let hub = McpPrepareHub::new(Vec::new());
+        let result = hub.wait(Duration::from_secs(5)).await;
+        assert_eq!(result, SessionPrepareResult::default());
+        assert_eq!(hub.take_notice(), None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_timeout_sets_notice_and_falls_back_to_armed_view() {
+        let hub = McpPrepareHub::new(vec![server("fs", McpScope::Shared)]);
+        let guard = hub.state.ensure_lock.lock().await;
+        let result = hub.wait(Duration::from_millis(1)).await;
+        assert_eq!(result, SessionPrepareResult::default());
+        assert_eq!(
+            hub.take_notice().as_deref(),
+            Some(xylitol_plugin_sdk::SESSION_PREPARE_TIMEOUT_NOTICE)
+        );
+        drop(guard);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_timeout_returns_frozen_last_result() {
+        let hub = McpPrepareHub::new(Vec::new());
+        *hub.state.last_result.lock().await = Some(SessionPrepareResult {
+            fingerprint: "fp".into(),
+            env_body: "MCP armed: stale".into(),
+        });
+        let guard = hub.state.ensure_lock.lock().await;
+        let result = hub.wait(Duration::from_millis(1)).await;
+        assert_eq!(result.fingerprint, "fp");
+        assert_eq!(result.env_body, "MCP armed: stale");
+        assert_eq!(
+            hub.take_notice().as_deref(),
+            Some(xylitol_plugin_sdk::SESSION_PREPARE_TIMEOUT_NOTICE)
+        );
+        drop(guard);
+    }
 }
