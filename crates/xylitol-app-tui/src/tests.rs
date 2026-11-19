@@ -7406,3 +7406,180 @@ fn busy_question_mark_opens_help_and_esc_closes_before_abort() {
     assert!(!root.borrow().help_open());
     assert!(!session.take_abort());
 }
+
+struct ScriptedLines {
+    state: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+}
+
+impl Component for ScriptedLines {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        self.state.borrow().clone()
+    }
+    fn handle_input(&mut self, _event: InputEvent) {}
+    fn invalidate(&mut self) {}
+}
+
+fn scripted_lines_session(
+    state: &std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+) -> HostSession<TestTerminal> {
+    let lines = state.clone();
+    HostSession::new(TestTerminal::new(80, 24), move |_| {
+        vec![Box::new(ScriptedLines {
+            state: lines.clone(),
+        })]
+    })
+}
+
+fn set_scripted_lines(state: &std::rc::Rc<std::cell::RefCell<Vec<String>>>, lines: &[&str]) {
+    *state.borrow_mut() = lines.iter().map(|s| s.to_string()).collect();
+}
+
+#[test]
+fn inline_differential_pure_append_paints_only_new_tail() {
+    let state = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    set_scripted_lines(&state, &["alpha", "beta"]);
+    let mut session = scripted_lines_session(&state);
+    session.render_now().unwrap();
+    session.tui.terminal.clear_frames();
+
+    set_scripted_lines(&state, &["alpha", "beta", "gamma"]);
+    session.render_now().unwrap();
+    let first_batch = session.tui.terminal.frames().concat();
+    assert!(
+        first_batch.contains("\r\n\x1b[2Kgamma"),
+        "pure tail append at the parked cursor must newline once, then paint: {first_batch:?}"
+    );
+    assert!(
+        !first_batch.contains("alpha"),
+        "differential append must not repaint the unchanged prefix: {first_batch:?}"
+    );
+
+    set_scripted_lines(&state, &["alpha", "BETA", "gamma"]);
+    session.render_now().unwrap();
+    session.tui.terminal.clear_frames();
+
+    set_scripted_lines(&state, &["alpha", "BETA", "gamma", "delta"]);
+    session.render_now().unwrap();
+    let batch = session.tui.terminal.frames().concat();
+    assert!(
+        batch.contains("\x1b[1B\r\n\x1b[2Kdelta"),
+        "pure tail append below the parked cursor must step down, newline, then paint: {batch:?}"
+    );
+    assert!(
+        !batch.contains("alpha"),
+        "differential append must not repaint the unchanged prefix: {batch:?}"
+    );
+    assert!(
+        !batch.contains("\x1b[2J"),
+        "same-width growth must not fall back to a full clear: {batch:?}"
+    );
+}
+
+#[test]
+fn inline_differential_shrink_clears_vacated_rows_without_repaint() {
+    let state = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    set_scripted_lines(&state, &["r0", "r1", "r2", "r3"]);
+    let mut session = scripted_lines_session(&state);
+    session.render_now().unwrap();
+    session.tui.terminal.clear_frames();
+
+    set_scripted_lines(&state, &["r0", "r1"]);
+    session.render_now().unwrap();
+    let batch = session.tui.terminal.frames().concat();
+    assert_eq!(
+        batch.matches("\x1b[2K").count(),
+        2,
+        "two vacated rows must each be cleared exactly once: {batch:?}"
+    );
+    assert!(
+        !batch.contains("r0"),
+        "kept prefix must be reused, not repainted: {batch:?}"
+    );
+    assert!(
+        batch.contains("\x1b[2A"),
+        "cursor must park back above the cleared rows: {batch:?}"
+    );
+}
+
+#[test]
+fn inline_differential_shrink_from_cursor_row_steps_down_first() {
+    let marker = xylitol_tui::tui::CURSOR_MARKER;
+    let state = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    *state.borrow_mut() = vec![format!("{marker}hi"), "a".into(), "b".into(), "c".into()];
+    let mut session = scripted_lines_session(&state);
+    session.render_now().unwrap();
+    session.tui.terminal.clear_frames();
+
+    *state.borrow_mut() = vec![format!("{marker}hi"), "a".into()];
+    session.render_now().unwrap();
+    let stream = session.tui.terminal.frames().concat();
+    assert!(
+        stream.contains("\x1b[1B"),
+        "shrink to a row below the parked cursor row must step down before clearing: {stream:?}"
+    );
+    assert_eq!(
+        stream.matches("\x1b[2K").count(),
+        2,
+        "two vacated rows must be cleared: {stream:?}"
+    );
+    assert!(
+        !stream.contains("hi"),
+        "cursor row content must be reused, not repainted: {stream:?}"
+    );
+}
+
+#[test]
+fn inline_differential_shrink_to_empty_clears_without_park_back() {
+    let state = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    set_scripted_lines(&state, &["only"]);
+    let mut session = scripted_lines_session(&state);
+    session.render_now().unwrap();
+    session.tui.terminal.clear_frames();
+
+    set_scripted_lines(&state, &[]);
+    session.render_now().unwrap();
+    let batch = session.tui.terminal.frames().concat();
+    assert_eq!(
+        batch.matches("\x1b[2K").count(),
+        1,
+        "the single vacated row must be cleared: {batch:?}"
+    );
+    assert!(
+        !batch.contains("only"),
+        "shrinking to empty must not repaint removed content: {batch:?}"
+    );
+    assert!(
+        !batch.contains("\x1b[2A") && !batch.contains("\x1b[1B"),
+        "no park-back or offset move is needed when the frame is empty: {batch:?}"
+    );
+}
+
+#[test]
+fn inline_differential_shrink_with_edit_repaints_span_and_clears_tail() {
+    let state = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    set_scripted_lines(&state, &["a", "b", "c", "d"]);
+    let mut session = scripted_lines_session(&state);
+    session.render_now().unwrap();
+    session.tui.terminal.clear_frames();
+
+    set_scripted_lines(&state, &["X", "b"]);
+    session.render_now().unwrap();
+    let batch = session.tui.terminal.frames().concat();
+    assert!(
+        batch.contains("X"),
+        "the edited row must be repainted: {batch:?}"
+    );
+    assert_eq!(
+        batch.matches("\x1b[2K").count(),
+        4,
+        "two painted rows plus two vacated rows must be cleared: {batch:?}"
+    );
+    assert!(
+        batch.contains("\x1b[2A"),
+        "cursor must park back above the vacated rows: {batch:?}"
+    );
+    assert!(
+        !batch.contains("c") && !batch.contains("d"),
+        "removed rows must be cleared, not repainted: {batch:?}"
+    );
+}
