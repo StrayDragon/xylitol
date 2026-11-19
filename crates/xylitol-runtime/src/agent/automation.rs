@@ -365,10 +365,12 @@ pub fn spawn_timer(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use chrono::TimeZone;
     use serde_json::json;
+    use xylitol_plugin_sdk::error::XySessionError;
     use xylitol_plugin_sdk::session::{
-        CUSTOM_TYPE_AUTOMATION, CustomEntry, EntryBase, SessionEntry,
+        CUSTOM_TYPE_AUTOMATION, CustomEntry, EntryBase, ForkPosition, SessionContext, SessionEntry,
     };
 
     use crate::test_support::MemoryStore;
@@ -817,5 +819,250 @@ mod tests {
             }]
         );
         assert!(!engine.has_pending());
+    }
+
+    struct FailingLeafStore {
+        inner: MemoryStore,
+    }
+
+    #[async_trait]
+    impl XySessionStore for FailingLeafStore {
+        async fn exists(&self, session_id: &str) -> bool {
+            XySessionStore::exists(&self.inner, session_id).await
+        }
+
+        async fn load_entries(
+            &self,
+            session_id: &str,
+        ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            XySessionStore::load_entries(&self.inner, session_id).await
+        }
+
+        async fn load_leaf_branch(
+            &self,
+            _session_id: &str,
+        ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Err(XySessionStoreError::io(
+                "load_leaf_branch",
+                std::io::Error::other("store offline"),
+            ))
+        }
+
+        async fn append_session_entry(
+            &self,
+            session_id: &str,
+            entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            XySessionStore::append_session_entry(&self.inner, session_id, entry).await
+        }
+
+        async fn build_session_context(
+            &self,
+            session_id: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            XySessionStore::build_session_context(&self.inner, session_id).await
+        }
+
+        async fn create(
+            &self,
+            id: &str,
+            cwd: Option<&str>,
+            parent: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            XySessionStore::create(&self.inner, id, cwd, parent).await
+        }
+
+        async fn fork(
+            &self,
+            parent_id: &str,
+            child_id: &str,
+            at_entry_id: &str,
+            position: ForkPosition,
+        ) -> Result<(), XySessionError> {
+            XySessionStore::fork(&self.inner, parent_id, child_id, at_entry_id, position).await
+        }
+
+        fn set_leaf(&self, session_id: &str, entry_id: Option<&str>) {
+            XySessionStore::set_leaf(&self.inner, session_id, entry_id);
+        }
+
+        fn leaf_id(&self, session_id: &str) -> Option<String> {
+            XySessionStore::leaf_id(&self.inner, session_id)
+        }
+    }
+
+    #[tokio::test]
+    async fn store_error_surfaces_from_tick() {
+        let store = Arc::new(FailingLeafStore {
+            inner: MemoryStore::new(),
+        });
+        let mut engine = AutomationEngine::new_at(
+            store,
+            "s1",
+            Local.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let now = Local.with_ymd_and_hms(2026, 1, 1, 0, 1, 0).unwrap();
+        let err = engine.tick(now, false, false).await.unwrap_err();
+        assert!(matches!(err, AutomationEngineError::Store(_)));
+    }
+
+    #[tokio::test]
+    async fn paused_schedule_skips_pending_trigger() {
+        let store = Arc::new(MemoryStore::new());
+        let session = "s1";
+        store
+            .append_session_entry(session, &schedule_entry("sched", session, 3))
+            .await
+            .unwrap();
+        let mut engine = AutomationEngine::new_at(
+            store.clone(),
+            session,
+            Local.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let first = Local.with_ymd_and_hms(2026, 1, 1, 0, 1, 0).unwrap();
+        assert!(engine.tick(first, true, false).await.unwrap().is_empty());
+        assert!(engine.has_pending());
+        store
+            .append_session_entry(session, &state_entry("sched", "paused"))
+            .await
+            .unwrap();
+        let second = Local.with_ymd_and_hms(2026, 1, 1, 0, 2, 0).unwrap();
+        assert_eq!(
+            engine.tick(second, false, false).await.unwrap(),
+            vec![AutomationAction::Skipped {
+                schedule_id: "sched".into(),
+                reason: SkipReason::Paused
+            }]
+        );
+        assert!(!engine.has_pending());
+        let facts: Vec<serde_json::Value> = store
+            .load_entries(session)
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|entry| match entry {
+                SessionEntry::Custom(custom) => Some(custom.data.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(!facts.iter().any(|data| {
+            data.get("kind").and_then(|kind| kind.as_str()) == Some("schedule_state_changed")
+                && data.get("actor").and_then(|actor| actor.as_str()) == Some("engine")
+        }));
+    }
+
+    #[tokio::test]
+    async fn exhausted_schedule_skips_pending_and_records_engine_fact() {
+        let store = Arc::new(MemoryStore::new());
+        let session = "s1";
+        store
+            .append_session_entry(session, &schedule_entry("sched", session, 3))
+            .await
+            .unwrap();
+        let mut engine = AutomationEngine::new_at(
+            store.clone(),
+            session,
+            Local.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let first = Local.with_ymd_and_hms(2026, 1, 1, 0, 1, 0).unwrap();
+        assert!(engine.tick(first, true, false).await.unwrap().is_empty());
+        assert!(engine.has_pending());
+        store
+            .append_session_entry(session, &state_entry("sched", "exhausted"))
+            .await
+            .unwrap();
+        let second = Local.with_ymd_and_hms(2026, 1, 1, 0, 2, 0).unwrap();
+        assert_eq!(
+            engine.tick(second, false, false).await.unwrap(),
+            vec![AutomationAction::Skipped {
+                schedule_id: "sched".into(),
+                reason: SkipReason::Exhausted
+            }]
+        );
+        assert!(!engine.has_pending());
+        let facts: Vec<serde_json::Value> = store
+            .load_entries(session)
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|entry| match entry {
+                SessionEntry::Custom(custom) => Some(custom.data.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(facts.iter().any(|data| {
+            data.get("kind").and_then(|kind| kind.as_str()) == Some("schedule_state_changed")
+                && data.get("schedule_id").and_then(|id| id.as_str()) == Some("sched")
+                && data.get("state").and_then(|state| state.as_str()) == Some("exhausted")
+                && data.get("reason").and_then(|reason| reason.as_str())
+                    == Some("max_ticks exhausted")
+                && data.get("actor").and_then(|actor| actor.as_str()) == Some("engine")
+        }));
+    }
+
+    #[tokio::test]
+    async fn exhausted_state_fact_deduped_across_rearming() {
+        let store = Arc::new(MemoryStore::new());
+        let session = "s1";
+        store
+            .append_session_entry(session, &schedule_entry("sched", session, 5))
+            .await
+            .unwrap();
+        let mut engine = AutomationEngine::new_at(
+            store.clone(),
+            session,
+            Local.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let first = Local.with_ymd_and_hms(2026, 1, 1, 0, 1, 0).unwrap();
+        assert!(engine.tick(first, true, false).await.unwrap().is_empty());
+        store
+            .append_session_entry(session, &state_entry("sched", "exhausted"))
+            .await
+            .unwrap();
+        let second = Local.with_ymd_and_hms(2026, 1, 1, 0, 2, 0).unwrap();
+        assert_eq!(
+            engine.tick(second, false, false).await.unwrap(),
+            vec![AutomationAction::Skipped {
+                schedule_id: "sched".into(),
+                reason: SkipReason::Exhausted
+            }]
+        );
+        store
+            .append_session_entry(session, &schedule_entry("sched", session, 5))
+            .await
+            .unwrap();
+        let third = Local.with_ymd_and_hms(2026, 1, 1, 0, 3, 0).unwrap();
+        assert!(engine.tick(third, true, false).await.unwrap().is_empty());
+        assert!(engine.has_pending());
+        store
+            .append_session_entry(session, &state_entry("sched", "exhausted"))
+            .await
+            .unwrap();
+        let fourth = Local.with_ymd_and_hms(2026, 1, 1, 0, 4, 0).unwrap();
+        assert_eq!(
+            engine.tick(fourth, false, false).await.unwrap(),
+            vec![AutomationAction::Skipped {
+                schedule_id: "sched".into(),
+                reason: SkipReason::Exhausted
+            }]
+        );
+        let facts: Vec<serde_json::Value> = store
+            .load_entries(session)
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|entry| match entry {
+                SessionEntry::Custom(custom) => Some(custom.data.clone()),
+                _ => None,
+            })
+            .collect();
+        let engine_state_changes = facts
+            .iter()
+            .filter(|data| {
+                data.get("kind").and_then(|kind| kind.as_str()) == Some("schedule_state_changed")
+                    && data.get("actor").and_then(|actor| actor.as_str()) == Some("engine")
+            })
+            .count();
+        assert_eq!(engine_state_changes, 1);
     }
 }
