@@ -33,5 +33,5 @@
 
 ## T6 图收口
 
-- [ ] 转 llman-sdd-propose 收拢为可实施计划；本图绑定分支后 finalize/archive。
+- [x] 收拢方式由 T5 裁定：四条独立实施线（c3375 / c3380 / c3385 propose、c3390 quick），不建单张收拢计划；本图绑定分支后 finalize/archive。
 - 验证：archive/ 下存在本图目录；active changes 不再含本图。

@@ -1,7 +1,20 @@
 ---
 title: 重复收敛 wayfinder 地图：四个重复点的归属决策路径
-depends_on: [c3355-refactor-sdk-inclusion-boundary, c3360-refactor-provider-scaffold-deps, c3365-refactor-truncation-spec-contracts, c3370-refactor-dispatch-twins-shape, c3375-refactor-provider-scaffold-home, c3380-refactor-truncation-policy-module, c3385-refactor-dispatch-contract-home, c3390-refactor-agent-lifecycle-component]
+depends_on:
+  [
+    c3355-refactor-sdk-inclusion-boundary,
+    c3360-refactor-provider-scaffold-deps,
+    c3365-refactor-truncation-spec-contracts,
+    c3370-refactor-dispatch-twins-shape,
+    c3375-refactor-provider-scaffold-home,
+    c3380-refactor-truncation-policy-module,
+    c3385-refactor-dispatch-contract-home,
+    c3390-refactor-agent-lifecycle-component
+  ]
 needs_specs_change: false
+branch: sdd/c3350-refactor-dedup-convergence-map
+base_branch: main
+base_sha: 4ecae32a90bc1110055b7a0e36886ecff4c38725
 ---
 
 # 重复收敛 wayfinder 地图（provider 脚手架 / lsp·dap 生命周期 / 截断策略 / Command→Outcome）
