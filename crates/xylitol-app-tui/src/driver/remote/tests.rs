@@ -645,3 +645,281 @@ async fn explicit_resubscribe_clears_ended_observe() {
     driver.restart_downlink().await;
     assert_eq!(driver.attach_observe(), AttachObserve::Live);
 }
+
+fn models_host() -> ExportHost {
+    ExportHost {
+        result: json!({"models": [
+            {"id": "m-fast", "display_name": "Fast", "context_window": 123}
+        ]}),
+    }
+}
+
+#[tokio::test]
+async fn unregistered_downlink_method_frame_is_ignored() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    driver.last_seq.store(5, Ordering::SeqCst);
+    let ctx = driver.downlink_ctx();
+    let pushed = Mutex::new(Vec::new());
+    let push = |ev: XyEvent| pushed.lock().expect("pushed").push(ev);
+    handle_frame(
+        &ctx,
+        &push,
+        frame("lsp/publishDiagnostics", json!({"session_id": "s-test"})),
+    )
+    .await;
+    assert_eq!(driver.last_seq.load(Ordering::SeqCst), 5);
+    assert!(pushed.into_inner().expect("pushed").is_empty());
+}
+
+#[tokio::test]
+async fn session_event_with_undecodable_workflow_payload_is_skipped() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    let ctx = driver.downlink_ctx();
+    let pushed = Mutex::new(Vec::new());
+    let push = |ev: XyEvent| pushed.lock().expect("pushed").push(ev);
+    handle_frame(
+        &ctx,
+        &push,
+        frame(
+            method::SESSION_EVENT,
+            json!({
+                "session_id": "s-test",
+                "seq": 31,
+                "event": {
+                    "type": "workflow_updated",
+                    "workflow": {"goal": "g", "tasks": [{"id": 7, "description": "d"}]}
+                },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(driver.last_seq.load(Ordering::SeqCst), 31);
+    assert!(pushed.into_inner().expect("pushed").is_empty());
+}
+
+#[tokio::test]
+async fn session_event_queue_update_refreshes_cached_queue_stats() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    driver.skip_cold_replay.store(true, Ordering::SeqCst);
+    let ctx = driver.downlink_ctx();
+    let pushed = Mutex::new(Vec::new());
+    let push = |ev: XyEvent| pushed.lock().expect("pushed").push(ev);
+    handle_frame(
+        &ctx,
+        &push,
+        frame(
+            method::SESSION_EVENT,
+            json!({
+                "session_id": "s-test",
+                "seq": 32,
+                "event": {"type": "queue_update", "steer_count": 2, "follow_up_count": 3},
+            }),
+        ),
+    )
+    .await;
+    let (steer, follow) = {
+        let stats = driver.cached_queue.lock().expect("cached queue");
+        (stats.steer_count, stats.follow_up_count)
+    };
+    assert_eq!((steer, follow), (2, 3));
+    assert_eq!(pushed.into_inner().expect("pushed").len(), 1);
+}
+
+#[tokio::test]
+async fn cold_replay_tape_frame_is_dropped_while_skip_flag_set() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    driver.skip_cold_replay.store(true, Ordering::SeqCst);
+    let ctx = driver.downlink_ctx();
+    let pushed = Mutex::new(Vec::new());
+    let push = |ev: XyEvent| pushed.lock().expect("pushed").push(ev);
+    handle_frame(
+        &ctx,
+        &push,
+        frame(
+            method::SESSION_EVENT,
+            json!({
+                "session_id": "s-test",
+                "seq": 34,
+                "event": {"type": "text_delta", "text": "hidden"},
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(driver.last_seq.load(Ordering::SeqCst), 34);
+    assert!(pushed.into_inner().expect("pushed").is_empty());
+}
+
+#[tokio::test]
+async fn session_event_model_select_resolves_and_caches_model() {
+    let driver = XyRemoteDriver::with_host(models_host(), "s-test");
+    let ctx = driver.downlink_ctx();
+    let pushed = Mutex::new(Vec::new());
+    let push = |ev: XyEvent| pushed.lock().expect("pushed").push(ev);
+    handle_frame(
+        &ctx,
+        &push,
+        frame(
+            method::SESSION_EVENT,
+            json!({
+                "session_id": "s-test",
+                "seq": 33,
+                "event": {"type": "model_select", "provider": "p", "model_id": "m-fast"},
+            }),
+        ),
+    )
+    .await;
+    let cached_id = driver
+        .cached_model
+        .lock()
+        .expect("cached model")
+        .as_ref()
+        .map(|m| m.id.clone());
+    assert_eq!(cached_id, Some("m-fast".to_string()));
+    let pushed = pushed.into_inner().expect("pushed");
+    assert!(matches!(
+        &pushed[0],
+        XyEvent::ModelSelect { model_id, .. } if model_id == "m-fast"
+    ));
+}
+
+#[tokio::test]
+async fn session_model_frame_pushes_model_select_and_caches_model() {
+    let driver = XyRemoteDriver::with_host(models_host(), "s-test");
+    let ctx = driver.downlink_ctx();
+    let pushed = Mutex::new(Vec::new());
+    let push = |ev: XyEvent| pushed.lock().expect("pushed").push(ev);
+    handle_frame(
+        &ctx,
+        &push,
+        frame(
+            method::SESSION_MODEL,
+            json!({"session_id": "s-test", "provider": "p", "model_id": "m-fast"}),
+        ),
+    )
+    .await;
+    let cached_id = driver
+        .cached_model
+        .lock()
+        .expect("cached model")
+        .as_ref()
+        .map(|m| m.id.clone());
+    assert_eq!(cached_id, Some("m-fast".to_string()));
+    let pushed = pushed.into_inner().expect("pushed");
+    assert!(matches!(
+        &pushed[0],
+        XyEvent::ModelSelect { provider, model_id, .. }
+            if provider == "p" && model_id == "m-fast"
+    ));
+}
+
+#[tokio::test]
+async fn agent_end_frame_moves_inflight_attach_to_ended() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    *driver.attach_observe.lock().expect("observe") = AttachObserve::Inflight;
+    let ctx = driver.downlink_ctx();
+    handle_frame(
+        &ctx,
+        &|_: XyEvent| {},
+        frame(
+            method::SESSION_EVENT,
+            json!({
+                "session_id": "s-test",
+                "seq": 21,
+                "event": {"type": "agent_end"},
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(driver.attach_observe(), AttachObserve::Ended);
+}
+
+#[tokio::test]
+async fn session_resources_frame_populates_caches_and_gate_notice() {
+    let mut driver = new_driver(ScriptedHost::describing(describe_ok()));
+    let ctx = driver.downlink_ctx();
+    handle_frame(
+        &ctx,
+        &|_: XyEvent| {},
+        frame(
+            method::SESSION_RESOURCES,
+            json!({
+                "session_id": "s-test",
+                "snapshot": {
+                    "skill_names": ["lab_probe"],
+                    "mcp_connected": [["srv", 2]],
+                    "mcp_configured": 1,
+                    "mcp_diag_short": [],
+                    "mcp_connecting_label": null,
+                    "mcp_servers": [
+                        {"id": "srv", "phase": "connected", "tools_armed": true, "tool_count": 2}
+                    ],
+                    "mcp_bootstrap_complete": true,
+                    "tools_table_frozen": false,
+                    "mcp_gate_notice": "mcp gate held",
+                },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(
+        driver.dollar_skill_catalog(),
+        vec![("lab_probe".to_string(), String::new())]
+    );
+    assert_eq!(
+        driver.take_mcp_gate_notice(),
+        Some("mcp gate held".to_string())
+    );
+    assert_eq!(driver.take_mcp_gate_notice(), None);
+    assert!(driver.loaded_resources_cached().is_some());
+}
+
+#[tokio::test]
+async fn mcp_oauth_started_frame_pushes_session_info_changed() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    let ctx = driver.downlink_ctx();
+    let pushed = Mutex::new(Vec::new());
+    let push = |ev: XyEvent| pushed.lock().expect("pushed").push(ev);
+    handle_frame(
+        &ctx,
+        &push,
+        frame(
+            "mcp/oauth_started",
+            json!({
+                "kind": "started",
+                "flow": {
+                    "flow_id": "f1",
+                    "server": "srv",
+                    "auth_url": "https://auth.example/start",
+                    "redirect_uri": "",
+                    "scopes": [],
+                    "expires_at_ms": 99,
+                },
+            }),
+        ),
+    )
+    .await;
+    let pushed = pushed.into_inner().expect("pushed");
+    assert_eq!(pushed.len(), 1);
+    assert!(matches!(
+        &pushed[0],
+        XyEvent::SessionInfoChanged { key, .. } if key == "mcp_oauth"
+    ));
+}
+
+#[tokio::test]
+async fn approval_frame_without_reverse_rpc_notify_is_dropped() {
+    let driver = new_driver(ScriptedHost::describing(describe_ok()));
+    let ctx = driver.downlink_ctx();
+    let pushed = Mutex::new(Vec::new());
+    let push = |ev: XyEvent| pushed.lock().expect("pushed").push(ev);
+    handle_frame(
+        &ctx,
+        &push,
+        frame(
+            method::APPROVAL_REQUESTED,
+            json!({"call_id": "c9", "tool": "bash"}),
+        ),
+    )
+    .await;
+    assert!(pushed.into_inner().expect("pushed").is_empty());
+}
