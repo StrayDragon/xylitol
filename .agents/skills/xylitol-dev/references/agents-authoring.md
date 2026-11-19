@@ -40,10 +40,10 @@ API 名、调用序列、参数流水账等易腐细节一律以代码、skill �
 | 无墓碑 | 移除即改写，不留「已删除 / 曾用 / 已退役」 |
 | 不列脚本清单 | 脚本清单不进 AGENTS；首行模块注释即描述，需要时写一条注释提取命令 |
 
-脚本清单提取命令（验证于本仓，`#` / `//` / `--` / Python docstring 头都识别；无首行注释的脚本自然不出现）：
+脚本头注释提取命令（单行；识别 `#` / `//` / `--` 行注释块、`/* */` 块注释、Python docstring 双引号与单引号风格，展示到第一个空行或闭合界定符；无文件头注释的文件不出现。单文件用法：取管道中 `awk` 起的单引号段直接跟文件路径）：
 
 ```bash
-rg --files -0 -g '*.{sh,py,lua,js,mjs,ts}' . | while IFS= read -r -d '' f; do awk 'NR==1&&/^#!/{next}/^[[:space:]]*$/{exit}/^[[:space:]]*(#|\/\/|--|""")/{sub(/^[[:space:]]*(#|\/\/|--|""")+[[:space:]]*/,"");sub(/("""|\/\/)+[[:space:]]*$/,"");h=h (h?" ":"") $0;next}{exit}END{if(h)print FILENAME "\t" h}' "$f"; done | sort
+rg --files -0 -g '*.{sh,py,lua,js,mjs,ts}' . | while IFS= read -r -d '' f; do awk 'NR==1&&/^#!/{next}{sub(/^[ \t]+/,"");if(!on){if($0=="")exit;if(substr($0,1,1)=="#"){m="l";p="#"}else if(substr($0,1,2)=="//"){m="l";p="//"}else if(substr($0,1,2)=="--"){m="l";p="--"}else if(substr($0,1,2)=="/*"){m="c"}else if(substr($0,1,3)=="\"\"\""||substr($0,1,3)=="\047\047\047"){m="d";q=substr($0,1,1);qq=q q q}else exit;on=1}if(m=="l"){if($0=="")exit;if(substr($0,1,length(p))!=p)exit;s=substr($0,length(p)+1);sub(/^[ \t]+/,"",s);if(s ~ /^\/+[ \t]*$/)next;sub(/^\/+[ \t]*/,"",s);if(s!="")h=h (h?" ":"") s;next}if(m=="c"){if(!op){s=$0;sub(/^\/\*[ \t]*/,"",s);op=1}else s=$0;i=index(s,"*/");if(i>0){s=substr(s,1,i-1);sub(/^[*!]+[ \t]*/,"",s);if(s!="")h=h (h?" ":"") s;exit}sub(/^[*!]+[ \t]*/,"",s);if(s=="")next;h=h (h?" ":"") s;next}if(m=="d"){if($0=="")exit;if(!op){s=substr($0,4);op=1;sub(/^[ \t]+/,"",s)}else s=$0;i=index(s,qq);if(i>0){s=substr(s,1,i-1);if(s!="")h=h (h?" ":"") s;exit}if(s!="")h=h (h?" ":"") s;next}}END{if(h!="")printf "%s\t%s\n",FILENAME,h}' "$f"; done | sort
 ```
 
 ## 写法正反例速查
