@@ -459,15 +459,29 @@ fn restore_session(
         }
         _ => false,
     };
+    warn_restoring_session(
+        input,
+        session_file_exists,
+        &sessions_dir.display().to_string(),
+        warnings,
+    );
+    Ok(session_file_exists)
+}
+
+fn warn_restoring_session(
+    input: &BootstrapInput,
+    session_file_exists: bool,
+    sessions_dir: &str,
+    warnings: &mut Vec<BootstrapWarning>,
+) {
     if let Some(ref session_arg) = input.session
         && session_file_exists
     {
         warnings.push(BootstrapWarning::RestoringSession {
             session: session_arg.clone(),
-            path: sessions_dir.display().to_string(),
+            path: sessions_dir.to_string(),
         });
     }
-    Ok(session_file_exists)
 }
 
 fn verify_existing_session(
@@ -481,6 +495,16 @@ fn verify_existing_session(
     block_on(session_mgr.load_validated(session_id, cwd))
         .map_err(|error| BootstrapError::SessionValidation(error.to_string()))?;
     Ok(())
+}
+
+fn log_context_files(context_files: &[(String, String)]) {
+    for (path, content) in context_files {
+        log::debug!(
+            "context file discovered context_file={} bytes={}",
+            path,
+            content.len()
+        );
+    }
 }
 
 fn build_permission_engine(
@@ -744,13 +768,7 @@ pub fn resolve_assembly_with(
         loader_system_prompt.is_some(),
         skills.len()
     );
-    for (path, content) in &context_files {
-        log::debug!(
-            "context file discovered context_file={} bytes={}",
-            path,
-            content.len()
-        );
-    }
+    log_context_files(&context_files);
 
     let settings =
         load_runtime_settings(app_config.as_ref(), &agent_home, &cwd_path, project_trusted);
