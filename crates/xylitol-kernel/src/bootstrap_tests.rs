@@ -634,9 +634,172 @@ fn bootstrap_error_display_covers_all_variants() {
             BootstrapError::AgentProfileNotFound("missing".into()),
             "agent profile `missing` not found",
         ),
+        (
+            BootstrapError::SessionValidation("session log unreadable".into()),
+            "session log unreadable",
+        ),
     ];
     for (err, needle) in cases {
         let message = err.to_string();
         assert!(message.contains(needle), "{message}");
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn restore_session_existing_session_returns_true_and_warns() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let agent_home = home.path().join(".xylitol");
+    let sessions_dir = agent_home.join("sessions");
+    let cwd = project.path().to_string_lossy().into_owned();
+    let store = LogSessionStore::new(sessions_dir.clone());
+    store
+        .create("existing-session", Some(cwd.as_str()), None)
+        .await
+        .expect("seed session");
+
+    let input = BootstrapInput {
+        session: Some("existing-session".into()),
+        ..assembly_input(None)
+    };
+    let mut warnings = Vec::new();
+
+    let restored = restore_session(&input, &agent_home, &cwd, &mut warnings).expect("restore");
+
+    assert!(restored);
+    assert!(
+        matches!(
+            warnings.as_slice(),
+            [BootstrapWarning::RestoringSession { session, path }]
+                if session == "existing-session"
+                    && *path == sessions_dir.display().to_string()
+        ),
+        "warnings: {warnings:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn restore_session_stored_cwd_missing_fails_validation() {
+    let home = tempfile::tempdir().unwrap();
+    let agent_home = home.path().join(".xylitol");
+    let store = LogSessionStore::new(agent_home.join("sessions"));
+    store
+        .create(
+            "dangling-cwd-session",
+            Some("/definitely-missing/xylitol-cwd"),
+            None,
+        )
+        .await
+        .expect("seed session");
+
+    let input = BootstrapInput {
+        session: Some("dangling-cwd-session".into()),
+        ..assembly_input(None)
+    };
+    let mut warnings = Vec::new();
+
+    let err = restore_session(
+        &input,
+        &agent_home,
+        "/also-missing/xylitol-fallback",
+        &mut warnings,
+    )
+    .expect_err("stored cwd and fallback both missing must fail");
+
+    assert!(
+        matches!(err, BootstrapError::SessionValidation(_)),
+        "got {err}"
+    );
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn resolve_assembly_trusted_includes_project_agents_context_file() {
+    log::set_max_level(log::LevelFilter::Debug);
+    let home = tempfile::tempdir().unwrap();
+    let project = home.path().join("proj");
+    let proj_xy = project.join(".xylitol");
+    std::fs::create_dir_all(&proj_xy).unwrap();
+    let global = home.path().join(".config").join("xylitol");
+    std::fs::create_dir_all(&global).unwrap();
+    std::fs::write(project.join("AGENTS.md"), "PROJECT_CONTEXT_BODY").unwrap();
+    std::fs::write(
+        proj_xy.join("config.yaml"),
+        r#"models:
+  default_model: m1
+  entries:
+    m1:
+      provider: openai
+      model: m
+"#,
+    )
+    .unwrap();
+
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
+
+    let assembly = resolve_assembly_with(
+        &assembly_input(Some(true)),
+        env_map(&entries),
+        Some(project.as_path()),
+    )
+    .expect("assembly");
+
+    assert!(
+        assembly.context_files.iter().any(
+            |(path, body)| path.ends_with("AGENTS.md") && body.contains("PROJECT_CONTEXT_BODY")
+        ),
+        "context files: {:?}",
+        assembly.context_files
+    );
+}
+
+#[test]
+fn resolve_assembly_enabled_permission_section_builds_engine() {
+    let home = tempfile::tempdir().unwrap();
+    let project = home.path().join("proj");
+    let proj_xy = project.join(".xylitol");
+    std::fs::create_dir_all(&proj_xy).unwrap();
+    let global = home.path().join(".config").join("xylitol");
+    std::fs::create_dir_all(&global).unwrap();
+    std::fs::write(
+        proj_xy.join("config.yaml"),
+        r#"models:
+  default_model: m1
+  entries:
+    m1:
+      provider: openai
+      model: m
+security:
+  permission:
+    enabled: true
+    filesystem:
+      write_allowed:
+        - /tmp/xylitol-kernel-test
+"#,
+    )
+    .unwrap();
+
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
+
+    let assembly = resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None)
+        .expect("assembly");
+
+    assert!(
+        assembly.permission.is_some(),
+        "enabled security.permission must build a permission engine"
+    );
 }

@@ -438,3 +438,7 @@ fn host_state_for_test_with(
     .remember_sessions_dir(sessions)
     .arm_test_linger())
 }
+
+#[cfg(test)]
+#[path = "factory_tests.rs"]
+mod tests;
