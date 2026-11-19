@@ -482,10 +482,10 @@ impl XyInProcessDriver {
     }
 }
 
-fn find_trust_option<'a>(
-    options: &'a [crate::trust::TrustOption],
+fn find_trust_option(
+    options: &[crate::trust::TrustOption],
     mode: ProjectTrustMode,
-) -> Result<&'a crate::trust::TrustOption, XyDriverError> {
+) -> Result<&crate::trust::TrustOption, XyDriverError> {
     match mode {
         ProjectTrustMode::TrustCwd => options.first(),
         ProjectTrustMode::TrustParent => {
@@ -497,11 +497,7 @@ fn find_trust_option<'a>(
 }
 
 fn session_only_event(trusted: bool) -> &'static str {
-    if trusted {
-        "trust_grant"
-    } else {
-        "trust_deny"
-    }
+    if trusted { "trust_grant" } else { "trust_deny" }
 }
 
 fn apply_trust_option(

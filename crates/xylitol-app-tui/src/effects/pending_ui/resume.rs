@@ -3,6 +3,20 @@ use xylitol_tui::Terminal;
 use crate::commands::BUSY_SESSION_SWITCH_NOTICE;
 use crate::driver::XyDriver;
 use crate::host::HostSession;
+use crate::layout::UiIntent;
+
+pub(super) async fn apply<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    intent: UiIntent,
+) {
+    match intent {
+        UiIntent::SessionResumeSelect(session_id) => select(session, driver, session_id).await,
+        UiIntent::SessionResumeRename(id, name) => rename(session, driver, id, name).await,
+        UiIntent::SessionResumeDelete(id) => delete(session, driver, id).await,
+        _ => {}
+    }
+}
 
 use super::super::helpers::{SwitchRebuildKind, note_driver_err, switch_and_rebuild_transcript};
 

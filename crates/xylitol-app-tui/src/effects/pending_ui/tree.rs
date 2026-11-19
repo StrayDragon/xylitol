@@ -2,10 +2,32 @@ use xylitol_tui::Terminal;
 
 use crate::driver::XyDriver;
 use crate::host::HostSession;
+use crate::layout::UiIntent;
 use crate::layout::map_session_tree_nodes;
 use xylitol_protocol::SessionTreeKind as WireSessionTreeKind;
 
 use super::super::helpers::{deepest_tree_id, note_driver_err};
+
+pub(super) async fn apply<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    intent: UiIntent,
+) -> std::ops::ControlFlow<(), ()> {
+    match intent {
+        UiIntent::TreeOpen => open(session, driver).await,
+        UiIntent::TreeTravel(entry_id) => travel(session, driver, entry_id).await,
+        UiIntent::TreeFork(entry_id) => {
+            if !fork(session, driver, entry_id).await {
+                return std::ops::ControlFlow::Break(());
+            }
+        }
+        UiIntent::TreeLabel(entry_id, name) => {
+            label(session, driver, entry_id, name).await;
+        }
+        _ => {}
+    }
+    std::ops::ControlFlow::Continue(())
+}
 
 pub(super) fn outcome_error(
     op: &str,

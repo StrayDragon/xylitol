@@ -23,50 +23,65 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
 
     clipboard::take_paste_image(session, driver).await;
     super::mcp::prompt_args(session, driver).await;
+    drain_intents(session, driver).await;
+    history::load_earlier(session, driver).await;
+}
+
+async fn drain_intents<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
     while let Some(intent) = session.pop_ui_intent() {
         match intent {
-            UiIntent::SessionSidebar => {
-                let id = driver.session_id().unwrap_or_default();
-                if session.session_sidebar_available() {
-                    session.show_session_sidebar(&id);
-                }
-            }
-            UiIntent::TreeOpen => tree::open(session, driver).await,
-            UiIntent::TreeTravel(entry_id) => tree::travel(session, driver, entry_id).await,
-            UiIntent::TreeFork(entry_id) => {
-                if !tree::fork(session, driver, entry_id).await {
+            UiIntent::SessionSidebar => show_session_sidebar_intent(session, driver),
+            UiIntent::TreeOpen
+            | UiIntent::TreeTravel(_)
+            | UiIntent::TreeFork(_)
+            | UiIntent::TreeLabel(_, _) => {
+                if tree::apply(session, driver, intent).await.is_break() {
                     return;
                 }
             }
-            UiIntent::TreeLabel(entry_id, label) => {
-                tree::label(session, driver, entry_id, label).await;
+            UiIntent::SessionResumeSelect(_)
+            | UiIntent::SessionResumeRename(_, _)
+            | UiIntent::SessionResumeDelete(_) => {
+                resume::apply(session, driver, intent).await;
             }
-            UiIntent::ModelSelect(choice) => models::select(session, driver, choice).await,
-            UiIntent::SceneSelect(scene) => scenes::select(session, driver, scene).await,
-            UiIntent::ThemeSelect(theme_name) => theme::select(session, theme_name).await,
-            UiIntent::CapabilityToggle(id, enabled) => {
-                capabilities::apply(session, driver, id, enabled).await;
+            UiIntent::ModelSelect(_)
+            | UiIntent::SceneSelect(_)
+            | UiIntent::ThemeSelect(_)
+            | UiIntent::CapabilityToggle(_, _)
+            | UiIntent::ImportDecision(_) => {
+                apply_picker_intent(session, driver, intent).await;
             }
-            UiIntent::ImportDecision(decision) => import::decide(session, driver, decision).await,
-            UiIntent::SessionResumeSelect(session_id) => {
-                resume::select(session, driver, session_id).await;
-            }
-            UiIntent::SessionResumeRename(id, name) => {
-                resume::rename(session, driver, id, name).await;
-            }
-            UiIntent::SessionResumeDelete(id) => resume::delete(session, driver, id).await,
-            UiIntent::McpPromptSelect(server, name) => {
-                super::mcp::prompt_select(session, driver, server, name).await;
-            }
-            UiIntent::McpOAuthStart(server) => {
-                super::mcp::oauth_start(session, driver, server).await;
-            }
-            UiIntent::McpResourceAdd(resource) => {
-                super::mcp::resource_add(session, resource).await;
+            UiIntent::McpPromptSelect(_, _)
+            | UiIntent::McpOAuthStart(_)
+            | UiIntent::McpResourceAdd(_) => {
+                super::mcp::apply(session, driver, intent).await;
             }
         }
     }
-    history::load_earlier(session, driver).await;
+}
+
+fn show_session_sidebar_intent<T: Terminal>(session: &mut HostSession<T>, driver: &dyn XyDriver) {
+    let id = driver.session_id().unwrap_or_default();
+    if session.session_sidebar_available() {
+        session.show_session_sidebar(&id);
+    }
+}
+
+async fn apply_picker_intent<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    intent: UiIntent,
+) {
+    match intent {
+        UiIntent::ModelSelect(choice) => models::select(session, driver, choice).await,
+        UiIntent::SceneSelect(scene) => scenes::select(session, driver, scene).await,
+        UiIntent::ThemeSelect(theme_name) => theme::select(session, theme_name).await,
+        UiIntent::CapabilityToggle(id, enabled) => {
+            capabilities::apply(session, driver, id, enabled).await;
+        }
+        UiIntent::ImportDecision(decision) => import::decide(session, driver, decision).await,
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -179,6 +194,102 @@ mod tests {
         ) -> Result<DispatchOutcome, XyDriverError> {
             Err(transport_variant_error(&cmd))
         }
+    }
+
+    #[tokio::test]
+    async fn drain_routes_tree_intents_through_domain_apply() {
+        let mut session = product_session();
+        let root = session.ui_root().expect("ui root").clone();
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::TreeOpen);
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::TreeTravel("t1".into()));
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::TreeLabel(
+                "t1".into(),
+                Some("lbl".into()),
+            ));
+        let mut driver = ScriptedDriver::new();
+        drain_pending_ui(&mut session, &mut driver).await;
+        assert!(scroll_notices(&session).len() < 6);
+    }
+
+    #[tokio::test]
+    async fn drain_routes_resume_intents_through_domain_apply() {
+        let mut session = product_session();
+        let root = session.ui_root().expect("ui root").clone();
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::SessionResumeSelect("s1".into()));
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::SessionResumeRename(
+                "s1".into(),
+                "renamed".into(),
+            ));
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::SessionResumeDelete("s2".into()));
+        let mut driver = ScriptedDriver::new();
+        drain_pending_ui(&mut session, &mut driver).await;
+    }
+
+    #[tokio::test]
+    async fn drain_routes_picker_intents_through_domain_apply() {
+        let mut session = product_session();
+        let root = session.ui_root().expect("ui root").clone();
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::ModelSelect(
+                crate::layout::PendingModelChoice {
+                    model_id: "m1".into(),
+                    thinking: "off".into(),
+                },
+            ));
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::SceneSelect("coding".into()));
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::CapabilityToggle(
+                "tools".into(),
+                true,
+            ));
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::ImportDecision(
+                crate::layout::ImportConfirmDecision::Rejected,
+            ));
+        let mut driver = ScriptedDriver::new();
+        drain_pending_ui(&mut session, &mut driver).await;
+    }
+
+    #[tokio::test]
+    async fn drain_routes_mcp_intents_through_domain_apply() {
+        let mut session = product_session();
+        let root = session.ui_root().expect("ui root").clone();
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::McpPromptSelect(
+                "srv".into(),
+                "prompt1".into(),
+            ));
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::McpResourceAdd(
+                xylitol_plugin_sdk::mcp::McpResourceRef {
+                    server: "srv".into(),
+                    uri: "file:///tmp/x".into(),
+                },
+            ));
+        let mut driver = ScriptedDriver::new();
+        drain_pending_ui(&mut session, &mut driver).await;
+    }
+
+    #[tokio::test]
+    async fn mcp_oauth_intent_in_queue_runs_oauth_start() {
+        let mut session = product_session();
+        let root = session.ui_root().expect("ui root").clone();
+        root.borrow_mut()
+            .request_intent(crate::layout::UiIntent::McpOAuthStart("srv".into()));
+        let mut driver = OAuthDriver {
+            flow: None,
+            oauth_starts: Vec::new(),
+        };
+        drain_pending_ui(&mut session, &mut driver).await;
+        assert_eq!(driver.oauth_starts, vec!["srv".to_string()]);
+        assert!(scroll_notices(&session).iter().any(|n| n.contains("srv")));
     }
 
     #[tokio::test]
