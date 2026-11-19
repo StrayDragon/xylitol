@@ -1,3 +1,4 @@
+'''Tests for the eval CLI dry-run mode.'''
 import json
 from pathlib import Path
 

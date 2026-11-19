@@ -1,3 +1,4 @@
+'''Tests for the Docker sandbox adapter.'''
 from xylitol_eval.sandbox import DockerSandbox, ExecResult
 
 

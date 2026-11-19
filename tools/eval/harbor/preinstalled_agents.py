@@ -1,3 +1,4 @@
+'''Preinstalled Harbor agent variant of Pi used by eval environments.'''
 from __future__ import annotations
 
 from harbor.agents.installed.pi import Pi

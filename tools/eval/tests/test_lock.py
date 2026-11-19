@@ -1,3 +1,4 @@
+'''Tests for model and config lock loading.'''
 from pathlib import Path
 
 import pytest
