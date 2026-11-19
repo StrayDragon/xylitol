@@ -203,3 +203,99 @@ async fn capability_overlay_ends_frozen_with_consistent_snapshot() {
         "loaded resources snapshot must agree with Frozen phase"
     );
 }
+
+#[tokio::test]
+async fn attach_ctx_services_binds_prepare_hub_and_loop_registry() {
+    struct ProbeLoop;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::LoopMiddleware for ProbeLoop {
+        fn id(&self) -> &str {
+            "attach-ctx-probe"
+        }
+
+        fn stages(&self) -> &'static [xylitol_plugin_sdk::LoopStage] {
+            &[xylitol_plugin_sdk::LoopStage::BeforeStep]
+        }
+    }
+
+    struct ProbeHub {
+        notice_taken: std::sync::atomic::AtomicBool,
+    }
+
+    impl ProbeHub {
+        fn new() -> Self {
+            Self {
+                notice_taken: std::sync::atomic::AtomicBool::new(false),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::SessionPrepareHub for ProbeHub {
+        fn fire(&self) {}
+
+        async fn reset_join(&self) {}
+
+        async fn ensure(&self) -> xylitol_plugin_sdk::SessionPrepareResult {
+            xylitol_plugin_sdk::SessionPrepareResult::default()
+        }
+
+        async fn wait(
+            &self,
+            _timeout: std::time::Duration,
+        ) -> xylitol_plugin_sdk::SessionPrepareResult {
+            xylitol_plugin_sdk::SessionPrepareResult::default()
+        }
+
+        fn view(&self) -> xylitol_plugin_sdk::SessionPrepareView {
+            xylitol_plugin_sdk::SessionPrepareView::default()
+        }
+
+        fn take_notice(&self) -> Option<String> {
+            if self
+                .notice_taken
+                .swap(true, std::sync::atomic::Ordering::SeqCst)
+            {
+                None
+            } else {
+                Some("attach-ctx-hub-notice".into())
+            }
+        }
+
+        fn tools(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
+            Vec::new()
+        }
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
+    let (mut driver, _scope) = build_test_driver(store).await;
+
+    use xylitol_plugin_sdk::rt::CtxHost;
+    let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("root ctx");
+    let hub: Arc<dyn xylitol_plugin_sdk::SessionPrepareHub> = Arc::new(ProbeHub::new());
+    ctx.provide_as::<dyn xylitol_plugin_sdk::SessionPrepareHub>(hub)
+        .expect("provide hub");
+    let registry = Arc::new(xylitol_plugin_sdk::LoopMiddlewareRegistry::new());
+    registry
+        .register(Arc::new(ProbeLoop))
+        .expect("register probe");
+    ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry)
+        .expect("provide registry");
+
+    attach_ctx_services(&mut driver, &ctx);
+
+    assert_eq!(
+        driver.take_mcp_gate_notice().as_deref(),
+        Some("attach-ctx-hub-notice")
+    );
+    assert_eq!(driver.take_mcp_gate_notice(), None);
+    assert_eq!(
+        driver.agent.loop_middleware_ids(),
+        vec!["attach-ctx-probe".to_string()]
+    );
+
+    drop(driver);
+    let _ = ctx.shutdown().await;
+}
