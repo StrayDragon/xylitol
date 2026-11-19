@@ -49,18 +49,18 @@ API 名、调用序列、参数流水账等易腐细节一律以代码、skill �
 | 字段 / 行为缺失 | 「`id` 字段作为死码已移除」 | 「幂等键只取 JSON-RPC `id` 的字符串形式」 |
 | 接入步骤 | 枚举十几个方法名的调用链 | 一句 SSOT 指针（「完整序列以 `examples/foo.rs` 与导出文档为准」）+ 只留 MUST / 禁止 |
 | 版本特定结论 | 「Cargo 1.97 下 incremental 会 stale」钉进正文 | 「具体行为随工具链版本变化，按当次版本验证」 |
-| 易腐组成 / 步骤 | 内联枚举「fmt + clippy + 测试 + TUI harness + …」 | 短标签 + SSOT 指针：「全量门禁（组成见 justfile `qa`）」 |
+| 易腐组成 / 步骤 | 内联枚举「fmt + clippy + 测试 + TUI harness」 | 短标签 + SSOT 指针：「全量门禁（组成见 justfile `qa`）」 |
 | 大而稳定的集合 | 并列长句，增删各改多处 | 一张宽泛索引表（分层 / 命令 / 术语），只列稳定成员 |
 | 进度 / 体量自述 | 「本模块 900 行，待拆」 | 软信号 `just complexity` / `just crap`；硬门禁见 `src/AGENTS.md` |
-| 跨层重复 | 子目录复述父级依赖表 | 「依赖方向见 `src/AGENTS.md`；本端仅例外：…」 |
+| 跨层重复 | 子目录复述父级依赖表 | 「依赖方向见 `src/AGENTS.md`；本端仅例外若干」 |
 | 行为契约搬运 | 把 spec 场景抄进正文 | 「场景真源 `llmanspec/specs/<capability>/`」 |
 | 版本段写进正文 | 「`v3` 映射」「`V4` 方法名」 | 「线协议映射」；协议版本只见 `PROTOCOL_VERSION` 与 `host.describe` 协商（版本段进标识符由命名闸卡住，见 `references/qa-gates.md`） |
 
 ## 偏好
 
-全局规则与架构不变量；落点用层名（`agent`/`infra`/…），细节去读代码；易腐事实写「怎么查」（SSOT 指针），不写「现在是什么」。子目录只补本端例外。
+全局规则与架构不变量；落点用层名（`agent`、`infra` 等），细节去读代码；易腐事实写「怎么查」（SSOT 指针），不写「现在是什么」。子目录只补本端例外。
 
-**放哪**：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill（本仓团队 how-to 进 `xylitol-dev`）；临时笔记 → `_HANDOFF` / `*.tmp.md`（勿升格规范）；**change 作用域调研** → `llmanspec/changes/<id>/research/`（细则 `llmanspec/AGENTS.md`）。
+**放哪**：全仓规则进根；目录边界进该目录 `AGENTS.md`；多步 how-to 进 skill（本仓团队 how-to 进 `xylitol-dev`）；临时笔记进 `_HANDOFF` / `*.tmp.md`（勿升格规范）；change 作用域调研进 `llmanspec/changes/<id>/research/`（细则 `llmanspec/AGENTS.md`）。
 
 ## 维护
 

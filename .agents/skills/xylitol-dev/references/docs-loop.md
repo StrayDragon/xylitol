@@ -1,8 +1,8 @@
 ---
-brief: "文档落点与产品↔实现闭环（GitHub FR/roadmap → SDD → specs / AGENTS / 黑话对照 / 内部编号语义尾 / 跨端同源）"
+brief: "文档落点与产品实现闭环（GitHub FR/roadmap 经 SDD 落 specs / AGENTS / 黑话对照 / 内部编号语义尾 / 跨端同源）"
 ---
 
-# 文档落点与产品↔实现闭环
+# 文档落点与产品实现闭环
 
 **真源**：`llmanspec/AGENTS.md`（change/spec）、`src/AGENTS.md`（代码架构）、根 `AGENTS.md`（全仓操作边界）。本文件只给**决策摘要 + 指针**，不复述全文。
 
@@ -16,16 +16,13 @@ brief: "文档落点与产品↔实现闭环（GitHub FR/roadmap → SDD → spe
 | **代码架构不变量** | 分层、seam、`Xy*`、复杂度 | `src/AGENTS.md` |
 | change 作用域调研 | 选型对照、易腐深挖 | `llmanspec/changes/<id>/research/`（随 change 进 `archive/`） |
 
-## 产品 ↔ 实现闭环
+## 产品与实现闭环
 
-```text
-GitHub feature request （+ roadmap 索引）
-        ↓
-llmanspec/changes/…     →  提案 + specs（BDD）+ design/tasks
-        ↓  apply / verify / finalize
-llmanspec/specs/        →  能力落地后的 live 行为合约
-        ↓
-关闭对应 GitHub issue；roadmap 索引勾掉该切片
+```mermaid
+flowchart TB
+    fr["GitHub feature request（含 roadmap 索引）"] --> ch["llmanspec/changes/：提案 + specs（BDD）+ design/tasks"]
+    ch -->|"apply / verify / finalize"| sp["llmanspec/specs/：live 行为合约"]
+    sp --> close["关闭对应 GitHub issue；roadmap 勾掉该切片"]
 ```
 
 - 未落地的方向**禁止**提前写成 live `.feature` 的现行 MUST。
