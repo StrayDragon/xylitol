@@ -1312,6 +1312,11 @@ impl UiRoot {
         self.intents.request(UiIntent::TreeOpen);
     }
 
+    #[cfg(test)]
+    pub(crate) fn request_intent(&mut self, intent: UiIntent) {
+        self.intents.request(intent);
+    }
+
     pub fn request_tree_fork(&mut self, entry_id: String) {
         self.intents.request(UiIntent::TreeFork(entry_id));
     }

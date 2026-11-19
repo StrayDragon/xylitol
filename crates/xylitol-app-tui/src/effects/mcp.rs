@@ -73,6 +73,25 @@ pub(super) async fn resolve_contexts<T: Terminal>(
     Some(contexts)
 }
 
+pub(super) async fn apply<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    intent: crate::layout::UiIntent,
+) {
+    match intent {
+        crate::layout::UiIntent::McpPromptSelect(server, name) => {
+            prompt_select(session, driver, server, name).await;
+        }
+        crate::layout::UiIntent::McpOAuthStart(server) => {
+            oauth_start(session, driver, server).await;
+        }
+        crate::layout::UiIntent::McpResourceAdd(resource) => {
+            resource_add(session, resource).await;
+        }
+        _ => {}
+    }
+}
+
 pub(super) async fn oauth_start<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
