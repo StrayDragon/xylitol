@@ -3,6 +3,7 @@
 # 构建与缓存
 /target/
 target/
+lcov.info
 **/llmanspec/.context/
 
 # 本地工具安装（cccc-rs 等经 .tools/）
