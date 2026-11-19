@@ -4,7 +4,7 @@ brief: "依赖选型与已退役件（jsonrpsee / axum / tiktoken / RemoteCount 
 
 # 依赖候选与退役登记（Host 监听器 / 线协议周边）
 
-**用途**：何时再拿某依赖出来。一次性迁移步骤不进本表。现行产品真源：`POST /rpc` + `WS /rpc` 的 **JSON-RPC 2.0 文本帧**（线形状与错误码见 `llmanspec/specs/protocol-app/` 与 `crates/xylitol-protocol`）；`GET /healthz` 同端口。计量现行：Api usage → Heuristic（UTF-8 字节 `/3`）。
+**用途**：何时再拿某依赖出来。一次性迁移步骤不进本表。现行产品真源：`POST /rpc` + `WS /rpc` 的 **JSON-RPC 2.0 文本帧**（线形状与错误码见 `llmanspec/specs/protocol-app/` 与 `crates/xylitol-protocol`）；`GET /healthz` 同端口。计量现行：Api usage 走 Heuristic（UTF-8 字节数除以 3）。
 
 ## 现行
 
@@ -22,7 +22,7 @@ brief: "依赖选型与已退役件（jsonrpsee / axum / tiktoken / RemoteCount 
 | salvo-oapi + Scalar（`/openapi.json` / `/docs`） | 已拆 | 人手调试文档成为产品承诺，或外部集成需要生成客户端。方法表 SSOT 仍是 `xylitol-protocol` 的 `REGISTRY`，不要为文档另开第二套清单。 |
 | axum | 未在锁内 | salvo 的 feature 剪枝仍盖不住实际用到的 HTTP/WS 面，或要换运行时（tower 生态、超体中间件）。**不要**为「看起来更主流」引入。 |
 | 标准库独立 healthz 进程 | 未做 | 只有当同端口 salvo 成为不可接受的装配成本，且 attach 预检仍要 pid/version/starting-503。healthz 不能变成第二个产品 HTTP 面。 |
-| tiktoken-rs | 已退役 | 产品再次承诺本地 OpenAI-family encode，且要与 openai/tiktoken 模型→encoding 表对齐。不要为「看起来更准」单独加回。 |
+| tiktoken-rs | 已退役 | 产品再次承诺本地 OpenAI-family encode，且要与 openai/tiktoken 的模型到 encoding 映射表对齐。不要为「看起来更准」单独加回。 |
 | HuggingFace `tokenizers` crate | 已退役 | 需要 `tokenizer.json` 精确计数。对照消费点曾是 `tokenize::encode_count_at_path`。 |
 | Gigatoken | 未引入（曾评估） | 仅当重新交付 LocalTokenizer **且** HF encode 热路径成本不可接受。不要为宣称吞吐单独引入。 |
 | Anthropic `POST /v1/messages/count_tokens` · OpenAI `POST /v1/responses/input_tokens` | 已退役产品路径（RemoteCount） | 产品再次承诺独立 HTTP 计数档，且 Api `usage` 不够用。实现曾在 `provider/remote_count.rs`。 |
