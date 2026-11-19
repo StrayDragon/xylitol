@@ -2859,6 +2859,144 @@ mod tests {
         }
     }
 
+    struct WriteHeldStore {
+        inner: MemStore,
+    }
+
+    #[async_trait]
+    impl XySessionStore for WriteHeldStore {
+        async fn exists(&self, session_id: &str) -> bool {
+            self.inner.exists(session_id).await
+        }
+
+        async fn load_entries(
+            &self,
+            session_id: &str,
+        ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            self.inner.load_entries(session_id).await
+        }
+
+        async fn append_session_entry(
+            &self,
+            session_id: &str,
+            entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            self.inner.append_session_entry(session_id, entry).await
+        }
+
+        async fn build_session_context(
+            &self,
+            session_id: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            self.inner.build_session_context(session_id).await
+        }
+
+        async fn create(
+            &self,
+            id: &str,
+            cwd: Option<&str>,
+            parent: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            self.inner.create(id, cwd, parent).await
+        }
+
+        async fn fork(
+            &self,
+            parent_id: &str,
+            child_id: &str,
+            at_entry_id: &str,
+            position: ForkPosition,
+        ) -> Result<(), XySessionError> {
+            self.inner
+                .fork(parent_id, child_id, at_entry_id, position)
+                .await
+        }
+
+        fn set_leaf(&self, session_id: &str, entry_id: Option<&str>) {
+            self.inner.set_leaf(session_id, entry_id)
+        }
+
+        fn leaf_id(&self, session_id: &str) -> Option<String> {
+            self.inner.leaf_id(session_id)
+        }
+
+        fn try_acquire_write_lock(&self, session_id: &str) -> Result<(), XySessionStoreError> {
+            Err(XySessionStoreError::WriteHeld {
+                session_id: session_id.to_string(),
+            })
+        }
+    }
+
+    struct LeafLoadFailStore;
+
+    #[async_trait]
+    impl XySessionStore for LeafLoadFailStore {
+        async fn exists(&self, _session_id: &str) -> bool {
+            true
+        }
+
+        async fn load_entries(
+            &self,
+            _session_id: &str,
+        ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Ok(Vec::new())
+        }
+
+        async fn append_session_entry(
+            &self,
+            _session_id: &str,
+            _entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            Ok(())
+        }
+
+        async fn build_session_context(
+            &self,
+            _session_id: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            Ok(SessionContext {
+                messages: Vec::new(),
+                thinking_level: String::new(),
+                model: None,
+            })
+        }
+
+        async fn create(
+            &self,
+            _id: &str,
+            _cwd: Option<&str>,
+            _parent: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            Ok(())
+        }
+
+        async fn fork(
+            &self,
+            _parent_id: &str,
+            _child_id: &str,
+            _at_entry_id: &str,
+            _position: ForkPosition,
+        ) -> Result<(), XySessionError> {
+            Err(XySessionError::busy("fork unsupported"))
+        }
+
+        fn set_leaf(&self, _session_id: &str, _entry_id: Option<&str>) {}
+
+        fn leaf_id(&self, _session_id: &str) -> Option<String> {
+            None
+        }
+
+        async fn load_leaf_branch(
+            &self,
+            _session_id: &str,
+        ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Err(XySessionStoreError::io(
+                "load_leaf_branch",
+                std::io::Error::other("leaf load failed"),
+            ))
+        }
+    }
+
     fn model_info() -> ModelInfo {
         ModelInfo {
             id: "test".into(),
@@ -2869,8 +3007,14 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
     struct ScriptedEngine {
         runs: Arc<StdMutex<Vec<String>>>,
+        select_fails: bool,
+        thinking_fails: bool,
+        bind_fails: bool,
+        unfrozen: bool,
+        mcp_fails: bool,
     }
 
     #[async_trait]
@@ -2921,6 +3065,82 @@ mod tests {
         async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
             LoadedResourcesSnapshot::default()
         }
+
+        fn is_tools_frozen(&self) -> bool {
+            !self.unfrozen
+        }
+
+        async fn mcp_catalog(
+            &mut self,
+        ) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
+            if self.mcp_fails {
+                Err(XyDriverError::unsupported("mcp_catalog"))
+            } else {
+                Ok(Default::default())
+            }
+        }
+
+        async fn mcp_resource_read(
+            &mut self,
+            _server: &str,
+            _uri: &str,
+        ) -> Result<xylitol_plugin_sdk::mcp::McpResourceContent, XyDriverError> {
+            if self.mcp_fails {
+                Err(XyDriverError::unsupported("mcp_resource_read"))
+            } else {
+                Ok(Default::default())
+            }
+        }
+
+        async fn mcp_prompt_get(
+            &mut self,
+            _server: &str,
+            _name: &str,
+            _arguments: Value,
+        ) -> Result<Value, XyDriverError> {
+            if self.mcp_fails {
+                Err(XyDriverError::unsupported("mcp_prompt_get"))
+            } else {
+                Ok(Value::Null)
+            }
+        }
+
+        async fn mcp_oauth_start(
+            &mut self,
+            _server: &str,
+        ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthFlow, XyDriverError> {
+            if self.mcp_fails {
+                Err(XyDriverError::unsupported("mcp_oauth_start"))
+            } else {
+                Ok(xylitol_plugin_sdk::mcp::McpOAuthFlow {
+                    flow_id: "flow-1".into(),
+                    server: "srv".into(),
+                    auth_url: "http://127.0.0.1:1/auth".into(),
+                    redirect_uri: "http://127.0.0.1:1/callback".into(),
+                    scopes: Vec::new(),
+                    expires_at_ms: 1,
+                })
+            }
+        }
+
+        async fn mcp_oauth_cancel(&mut self, _flow_id: &str) -> Result<(), XyDriverError> {
+            if self.mcp_fails {
+                Err(XyDriverError::unsupported("mcp_oauth_cancel"))
+            } else {
+                Ok(())
+            }
+        }
+
+        async fn mcp_oauth_status(
+            &mut self,
+            _flow_id: &str,
+        ) -> Result<xylitol_plugin_sdk::mcp::McpOAuthStatus, XyDriverError> {
+            if self.mcp_fails {
+                Err(XyDriverError::unsupported("mcp_oauth_status"))
+            } else {
+                Ok(xylitol_plugin_sdk::mcp::McpOAuthStatus::Pending)
+            }
+        }
     }
 
     #[async_trait]
@@ -2929,7 +3149,11 @@ mod tests {
         }
 
         fn bind_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
-            Ok(())
+            if self.bind_fails {
+                Err(XyDriverError::unsupported("bind_session"))
+            } else {
+                Ok(())
+            }
         }
 
         async fn restore_model(&mut self, _model_id: &str) -> Result<(), XyDriverError> {
@@ -2941,7 +3165,11 @@ mod tests {
         }
 
         async fn select_model(&mut self, _model_id: &str) -> Result<ModelInfo, XyDriverError> {
-            Ok(model_info())
+            if self.select_fails {
+                Err(XyDriverError::unsupported("select_model"))
+            } else {
+                Ok(model_info())
+            }
         }
 
         fn model_provider(&self, _model_id: &str) -> Option<String> {
@@ -2949,12 +3177,17 @@ mod tests {
         }
 
         async fn set_thinking_level(&mut self, _level: String) -> Result<(), XyDriverError> {
-            Ok(())
+            if self.thinking_fails {
+                Err(XyDriverError::unsupported("set_thinking_level"))
+            } else {
+                Ok(())
+            }
         }
 
         async fn ensure_tool_table_frozen(&mut self) {}
 
         async fn poll_tool_gate(&mut self) -> bool {
+            self.unfrozen = false;
             true
         }
 
@@ -3032,6 +3265,7 @@ mod tests {
         fn new_driver_at(&self, _workspace: &Path) -> Box<dyn OccupancyEngine> {
             Box::new(ScriptedEngine {
                 runs: Arc::new(StdMutex::new(Vec::new())),
+                ..Default::default()
             })
         }
 
@@ -3052,8 +3286,10 @@ mod tests {
         }
     }
 
-    fn gate_host() -> Arc<HostState> {
-        let store: Arc<dyn XySessionStore> = Arc::new(MemStore::new());
+    fn gate_host_with(
+        store: Arc<dyn XySessionStore>,
+        factory: Arc<dyn OccupancyFactory>,
+    ) -> Arc<HostState> {
         let ports = RuntimeBaseline {
             store,
             sink: Arc::new(GateSink),
@@ -3084,9 +3320,40 @@ mod tests {
                 default_model_id: None,
                 trust_audit: xylitol_runtime::TrustAuditConfig::default(),
             },
-            Arc::new(StubFactoryForGate),
+            factory,
             "gate-fallback".into(),
         )
+    }
+
+    fn gate_host() -> Arc<HostState> {
+        gate_host_with(Arc::new(MemStore::new()), Arc::new(StubFactoryForGate))
+    }
+
+    struct FailingBindFactory;
+
+    impl OccupancyFactory for FailingBindFactory {
+        fn new_driver_at(&self, _workspace: &Path) -> Box<dyn OccupancyEngine> {
+            Box::new(ScriptedEngine {
+                bind_fails: true,
+                ..Default::default()
+            })
+        }
+
+        fn project_trusted(&self, _workspace: &Path) -> bool {
+            true
+        }
+
+        fn default_model_id(&self) -> Option<String> {
+            None
+        }
+
+        fn cwd(&self) -> PathBuf {
+            PathBuf::from(".")
+        }
+
+        fn agent_dir(&self) -> PathBuf {
+            PathBuf::from(".")
+        }
     }
 
     async fn spin_until(condition: impl Fn() -> bool) {
@@ -3189,7 +3456,10 @@ mod tests {
             .await
             .expect("schedule");
         let runs = Arc::new(StdMutex::new(Vec::new()));
-        *slot.driver.lock().await = Some(Box::new(ScriptedEngine { runs: runs.clone() }));
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            runs: runs.clone(),
+            ..Default::default()
+        }));
         let (_id, _rx) = subscribe(&slot).await;
         let engine = Arc::new(Mutex::new(AutomationEngine::new(store, "s0")));
         let task = tokio::spawn(automation_loop(slot.clone(), engine));
@@ -3204,6 +3474,417 @@ mod tests {
             vec!["poll".to_string()]
         );
         task.abort();
+    }
+
+    const MCP_UNARY_METHODS: [&str; 6] = [
+        METHOD_MCP_CATALOG,
+        METHOD_MCP_RESOURCE_READ,
+        METHOD_MCP_PROMPT_GET,
+        METHOD_MCP_OAUTH_START,
+        METHOD_MCP_OAUTH_CANCEL,
+        METHOD_MCP_OAUTH_STATUS,
+    ];
+
+    fn mcp_unary_payload() -> Value {
+        json!({
+            "server": "srv",
+            "uri": "file:///notes",
+            "name": "notes",
+            "flow_id": "flow-1"
+        })
+    }
+
+    async fn wait_for_turn_settled(
+        slot: &SessionSlot,
+        runs: &Arc<StdMutex<Vec<String>>>,
+        expected: usize,
+    ) {
+        for _ in 0..128 {
+            let ready = runs.lock().map(|r| r.len() >= expected).unwrap_or(false)
+                && !slot.turn_inflight_active();
+            if ready {
+                return;
+            }
+            tokio::task::yield_now().await;
+            tokio::time::advance(Duration::from_millis(5)).await;
+        }
+        panic!("prompt turn did not settle at {expected} run(s)");
+    }
+
+    #[tokio::test]
+    async fn dispatch_subscribe_without_session_id_is_rejected() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "",
+            METHOD_SUBSCRIBE,
+            json!({}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(
+            result,
+            RpcResult::error("invalid_input", "subscribe requires session_id")
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_prompt_without_message_is_rejected() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(result, RpcResult::error("invalid_input", "missing message"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dispatch_prompt_parses_mcp_contexts_for_both_payloads() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            runs: runs.clone(),
+            ..Default::default()
+        }));
+        let (_id, _rx) = subscribe(&slot).await;
+        let with_contexts = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({
+                "message": "with contexts",
+                "contexts": [
+                    {"server": "srv", "uri": "file:///notes", "text": "notes"}
+                ]
+            }),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(
+            with_contexts,
+            RpcResult::ok_value(json!({"session_id": "s1"}))
+        );
+        wait_for_turn_settled(&slot, &runs, 1).await;
+        let with_garbage_contexts = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({"message": "without contexts", "contexts": "garbage"}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(
+            with_garbage_contexts,
+            RpcResult::ok_value(json!({"session_id": "s1"}))
+        );
+        wait_for_turn_settled(&slot, &runs, 2).await;
+        assert_eq!(
+            runs.lock().map(|r| r.clone()).unwrap_or_default(),
+            vec!["with contexts".to_string(), "without contexts".to_string()]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dispatch_prompt_reports_failed_model_and_thinking_selection() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            runs: runs.clone(),
+            select_fails: true,
+            thinking_fails: true,
+            ..Default::default()
+        }));
+        let (_id, _rx) = subscribe(&slot).await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({"message": "m", "model_id": "missing", "thinking_level": "high"}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(result, RpcResult::ok_value(json!({"session_id": "s1"})));
+        wait_for_turn_settled(&slot, &runs, 1).await;
+    }
+
+    #[tokio::test]
+    async fn dispatch_arm_tool_freeze_returns_snapshot_when_already_frozen() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine::default()));
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_ARM_TOOL_FREEZE,
+            json!({}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert!(result.ok, "arm must succeed: {result:?}");
+        assert!(result.value.is_some());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dispatch_arm_tool_freeze_polls_gate_until_frozen() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            runs,
+            unfrozen: true,
+            ..Default::default()
+        }));
+        let (_id, mut rx) = subscribe(&slot).await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_ARM_TOOL_FREEZE,
+            json!({}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert!(result.ok, "arm must succeed: {result:?}");
+        let watch_push = rx.recv().await.expect("watch push");
+        let gate_push = rx.recv().await.expect("gate push");
+        assert_eq!(watch_push.method, SESSION_RESOURCES);
+        assert_eq!(gate_push.method, SESSION_RESOURCES);
+    }
+
+    #[tokio::test]
+    async fn dispatch_persist_trust_maps_modes_and_reports_unknown_mode() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine::default()));
+        for mode in ["trust_parent", "deny"] {
+            let result = dispatch_session_unary(
+                &host,
+                &slot,
+                "s1",
+                METHOD_PERSIST_TRUST,
+                json!({"mode": mode}),
+                Path::new("."),
+                None,
+            )
+            .await;
+            assert!(
+                !result.ok,
+                "{mode} must surface the driver error: {result:?}"
+            );
+        }
+        let unknown = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PERSIST_TRUST,
+            json!({"mode": "weird"}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(
+            unknown,
+            RpcResult::error("invalid_input", "unknown trust mode: weird")
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_mcp_unary_methods_report_missing_writer_engine() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        for method in MCP_UNARY_METHODS {
+            let result = dispatch_session_unary(
+                &host,
+                &slot,
+                "s1",
+                method,
+                mcp_unary_payload(),
+                Path::new("."),
+                None,
+            )
+            .await;
+            assert_eq!(
+                result,
+                RpcResult::error("unavailable", "no writer engine"),
+                "method {method}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_mcp_unary_methods_reach_the_writer_engine() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine::default()));
+        for method in MCP_UNARY_METHODS {
+            let result = dispatch_session_unary(
+                &host,
+                &slot,
+                "s1",
+                method,
+                mcp_unary_payload(),
+                Path::new("."),
+                None,
+            )
+            .await;
+            assert!(result.ok, "{method} must succeed: {result:?}");
+        }
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            mcp_fails: true,
+            ..Default::default()
+        }));
+        for method in MCP_UNARY_METHODS {
+            let result = dispatch_session_unary(
+                &host,
+                &slot,
+                "s1",
+                method,
+                mcp_unary_payload(),
+                Path::new("."),
+                None,
+            )
+            .await;
+            assert!(
+                !result.ok,
+                "{method} must surface the driver error: {result:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_rejects_prompt_and_trust_when_write_lock_is_held() {
+        let host = gate_host_with(
+            Arc::new(WriteHeldStore {
+                inner: MemStore::new(),
+            }),
+            Arc::new(StubFactoryForGate),
+        );
+        let slot = host.slot("s1").await;
+        let prompt = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({"message": "m"}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(
+            prompt,
+            RpcResult::error(
+                "session_write_held",
+                "session s1 is being written by another process"
+            )
+        );
+        let trust = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PERSIST_TRUST,
+            json!({"mode": "deny"}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(
+            trust,
+            RpcResult::error(
+                "session_write_held",
+                "session s1 is being written by another process"
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_arm_tool_freeze_reports_missing_engine_after_failed_bind() {
+        let host = gate_host_with(Arc::new(MemStore::new()), Arc::new(FailingBindFactory));
+        let slot = host.slot("s1").await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_ARM_TOOL_FREEZE,
+            json!({}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(result, RpcResult::error("unavailable", "no writer engine"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn automation_loop_survives_admit_errors_without_running() {
+        let slot = slot();
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            runs: runs.clone(),
+            ..Default::default()
+        }));
+        let engine = Arc::new(Mutex::new(AutomationEngine::new(
+            Arc::new(LeafLoadFailStore),
+            "s0",
+        )));
+        let task = tokio::spawn(automation_loop(slot.clone(), engine));
+        for _ in 0..8 {
+            tokio::time::advance(Duration::from_millis(1100)).await;
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            runs.lock().map(|r| r.is_empty()).unwrap_or(false),
+            "a failing admit must never run automation"
+        );
+        assert!(
+            !task.is_finished(),
+            "the loop must keep polling after admit errors"
+        );
+        task.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn mcp_resources_watch_waits_for_driver_then_pushes_once() {
+        log::set_max_level(log::LevelFilter::Debug);
+        let slot = slot();
+        let (_id, mut rx) = subscribe(&slot).await;
+        slot.ensure_mcp_resources_watch();
+        for _ in 0..8 {
+            tokio::time::advance(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
+        }
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            runs,
+            ..Default::default()
+        }));
+        let note = rx.recv().await.expect("resources push");
+        assert_eq!(note.method, SESSION_RESOURCES);
+        assert_eq!(note.params["session_id"], "s0");
+        drop(slot);
+        for _ in 0..8 {
+            tokio::time::advance(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
+        }
     }
 }
 
