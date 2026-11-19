@@ -9,8 +9,8 @@ use rmcp::transport::auth::CredentialStore;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use super::resource_cache::{ResourceCache, parse_resource_content};
 use super::config::{McpServerConfig, McpTransportKind};
+use super::resource_cache::{ResourceCache, parse_resource_content};
 use crate::config::McpOAuthConfig;
 use crate::credential_store::OAuthCredentialStore;
 use xylitol_plugin_sdk::mcp::McpResourceContent;
