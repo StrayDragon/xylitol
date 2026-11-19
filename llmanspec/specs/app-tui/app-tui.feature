@@ -42,6 +42,9 @@
       那么 编辑器插入落盘路径文本且路径经 Driver 暂存
       当 以主机泵注入含连接态的资源快照后提交 "/mcp"
       那么 MCP 面板槽打开且列出连接态且未因开面板 abort agent
+  @req:r3324
+  规则: mcp-panel-authorize-slot-lifecycle
+    `/mcp` 面板的授权动作 须 请求 MCP 授权意图并保留面板打开；同一事件的关槽 不得 取消刚请求的授权意图。授权流程成功 须 关闭面板并以滚动提示暴露授权 URL 与过期时间；失败 须 保持面板并以滚动提示暴露失败原因供重试。由组件测试覆盖（harness 单测），不扩 BDD step。
 
   @req:r3338
   规则: overlay-focus-single-truth

@@ -106,7 +106,7 @@ impl UiRoot {
                 McpAction::Close => true,
                 McpAction::Authorize(server) => {
                     self.intents.request(UiIntent::McpOAuthStart(server));
-                    true
+                    false
                 }
                 McpAction::None => false,
             },
