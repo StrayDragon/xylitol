@@ -169,20 +169,6 @@ impl LogSessionStore {
         project::load_branch(self, session_id, leaf_id).await
     }
 
-    pub async fn build_context_entries(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
-        project::build_context_entries(self, session_id).await
-    }
-
-    pub async fn build_session_context(
-        &self,
-        session_id: &str,
-    ) -> Result<xylitol_plugin_sdk::session::SessionContext, XySessionStoreError> {
-        project::build_session_context(self, session_id).await
-    }
-
     pub async fn commit_compaction(
         &self,
         session_id: &str,
@@ -193,21 +179,6 @@ impl LogSessionStore {
 
     pub async fn list(&self) -> Result<Vec<String>, XySessionStoreError> {
         project::list_session_ids(self).await
-    }
-
-    pub async fn delete_session(&self, session_id: &str) -> Result<(), XySessionStoreError> {
-        XySessionStore::delete_session(self, session_id).await
-    }
-
-    pub async fn exists(&self, session_id: &str) -> bool {
-        XySessionStore::exists(self, session_id).await
-    }
-
-    pub async fn session_profile(
-        &self,
-        session_id: &str,
-    ) -> Result<SessionProfile, XySessionStoreError> {
-        XySessionStore::session_profile(self, session_id).await
     }
 
     pub async fn set_session_profile(
