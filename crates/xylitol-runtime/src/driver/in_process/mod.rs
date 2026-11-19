@@ -1058,3 +1058,119 @@ pub fn utf8_emit_len(buf: &[u8]) -> usize {
         },
     }
 }
+
+#[cfg(test)]
+mod persist_trust_tests {
+    use std::sync::Arc;
+
+    use xylitol_plugin_sdk::XySessionStore;
+
+    use crate::agent::runtime::baseline::RuntimeBaseline;
+    use crate::driver::in_process::XyInProcessDriver;
+    use crate::driver::types::ProjectTrustMode;
+    use crate::test_support::{MemoryStore, NoopSink};
+
+    fn trust_driver(cwd: &str, store: Arc<dyn XySessionStore>) -> XyInProcessDriver {
+        let baseline = RuntimeBaseline {
+            store: store.clone(),
+            sink: Arc::new(NoopSink),
+            permission: crate::permission::allow_all_permission(),
+            hook_bus: None,
+            model_registry: crate::agent::ModelRegistry::new(),
+            model_builder: crate::test_support::dummy_model_builder(),
+            cwd: cwd.to_string(),
+            steering_mode: crate::agent::capabilities::QueueMode::default(),
+            follow_up_mode: crate::agent::capabilities::QueueMode::default(),
+            compaction_settings: None,
+            compaction_factory: xylitol_plugin_sdk::noop_compaction_factory(),
+            tools: crate::agent::tools::ToolSet::empty(),
+            system_prompt: None,
+            context_files: Vec::new(),
+            append_system_prompt: Vec::new(),
+            skills: Vec::new(),
+            batch_mode: xylitol_plugin_sdk::XyBatchMode::Sequential,
+        };
+        XyInProcessDriver::new(baseline.materialize_runtime(), store)
+    }
+
+    fn canonical(path: &std::path::Path) -> String {
+        std::fs::canonicalize(path)
+            .expect("canonicalize")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[tokio::test]
+    async fn trust_cwd_without_reload_state_uses_agent_cwd() {
+        let project = tempfile::tempdir().expect("project dir");
+        let agent_dir = tempfile::tempdir().expect("agent dir");
+        let cwd = project.path().to_string_lossy().into_owned();
+        let mut driver = trust_driver(&cwd, Arc::new(MemoryStore::new()));
+        driver.reload_agent_dir = Some(agent_dir.path().to_path_buf());
+        let report = driver
+            .persist_project_trust(ProjectTrustMode::TrustCwd)
+            .expect("trust cwd must persist");
+        assert!(report.trusted);
+        let expected = canonical(project.path());
+        assert_eq!(report.saved_path.as_deref(), Some(expected.as_str()));
+        let mgr = crate::trust::TrustManager::new(agent_dir.path().to_path_buf());
+        assert_eq!(mgr.is_project_trusted(&expected), Some(true));
+    }
+
+    #[tokio::test]
+    async fn trust_parent_persists_parent_decision() {
+        let root = tempfile::tempdir().expect("root dir");
+        let agent_dir = tempfile::tempdir().expect("agent dir");
+        let project = root.path().join("proj");
+        std::fs::create_dir_all(&project).expect("create project");
+        let cwd = project.to_string_lossy().into_owned();
+        let mut driver = trust_driver(&cwd, Arc::new(MemoryStore::new()));
+        driver.enable_reload_state(project.clone(), agent_dir.path().to_path_buf(), false);
+        let report = driver
+            .persist_project_trust(ProjectTrustMode::TrustParent)
+            .expect("trust parent must persist");
+        assert!(report.trusted);
+        let expected_root = canonical(root.path());
+        assert_eq!(report.saved_path.as_deref(), Some(expected_root.as_str()));
+        let mgr = crate::trust::TrustManager::new(agent_dir.path().to_path_buf());
+        assert_eq!(mgr.is_project_trusted(&expected_root), Some(true));
+        assert_eq!(mgr.is_project_trusted(&canonical(&project)), Some(true));
+    }
+
+    #[tokio::test]
+    async fn trust_parent_at_filesystem_root_errors() {
+        let agent_dir = tempfile::tempdir().expect("agent dir");
+        let mut driver = trust_driver("/", Arc::new(MemoryStore::new()));
+        driver.enable_reload_state(
+            std::path::PathBuf::from("/"),
+            agent_dir.path().to_path_buf(),
+            false,
+        );
+        let err = driver
+            .persist_project_trust(ProjectTrustMode::TrustParent)
+            .expect_err("filesystem root has no parent to trust");
+        let text = err.to_string();
+        assert!(text.contains("no parent folder to trust"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn deny_persists_untrusted_decision() {
+        let project = tempfile::tempdir().expect("project dir");
+        let agent_dir = tempfile::tempdir().expect("agent dir");
+        let cwd = project.path().to_string_lossy().into_owned();
+        let mut driver = trust_driver(&cwd, Arc::new(MemoryStore::new()));
+        driver.enable_reload_state(
+            project.path().to_path_buf(),
+            agent_dir.path().to_path_buf(),
+            false,
+        );
+        let report = driver
+            .persist_project_trust(ProjectTrustMode::Deny)
+            .expect("deny must persist");
+        assert!(!report.trusted);
+        let expected = canonical(project.path());
+        assert_eq!(report.saved_path.as_deref(), Some(expected.as_str()));
+        let mgr = crate::trust::TrustManager::new(agent_dir.path().to_path_buf());
+        assert_eq!(mgr.is_project_trusted(&expected), Some(false));
+    }
+}

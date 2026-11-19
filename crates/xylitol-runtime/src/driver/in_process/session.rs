@@ -327,9 +327,11 @@ mod switch_hub_release_tests {
     use crate::test_support::{MemoryStore, NoopSink};
     use async_trait::async_trait;
     use futures::StreamExt;
+    use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::Mutex as StdMutex;
     use xylitol_plugin_sdk::plugin_events::SessionPrepareResult;
+    use xylitol_plugin_sdk::session::SessionProfile;
     use xylitol_plugin_sdk::{SessionPrepareHub, SessionPrepareView, XySessionStore};
 
     struct RecordingHub {
@@ -673,5 +675,176 @@ mod switch_hub_release_tests {
             "idle new_session must succeed: {created:?}"
         );
         assert_eq!(hub.released(), vec!["a".to_string()]);
+    }
+
+    struct ProfileStore {
+        inner: MemoryStore,
+        profiles: StdMutex<HashMap<String, SessionProfile>>,
+    }
+
+    impl ProfileStore {
+        fn profile(&self, session_id: &str) -> SessionProfile {
+            self.profiles
+                .lock()
+                .unwrap()
+                .get(session_id)
+                .cloned()
+                .unwrap_or_default()
+        }
+    }
+
+    #[async_trait]
+    impl XySessionStore for ProfileStore {
+        async fn exists(&self, session_id: &str) -> bool {
+            XySessionStore::exists(&self.inner, session_id).await
+        }
+
+        async fn load_entries(
+            &self,
+            session_id: &str,
+        ) -> Result<
+            Vec<xylitol_plugin_sdk::session::SessionEntry>,
+            xylitol_plugin_sdk::error::XySessionStoreError,
+        > {
+            XySessionStore::load_entries(&self.inner, session_id).await
+        }
+
+        async fn append_session_entry(
+            &self,
+            session_id: &str,
+            entry: &xylitol_plugin_sdk::session::SessionEntry,
+        ) -> Result<(), xylitol_plugin_sdk::error::XySessionStoreError> {
+            XySessionStore::append_session_entry(&self.inner, session_id, entry).await
+        }
+
+        async fn build_session_context(
+            &self,
+            session_id: &str,
+        ) -> Result<
+            xylitol_plugin_sdk::session::SessionContext,
+            xylitol_plugin_sdk::error::XySessionStoreError,
+        > {
+            XySessionStore::build_session_context(&self.inner, session_id).await
+        }
+
+        async fn create(
+            &self,
+            id: &str,
+            cwd: Option<&str>,
+            parent: Option<&str>,
+        ) -> Result<(), xylitol_plugin_sdk::error::XySessionStoreError> {
+            XySessionStore::create(&self.inner, id, cwd, parent).await
+        }
+
+        async fn fork(
+            &self,
+            parent_id: &str,
+            child_id: &str,
+            at_entry_id: &str,
+            position: xylitol_plugin_sdk::session::ForkPosition,
+        ) -> Result<(), xylitol_plugin_sdk::error::XySessionError> {
+            XySessionStore::fork(&self.inner, parent_id, child_id, at_entry_id, position).await
+        }
+
+        fn set_leaf(&self, session_id: &str, entry_id: Option<&str>) {
+            XySessionStore::set_leaf(&self.inner, session_id, entry_id);
+        }
+
+        fn leaf_id(&self, session_id: &str) -> Option<String> {
+            XySessionStore::leaf_id(&self.inner, session_id)
+        }
+
+        async fn session_profile(
+            &self,
+            session_id: &str,
+        ) -> Result<SessionProfile, xylitol_plugin_sdk::error::XySessionStoreError> {
+            Ok(self.profile(session_id))
+        }
+
+        async fn set_session_profile(
+            &self,
+            session_id: &str,
+            profile: SessionProfile,
+        ) -> Result<(), xylitol_plugin_sdk::error::XySessionStoreError> {
+            self.profiles
+                .lock()
+                .unwrap()
+                .insert(session_id.to_string(), profile);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn switch_session_fingerprint_mismatch_notices_and_rewrites_profile() {
+        let hub = RecordingHub::new();
+        let model: Arc<dyn xylitol_plugin_sdk::XyModel> = Arc::new(HoldModel {
+            gate: Arc::new(tokio::sync::Notify::new()),
+        });
+        let store = Arc::new(ProfileStore {
+            inner: MemoryStore::new(),
+            profiles: StdMutex::new(HashMap::new()),
+        });
+        store.profiles.lock().unwrap().insert(
+            "b".into(),
+            SessionProfile {
+                name: Some("stored".into()),
+                fingerprint: Some("fp-stored".into()),
+            },
+        );
+        let mut driver = release_test_driver_with(hub, model, store.clone());
+        driver.store.create("b", None, None).await.expect("seed b");
+        driver.agent.bind_session("a").expect("bind a");
+        driver.set_session_profile(SessionProfile {
+            name: Some("current".into()),
+            fingerprint: Some("fp-current".into()),
+        });
+        let switched = driver.switch_session("b").await;
+        assert!(
+            switched.is_ok(),
+            "profile mismatch must not block the switch: {switched:?}"
+        );
+        let notice = driver
+            .take_profile_mismatch_notice()
+            .expect("fingerprint mismatch must raise a notice");
+        assert!(notice.contains("stored"), "{notice}");
+        assert!(notice.contains("current"), "{notice}");
+        assert_eq!(
+            store.profile("b"),
+            SessionProfile {
+                name: Some("current".into()),
+                fingerprint: Some("fp-current".into()),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn switch_session_name_only_profile_diff_rewrites_without_notice() {
+        let hub = RecordingHub::new();
+        let model: Arc<dyn xylitol_plugin_sdk::XyModel> = Arc::new(HoldModel {
+            gate: Arc::new(tokio::sync::Notify::new()),
+        });
+        let store = Arc::new(ProfileStore {
+            inner: MemoryStore::new(),
+            profiles: StdMutex::new(HashMap::new()),
+        });
+        store.profiles.lock().unwrap().insert(
+            "b".into(),
+            SessionProfile {
+                name: Some("shared".into()),
+                fingerprint: None,
+            },
+        );
+        let mut driver = release_test_driver_with(hub, model, store.clone());
+        driver.store.create("b", None, None).await.expect("seed b");
+        driver.agent.bind_session("a").expect("bind a");
+        let current = SessionProfile {
+            name: Some("shared".into()),
+            fingerprint: Some("fp-current".into()),
+        };
+        driver.set_session_profile(current.clone());
+        let switched = driver.switch_session("b").await;
+        assert!(switched.is_ok(), "name-only diff must switch: {switched:?}");
+        assert!(driver.take_profile_mismatch_notice().is_none());
+        assert_eq!(store.profile("b"), current);
     }
 }
