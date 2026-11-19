@@ -112,7 +112,14 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ### stage 四档
 
-stage 四档：`draft`（仅 proposal）、`designed`（+design）、`planned`（+tasks）、`full`（+attach 绑定）。已有 `proposal+design+tasks` 仍停在 `planned` 时：通常是未 attach，执行 `llman-sdd change attach <id>`（不要新建 `changes/<id>/specs/`）；attach 后应为 `full`。
+| stage | 工件 |
+|---|---|
+| `draft` | 仅 proposal |
+| `designed` | proposal + design |
+| `planned` | proposal + design + tasks |
+| `full` | + attach 绑定 |
+
+已有 `proposal+design+tasks` 仍停在 `planned` 时：通常是未 attach，执行 `llman-sdd change attach <id>`（不要新建 `changes/<id>/specs/`）；attach 后应为 `full`。
 
 ### depends_on
 
@@ -129,6 +136,6 @@ stage 四档：`draft`（仅 proposal）、`designed`（+design）、`planned`�
 ## 指针
 
 - 架构 SSOT（分层、不变量、seam、Xy\*、Provider 适配）：`src/AGENTS.md`。
-- 产品行为合约（已落地 MUST/SHALL）：`llmanspec/specs/`。
+- 产品行为合约（现行需求全集）：`llmanspec/specs/`。
 - 命令与测试：根 `AGENTS.md`「命令与验证」/「提交与测试」段。
 - change 临时调研落点：上文「research（change 附属调研）」。

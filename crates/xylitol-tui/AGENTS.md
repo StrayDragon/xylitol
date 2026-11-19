@@ -79,8 +79,8 @@
 
 | 验什么 | 在哪跑 | 命令 |
 |---|---|---|
-| 包组件测试（按键到状态 / snapshot / 时序），口径同 skill `xylitol-dev`（`references/tui-harness.md`） | 本包 `tests/` | `just test-tui` |
-| 真终端 E2E（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn `agent_demo`；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
+| 包组件测试（按键到状态 / snapshot / 时序），口径同 skill `xylitol-dev`（`references/tui-harness.md`） | 本包 `tests/` | `just test-tui`（根） |
+| 真终端 E2E（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn `agent_demo`；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（根；或 `-pty` / `-tmux`） |
 | 仓库全量门禁（不含真终端 E2E） | 全仓 | `just qa` |
 | 全量门禁 + 真终端 E2E | 全仓 | `just qa-e2e` |
 | 产品 host / `XyEvent` / slash 接线 | `crates/xylitol-app-tui/` 产品测 | 随产品测，不替代上表 |
@@ -89,7 +89,7 @@
 
 - 包 E2E / `agent_demo*`：引擎 + 通用组件 + 真终端协议；文案以 demo 自身为准。
 - 产品 TUI：Driver / bridge / layout / 键位走应用端 harness。真终端 E2E 另有隔离 config 的产品 Fake smoke，日常不绑真 API。
-- 真终端 E2E 全 `#[ignore]`；缺 tmux 用 `just test-tui-e2e-pty`。真终端就绪针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs` 常量，改 demo 首帧文案须同步）。操作细则：`xylitol-dev` skill（`references/tui-harness.md`）。
+- 真终端 E2E 全 `#[ignore]`；缺 tmux 用 `just test-tui-e2e-pty`（根）。真终端就绪针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs` 常量，改 demo 首帧文案须同步）。操作细则：`xylitol-dev` skill（`references/tui-harness.md`）。
 
 ## Specs
 
