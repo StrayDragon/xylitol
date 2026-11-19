@@ -100,7 +100,7 @@
 | 改组件 / 引擎 / 扩测试 | `xylitol-dev`（`references/tui-harness.md`）（落点）；边界见上「验证」 |
 | 扩展 Editor 补全触发（`/`、`@`、`$`、`^` 等） | `CompletionSource` + `set_completion_sources`（completion 模块）；勿在 editor 模块硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 择优吸收 bugfix；默认保留本文件硬约束与代码 |
-| 改产品 TUI 端 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `crates/xylitol-app-tui/src/DESIGN.md`；**勿**默认改 `agent_demo` 当产品落地 |
+| 改产品 TUI 端 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `crates/xylitol-app-tui/src/DESIGN.md`；勿默认改 `agent_demo` 当产品落地 |
 | 改包引擎 / 通用组件 / demo | `xylitol-dev`（`references/tui-harness.md`）；包内 `just demo-tui` 仅验证包能力（demo recipe 在 `crates/xylitol-tui/justfile`，根 justfile 不收 demo） |
 | 改色板 | 只改 app `DESIGN.md` 并对齐 `Palette`；`just qa-check-tui-tokens` |
 | 日常 / 真终端门禁 | 上「验证」表 |

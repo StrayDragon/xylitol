@@ -1,5 +1,5 @@
 ---
-brief: "TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真终端 E2E tmux+PTY / agent_demo）"
+brief: "TUI 分层验证 harness（按键到状态 / snapshot INSTA_UPDATE / 真终端 E2E tmux+PTY / agent_demo）"
 ---
 
 # TUI 分层自动验证（harness）
@@ -12,13 +12,13 @@ brief: "TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真
 
 | 验证类型 | 验证什么 | 默认命令 / 落点 |
 |---|---|---|
-| 按键→状态 | 组件交互、光标、提交、列表选择 | `cargo test -p xylitol-tui --test harness_test`；`tests/support/mod.rs::TuiTestHarness` |
+| 按键到状态 | 组件交互、光标、提交、列表选择 | `cargo test -p xylitol-tui --test harness_test`；`tests/support/mod.rs::TuiTestHarness` |
 | snapshot | 整屏布局 / 换行 / 颜色回归 | `cargo test -p xylitol-tui --test snapshot_test`；`tests/snapshots/` |
 | 时序 | paste-burst、debounce、动画 | 同步：`Instant` 注入或 `MockClock`；async：`#[tokio::test(start_paused = true)]` |
 | proptest | Editor 崩溃边界与不变量 | **未落地**（落地时补 `crates/xylitol-tui/tests/property_test.rs`） |
 | 真终端 E2E | 真 PTY / tmux · **agent_demo** | `#[ignore]`；`just test-tui-e2e`；就绪针 `DEMO_READY_NEEDLE`（见包 `AGENTS.md`「验证」） |
 
-日常改组件：**先「按键→状态」，布局变了再 snapshot**；动时序必加时序用例；动 Editor 状态机考虑 proptest（落地后）；协议 / 真终端验证才上 E2E。
+日常改组件：**先「按键到状态」，布局变了再 snapshot**；动时序必加时序用例；动 Editor 状态机考虑 proptest（落地后）；协议 / 真终端验证才上 E2E。
 
 ## 标准验证回路
 
@@ -26,7 +26,7 @@ brief: "TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真
 
 ## 新增测试落点
 
-- **交互**：扩 `tests/harness_test.rs`（或就近既有文件）：`TuiTestHarness::new().mount(...).keys("...").render().assert_…`
+- **交互**：扩 `tests/harness_test.rs`（或就近既有文件）：`TuiTestHarness::new().mount(...).keys("...").render()` 加 assert 系列断言
 - **渲染回归**：扩 `tests/snapshot_test.rs`；接受：`INSTA_UPDATE=always cargo test -p xylitol-tui --test snapshot_test`（人工复核 `.snap`）
 - **时序**：**禁止 `thread::sleep`**。同步用 `Instant` / `MockClock`；async 用 `start_paused`
 - **不变量**：扩 `tests/property_test.rs`（proptest 落地后）
@@ -39,7 +39,7 @@ brief: "TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真
 - **prek trailing-whitespace** 会删 `.snap` 行尾空格；snapshot 空行不得留尾空格。
 - 宽度不变量失败是 `RenderError`，不是静默截断。
 - 真终端 E2E 失败先查环境（PTY / tmux）与就绪针，再查产品逻辑。
-- 应用端 harness **不替代**包侧按键→状态 / snapshot / 时序 / proptest；分工见包 `AGENTS.md`「验证」。
+- 应用端 harness **不替代**包侧按键到状态 / snapshot / 时序 / proptest；分工见包 `AGENTS.md`「验证」。
 
 ## 自检
 
