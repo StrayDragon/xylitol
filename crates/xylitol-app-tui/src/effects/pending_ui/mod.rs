@@ -330,7 +330,7 @@ mod tests {
             oauth_starts: Vec::new(),
         };
         session
-            .step(crate::host::HostEvent::Input(InputEvent::Key(
+            .step(HostEvent::Input(InputEvent::Key(
                 crossterm::event::KeyEvent::new(
                     crossterm::event::KeyCode::Char('a'),
                     crossterm::event::KeyModifiers::NONE,
@@ -364,7 +364,7 @@ mod tests {
             oauth_starts: Vec::new(),
         };
         session
-            .step(crate::host::HostEvent::Input(InputEvent::Key(
+            .step(HostEvent::Input(InputEvent::Key(
                 crossterm::event::KeyEvent::new(
                     crossterm::event::KeyCode::Char('a'),
                     crossterm::event::KeyModifiers::NONE,
