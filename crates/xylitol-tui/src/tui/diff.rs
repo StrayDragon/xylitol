@@ -148,43 +148,42 @@ impl<T: Terminal> TUI<T> {
     ) {
         let prev_viewport_top = self.previous_viewport_top;
 
-        if first_changed_in >= new_lines.len() as isize {
-            if self.previous_lines.len() > new_lines.len() {
-                let mut buf = String::from(BEGIN_RENDER_BATCH);
-                let target = new_lines.len().saturating_sub(1);
-                let current_screen = (self.hardware_cursor_row as isize
-                    - prev_viewport_top as isize)
-                    .clamp(0, height.saturating_sub(1) as isize);
-                let target_screen = target as isize - prev_viewport_top as isize;
-                let diff = target_screen - current_screen;
-                if diff > 0 {
-                    buf.push_str(&format!("\x1b[{}B", diff));
-                } else if diff < 0 {
-                    buf.push_str(&format!("\x1b[{}A", -diff));
-                }
-                buf.push('\r');
-                let extra = self.previous_lines.len() - new_lines.len();
-                let off = if new_lines.is_empty() { 0 } else { 1 };
-                if extra > 0 && off > 0 {
-                    buf.push_str(&format!("\x1b[{}B", off));
-                }
-                for i in 0..extra {
-                    buf.push_str("\r\x1b[2K");
-                    if i < extra - 1 {
-                        buf.push_str("\x1b[1B");
-                    }
-                }
-                let back = extra.saturating_sub(1) + off;
-                if back > 0 {
-                    buf.push_str(&format!("\x1b[{}A", back));
-                }
-                buf.push_str(END_RENDER_BATCH);
-                self.terminal.write(&buf);
-                self.cursor_row = target;
-                self.hardware_cursor_row = target;
-                self.previous_viewport_top = height.max(new_lines.len()).saturating_sub(height);
-                self.max_lines_rendered = self.max_lines_rendered.max(new_lines.len());
+        if first_changed_in >= new_lines.len() as isize
+            && self.previous_lines.len() > new_lines.len()
+        {
+            let mut buf = String::from(BEGIN_RENDER_BATCH);
+            let target = new_lines.len().saturating_sub(1);
+            let current_screen = (self.hardware_cursor_row as isize - prev_viewport_top as isize)
+                .clamp(0, height.saturating_sub(1) as isize);
+            let target_screen = target as isize - prev_viewport_top as isize;
+            let diff = target_screen - current_screen;
+            if diff > 0 {
+                buf.push_str(&format!("\x1b[{}B", diff));
+            } else if diff < 0 {
+                buf.push_str(&format!("\x1b[{}A", -diff));
             }
+            buf.push('\r');
+            let extra = self.previous_lines.len() - new_lines.len();
+            let off = if new_lines.is_empty() { 0 } else { 1 };
+            if extra > 0 && off > 0 {
+                buf.push_str(&format!("\x1b[{}B", off));
+            }
+            for i in 0..extra {
+                buf.push_str("\r\x1b[2K");
+                if i < extra - 1 {
+                    buf.push_str("\x1b[1B");
+                }
+            }
+            let back = extra.saturating_sub(1) + off;
+            if back > 0 {
+                buf.push_str(&format!("\x1b[{}A", back));
+            }
+            buf.push_str(END_RENDER_BATCH);
+            self.terminal.write(&buf);
+            self.cursor_row = target;
+            self.hardware_cursor_row = target;
+            self.previous_viewport_top = height.max(new_lines.len()).saturating_sub(height);
+            self.max_lines_rendered = self.max_lines_rendered.max(new_lines.len());
             return;
         }
 
@@ -198,25 +197,9 @@ impl<T: Terminal> TUI<T> {
         };
 
         let mut buf = String::from(BEGIN_RENDER_BATCH);
-        let mut hardware_cursor_row = self.hardware_cursor_row;
+        let hardware_cursor_row = self.hardware_cursor_row;
 
-        let mut prev_viewport_top = self.previous_viewport_top;
-        let prev_viewport_bottom = prev_viewport_top + height.saturating_sub(1);
-        if move_target > prev_viewport_bottom {
-            let current_screen_row = (hardware_cursor_row as isize - prev_viewport_top as isize)
-                .clamp(0, height.saturating_sub(1) as isize)
-                as usize;
-            let move_to_bottom = height - 1 - current_screen_row;
-            if move_to_bottom > 0 {
-                buf.push_str(&format!("\x1b[{}B", move_to_bottom));
-            }
-            let scroll = move_target - prev_viewport_bottom;
-            if scroll > 0 {
-                buf.push_str(&"\r\n".repeat(scroll));
-            }
-            prev_viewport_top += scroll;
-            hardware_cursor_row = move_target;
-        }
+        let prev_viewport_top = self.previous_viewport_top;
 
         let screen_row = move_target as isize - prev_viewport_top as isize;
         let cursor_diff = screen_row - (hardware_cursor_row as isize - prev_viewport_top as isize);
@@ -237,21 +220,13 @@ impl<T: Terminal> TUI<T> {
             buf.push_str(line);
         }
 
-        let mut final_cursor_row = end;
+        let final_cursor_row = end;
         if self.previous_lines.len() > new_lines.len() && !appended {
-            let content_end = new_lines.len().saturating_sub(1);
-            if end < content_end {
-                let move_down = content_end - end;
-                buf.push_str(&format!("\x1b[{}B", move_down));
-                final_cursor_row = content_end;
-            }
             let extra = self.previous_lines.len() - new_lines.len();
             for _ in 0..extra {
                 buf.push_str("\r\n\x1b[2K");
             }
-            if extra > 0 {
-                buf.push_str(&format!("\x1b[{}A", extra));
-            }
+            buf.push_str(&format!("\x1b[{}A", extra));
         }
 
         buf.push_str(END_RENDER_BATCH);

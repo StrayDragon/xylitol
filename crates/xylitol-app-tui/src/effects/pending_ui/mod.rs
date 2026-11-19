@@ -95,11 +95,12 @@ mod tests {
         ModelInfo, XyDriver, XyDriverError,
     };
     use crate::harness::{ScriptedDriver, TestTerminal};
-    use crate::host::HostSession;
+    use crate::host::{HostEvent, HostSession};
     use async_trait::async_trait;
     use xylitol_plugin_sdk::mcp::McpOAuthFlow;
     use xylitol_plugin_sdk::model::ContextTokenEstimate;
     use xylitol_protocol::Command;
+    use xylitol_tui::InputEvent;
 
     fn product_session() -> HostSession<TestTerminal> {
         HostSession::new_product_ui(TestTerminal::new(80, 24))
@@ -318,6 +319,65 @@ mod tests {
                 .iter()
                 .any(|notice| notice.contains("fork: get_messages failed"))
         );
+    }
+
+    #[tokio::test]
+    async fn mcp_panel_authorize_key_starts_flow_and_keeps_slot_open() {
+        let mut session = product_session();
+        mount_mcp_server_panel(&mut session);
+        let mut driver = OAuthDriver {
+            flow: None,
+            oauth_starts: Vec::new(),
+        };
+        session
+            .step(crate::host::HostEvent::Input(InputEvent::Key(
+                crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char('a'),
+                    crossterm::event::KeyModifiers::NONE,
+                ),
+            )))
+            .expect("authorize key step");
+        drain_pending_ui(&mut session, &mut driver).await;
+        assert_eq!(driver.oauth_starts, vec!["srv".to_string()]);
+        let root = session.ui_root().expect("ui root").clone();
+        assert!(root.borrow().mcp_open());
+        assert!(
+            scroll_notices(&session)
+                .iter()
+                .any(|notice| { notice.contains("mcp oauth start failed: srv") })
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_panel_authorize_success_closes_slot_with_url() {
+        let mut session = product_session();
+        mount_mcp_server_panel(&mut session);
+        let mut driver = OAuthDriver {
+            flow: Some(McpOAuthFlow {
+                flow_id: "f1".into(),
+                server: "srv".into(),
+                auth_url: "https://auth.example/start".into(),
+                redirect_uri: "http://127.0.0.1:1/cb".into(),
+                scopes: Vec::new(),
+                expires_at_ms: 1_700_000_000_000,
+            }),
+            oauth_starts: Vec::new(),
+        };
+        session
+            .step(crate::host::HostEvent::Input(InputEvent::Key(
+                crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char('a'),
+                    crossterm::event::KeyModifiers::NONE,
+                ),
+            )))
+            .expect("authorize key step");
+        drain_pending_ui(&mut session, &mut driver).await;
+        assert_eq!(driver.oauth_starts, vec!["srv".to_string()]);
+        let root = session.ui_root().expect("ui root").clone();
+        assert!(!root.borrow().mcp_open());
+        assert!(scroll_notices(&session).iter().any(|notice| {
+            notice.contains("MCP srv authorization URL: https://auth.example/start")
+        }));
     }
 
     #[tokio::test]
