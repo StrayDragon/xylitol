@@ -410,42 +410,17 @@ impl XyInProcessDriver {
             self.trust_audit.clone(),
         );
         let options = mgr.get_trust_options(&cwd, false);
-        let opt = match mode {
-            ProjectTrustMode::TrustCwd => options.first(),
+        let opt = find_trust_option(&options, mode).map_err(|_| match mode {
             ProjectTrustMode::TrustParent => {
-                options.iter().find(|o| o.label.starts_with("Trust parent"))
+                XyDriverError::invalid_input("no parent folder to trust")
             }
-            ProjectTrustMode::Deny => options.iter().find(|o| o.label == "Do not trust"),
-        };
-        let Some(opt) = opt else {
-            return Err(match mode {
-                ProjectTrustMode::TrustParent => {
-                    XyDriverError::invalid_input("no parent folder to trust")
-                }
-                _ => XyDriverError::invalid_input("trust option unavailable"),
-            });
-        };
+            _ => XyDriverError::invalid_input("trust option unavailable"),
+        })?;
         let audit = crate::trust::TrustAuditContext::new(
             crate::trust::TrustActor::Host,
             crate::trust::TrustSource::HostUnary,
         );
-        if !opt.updates.is_empty() {
-            mgr.apply_updates(&opt.updates, &audit)?;
-        } else {
-            let event = if opt.trusted {
-                "trust_grant"
-            } else {
-                "trust_deny"
-            };
-            mgr.record_decision(event, &cwd, Some(opt.trusted), &audit, "session_only");
-        }
-        let saved = opt.saved_path.clone().unwrap_or_else(|| cwd.clone());
-        let verb = if opt.trusted { "trusted" } else { "denied" };
-        Ok(ProjectTrustPersistReport {
-            trusted: opt.trusted,
-            saved_path: Some(saved),
-            message: format!("Project {verb}. {}", ProjectTrustPersistReport::RELOAD_HINT),
-        })
+        apply_trust_option(&mgr, opt, &cwd, &audit)
     }
 
     pub fn apply_prompt_resources(
@@ -505,6 +480,49 @@ impl XyInProcessDriver {
             .await
             .map_err(XyDriverError::from)
     }
+}
+
+fn find_trust_option<'a>(
+    options: &'a [crate::trust::TrustOption],
+    mode: ProjectTrustMode,
+) -> Result<&'a crate::trust::TrustOption, XyDriverError> {
+    match mode {
+        ProjectTrustMode::TrustCwd => options.first(),
+        ProjectTrustMode::TrustParent => {
+            options.iter().find(|o| o.label.starts_with("Trust parent"))
+        }
+        ProjectTrustMode::Deny => options.iter().find(|o| o.label == "Do not trust"),
+    }
+    .ok_or(XyDriverError::invalid_input("trust option unavailable"))
+}
+
+fn session_only_event(trusted: bool) -> &'static str {
+    if trusted {
+        "trust_grant"
+    } else {
+        "trust_deny"
+    }
+}
+
+fn apply_trust_option(
+    mgr: &crate::trust::TrustManager,
+    opt: &crate::trust::TrustOption,
+    cwd: &str,
+    audit: &crate::trust::TrustAuditContext,
+) -> Result<ProjectTrustPersistReport, XyDriverError> {
+    if !opt.updates.is_empty() {
+        mgr.apply_updates(&opt.updates, audit)?;
+    } else {
+        let event = session_only_event(opt.trusted);
+        mgr.record_decision(event, cwd, Some(opt.trusted), audit, "session_only");
+    }
+    let saved = opt.saved_path.clone().unwrap_or_else(|| cwd.to_string());
+    let verb = if opt.trusted { "trusted" } else { "denied" };
+    Ok(ProjectTrustPersistReport {
+        trusted: opt.trusted,
+        saved_path: Some(saved),
+        message: format!("Project {verb}. {}", ProjectTrustPersistReport::RELOAD_HINT),
+    })
 }
 
 fn bind_session_or_err(
