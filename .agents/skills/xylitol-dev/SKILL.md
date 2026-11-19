@@ -39,7 +39,7 @@ description: >-
 - **全量门禁 `just qa`**；需要真终端（PTY / tmux）再加 `just qa-e2e`。门禁组成以 `justfile` 为 SSOT，勿在本 skill 内联枚举；非变更门禁脚本 `scripts/check_*.py` MUST 经 wiring 进 `qa`。
 - **单一真值**：规则（稳定边界）进 `AGENTS.md`；how-to 进本 skill；行为合约进 `llmanspec/specs/`。同一事实只在一处写全，他处用指针。
 - **提交** Conventional Commits。
-- **试验**统一 `lab_` 前缀；禁止再引入 `evidence_` / `experiment_`。
+- **试验**统一 `lab_` 前缀，不引入其他前缀。
 
 ## 家族与命名
 

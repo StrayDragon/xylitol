@@ -17,29 +17,31 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ### proposal（Change Proposal Frontmatter SSOT）
 
-- **Change ID 格式**：`c{priority}-{verb}-{subject}`（可选机读化：`llmanspec/config.yaml` 的 `change_id.pattern` / `change_id.template`；未配置时行为与现状一致）。
-  - `verb` ∈ `add` / `update` / `remove` / `refactor` / `fix`（新 change 五选一；冻结档案存在历史 verb，不作范本）。
-  - `priority` 为整数。**建议**用 5 的倍数（c05/c10/c1200）——目的是**预留加塞间隙**，方便后续插队；**非**强制 5 倍数。需要插队时直接占用相邻空位。priority **MUST 唯一**。预览下一个可用号：`llman-sdd change next-id`；`change new --from … --dry-run` 只渲染 id 不落盘。
-- **priority 是建议性排序**：实际执行先沿 `depends_on` 依赖边，priority 仅作并列时的 tiebreaker。
-- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter。合法字段以 `llman-sdd` 工具 schema 为准：`depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_branch` / `base_sha` / `needs_specs_change`；`status`、`title`、`priority`、`author` 等会被 `llman-sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）。
-- **依赖门禁**：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
-- **原子性**：每个 change 独立可校验、可归档。
+- Change ID 格式：`c{priority}-{verb}-{subject}`（可选机读化：`llmanspec/config.yaml` 的 `change_id.pattern` / `change_id.template`；未配置时行为与现状一致）。
+  - `verb` 取 `add` / `update` / `remove` / `refactor` / `fix`（新 change 五选一；冻结档案存在历史 verb，不作范本）。
+  - `priority` 为整数，建议用 5 的倍数（c05/c10/c1200）预留加塞间隙，非强制；需要插队时直接占用相邻空位。priority 必须唯一。预览下一个可用号：`llman-sdd change next-id`；`change new --from <id> --dry-run` 只渲染 id 不落盘。
+- priority 是建议性排序：实际执行先沿 `depends_on` 依赖边，priority 仅作并列时的 tiebreaker。
+- frontmatter：每个 `proposal.md` 必须含 YAML frontmatter。合法字段以 `llman-sdd` 工具 schema 为准：`depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_branch` / `base_sha` / `needs_specs_change`；`status`、`title`、`priority`、`author` 等会被 `llman-sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）。
+- 依赖门禁：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
+- 原子性：每个 change 独立可校验、可归档。
 
 ### spec（capability 命名）
 
-- spec 目录名 = **capability**：领域名词、kebab-case，描述 **WHAT**（不写动作）。
-  例：`runtime-config`（非 add-config）、`agent-runtime`（非 add-agent-loop）、`user-experience`。
-- **capability 前缀按 crate**（实测分布，normative；历史 `app-*` / `agent-*` / `infra-*` 名可并存）：
-  - `package-tui-*` — `crates/xylitol-tui`
-  - `provider-openai*` — `plugins/xylitol-official-plugin-provider-openai`（OpenAI 方言 + 共享 BDD；Anthropic 方言在 `plugins/xylitol-official-plugin-provider-anthropic`）
-  - `app-tui-*` — `crates/xylitol-app-tui`；可多 capability，禁止把新产品合约堆进单体 `app-tui`
-  - `agent-*` / `runtime-*` / `domain-*` — `crates/xylitol-runtime`
-  - `infra-*` — 官方插件（`plugins/xylitol-official-plugin-*`）与根包接线
-  - `protocol-*` — `crates/xylitol-plugin-sdk`（词表）/ `crates/xylitol-protocol`（信封）
-  - `server-*` — `crates/xylitol-serve`
-  - `cli-*` — 根包 `xylitol` CLI
-  - `test-*` — 测试基础设施（BDD harness、fake provider、qa-gate…）
-  - `workspace-*` / `build-*` / `layer-*` / `user-*` / `architecture` — 仓库 meta / 跨层
+- spec 目录名即 capability：领域名词、kebab-case，描述 WHAT（不写动作）。例：`runtime-config`（非 add-config）、`agent-runtime`（非 add-agent-loop）、`user-experience`。
+- capability 前缀按 crate（normative；既有 `app-*` / `agent-*` / `infra-*` 名可并存）：
+
+| 前缀 | 落点 |
+|---|---|
+| `package-tui-*` | `crates/xylitol-tui` |
+| `provider-openai*` | `plugins/xylitol-official-plugin-provider-openai`（OpenAI 方言 + 共享 BDD；Anthropic 方言在 `plugins/xylitol-official-plugin-provider-anthropic`） |
+| `app-tui-*` | `crates/xylitol-app-tui`（可多 capability，不把新产品合约堆进单体 `app-tui`） |
+| `agent-*` / `runtime-*` / `domain-*` | `crates/xylitol-runtime` |
+| `infra-*` | 官方插件（`plugins/xylitol-official-plugin-*`）与根包接线 |
+| `protocol-*` | `crates/xylitol-plugin-sdk`（词表）/ `crates/xylitol-protocol`（信封） |
+| `server-*` | `crates/xylitol-serve` |
+| `cli-*` | 根包 `xylitol` CLI |
+| `test-*` | 测试基础设施（BDD harness、fake provider、qa gate） |
+| `workspace-*` / `build-*` / `layer-*` / `user-*` / `architecture` | 仓库 meta / 跨层 |
 
 ### tasks
 
@@ -48,81 +50,80 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ### research（change 附属调研）
 
-- **临时 / change 作用域调研**（选型对照、一手摘录、仅对本 change propose/design 有意义、易随决策过期）MUST 放在 `llmanspec/changes/<id>/research/<topic>.md`（随 change 进 `archive/`）。
-- 产出是 Change 文档，**不是** live specs；关键结论 SHOULD 摘要回写 `proposal.md`「Further Notes」（附文件指针）。
-- 跨 change 仍常引用的耐久底稿：留在已归档 change 的 `research/` 或 `llmanspec/delayed-changes/<topic>/research/`；**不得**在仓外平行文档树堆笔记。
+- 临时 / change 作用域调研（选型对照、一手摘录、仅对本 change propose/design 有意义、易随决策过期）必须放在 `llmanspec/changes/<id>/research/<topic>.md`（随 change 进 `archive/`）。
+- 产出是 Change 文档，不是 live specs；关键结论宜摘要回写 `proposal.md`「Further Notes」（附文件指针）。
+- 跨 change 仍常引用的耐久底稿：留在已归档 change 的 `research/` 或 `llmanspec/delayed-changes/<topic>/research/`；不得在仓外平行文档树堆笔记。
 
 ## 语言
 
-- spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。`规则:` 标题用术语表标准词写需求句。嵌套 `场景:` 名写这一例在测什么的独立中文名；不得英文 kebab，不得复制规则标题。
-- **单轨 feature-as-spec**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；validate 只读取 `.feature`。文件头部注释 `# language:` 与 `# purpose:` 必备；capability 由 `specs/<capability>/` 目录名承载。
-- 场景语义（原生分层，完整格式以 `llman-sdd-propose` / `llman-sdd-ff` skill 内嵌 feature-contract 为 SSOT）：`@req:<id`> 挂 `规则:` 块头 = 全局唯一需求句柄（validate 查重）；嵌套 `场景:`（假如/当/那么）= 可执行示例，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；无嵌套场景 = 裸规则（review `pending` 计量；无法程序化表达的需求才保留，理由记 proposal/design）。增删改既有 `规则:` 块 = WARNING 报告制，不阻断 validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
-- **情态动词词表（对齐 STC 简明技术中文词表强度词条）**：约束 statement 用中文情态——要求 `必须`，否定 `不得`／`禁止`，推荐 `宜`；避免 `应`／`应当`／`应该`／`务必`／`一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
-- `背景:`（Background）MUST 紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
-- 在非默认 feature 分支直接编辑 live `.feature` → `llman-sdd change attach` → `llman-sdd change finalize`（自动合并进基准分支 + 归档改名 + 单提交；目标 `--into` > `base_branch` > 默认分支，方式 `--method` > `sdd.merge_method` 缺省 squash）。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。
+- spec 的 `purpose` / requirement statement / scenario 步骤必须中文；技术标识符（类型名、路径、命令、req_id）保留英文。`规则:` 标题用术语表标准词写需求句。嵌套 `场景:` 名写这一例在测什么的独立中文名；不得英文 kebab，不得复制规则标题。
+- 单轨 feature-as-spec：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；validate 只读取 `.feature`。文件头部注释 `# language:` 与 `# purpose:` 必备；capability 由 `specs/<capability>/` 目录名承载。
+- 场景语义完整格式以 `llman-sdd-propose` / `llman-sdd-ff` skill 内嵌 feature-contract 为 SSOT：
+  - `@req:<id>` 挂 `规则:` 块头，是全局唯一需求句柄（validate 查重）。
+  - 嵌套 `场景:`（假如/当/那么）是可执行示例，由 `tests/bdd` 的 `#[scenario]` 按精确名与步骤文本绑定。
+  - 无嵌套场景即裸规则（review `pending` 计量）；只有无法程序化表达的需求才保留，理由记 proposal / design。
+  - 增删改既有 `规则:` 块走 WARNING 报告制，不阻断 validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
+- 情态动词词表（对齐 STC 简明技术中文词表强度词条）：约束 statement 用中文情态——要求 `必须`，否定 `不得`／`禁止`，推荐 `宜`；避免 `应`／`应当`／`应该`／`务必`／`一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
+- `背景:`（Background）**必须**紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
+- 在非默认 feature 分支直接编辑 live `.feature`，随后 `llman-sdd change attach`、`llman-sdd change finalize`（自动合并进基准分支 + 归档改名 + 单提交；目标 `--into` 优先于 `base_branch`，再默认分支；方式 `--method` 优先于 `sdd.merge_method` 缺省 squash）。禁止 `solidify`、`change delta`、新建 `*.feature.delta.toon`。
 
 ## 版本化命名
 
-- 线协议与代码标识符 **MUST NOT** 带版本后缀（如 `v3`、`new_v3`、`V4`、`_v2`）。协议版本只用 `PROTOCOL_VERSION` 整数经 `host.describe` 宣告（具体值以 `crates/xylitol-protocol/src/message.rs` 为准，不在文档内记录）；字段级演进走可选字段与 `Unknown` 降级，不靠版本号分叉。
-- capability 名、scenario 名与步骤文本 **MUST NOT** 嵌入版本标签（如 `-v3` 后缀）。
+- 线协议与代码标识符不得带版本后缀（如 `v3`、`new_v3`、`V4`、`_v2`）。协议版本只用 `PROTOCOL_VERSION` 整数经 `host.describe` 宣告（具体值以 `xylitol-protocol` 代码为准，不在文档内记录）；字段级演进走可选字段与 `Unknown` 降级，不靠版本号分叉。
+- capability 名、scenario 名与步骤文本不得嵌入版本标签（如 `-v3` 后缀）。
 - 门禁：`scripts/check_no_version_names.py --check`，经 `just qa` 的 `check_*.py` glob 接线；白名单与排除规则见脚本。
 
 ## spec 约束层级（产品级优先）
 
-- requirement statement MUST 描述**产品可观察行为 / 数据契约**（WHAT），中文；**禁止硬约束代码组织**：具体路径、文件/模块名、类型名、行数、方法归属、迁移清单。
-- 例外——**大的组织方向**可保留：分层依赖方向、适配器边界、crate 边界、组合根职责、跨端同源（如产品 slash SSOT）。
+- requirement statement 必须描述产品可观察行为 / 数据契约（WHAT），中文；禁止硬约束代码组织：具体路径、文件/模块名、类型名、行数、方法归属、迁移清单。
+- 例外——大的组织方向可保留：分层依赖方向、适配器边界、crate 边界、组合根职责、跨端同源（如产品 slash SSOT）。
 - 代码组织演进（重构、改名、移动）不要求改 spec；spec 只随产品行为变化而变。
-- 已删除对象（类型/模块/方法）的引用条款随删除一并清理，不保留「防复活」清单（除非有真实回归风险）。
+- 已删除对象的引用条款随删除一并清理，不保留「防复活」清单（除非有真实回归风险）。
 
 ## spec 维护（产品级同步，直接编辑）
 
-- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）→ **直接编辑** live `.feature` 并直接 commit，**免 change 生命周期**（无需 attach / finalize / archive）。
-- 新增/变更**产品行为**仍走标准 change 流程（propose → apply → verify → archive）。
-- 直接编辑仍 MUST 过结构门禁：`llman-sdd validate <cap>`（或 `--all`，BDD-on 下含 runner check）与相关 BDD 测试绿。
+- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）：直接编辑 live `.feature` 并直接 commit，免 change 生命周期（无需 attach / finalize / archive）。
+- 新增/变更产品行为仍走标准 change 流程（propose、apply、verify、archive）。
+- 直接编辑仍必须过结构门禁：`llman-sdd validate <cap>`（或 `--all`，BDD-on 下含 runner check）与相关 BDD 测试绿。
 - 删除 req 时同步清理：`.feature` 的规则块与 `@req:` 验收场景、`tests/bdd` 的 scenario binding。
 
 ## change 操作门禁
 
-### finalize 提交序（MUST 知悉）
+### finalize 提交序（必须知悉）
 
-闭环收尾用 `finalize`：
+闭环收口用 `finalize`：
 
-```text
-实现 live specs + 代码（工作区可脏）
-→ llman-sdd change finalize <id> [--no-check]
-# finalize 自动：合并进基准分支（squash 缺省 → 目标分支单一收口 commit）+ 归档改名
-# + 单 git commit（`archive(sdd): <id>`，打包实现 diff + frontmatter + 改名）；
-# --no-commit 跳过自动提交（CI / hook 场景）
-```
+1. 实现 live specs + 代码（工作区可脏）。
+2. `llman-sdd change finalize <id> [--no-check]`；finalize 自动完成：合并进基准分支（缺省 squash，目标分支单一收口 commit）、归档改名、单 git commit（`archive(sdd): <id>`，打包实现 diff + frontmatter + 改名）。`--no-commit` 跳过自动提交（CI / hook 场景）。
 
-- `finalize` **不要求**干净树。
+- finalize 不要求干净树。
 - 审计仍可用：`git diff base_sha..HEAD` + `branch`。
 - 合并目标已被其他 worktree 占用时：输出 WARNING + 手动命令指引，不回滚 rename。
 - 仅密封（merge + rename）不收实现时用 `llman-sdd change archive <id>`；保留 feature 多 commit 历史可 `--method ff` 或配置 `sdd.merge_method: ff`。
 - 结构门禁先跑：`llman-sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / finalize。
-- `finalize`/`archive` 的 `--no-interactive`：接受并忽略。
+- `finalize` / `archive` 的 `--no-interactive`：接受并忽略。
 
-### 提交卫生（SHOULD）
+### 提交卫生
 
-1. **Draft 可独提或一批提**：可从 GitHub feature request 等意向一次 `change new` 多个草案并 `chore(sdd): draft …` 入库；**不**要求与实现同提。
-2. **闭环收尾优先 `finalize`**（单 `archive(sdd): <id>` auto commit），减少礼仪 commit。
-3. **产品 vs 流程**：实现用 `feat`/`fix`/`refactor`；SDD 礼仪用 `chore(sdd):` / `docs(sdd):`。
-4. **触碰生产代码的 archive / finalize 必须附实跑证据**：改动 `crates/`、`plugins/`、`src/`、`tests/` 非文档文件的 change，归档或闭环提交前 **必须**实跑目标 crate 的 `cargo nextest`（全量 `just qa` 更佳），tasks 里勾选的「套件绿」**不得**替代实跑输出；测试同步拖欠会造成 main 红色窗口（先例：c3347，勘误见其归档提案 2026-11-17 勘误节）。
+1. Draft 可独提或一批提：可从 GitHub feature request 等意向一次 `change new` 多个草案并 `chore(sdd): draft <topic>` 入库，不要求与实现同提。
+2. 闭环收尾优先 `finalize`（单 `archive(sdd): <id>` auto commit），减少礼仪 commit。
+3. 产品与流程分开：实现用 `feat` / `fix` / `refactor`；SDD 礼仪用 `chore(sdd):` / `docs(sdd):`。
+4. 触碰生产代码的 archive / finalize 必须附实跑证据：改动 `crates/`、`plugins/`、`src/`、`tests/` 非文档文件的 change，归档或闭环提交前必须实跑目标 crate 的 `cargo nextest`（全量 `just qa` 更佳），tasks 里勾选的「套件绿」不得替代实跑输出；测试同步拖欠会造成 main 红色窗口（先例：`c3347` 测试拖欠致 main 红，勘误见其归档提案）。
 
 ### stage 四档
 
-lifecycle v2 起 stage 为四档：`draft`（仅 proposal）→ `designed`（+design）→ `planned`（+tasks）→ `full`（+attach 绑定）。已有 `proposal+design+tasks` 仍停在 `planned` 时：通常是 **未 attach** → `llman-sdd change attach <id>`（不要新建 `changes/<id>/specs/`）。attach 后应为 `full`。
+stage 四档：`draft`（仅 proposal）、`designed`（+design）、`planned`（+tasks）、`full`（+attach 绑定）。已有 `proposal+design+tasks` 仍停在 `planned` 时：通常是未 attach，执行 `llman-sdd change attach <id>`（不要新建 `changes/<id>/specs/`）；attach 后应为 `full`。
 
 ### depends_on
 
-- `depends_on` 指向的 change **归档后**仍可用原 `change_id`（目录进 `archive/YYYY-MM-DD-*`）；apply 前确认依赖已归档或本分支已落地其行为。
+- `depends_on` 指向的 change 归档后仍可用原 `change_id`（目录进 `archive/YYYY-MM-DD-*`）；apply 前确认依赖已归档或本分支已落地其行为。
 
 ## delayed-changes（搁置提案）
 
-`llmanspec/delayed-changes/` 收纳**未启动**的搁置提案（可按 `tui/`、`models/`、`tools/` 等分类）：
+`llmanspec/delayed-changes/` 收纳未启动的搁置提案（可按 `tui/`、`models/`、`tools/` 等分类）：
 
-- park 内只放 proposal / design / tasks / research 等规划工件；**禁止** `specs/`（spec landing 只发生在 propose 之后）。
-- 启动实现 = 经 propose / ff 正式化迁回 `changes/`；**归档时必须删除 delayed 副本**（一 id 一处真值）。
+- park 内只放 proposal / design / tasks / research 等规划工件；禁止 `specs/`（spec landing 只发生在 propose 之后）。
+- 启动实现 = 经 propose / ff 正式化迁回 `changes/`；归档时必须删除 delayed 副本（一 id 一处真值）。
 - 阶段性清淤时对照归档清点：已落地副本删除、已放弃提案删除、非现行格式的工件不留。
 
 ## 指针
