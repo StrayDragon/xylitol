@@ -4,7 +4,7 @@ brief: "日志与 provider-trace 窄读排障（obs-* 子命令 / spinner 卡住
 
 # 观测 / Inspect（省 token）
 
-**边界**：窄读与分组摘要。日志开关 / schema SSOT → `src/AGENTS.md`（Provider / 观测）与 `xylitol-official-plugin-obs`。
+**边界**：窄读与分组摘要。日志开关 / schema SSOT 见 `src/AGENTS.md`（Provider / 观测）与 `xylitol-official-plugin-obs`。
 **产品前瞻**：进程内底座在 `llmanspec/specs/infra-otel/`、`infra-observability/`。未兑现观测方向（infra lane / 采样）不在仓内维护，见 GitHub feature request。
 
 ## 硬约束（agent）
@@ -27,7 +27,7 @@ brief: "日志与 provider-trace 窄读排障（obs-* 子命令 / spinner 卡住
 
 1. 用户 / 会话已给出的 agent 数据目录
 2. 自定义 `HOME`（E2E 常用临时 `HOME`）
-3. 代码默认：`DefaultResourceLoader::default_agent_dir()` → `$HOME/.xylitol`（实现见 `crates/xylitol-runtime/src/resource/`；当前产品代码不读取 `XYLITOL_AGENT_DIR`）
+3. 代码默认：`DefaultResourceLoader::default_agent_dir()` 解析到 `$HOME/.xylitol`（实现见 `crates/xylitol-runtime/src/resource/`；当前产品代码不读取 `XYLITOL_AGENT_DIR`）
 
 ```bash
 # 示例：默认布局（仅当未另指定 agent_dir）
@@ -82,16 +82,16 @@ python3 scripts/inspect_provider_trace.py --request-id RID lag
 
 | 怀疑 | 顺序 |
 |------|------|
-| 日志开没开 / 写到哪 | 健康检查 → `summary` → `requests` |
+| 日志开没开 / 写到哪 | 依次跑健康检查、`summary`、`requests` |
 | 工具意图晚于 args | `lag`（可加 `REQUEST_ID`） |
-| react span | `turns` → `lifecycle` |
+| react span | 先 `turns` 再 `lifecycle` |
 | thinking/text 通道混 | `channel` + 少量 `recent` |
 | 级别日志 / TUI 埋点 | `tail -n 80 "$LOG_DIR/xylitol.log"` |
 | **busy spinner 卡住不动** | `just obs-tui-lag`（见下） |
 
 ### Spinner 冻结（host 环阻塞）
 
-复现：两 MCP 配置 → 进 TUI → 立刻发长 prompt；观察 Working 先静一下才转。
+复现：配两个 MCP，进 TUI，立刻发长 prompt；观察 Working 先静一下才转。
 
 ```bash
 XYLITOL_DEBUG=1 cargo run --   # 或 RUST_LOG=xylitol::lag=info,xylitol=warn
@@ -109,7 +109,7 @@ just obs-tui-lag
 | `host_mcp_poll_refresh` | settle 后刷 welcome 卡（读缓存快照） |
 | `host_drain_pending` / `host_tick` / `host_step_paint` / `host_wheel_paint` | 帧循环分段 |
 
-≥80ms → warn（约一帧 Loader）；≥16ms → info。
+达到 80ms 记 warn（约一帧 Loader）；达到 16ms 记 info。
 
 ### TUI 输入延迟（滚动卡住）
 
@@ -124,12 +124,12 @@ just obs-tui-lag
 
 排查 SOP：
 
-1. **产品内**：`host_wheel_paint` 分布——高→渲染内容成本；低→进 2
+1. **产品内**：`host_wheel_paint` 分布——高则是渲染内容成本，低则进第 2 步
 2. **事件侧**：`xylitol::wheel` delta 序列——±10 以上巨值=合并过度；gap 长尾=到达节拍
 3. **真链**：`tests/tui_e2e/pty.rs::pty_product_wheel_latency_signature`（`just test-tui-e2e-pty`）——首响 p50 劣化=host 外；正常=回 1/2
-4. **外部**：以上全清白→终端模拟器差异（换终端 cross-check）
+4. **外部**：以上全清白则是终端模拟器差异（换终端 cross-check）
 
-窄读：`XYLITOL_DEBUG=1 RUST_LOG=xylitol::lag=info,xylitol::wheel=debug` → `just obs-tui-lag`。AO 性能 lab 在 `crates/xylitol-app-tui/src/lab_ao_perf.rs`（`#[ignore]`）。
+窄读：`XYLITOL_DEBUG=1 RUST_LOG=xylitol::lag=info,xylitol::wheel=debug`，再跑 `just obs-tui-lag`。AO 性能 lab 在 `crates/xylitol-app-tui/src/lab_ao_perf.rs`（`#[ignore]`）。
 
 ### 阶段性基线（可选）
 
@@ -146,10 +146,10 @@ just obs-tui-lag
 ## 人类可选（agent 仍优先脚本）
 
 - DuckDB / `lnav`：对 **`$LOG_DIR/provider-trace.jsonl`** 即席查；勿把大结果贴回 agent。
-- 「漂亮时间线」→ 可选 OTLP/HTTP → Langfuse（配置 `[otel]`，默认 none）；当前默认产物仍是**专用 JSONL**，不是 OTLP。
+- 想要「漂亮时间线」：可选 OTLP/HTTP 走 Langfuse（配置 `[otel]`，默认 none）；当前默认产物仍是**专用 JSONL**，不是 OTLP。
 
 ## agent 约定
 
 - 先跑**一个**子命令，stdout 原样用于推理，再决定下一步。
 - `lag` / `lifecycle` / 健康检查已够则**停**，不要 `recent -n 500`。
-- 用户要 Jaeger / Langfuse → 指向 `[otel]` + `llmanspec/specs/infra-otel/`；未配置时短期用本文件读 JSONL。
+- 用户要 Jaeger / Langfuse 就指向 `[otel]` + `llmanspec/specs/infra-otel/`；未配置时短期用本文件读 JSONL。

@@ -28,7 +28,7 @@ brief: "工具链与依赖 bump（rustup / dated nightly / MSRV rust-version / c
    ```bash
    rustup toolchain install nightly-YYYY-MM-DD --profile minimal --component rustfmt,clippy
    ```
-   确认 `$(rustc --print sysroot)/lib/librustc_driver*.so` 和 `lib/rustlib/<host>/lib` 都在。中断安装会留下能 `--version` 却找不到 `core` 的残缺 rustc → uninstall、删目录、重装。
+   确认 `$(rustc --print sysroot)/lib/librustc_driver*.so` 和 `lib/rustlib/<host>/lib` 都在。中断安装会留下能 `--version` 却找不到 `core` 的残缺 rustc，须 uninstall、删目录、重装。
 4. **对齐 `rust-version`**
    写成当前 **stable**。禁止写成该 nightly 的 `x.y.z`（`1.100.0-nightly` 是 prerelease，Cargo MSRV 可能拒编）。启用 `#![feature]` 时在 commit 里写明声明已与 pin 分叉。
 5. **编译器门禁**
@@ -36,7 +36,7 @@ brief: "工具链与依赖 bump（rustup / dated nightly / MSRV rust-version / c
 6. **依赖**
    先改完 `Cargo.toml` 再 `cargo update`（或 `-p <crate> --precise`），然后核对 lock 里的版本。根 crate 写了精确 x.y.z 的直接依赖：同步到 lock 实际解析值。成员里 `"1"` / `"0.7"` 不要无故改成精确版。**大版本**另开一轮，不要和 rustc pin 捆在一起。
 7. **Cargo manifest lint**
-   `cargo::manual_readme` → 可删显式 `readme = "README.md"`。`cargo::unused_dependencies` → 真没用就删。
+   `cargo::manual_readme` 提示可删显式 `readme = "README.md"`；`cargo::unused_dependencies` 真没用就删。
 8. **验证**
    至少 clippy 绿；合并前 `just qa`。
 

@@ -29,7 +29,7 @@ brief: "仓库瘦身盘点（examples / scripts / 子包调用方交叉、删留
 ## 硬规则
 
 - **推荐列权威**。agent 的默认倾向（留事故门禁、留设计预览壳）不得覆盖人已填的「删」。
-- **一次性 lab → freeze `research/`**：对应 change 已在 `llmanspec/changes/archive/`（含 freeze 包内日期目录）时，把 `lab_*.rs` 放进该 change 的 `research/`，`7z u` 进 `freezed_changes.7z.archived`，再从工作树删除。找不到对应 change 才退回 git 历史。磁盘上只留 yaml 索引卡；日期目录在包内。
+- **一次性 lab 进 freeze `research/`**：对应 change 已在 `llmanspec/changes/archive/`（含 freeze 包内日期目录）时，把 `lab_*.rs` 放进该 change 的 `research/`，`7z u` 进 `freezed_changes.7z.archived`，再从工作树删除。找不到对应 change 才退回 git 历史。磁盘上只留 yaml 索引卡；日期目录在包内。
 - **`scripts/check_*.py` 不是免死金牌**。compiler / clippy 已覆盖、或人判定临时 patch 的，可以删；复杂度一类「找工具 + 阈值」可内联进 justfile（钉 crates.io 尽可能新的 pin）。删后改掉钉路径的 live spec。
 - **生成缓存**：`**/llmanspec/.context/` 进 gitignore；不要提交 pageindex。
 - **覆盖已迁到单测 / BDD 的维护 lab**：可以删 example，但必须改掉 spec「由 lab_foo 覆盖」那句，指向仍存在的测试。

@@ -20,8 +20,8 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 ## 复杂度门禁
 
 - **TUI 端（HARD，cccc）**：产品 TUI 入口协调者经 `just qa-check-complexity`：**cognitive≤32、cyclomatic≤27**。cargo-crap **不**替代（无 cognitive）。硬门禁见 `justfile`。
-- **质量雷达（软，本地）**：`just complexity`（cccc 认知 top）+ `just crap-duplicates` +（有 `lcov.info` 时）`just coverage-lcov` → `just crap`；单包用 `just crap-package <pkg>`（包 coverage + 包报告，无 baseline）。
-- **CRAP（CI 回归）**：`just coverage-lcov`（`cargo llvm-cov` **≥0.9.1**，矩阵同 `just test`）→ `just crap`。配置 `.cargo-crap.toml`（排除 generated/harness/tests；`epsilon=0.25` 容忍覆盖率抖动，真实回归通常 ≥1.0）。**不进 `just qa`**。`crap.yaml`：PR **CRAP 分数回归** + 评论；`crap-duplicates.yaml`：结构重复写入 job summary（信息性）。`fail-above=false`（存量超阈不挡合并）。
+- **质量雷达（软，本地）**：`just complexity`（cccc 认知 top）+ `just crap-duplicates` +（有 `lcov.info` 时）`just coverage-lcov` 再 `just crap`；单包用 `just crap-package <pkg>`（包 coverage + 包报告，无 baseline）。
+- **CRAP（CI 回归）**：`just coverage-lcov`（`cargo llvm-cov` **≥0.9.1**，矩阵同 `just test`）再 `just crap`。配置 `.cargo-crap.toml`（排除 generated/harness/tests；`epsilon=0.25` 容忍覆盖率抖动，真实回归通常 ≥1.0）。**不进 `just qa`**。`crap.yaml`：PR **CRAP 分数回归** + 评论；`crap-duplicates.yaml`：结构重复写入 job summary（信息性）。`fail-above=false`（存量超阈不挡合并）。
 - **signals（cargo-crap ≥0.10）**：`.cargo-crap.toml` 预留 `[signals]`；发布后用 `just crap-signals` / CI 接线。
 - **cccc 与 cargo-crap 分工**：cccc 保留 HARD（认知维度不可替代），CRAP 管覆盖×复杂度与重复。详见 `src/AGENTS.md`「复杂度与体量」。
 - 阈值与豁免细则：`src/AGENTS.md`「复杂度与体量」。
@@ -52,7 +52,7 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 ## 版本命名闸（只读）
 
 - **入闸**：`scripts/check_no_version_names.py`，由 `qa-check-scripts` glob 自动接线；只读，无写入模式，违例输出 `file:line`。
-- **卡两类**：①禁用字面量（线协议旧载体名及其变体，大小写规则与清单见脚本常量），扫描范围内文件的原始行都算；②`.rs` / `.py` 标识符中的版本段（`_v<digits>` 或 CamelCase 的 `V<digits>`），注释与字符串不参与②。
+- **卡两类**：一是禁用字面量（线协议旧载体名及其变体，大小写规则与清单见脚本常量），扫描范围内文件的原始行都算；二是 `.rs` / `.py` 标识符中的版本段（`_v<digits>` 或 CamelCase 的 `V<digits>`），注释与字符串不参与第二类。
 - **白名单只放外部契约**：`uuid` 的 `new_v4` / `new_v7`、URL 路径（如 `/v1`）、会话落盘版本（`v5`–`v7`）、外部模型名。线协议与产品 API 名不得借白名单豁免。
 - **处理**：改为语义名；协议版本只经 `PROTOCOL_VERSION` 与 `host.describe` 协商。清单以脚本为 SSOT，本文件不复述。
 
@@ -61,6 +61,6 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 - **策略 SSOT**：根目录 `.uncomment.toml`（AST 识别注释，不碰字符串里的 `//`）。
 - **入闸**：`scripts/check_uncomment.py`，由 `qa-check-scripts` glob 自动执行；**仅** `uncomment --check --changed-lines`（相对 `UNCOMMENT_BASE` / `origin/HEAD` / `main`），**禁止**在 `just qa` 里跑删除或 `lint --fix`，避免污染工作区。
 - **渐进**：只卡相对 base **有改动的行**；历史行内注释不挡整树。
-- **保留**：TODO/FIXME、工具指令（clippy/noqa/…）、`~keep` / `NOTE:` 等 `preserve_patterns`；`///` / docstring 默认可移除（`remove_docs = true`）。追溯以 specs / 提交信息为 SSOT。
+- **保留**：TODO/FIXME、工具指令（clippy、noqa 等）、`~keep` / `NOTE:` 等 `preserve_patterns`；`///` / docstring 默认可移除（`remove_docs = true`）。追溯以 specs / 提交信息为 SSOT。
 - **手工**：全树盘点 `uncomment scan`；批量删除仅本地显式 `uncomment .`（不进 `qa`）。可选 `uncomment lint` 见 `[lint]`（默认 `enabled = false`）。
 - **跳过 / CI**：`XYLITOL_SKIP_UNCOMMENT=1`；CI 安装 `uncomment` 且 `checkout` 需 `fetch-depth: 0`（PR merge-base）。
