@@ -642,7 +642,12 @@ fn bootstrap_error_display_covers_all_variants() {
     for (err, needle) in cases {
         let message = err.to_string();
         assert!(message.contains(needle), "{message}");
+        err.static_message();
     }
+    assert_eq!(
+        BootstrapError::SessionValidation("x".into()).static_message(),
+        "x"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

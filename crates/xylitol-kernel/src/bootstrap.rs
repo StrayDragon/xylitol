@@ -296,18 +296,25 @@ impl BootstrapError {
     fn message(&self) -> String {
         match self {
             BootstrapError::ConfigLoadFailed(e) => format!("config load failed: {e}"),
+            BootstrapError::BuildFailed(e) => format!("agent build failed: {e}"),
+            BootstrapError::KernelFailed(e) => format!("kernel boot failed: {e}"),
+            other => other.static_message(),
+        }
+    }
+
+    fn static_message(&self) -> String {
+        match self {
             BootstrapError::ConfigLoadedZeroModels => {
                 "config file present but loaded 0 models (check `models:` vs `model:` typo; \
                  see `xylitol config schema`)"
                     .to_string()
             }
             BootstrapError::NoModelsAvailable => "no models available".to_string(),
-            BootstrapError::BuildFailed(e) => format!("agent build failed: {e}"),
-            BootstrapError::KernelFailed(e) => format!("kernel boot failed: {e}"),
             BootstrapError::AgentProfileNotFound(name) => {
                 format!("agent profile `{name}` not found (check `agents.profiles` in config)")
             }
             BootstrapError::SessionValidation(message) => message.clone(),
+            _ => String::new(),
         }
     }
 }
@@ -446,16 +453,11 @@ fn restore_session(
         LogSessionStore::new(sessions_dir.clone())
     };
     let session_file_exists = match input.session.as_deref() {
-        Some(session_id) => {
-            if !session_mgr.exists_sync(session_id) {
-                false
-            } else {
-                block_on(session_mgr.load_validated(session_id, cwd))
-                    .map_err(|error| BootstrapError::SessionValidation(error.to_string()))?;
-                true
-            }
+        Some(session_id) if session_mgr.exists_sync(session_id) => {
+            verify_existing_session(&session_mgr, session_id, cwd)?;
+            true
         }
-        None => false,
+        _ => false,
     };
     if let Some(ref session_arg) = input.session
         && session_file_exists
@@ -466,6 +468,34 @@ fn restore_session(
         });
     }
     Ok(session_file_exists)
+}
+
+fn verify_existing_session(
+    session_mgr: &LogSessionStore,
+    session_id: &str,
+    cwd: &str,
+) -> Result<(), BootstrapError> {
+    if !session_mgr.exists_sync(session_id) {
+        return Ok(());
+    }
+    block_on(session_mgr.load_validated(session_id, cwd))
+        .map_err(|error| BootstrapError::SessionValidation(error.to_string()))?;
+    Ok(())
+}
+
+fn build_permission_engine(
+    app_config: Option<&xylitol_official_plugin_config::types::AppConfig>,
+) -> Option<std::sync::Arc<dyn xylitol_plugin_sdk::XyPermission>> {
+    app_config.and_then(|cfg| {
+        let security: Option<xylitol_official_plugin_config::types::SecurityConfig> =
+            cfg.section("security").ok().flatten();
+        security.and_then(|sc| {
+            sc.permission
+                .as_ref()
+                .filter(|pc| pc.enabled)
+                .map(build_permission_from_config)
+        })
+    })
 }
 
 fn resolve_project_trust(
@@ -730,16 +760,7 @@ pub fn resolve_assembly_with(
     let default_thinking_level = settings.default_thinking_level;
     let thinking_budgets = settings.thinking_budgets;
 
-    let permission_engine = app_config.as_ref().and_then(|cfg| {
-        let security: Option<xylitol_official_plugin_config::types::SecurityConfig> =
-            cfg.section("security").ok().flatten();
-        security.and_then(|sc| {
-            sc.permission
-                .as_ref()
-                .filter(|pc| pc.enabled)
-                .map(build_permission_from_config)
-        })
-    });
+    let permission_engine = build_permission_engine(app_config.as_ref());
 
     let system_prompt = loader_system_prompt.or(config_system_prompt);
 
