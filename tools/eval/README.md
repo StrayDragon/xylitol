@@ -106,7 +106,7 @@ PYTHONPATH=tools/eval/harbor harbor run \
   -a xylitol_agent:XylitolAgent \
   -m openai/group/glm-5.3-flash \
   --ak binary=target/eval-bin/xylitol-linux-x86_64-musl \
-  --ak max_steps_per_turn=120 --ak wall_seconds=1800 \
+  --ak max_steps_per_turn=80 --ak wall_seconds=1800 \
   --base-url "$MAGPIE_GATEWAY_URL/v1" \
   --api-key-name MAGPIE_GATEWAY_KEY \
   --api-format openai_responses \
