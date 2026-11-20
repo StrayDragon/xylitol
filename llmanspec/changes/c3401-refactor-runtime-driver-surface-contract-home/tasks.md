@@ -6,8 +6,9 @@
 
 - [ ] 在 `crates/xylitol-plugin-sdk/Cargo.toml` 加 `xylitol-protocol = { workspace = true }`（sdk → protocol 单向边，已被 `src/AGENTS.md` 允许）。
 - [ ] 新建 `crates/xylitol-plugin-sdk/src/dispatch.rs`（模块名以实施为准）：迁入 `DispatchOutcome`（25 变体）、`SessionCommandExecutor` trait、`DispatchRejection` 小类型、`validate_nonempty_thinking_level`、`transport_variant_error`、`variant_name`。
+- [ ] 错误类型改缝（Q0/Q3 已定）：sdk 侧 trait 与辅助函数签名统一为 `Result<_, DispatchRejection>`（原两侧各返回本地 `XyDriverError`，如 kernel `dispatch.rs:162/189`、app-tui `dispatch.rs:62/89`）；两端在 T0.3/T0.4 各加 `From<DispatchRejection> for XyDriverError`，`log_failure` / `detail_kind` / flatten 行为零变化。
 - [ ] 在 `crates/xylitol-plugin-sdk/src/lib.rs` 导出上述符号。
-- 验证：`cargo check -p xylitol-plugin-sdk` 通过。
+- 验证：`cargo check -p xylitol-plugin-sdk` 通过；sdk 模块内无对两端 `XyDriverError` 的引用（`rg 'XyDriverError' crates/xylitol-plugin-sdk/src/dispatch.rs` 零命中）。
 
 ## T0.2 下沉 5 个数据类型
 

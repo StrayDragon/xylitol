@@ -11,7 +11,7 @@
 ## T2 stream-paint 组类型化
 
 - [ ] `StreamPaintState { paint_dirty, stream_sync_pending, suppress_xy_until_stream_end }`（:95 / :99-100，32 处引用）照 T1 同型收编。
-- 判据：三字段名平铺 0 命中（组内除外）；`cargo nextest run -p xylitol-app-tui` 全绿（含 snapshot）；单独 commit。
+- 判据：三字段名平铺 0 命中（组内除外；深挖补注：`tests.rs:3780` 断言消息字符串含 `paint_dirty`，属预期残留、不改测试文本）；`cargo nextest run -p xylitol-app-tui` 全绿（含 snapshot）；单独 commit。
 
 ## T3 footer-token 组类型化
 
