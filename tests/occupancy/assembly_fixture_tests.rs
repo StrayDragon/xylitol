@@ -1813,13 +1813,17 @@ async fn export_unary_returns_content_and_cleans_stage() {
 async fn inflight_set_thinking_does_not_apply_until_flush() {
     use xylitol_serve::occupancy::{handle_unary, materialize_writer};
 
-    let host = host_state_for_test().expect("host");
+    let host = host_state_for_test_with_default_model("fake-model").expect("host");
     let slot = host.slot("th").await;
     materialize_writer(&host, &slot).await.expect("writer");
     let before = {
         let g = slot.driver.lock().await;
         g.as_ref().expect("driver").thinking_level()
     };
+    assert_eq!(
+        before, "off",
+        "fixture driver must start at the default level"
+    );
     slot.mark_run_inflight_for_test(true);
     let result = handle_unary(
         &host,
@@ -1840,6 +1844,166 @@ async fn inflight_set_thinking_does_not_apply_until_flush() {
     );
     slot.mark_run_inflight_for_test(false);
     slot.flush_pending_runtime_for_test().await;
+    let after = {
+        let g = slot.driver.lock().await;
+        g.as_ref().expect("driver").thinking_level()
+    };
+    assert_eq!(
+        after, "high",
+        "flush MUST apply the deferred thinking level"
+    );
+}
+
+#[tokio::test]
+async fn inflight_set_model_does_not_apply_until_flush() {
+    use xylitol_serve::occupancy::{handle_unary, materialize_writer};
+
+    let host = host_state_for_test_with_default_model("fake-model").expect("host");
+    let slot = host.slot("th-model").await;
+    materialize_writer(&host, &slot).await.expect("writer");
+    let current = || async {
+        let g = slot.driver.lock().await;
+        g.as_ref()
+            .expect("driver")
+            .current_model()
+            .expect("model")
+            .id
+    };
+    assert_eq!(current().await, "fake-model");
+    slot.mark_run_inflight_for_test(true);
+    let result = handle_unary(
+        &host,
+        None,
+        "set_model",
+        serde_json::json!({ "session_id": "th-model", "model_id": "fake-model-b" }),
+        None,
+    )
+    .await;
+    assert!(result.ok, "defer set_model MUST succeed: {result:?}");
+    assert_eq!(
+        current().await,
+        "fake-model",
+        "busy set_model MUST NOT retune the in-flight run"
+    );
+    slot.mark_run_inflight_for_test(false);
+    slot.flush_pending_runtime_for_test().await;
+    assert_eq!(
+        current().await,
+        "fake-model-b",
+        "flush MUST apply the deferred model"
+    );
+}
+
+#[tokio::test]
+async fn inflight_cycle_model_does_not_apply_until_flush() {
+    use xylitol_serve::occupancy::{handle_unary, materialize_writer};
+
+    let host = host_state_for_test_with_default_model("fake-model").expect("host");
+    let slot = host.slot("th-cycle").await;
+    materialize_writer(&host, &slot).await.expect("writer");
+    let current = || async {
+        let g = slot.driver.lock().await;
+        g.as_ref()
+            .expect("driver")
+            .current_model()
+            .expect("model")
+            .id
+    };
+    assert_eq!(current().await, "fake-model");
+    slot.mark_run_inflight_for_test(true);
+    let result = handle_unary(
+        &host,
+        None,
+        "cycle_model",
+        serde_json::json!({ "session_id": "th-cycle" }),
+        None,
+    )
+    .await;
+    assert!(result.ok, "defer cycle_model MUST succeed: {result:?}");
+    assert_eq!(
+        current().await,
+        "fake-model",
+        "busy cycle_model MUST NOT retune the in-flight run"
+    );
+    slot.mark_run_inflight_for_test(false);
+    slot.flush_pending_runtime_for_test().await;
+    assert_eq!(
+        current().await,
+        "fake-model-b",
+        "flush MUST apply the cycled model"
+    );
+}
+
+#[tokio::test]
+async fn inflight_deferred_model_and_thinking_flush_together() {
+    use xylitol_serve::occupancy::{handle_unary, materialize_writer};
+
+    let host = host_state_for_test_with_default_model("fake-model").expect("host");
+    let slot = host.slot("th-both").await;
+    materialize_writer(&host, &slot).await.expect("writer");
+    slot.mark_run_inflight_for_test(true);
+    let set_model = handle_unary(
+        &host,
+        None,
+        "set_model",
+        serde_json::json!({ "session_id": "th-both", "model_id": "fake-model-b" }),
+        None,
+    )
+    .await;
+    let set_thinking = handle_unary(
+        &host,
+        None,
+        "set_thinking_level",
+        serde_json::json!({ "session_id": "th-both", "level": "high" }),
+        None,
+    )
+    .await;
+    assert!(set_model.ok, "defer set_model MUST succeed: {set_model:?}");
+    assert!(
+        set_thinking.ok,
+        "defer thinking MUST succeed: {set_thinking:?}"
+    );
+    slot.mark_run_inflight_for_test(false);
+    slot.flush_pending_runtime_for_test().await;
+    let (model, level) = {
+        let g = slot.driver.lock().await;
+        let d = g.as_ref().expect("driver");
+        (d.current_model().expect("model").id, d.thinking_level())
+    };
+    assert_eq!(model, "fake-model-b", "flush MUST apply the deferred model");
+    assert_eq!(
+        level, "high",
+        "flush MUST apply the deferred thinking level"
+    );
+}
+
+#[tokio::test]
+async fn inflight_blank_thinking_is_rejected_without_pending() {
+    use xylitol_serve::occupancy::{handle_unary, materialize_writer};
+
+    let host = host_state_for_test_with_default_model("fake-model").expect("host");
+    let slot = host.slot("th-blank").await;
+    materialize_writer(&host, &slot).await.expect("writer");
+    slot.mark_run_inflight_for_test(true);
+    let result = handle_unary(
+        &host,
+        None,
+        "set_thinking_level",
+        serde_json::json!({ "session_id": "th-blank", "level": "   " }),
+        None,
+    )
+    .await;
+    assert_eq!(
+        result,
+        xylitol_protocol::RpcResult::error("invalid_input", "empty thinking level")
+    );
+    slot.mark_run_inflight_for_test(false);
+    slot.flush_pending_runtime_for_test().await;
+    let level = {
+        let g = slot.driver.lock().await;
+        g.as_ref().expect("driver").thinking_level()
+    };
+    assert_eq!(level, "off", "rejected defer MUST leave nothing to flush");
 }
 
 #[tokio::test]

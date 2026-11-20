@@ -386,6 +386,30 @@ fn host_state_for_test_with(
     if let Some(model_id) = default_model_id {
         let mut registry = ModelRegistry::new();
         registry.register(XyModelMeta {
+            id: format!("{model_id}-b"),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: format!("{model_id}-b"),
+                base_url: None,
+                api: None,
+                compat: None,
+                prompt_cache: None,
+            },
+            display_name: format!("{model_id}-b"),
+            thinking: true,
+            context_window: 64_000,
+            api: String::new(),
+            provider: "fake".into(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: vec!["high".into(), "off".into()],
+            thinking_level_map: Default::default(),
+        });
+        registry.register(XyModelMeta {
             id: model_id.to_string(),
             config: XyModelConfig {
                 kind: XyModelKind::Fake,
@@ -397,7 +421,7 @@ fn host_state_for_test_with(
                 prompt_cache: None,
             },
             display_name: model_id.to_string(),
-            thinking: false,
+            thinking: true,
             context_window: 64_000,
             api: String::new(),
             provider: "fake".into(),
@@ -406,7 +430,7 @@ fn host_state_for_test_with(
             cost_cache_read: 0.0,
             cost_cache_write: 0.0,
             max_tokens: 0,
-            thinking_levels: vec!["off".into()],
+            thinking_levels: vec!["high".into(), "off".into()],
             thinking_level_map: Default::default(),
         });
         options.model_registry = registry;

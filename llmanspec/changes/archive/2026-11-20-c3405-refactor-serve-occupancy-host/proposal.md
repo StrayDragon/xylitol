@@ -2,6 +2,9 @@
 depends_on: []
 title: "serve occupancy host 加厚：载荷类型化、defer 设置状态化与 gateway 链路证据固化"
 needs_specs_change: false
+branch: sdd/c3405-refactor-serve-occupancy-host
+base_branch: main
+base_sha: 47b9508f376900179d5915edbf83e05590f62019
 ---
 
 # serve occupancy host 加厚

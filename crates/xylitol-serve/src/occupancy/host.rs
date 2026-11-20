@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use chrono::Local;
 use futures::StreamExt;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tokio::time::timeout;
@@ -70,6 +71,48 @@ pub struct HostState {
     seq_watermarks: std::sync::Mutex<HashMap<String, u64>>,
 }
 
+#[derive(Default)]
+struct PendingRuntimeSetting {
+    model: std::sync::Mutex<Option<String>>,
+    thinking: std::sync::Mutex<Option<String>>,
+}
+
+impl PendingRuntimeSetting {
+    fn new() -> Self {
+        Self {
+            model: std::sync::Mutex::new(None),
+            thinking: std::sync::Mutex::new(None),
+        }
+    }
+
+    fn set_model(&self, id: String) {
+        if let Ok(mut pending) = self.model.lock() {
+            *pending = Some(id);
+        }
+    }
+
+    fn set_thinking(&self, level: String) {
+        if let Ok(mut pending) = self.thinking.lock() {
+            *pending = Some(level);
+        }
+    }
+
+    fn take_all(&self) -> (Option<String>, Option<String>) {
+        let model = self.model.lock().ok().and_then(|mut g| g.take());
+        let thinking = self.thinking.lock().ok().and_then(|mut g| g.take());
+        (model, thinking)
+    }
+
+    fn clear(&self) {
+        if let Ok(mut g) = self.model.lock() {
+            *g = None;
+        }
+        if let Ok(mut g) = self.thinking.lock() {
+            *g = None;
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ReloadBaseline {
     pub cwd: PathBuf,
@@ -92,8 +135,7 @@ pub struct SessionSlot {
     next_conn: AtomicU64,
     resync_offered: AtomicBool,
     turn_inflight: AtomicBool,
-    pending_model: std::sync::Mutex<Option<String>>,
-    pending_thinking: std::sync::Mutex<Option<String>>,
+    pending_runtime: PendingRuntimeSetting,
     pub latest_tape: std::sync::Mutex<Option<xylitol_plugin_sdk::message::AgentMessage>>,
     mcp_watch_started: AtomicBool,
     pub bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
@@ -211,11 +253,10 @@ impl HostState {
     }
 
     pub fn session_id_from_payload(&self, payload: &Value) -> String {
-        payload
-            .get("session_id")
-            .and_then(|v| v.as_str())
+        serde_json::from_value::<SessionIdPayload>(payload.clone())
+            .unwrap_or_default()
+            .session_id
             .filter(|s| !s.is_empty())
-            .map(str::to_string)
             .unwrap_or_else(|| self.fallback_session.clone())
     }
 
@@ -478,8 +519,7 @@ impl SessionSlot {
             next_conn: AtomicU64::new(1),
             resync_offered: AtomicBool::new(false),
             turn_inflight: AtomicBool::new(false),
-            pending_model: std::sync::Mutex::new(None),
-            pending_thinking: std::sync::Mutex::new(None),
+            pending_runtime: PendingRuntimeSetting::new(),
             latest_tape: std::sync::Mutex::new(None),
             mcp_watch_started: AtomicBool::new(false),
             bash_run_cancel: std::sync::Mutex::new(None),
@@ -501,18 +541,8 @@ impl SessionSlot {
         id
     }
 
-    fn clear_pending_runtime(&self) {
-        if let Ok(mut g) = self.pending_model.lock() {
-            *g = None;
-        }
-        if let Ok(mut g) = self.pending_thinking.lock() {
-            *g = None;
-        }
-    }
-
     async fn flush_pending_runtime(&self) {
-        let model = self.pending_model.lock().ok().and_then(|mut g| g.take());
-        let thinking = self.pending_thinking.lock().ok().and_then(|mut g| g.take());
+        let (model, thinking) = self.pending_runtime.take_all();
         if model.is_none() && thinking.is_none() {
             return;
         }
@@ -1122,10 +1152,132 @@ pub fn is_writer_method(method: &str) -> bool {
         .is_some_and(|e| e.auth == xylitol_protocol::registry::Auth::Writer)
 }
 
-fn parse_workspaces(payload: &Value) -> (Option<PathBuf>, Vec<PathBuf>) {
-    let mut paths: Vec<PathBuf> = payload
-        .get("workspaces")
-        .and_then(Value::as_array)
+fn de_any_as_str<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Value::deserialize(deserializer)?
+        .as_str()
+        .map(str::to_owned))
+}
+
+fn de_any_as_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Value::deserialize(deserializer)?.as_u64())
+}
+
+fn de_contexts<'de, D>(deserializer: D) -> Result<Vec<McpResourceContext>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
+fn de_present_value<'de, D>(deserializer: D) -> Result<Option<Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Value::deserialize(deserializer)?))
+}
+
+#[derive(Default, Deserialize)]
+struct SubscribePayload {
+    #[serde(default, deserialize_with = "de_any_as_u64")]
+    last_seq: Option<u64>,
+}
+
+#[derive(Default, Deserialize)]
+struct PromptPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    message: Option<String>,
+    #[serde(default, deserialize_with = "de_contexts")]
+    contexts: Vec<McpResourceContext>,
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    model_id: Option<String>,
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    thinking_level: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct McpResourceReadPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    server: Option<String>,
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    uri: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct McpPromptGetPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    server: Option<String>,
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    name: Option<String>,
+    #[serde(default)]
+    arguments: Option<Value>,
+}
+
+#[derive(Default, Deserialize)]
+struct McpOAuthStartPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    server: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct McpOAuthCancelPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    flow_id: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct McpOAuthStatusPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    flow_id: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct PersistTrustPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    mode: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct SetModelPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    model_id: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct SetThinkingLevelPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    level: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct StageExportImportPayload {
+    #[serde(default, deserialize_with = "de_present_value")]
+    output_path: Option<Value>,
+    #[serde(default, deserialize_with = "de_present_value")]
+    input_path: Option<Value>,
+    #[serde(default, deserialize_with = "de_present_value")]
+    content: Option<Value>,
+}
+
+#[derive(Default, Deserialize)]
+struct SessionIdPayload {
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    session_id: Option<String>,
+}
+
+fn de_workspaces<'de, D>(deserializer: D) -> Result<Vec<PathBuf>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    let paths = value
+        .as_array()
         .map(|items| {
             items
                 .iter()
@@ -1136,10 +1288,24 @@ fn parse_workspaces(payload: &Value) -> (Option<PathBuf>, Vec<PathBuf>) {
                 .collect()
         })
         .unwrap_or_default();
+    Ok(paths)
+}
+
+#[derive(Default, Deserialize)]
+struct WorkspacesPayload {
+    #[serde(default, deserialize_with = "de_workspaces")]
+    workspaces: Vec<PathBuf>,
+    #[serde(default, deserialize_with = "de_any_as_str")]
+    cwd: Option<String>,
+}
+
+fn parse_workspaces(payload: &Value) -> (Option<PathBuf>, Vec<PathBuf>) {
+    let parsed = serde_json::from_value::<WorkspacesPayload>(payload.clone()).unwrap_or_default();
+    let mut paths = parsed.workspaces;
     if paths.is_empty()
-        && let Some(cwd) = payload
-            .get("cwd")
-            .and_then(Value::as_str)
+        && let Some(cwd) = parsed
+            .cwd
+            .as_deref()
             .map(str::trim)
             .filter(|raw| !raw.is_empty())
     {
@@ -1384,18 +1550,15 @@ async fn defer_runtime_setting(slot: &SessionSlot, method: &str, payload: &Value
     };
     match method {
         "set_model" => {
-            let id = payload
-                .get("model_id")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
+            let id = serde_json::from_value::<SetModelPayload>(payload.clone())
+                .unwrap_or_default()
+                .model_id
+                .unwrap_or_default();
             let Some(model) = driver.available_models().into_iter().find(|m| m.id == id) else {
                 return RpcResult::error("not_found", format!("model not found: {id}"));
             };
             drop(g);
-            if let Ok(mut pending) = slot.pending_model.lock() {
-                *pending = Some(model.id.clone());
-            }
+            slot.pending_runtime.set_model(model.id.clone());
             RpcResult::ok_value(model_data(&model))
         }
         "cycle_model" => {
@@ -1410,24 +1573,19 @@ async fn defer_runtime_setting(slot: &SessionSlot, method: &str, payload: &Value
                 .unwrap_or(0);
             let model = list[(idx + 1) % list.len()].clone();
             drop(g);
-            if let Ok(mut pending) = slot.pending_model.lock() {
-                *pending = Some(model.id.clone());
-            }
+            slot.pending_runtime.set_model(model.id.clone());
             RpcResult::ok_value(model_data(&model))
         }
         "set_thinking_level" => {
-            let level = payload
-                .get("level")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
+            let level = serde_json::from_value::<SetThinkingLevelPayload>(payload.clone())
+                .unwrap_or_default()
+                .level
+                .unwrap_or_default();
             drop(g);
             if level.trim().is_empty() {
                 return RpcResult::error("invalid_input", "empty thinking level");
             }
-            if let Ok(mut pending) = slot.pending_thinking.lock() {
-                *pending = Some(level.clone());
-            }
+            slot.pending_runtime.set_thinking(level.clone());
             RpcResult::ok_value(json!({ "thinking_level": level }))
         }
         _ => RpcResult::error(
@@ -1662,11 +1820,10 @@ pub async fn handle_unary(
     }
 
     let session_id = if method == METHOD_SUBSCRIBE {
-        payload
-            .get("session_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
+        serde_json::from_value::<SessionIdPayload>(payload.clone())
+            .unwrap_or_default()
+            .session_id
+            .unwrap_or_default()
     } else {
         host.session_id_from_payload(&payload)
     };
@@ -1706,9 +1863,9 @@ async fn dispatch_session_unary(
         if session_id.is_empty() {
             return RpcResult::error("invalid_input", "subscribe requires session_id");
         }
-        let last_seq = payload
-            .get("last_seq")
-            .and_then(|v| v.as_u64())
+        let last_seq = serde_json::from_value::<SubscribePayload>(payload.clone())
+            .unwrap_or_default()
+            .last_seq
             .unwrap_or(0);
         let workspace_set = resolve_workspace_set(host, session_id, &payload).await;
         return gated_subscribe(
@@ -1723,16 +1880,9 @@ async fn dispatch_session_unary(
     }
 
     if method == METHOD_PROMPT {
-        let message = payload
-            .get("message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let contexts = payload
-            .get("contexts")
-            .cloned()
-            .and_then(|value| serde_json::from_value::<Vec<McpResourceContext>>(value).ok())
-            .unwrap_or_default();
+        let prompt = serde_json::from_value::<PromptPayload>(payload).unwrap_or_default();
+        let message = prompt.message.unwrap_or_default();
+        let contexts = prompt.contexts;
         if message.is_empty() {
             return RpcResult::error("invalid_input", "missing message");
         }
@@ -1748,15 +1898,15 @@ async fn dispatch_session_unary(
         let driver = slot.driver.clone();
         let slot_push = slot.clone();
         let host_push = host.clone();
-        let prompt_model = payload
-            .get("model_id")
-            .and_then(Value::as_str)
+        let prompt_model = prompt
+            .model_id
+            .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string);
-        let prompt_thinking = payload
-            .get("thinking_level")
-            .and_then(Value::as_str)
+        let prompt_thinking = prompt
+            .thinking_level
+            .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string);
@@ -1766,7 +1916,7 @@ async fn dispatch_session_unary(
                 let Some(d) = g.as_mut() else {
                     return;
                 };
-                slot_push.clear_pending_runtime();
+                slot_push.pending_runtime.clear();
                 if let Some(id) = prompt_model.as_deref()
                     && let Err(e) = d.select_model(id).await
                 {
@@ -1844,7 +1994,11 @@ async fn dispatch_session_unary(
         if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
             return *e;
         }
-        let mode = match payload.get("mode").and_then(Value::as_str) {
+        let mode = match serde_json::from_value::<PersistTrustPayload>(payload)
+            .unwrap_or_default()
+            .mode
+            .as_deref()
+        {
             Some("trust_cwd") | None => ProjectTrustMode::TrustCwd,
             Some("trust_parent") => ProjectTrustMode::TrustParent,
             Some("deny") => ProjectTrustMode::Deny,
@@ -1881,13 +2035,19 @@ async fn dispatch_session_unary(
     }
 
     if method == METHOD_MCP_RESOURCE_READ {
-        let server = payload.get("server").and_then(Value::as_str).unwrap_or("");
-        let uri = payload.get("uri").and_then(Value::as_str).unwrap_or("");
+        let McpResourceReadPayload { server, uri } =
+            serde_json::from_value::<McpResourceReadPayload>(payload).unwrap_or_default();
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        return match driver.mcp_resource_read(server, uri).await {
+        return match driver
+            .mcp_resource_read(
+                server.as_deref().unwrap_or(""),
+                uri.as_deref().unwrap_or(""),
+            )
+            .await
+        {
             Ok(content) => {
                 RpcResult::ok_value(serde_json::to_value(content).unwrap_or(Value::Null))
             }
@@ -1896,50 +2056,74 @@ async fn dispatch_session_unary(
     }
 
     if method == METHOD_MCP_PROMPT_GET {
-        let server = payload.get("server").and_then(Value::as_str).unwrap_or("");
-        let name = payload.get("name").and_then(Value::as_str).unwrap_or("");
-        let arguments = payload.get("arguments").cloned().unwrap_or(Value::Null);
+        let McpPromptGetPayload {
+            server,
+            name,
+            arguments,
+        } = serde_json::from_value::<McpPromptGetPayload>(payload).unwrap_or_default();
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        return match driver.mcp_prompt_get(server, name, arguments).await {
+        return match driver
+            .mcp_prompt_get(
+                server.as_deref().unwrap_or(""),
+                name.as_deref().unwrap_or(""),
+                arguments.unwrap_or(Value::Null),
+            )
+            .await
+        {
             Ok(value) => RpcResult::ok_value(value),
             Err(e) => rpc_err(e),
         };
     }
 
     if method == METHOD_MCP_OAUTH_START {
-        let server = payload.get("server").and_then(Value::as_str).unwrap_or("");
+        let server = serde_json::from_value::<McpOAuthStartPayload>(payload)
+            .unwrap_or_default()
+            .server;
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        return match driver.mcp_oauth_start(server).await {
+        return match driver
+            .mcp_oauth_start(server.as_deref().unwrap_or(""))
+            .await
+        {
             Ok(flow) => RpcResult::ok_value(serde_json::to_value(flow).unwrap_or(Value::Null)),
             Err(e) => rpc_err(e),
         };
     }
 
     if method == METHOD_MCP_OAUTH_CANCEL {
-        let flow_id = payload.get("flow_id").and_then(Value::as_str).unwrap_or("");
+        let flow_id = serde_json::from_value::<McpOAuthCancelPayload>(payload)
+            .unwrap_or_default()
+            .flow_id;
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        return match driver.mcp_oauth_cancel(flow_id).await {
+        return match driver
+            .mcp_oauth_cancel(flow_id.as_deref().unwrap_or(""))
+            .await
+        {
             Ok(()) => RpcResult::ok_value(Value::Null),
             Err(e) => rpc_err(e),
         };
     }
 
     if method == METHOD_MCP_OAUTH_STATUS {
-        let flow_id = payload.get("flow_id").and_then(Value::as_str).unwrap_or("");
+        let flow_id = serde_json::from_value::<McpOAuthStatusPayload>(payload)
+            .unwrap_or_default()
+            .flow_id;
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        return match driver.mcp_oauth_status(flow_id).await {
+        return match driver
+            .mcp_oauth_status(flow_id.as_deref().unwrap_or(""))
+            .await
+        {
             Ok(status) => RpcResult::ok_value(serde_json::to_value(status).unwrap_or(Value::Null)),
             Err(e) => rpc_err(e),
         };
@@ -2004,11 +2188,12 @@ fn stage_payload(
     method: &str,
     mut payload: Value,
 ) -> Result<(Value, bool, Option<std::path::PathBuf>), Box<RpcResult>> {
+    let staged =
+        serde_json::from_value::<StageExportImportPayload>(payload.clone()).unwrap_or_default();
     let staged_export = matches!(method, "export_html" | "export_jsonl")
-        && payload.get("output_path").is_none_or(Value::is_null);
-    let staged_import = method == METHOD_IMPORT_JSONL
-        && payload.get("input_path").is_none()
-        && payload.get("content").is_some();
+        && staged.output_path.as_ref().is_none_or(Value::is_null);
+    let staged_import =
+        method == METHOD_IMPORT_JSONL && staged.input_path.is_none() && staged.content.is_some();
     let import_temp = if staged_import {
         let temp =
             std::env::temp_dir().join(format!("xylitol-import-{}.jsonl", uuid::Uuid::new_v4()));
@@ -2232,6 +2417,22 @@ mod tests {
         let guard = RunInflightGuard::try_acquire(&slot).expect("acquire");
         drop(guard);
         assert!(!slot.turn_inflight_active());
+    }
+
+    #[test]
+    fn pending_runtime_setting_set_take_and_clear() {
+        let pending = PendingRuntimeSetting::new();
+        assert_eq!(pending.take_all(), (None, None));
+        pending.set_model("m1".into());
+        pending.set_thinking("high".into());
+        assert_eq!(
+            pending.take_all(),
+            (Some("m1".to_string()), Some("high".to_string()))
+        );
+        assert_eq!(pending.take_all(), (None, None));
+        pending.set_model("m2".into());
+        pending.clear();
+        assert_eq!(pending.take_all(), (None, None));
     }
 
     #[test]
@@ -3016,6 +3217,8 @@ mod tests {
     #[derive(Default)]
     struct ScriptedEngine {
         runs: Arc<StdMutex<Vec<String>>>,
+        selects: Arc<StdMutex<Vec<String>>>,
+        thinking_sets: Arc<StdMutex<Vec<String>>>,
         select_fails: bool,
         thinking_fails: bool,
         bind_fails: bool,
@@ -3170,7 +3373,11 @@ mod tests {
             Ok("s0".into())
         }
 
-        async fn select_model(&mut self, _model_id: &str) -> Result<ModelInfo, XyDriverError> {
+        async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
+            self.selects
+                .lock()
+                .map(|mut selects| selects.push(model_id.to_string()))
+                .ok();
             if self.select_fails {
                 Err(XyDriverError::unsupported("select_model"))
             } else {
@@ -3182,7 +3389,11 @@ mod tests {
             None
         }
 
-        async fn set_thinking_level(&mut self, _level: String) -> Result<(), XyDriverError> {
+        async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+            self.thinking_sets
+                .lock()
+                .map(|mut sets| sets.push(level.clone()))
+                .ok();
             if self.thinking_fails {
                 Err(XyDriverError::unsupported("set_thinking_level"))
             } else {
@@ -3629,6 +3840,276 @@ mod tests {
         .await;
         assert_eq!(result, RpcResult::ok_value(json!({"session_id": "s1"})));
         wait_for_turn_settled(&slot, &runs, 1).await;
+    }
+
+    fn recording_engine(
+        runs: Arc<StdMutex<Vec<String>>>,
+        selects: Arc<StdMutex<Vec<String>>>,
+        thinking_sets: Arc<StdMutex<Vec<String>>>,
+    ) -> ScriptedEngine {
+        ScriptedEngine {
+            runs,
+            selects,
+            thinking_sets,
+            ..Default::default()
+        }
+    }
+
+    fn recorded(lock: &Arc<StdMutex<Vec<String>>>) -> Vec<String> {
+        lock.lock().map(|values| values.clone()).unwrap_or_default()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dispatch_prompt_missing_keys_apply_defaults() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        let selects = Arc::new(StdMutex::new(Vec::new()));
+        let thinking_sets = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(recording_engine(
+            runs.clone(),
+            selects.clone(),
+            thinking_sets.clone(),
+        )));
+        let (_id, _rx) = subscribe(&slot).await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({ "message": "m" }),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(result, RpcResult::ok_value(json!({ "session_id": "s1" })));
+        wait_for_turn_settled(&slot, &runs, 1).await;
+        assert_eq!(recorded(&selects), Vec::<String>::new());
+        assert_eq!(recorded(&thinking_sets), Vec::<String>::new());
+        assert_eq!(*runs.lock().expect("runs"), vec!["m".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn dispatch_prompt_empty_message_is_rejected() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({ "message": "" }),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(result, RpcResult::error("invalid_input", "missing message"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dispatch_prompt_invalid_contexts_fall_back_empty() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(recording_engine(
+            runs.clone(),
+            Arc::new(StdMutex::new(Vec::new())),
+            Arc::new(StdMutex::new(Vec::new())),
+        )));
+        let (_id, _rx) = subscribe(&slot).await;
+        for (idx, contexts) in [json!("garbage"), json!(123), json!(null)]
+            .into_iter()
+            .enumerate()
+        {
+            let result = dispatch_session_unary(
+                &host,
+                &slot,
+                "s1",
+                METHOD_PROMPT,
+                json!({ "message": "m", "contexts": contexts }),
+                Path::new("."),
+                None,
+            )
+            .await;
+            assert_eq!(
+                result,
+                RpcResult::ok_value(json!({ "session_id": "s1" })),
+                "contexts case {idx}"
+            );
+            wait_for_turn_settled(&slot, &runs, idx + 1).await;
+        }
+        assert_eq!(
+            *runs.lock().expect("runs"),
+            vec!["m".to_string(), "m".to_string(), "m".to_string()]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dispatch_prompt_trims_model_and_thinking() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        let selects = Arc::new(StdMutex::new(Vec::new()));
+        let thinking_sets = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(recording_engine(
+            runs.clone(),
+            selects.clone(),
+            thinking_sets.clone(),
+        )));
+        let (_id, _rx) = subscribe(&slot).await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({ "message": "m", "model_id": "  fast  ", "thinking_level": "  hi " }),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(result, RpcResult::ok_value(json!({ "session_id": "s1" })));
+        wait_for_turn_settled(&slot, &runs, 1).await;
+        assert_eq!(recorded(&selects), vec!["fast".to_string()]);
+        assert_eq!(recorded(&thinking_sets), vec!["hi".to_string()]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dispatch_prompt_filters_blank_model_and_thinking() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        let selects = Arc::new(StdMutex::new(Vec::new()));
+        let thinking_sets = Arc::new(StdMutex::new(Vec::new()));
+        *slot.driver.lock().await = Some(Box::new(recording_engine(
+            runs.clone(),
+            selects.clone(),
+            thinking_sets.clone(),
+        )));
+        let (_id, _rx) = subscribe(&slot).await;
+        let result = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            METHOD_PROMPT,
+            json!({ "message": "m", "model_id": "   ", "thinking_level": "\t" }),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(result, RpcResult::ok_value(json!({ "session_id": "s1" })));
+        wait_for_turn_settled(&slot, &runs, 1).await;
+        assert_eq!(recorded(&selects), Vec::<String>::new());
+        assert_eq!(recorded(&thinking_sets), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn dispatch_subscribe_tolerates_missing_or_wrong_typed_last_seq() {
+        let host = gate_host();
+        let missing = dispatch_session_unary(
+            &host,
+            &host.slot("s-sub-a").await,
+            "s-sub-a",
+            METHOD_SUBSCRIBE,
+            json!({ "session_id": "s-sub-a" }),
+            Path::new("."),
+            None,
+        )
+        .await;
+        let wrong_typed = dispatch_session_unary(
+            &host,
+            &host.slot("s-sub-b").await,
+            "s-sub-b",
+            METHOD_SUBSCRIBE,
+            json!({ "session_id": "s-sub-b", "last_seq": "bogus" }),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert!(missing.ok, "missing last_seq must default: {missing:?}");
+        assert!(
+            wrong_typed.ok,
+            "wrong-typed last_seq must default: {wrong_typed:?}"
+        );
+    }
+
+    #[test]
+    fn session_id_from_payload_tolerates_missing_empty_and_wrong_typed() {
+        let host = gate_host();
+        assert_eq!(host.session_id_from_payload(&json!({})), "gate-fallback");
+        assert_eq!(
+            host.session_id_from_payload(&json!({ "session_id": "" })),
+            "gate-fallback"
+        );
+        assert_eq!(
+            host.session_id_from_payload(&json!({ "session_id": 7 })),
+            "gate-fallback"
+        );
+        assert_eq!(
+            host.session_id_from_payload(&json!({ "session_id": "explicit" })),
+            "explicit"
+        );
+    }
+
+    #[test]
+    fn parse_workspaces_filters_non_string_items_and_wrong_typed_cwd() {
+        let (primary, additional) =
+            parse_workspaces(&json!({ "workspaces": ["/a/project", 7, null, "   "] }));
+        assert_eq!(primary, Some(PathBuf::from("/a/project")));
+        assert!(additional.is_empty());
+
+        let (primary, _) = parse_workspaces(&json!({ "workspaces": "not-a-list", "cwd": 7 }));
+        assert_eq!(primary, None);
+    }
+
+    #[test]
+    fn stage_import_staging_matches_key_presence_not_null() {
+        let (_, _, import_temp) = stage_payload(
+            METHOD_IMPORT_JSONL,
+            json!({ "input_path": null, "content": "x" }),
+        )
+        .expect("stage");
+        assert!(
+            import_temp.is_none(),
+            "explicit null input_path MUST NOT stage import"
+        );
+
+        let (_, _, import_temp) =
+            stage_payload(METHOD_IMPORT_JSONL, json!({ "input_path": null })).expect("stage");
+        assert!(
+            import_temp.is_none(),
+            "missing content MUST NOT stage import"
+        );
+
+        let (_, _, import_temp) =
+            stage_payload(METHOD_IMPORT_JSONL, json!({ "content": "x" })).expect("stage");
+        let temp = import_temp.expect("content-only import MUST stage a temp file");
+        assert!(temp.exists(), "staged import temp MUST be written");
+        std::fs::remove_file(&temp).expect("test MUST clean its staging temp");
+    }
+
+    #[tokio::test]
+    async fn defer_runtime_setting_parses_missing_and_wrong_typed_keys() {
+        let host = gate_host();
+        let slot = host.slot("s-defer").await;
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine::default()));
+        let missing_model = defer_runtime_setting(&slot, "set_model", &json!({})).await;
+        assert_eq!(
+            missing_model,
+            RpcResult::error("not_found", "model not found: ")
+        );
+        let wrong_typed_model =
+            defer_runtime_setting(&slot, "set_model", &json!({ "model_id": 7 })).await;
+        assert_eq!(
+            wrong_typed_model,
+            RpcResult::error("not_found", "model not found: ")
+        );
+        let missing_level = defer_runtime_setting(&slot, "set_thinking_level", &json!({})).await;
+        assert_eq!(
+            missing_level,
+            RpcResult::error("invalid_input", "empty thinking level")
+        );
+        let cycle = defer_runtime_setting(&slot, "cycle_model", &json!({})).await;
+        assert_eq!(cycle, RpcResult::ok_value(model_data(&model_info())));
     }
 
     #[tokio::test]
