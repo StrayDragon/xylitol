@@ -2,6 +2,9 @@
 depends_on: []
 title: app-tui 测试护栏与渲染不变量收厚
 needs_specs_change: true
+branch: sdd/c3400-refactor-app-tui-test-guardrails
+base_branch: main
+base_sha: 5f3df67cc3fa6e72924379a828be9d5afcf0c25a
 ---
 
 ## Why

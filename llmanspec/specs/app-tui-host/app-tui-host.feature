@@ -423,3 +423,20 @@
   @req:r3368
   规则: MCP 准备期提交保持可交互
     MCP 工具表尚未冻结（准备中）时提交消息：产品 TUI 须将提交进入工具门排队（呈现与既有排队条一致），且主循环 须保持可交互——键入、状态行动画与重绘 不得 因等待会话准备而整体停摆；准备冻结完成后，未经用户取消的排队提交 须 自动发起（消息上行），并恢复常规忙碌呈现。由 harness 时序切片覆盖，不扩 BDD step。
+
+  @req:r3371
+  规则: render-overflow-degradation
+    产品 TUI 在 Ready 渲染因行宽超出终端列宽失败（RenderError）时 须降级为 TooSmall 提示继续运行，不得 panic、不得把终端留在损坏状态；降级 须记 warn 日志（target xylitol::tui）；降级帧再次渲染仍失败时 须干净恢复终端并以 IO 错误退出。
+
+    场景: 渲染溢出降级为提示不崩
+      假如 以会渲染超宽行的根组件挂载主机泵
+      当 渲染因行宽超出终端列宽返回 RenderError
+      那么 进入 TooSmall 提示且进程不 panic 且恢复尺寸后回到 Ready
+
+  @req:r3372
+  规则: render-width-boundary
+    产品 TUI 在任意终端宽度下渲染结果 须为成功或进入 TooSmall 降级，不得向调用方漏出未处理的 RenderError；最小尺寸提示语义沿用 resize-and-min-size（r1270），不重复约定。
+
+    场景: 宽度边界全档不漏错误
+      当 以 1、5、9、10、12、20、39、40、80、200 列宽分别渲染固定区
+      那么 每次渲染为成功或进入 TooSmall 且无未处理的 RenderError

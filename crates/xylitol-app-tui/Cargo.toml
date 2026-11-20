@@ -45,5 +45,6 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("server",
 [dev-dependencies]
 chrono = { workspace = true }
 insta = { workspace = true }
+log = { workspace = true, features = ["std"] }
 tempfile = { workspace = true }
 xylitol-runtime = { workspace = true }

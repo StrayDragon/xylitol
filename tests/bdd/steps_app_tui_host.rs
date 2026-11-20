@@ -1,6 +1,7 @@
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use xylitol_app_tui::LayoutMode;
 use xylitol_app_tui::TuiHostEvent as HostEvent;
 use xylitol_app_tui::TuiHostSession as HostSession;
 use xylitol_app_tui::UiRoot;
@@ -9,7 +10,7 @@ use xylitol_app_tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_h
 use xylitol_app_tui::{BashBlockStatus, UiEntry, UiModel};
 use xylitol_plugin_sdk::XyBashResult;
 use xylitol_tui::Component;
-use xylitol_tui::Terminal as _;
+use xylitol_tui::{InputEvent, Terminal as _};
 
 fn footer_line(frame: &str) -> String {
     let lines: Vec<&str> = frame.lines().collect();
@@ -36,6 +37,7 @@ pub struct HostPumpBdd {
     pub observe_prev: RefCell<xylitol_app_tui::driver::AttachObserve>,
     pub observe_notice: RefCell<Option<&'static str>>,
     pub storage: RefCell<Option<std::sync::Arc<xylitol_app_tui::storage::ClientStorage>>>,
+    pub width_probe: RefCell<Option<Vec<(u16, &'static str)>>>,
 }
 
 #[fixture]
@@ -51,6 +53,7 @@ pub fn host_pump_bdd() -> HostPumpBdd {
         observe_prev: RefCell::new(xylitol_app_tui::driver::AttachObserve::Live),
         observe_notice: RefCell::new(None),
         storage: RefCell::new(None),
+        width_probe: RefCell::new(None),
     }
 }
 
@@ -4386,4 +4389,110 @@ pub(crate) fn t_c2827_print_embed_done(host_pump_bdd: &HostPumpBdd) {
     );
     let s = snap(&pump);
     assert!(!s.should_quit, "c2827: 对话完成不应退出");
+}
+
+// ==== c3400 render guardrails (r3371 / r3372) ==== ~keep
+
+struct OverwideRootStub;
+
+impl Component for OverwideRootStub {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        vec!["x".repeat(200)]
+    }
+
+    fn handle_input(&mut self, _event: InputEvent) {}
+
+    fn invalidate(&mut self) {}
+}
+
+struct HintRootStub;
+
+impl Component for HintRootStub {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        vec!["degraded hint frame".to_string()]
+    }
+
+    fn handle_input(&mut self, _event: InputEvent) {}
+
+    fn invalidate(&mut self) {}
+}
+
+#[given("以会渲染超宽行的根组件挂载主机泵")]
+pub(crate) fn g_c3400_mount_overwide_pump(host_pump_bdd: &HostPumpBdd) {
+    let rebuild = |mode: LayoutMode| -> Vec<Box<dyn Component>> {
+        match mode {
+            LayoutMode::TooSmall => vec![Box::new(HintRootStub)],
+            LayoutMode::Ready => vec![Box::new(OverwideRootStub)],
+        }
+    };
+    put_pump(
+        host_pump_bdd,
+        HostPump {
+            session: HostSession::new(TestTerminal::new(80, 24), rebuild),
+            driver: ScriptedDriver::new(),
+        },
+    );
+}
+
+#[when("渲染因行宽超出终端列宽返回 RenderError")]
+pub(crate) fn w_c3400_render_overflow(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Tick)
+        .expect("overflow render must degrade instead of propagating");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("进入 TooSmall 提示且进程不 panic 且恢复尺寸后回到 Ready")]
+pub(crate) fn t_c3400_degraded_then_ready(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_pump(host_pump_bdd);
+    assert_eq!(
+        pump.session.mode(),
+        LayoutMode::TooSmall,
+        "must sit in the TooSmall hint after degradation"
+    );
+    pump.session
+        .step(HostEvent::Resize {
+            cols: 100,
+            rows: 30,
+        })
+        .expect("resize after degradation");
+    assert_eq!(
+        pump.session.mode(),
+        LayoutMode::Ready,
+        "must return to Ready after the size recovers"
+    );
+    put_pump(host_pump_bdd, pump);
+}
+
+#[when("以 1、5、9、10、12、20、39、40、80、200 列宽分别渲染固定区")]
+pub(crate) fn w_c3400_width_ladder(host_pump_bdd: &HostPumpBdd) {
+    let mut outcomes: Vec<(u16, &'static str)> = Vec::new();
+    for cols in [1u16, 5, 9, 10, 12, 20, 39, 40, 80, 200] {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(cols, 24));
+        session
+            .step(HostEvent::Tick)
+            .unwrap_or_else(|e| panic!("width {cols}: unhandled RenderError leaked: {e}"));
+        let label = match session.mode() {
+            LayoutMode::Ready => "ready",
+            LayoutMode::TooSmall => "too-small",
+        };
+        outcomes.push((cols, label));
+    }
+    *host_pump_bdd.width_probe.borrow_mut() = Some(outcomes);
+}
+
+#[then("每次渲染为成功或进入 TooSmall 且无未处理的 RenderError")]
+pub(crate) fn t_c3400_width_ladder_ok(host_pump_bdd: &HostPumpBdd) {
+    let outcomes = host_pump_bdd
+        .width_probe
+        .borrow_mut()
+        .take()
+        .expect("width ladder must have run");
+    for (cols, label) in outcomes {
+        assert!(
+            label == "ready" || label == "too-small",
+            "width {cols} ended in {label}"
+        );
+    }
 }

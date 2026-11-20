@@ -355,3 +355,15 @@ fn test_session_switch_trails_not_stack(host_pump_bdd: HostPumpBdd) {}
     name = "打开 mcp 详情不 abort agent"
 )]
 async fn test_c3227_host_mcp_detail_busy(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "渲染溢出降级为提示不崩"
+)]
+fn test_ath_c3400_render_overflow_degradation(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "宽度边界全档不漏错误"
+)]
+fn test_ath_c3400_width_boundary(host_pump_bdd: HostPumpBdd) {}

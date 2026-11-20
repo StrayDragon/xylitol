@@ -6,6 +6,7 @@ use crate::driver::XyEvent;
 use xylitol_tui::utils::strip_ansi_codes as strip_ansi;
 use xylitol_tui::{Component, InputEvent, Terminal};
 
+// ==== Shared fixtures ==== ~keep
 fn mouse_at(
     kind: crossterm::event::MouseEventKind,
     col: u16,
@@ -53,6 +54,251 @@ fn step_left_click(session: &mut HostSession<TestTerminal>, col: u16, row: u16) 
         .unwrap();
 }
 
+fn ctrl_c_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Char('c'),
+        modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+fn alt_up_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Up,
+        modifiers: KeyModifiers::ALT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+fn ctrl_v_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Char('v'),
+        modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+fn arrow_up_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Up,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+fn activity_turn(user: &str, tool_id: &str, path: &str, asst: &str) -> Vec<super::bridge::UiEntry> {
+    vec![
+        super::bridge::UiEntry::User { text: user.into() },
+        super::bridge::UiEntry::Tool {
+            timeout_secs: None,
+            id: tool_id.into(),
+            name: "read".into(),
+            args_preview: path.into(),
+            args_full: String::new(),
+            tool_path: Some(path.into()),
+            write_content: None,
+            display_diff: None,
+            output: "ok".into(),
+            is_error: false,
+            done: true,
+        },
+        super::bridge::UiEntry::Assistant { text: asst.into() },
+    ]
+}
+
+fn ask_args_fixture() -> xylitol_plugin_sdk::ask::AskArgs {
+    use xylitol_plugin_sdk::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
+    xylitol_plugin_sdk::ask::AskArgs {
+        questions: vec![AskQuestionArg {
+            id: "next".into(),
+            prompt: "continue?".into(),
+            label: Some("Next".into()),
+            mode: AskModeArg::Single,
+            options: vec![
+                AskOptionArg {
+                    value: "go".into(),
+                    label: "Go on".into(),
+                    description: None,
+                    recommended: true,
+                },
+                AskOptionArg {
+                    value: "halt".into(),
+                    label: "Halt".into(),
+                    description: None,
+                    recommended: false,
+                },
+            ],
+            allow_other: false,
+        }],
+    }
+}
+
+fn history_message(
+    id: &str,
+    parent: Option<&str>,
+    text: &str,
+) -> xylitol_plugin_sdk::session::SessionEntry {
+    use xylitol_plugin_sdk::session::{
+        EntryBase, MessageEntry, SessionEntry, fixture_message_json,
+    };
+
+    SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: id.into(),
+            parent_id: parent.map(str::to_string),
+            timestamp: 0,
+        },
+        message: fixture_message_json("user", text),
+    })
+}
+
+fn request_load_earlier(session: &HostSession<TestTerminal>) {
+    session
+        .ui_root()
+        .expect("product ui")
+        .borrow_mut()
+        .toggle_fold_target(crate::FoldTarget::LoadEarlier);
+}
+
+fn question_key_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Char('?'),
+        modifiers: KeyModifiers::SHIFT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+struct ScriptedLines {
+    state: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+}
+
+impl Component for ScriptedLines {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        self.state.borrow().clone()
+    }
+    fn handle_input(&mut self, _event: InputEvent) {}
+    fn invalidate(&mut self) {}
+}
+
+fn scripted_lines_session(
+    state: &std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+) -> HostSession<TestTerminal> {
+    let lines = state.clone();
+    HostSession::new(TestTerminal::new(80, 24), move |_| {
+        vec![Box::new(ScriptedLines {
+            state: lines.clone(),
+        })]
+    })
+}
+
+fn set_scripted_lines(state: &std::rc::Rc<std::cell::RefCell<Vec<String>>>, lines: &[&str]) {
+    *state.borrow_mut() = lines.iter().map(|s| s.to_string()).collect();
+}
+
+mod render_degrade_log {
+    use std::sync::{Mutex, OnceLock};
+
+    static RECORDS: OnceLock<Mutex<Vec<(log::Level, String, String)>>> = OnceLock::new();
+
+    fn records() -> &'static Mutex<Vec<(log::Level, String, String)>> {
+        RECORDS.get_or_init(|| Mutex::new(Vec::new()))
+    }
+
+    struct Capture;
+
+    impl log::Log for Capture {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() <= log::Level::Warn
+        }
+
+        fn log(&self, record: &log::Record<'_>) {
+            records()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push((
+                    record.level(),
+                    record.target().to_string(),
+                    record.args().to_string(),
+                ));
+        }
+
+        fn flush(&self) {}
+    }
+
+    pub(crate) fn install() {
+        let _ = log::set_boxed_logger(Box::new(Capture));
+        log::set_max_level(log::LevelFilter::Warn);
+    }
+
+    pub(crate) fn warnings_for(target: &str) -> Vec<String> {
+        records()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .filter(|(level, t, _)| *level == log::Level::Warn && t == target)
+            .map(|(_, _, m)| m.clone())
+            .collect()
+    }
+}
+
+struct OverwideFrameStub;
+
+impl Component for OverwideFrameStub {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        vec!["x".repeat(200)]
+    }
+
+    fn handle_input(&mut self, _event: InputEvent) {}
+
+    fn invalidate(&mut self) {}
+}
+
+struct MinimalFrameStub;
+
+impl Component for MinimalFrameStub {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        vec!["degraded hint frame".to_string()]
+    }
+
+    fn handle_input(&mut self, _event: InputEvent) {}
+
+    fn invalidate(&mut self) {}
+}
+
+fn mount_fixed_zone(cols: u16, rows: u16) -> String {
+    let session = HostSession::new_product_ui(TestTerminal::new(cols, rows));
+    let root = session.ui_root().expect("ui root").clone();
+    {
+        let mut root = root.borrow_mut();
+        // Pin the layout meta so the baseline is machine-independent (no $HOME ~keep
+        // or repo-path leakage into the snapshot). ~keep
+        root.set_layout_meta("~/Projects/xylitol".to_string(), "NOT-SET".to_string());
+        root.set_term_rows(rows as usize);
+        root.set_term_cols(cols as usize);
+    }
+    // Trim trailing padding per line: the terminal fills rows with spaces and ~keep
+    // that padding carries no layout meaning, while snapshot files must stay ~keep
+    // free of trailing whitespace for the prek whitespace hook. ~keep
+    root.borrow_mut()
+        .render(cols as usize)
+        .into_iter()
+        .map(|line| line.trim_end().to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// ==== Terminal lifecycle, TooSmall & render gating ==== ~keep
 #[test]
 fn too_small_predicate() {
     assert!(is_too_small(39, 24));
@@ -360,105 +606,6 @@ fn product_tui_source_has_no_tui_start_call() {
 }
 
 #[test]
-fn render_modules_do_not_match_xy_event() {
-    let root = include_str!("layout/root/mod.rs");
-    assert!(
-        !root.contains("XyEvent"),
-        "layout/root must stay XyEvent-free"
-    );
-    let slot_input = include_str!("layout/root/slot_input.rs");
-    assert!(
-        !slot_input.contains("XyEvent"),
-        "layout/root/slot_input must stay XyEvent-free"
-    );
-    let slots = include_str!("layout/slots/mod.rs");
-    assert!(
-        !slots.contains("XyEvent"),
-        "layout/slots must stay XyEvent-free"
-    );
-    let bridge = include_str!("bridge/mod.rs");
-    assert!(
-        bridge.contains("apply_xy_event"),
-        "bridge must own apply_xy_event"
-    );
-}
-
-#[test]
-fn shared_effect_pump_is_single_entry() {
-    let effects = include_str!("effects/mod.rs");
-    assert!(
-        effects.contains("pub async fn drain_pending"),
-        "effects must export drain_pending"
-    );
-    let lib_src = include_str!("lib.rs");
-    assert!(
-        lib_src.contains("drain_pending"),
-        "production host loop must call drain_pending"
-    );
-    assert!(
-        !lib_src.contains("PendingSlash::Exit"),
-        "lib.rs must not duplicate PendingSlash match"
-    );
-    let harness = include_str!("harness.rs");
-    assert!(
-        harness.contains("drain_pending"),
-        "harness pump must call drain_pending"
-    );
-    assert!(
-        !harness.contains("PendingSlash::Exit"),
-        "harness must not duplicate PendingSlash match"
-    );
-}
-
-#[test]
-fn product_slash_catalog_matches_agent_ssot() {
-    use crate::layout::product_slash_commands_for_editor;
-    use crate::product_commands::product_slash_commands;
-
-    let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
-    let catalog: Vec<String> = product_slash_commands_for_editor()
-        .into_iter()
-        .map(|c| c.name)
-        .collect();
-    assert_eq!(
-        catalog,
-        ssot.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
-    );
-}
-
-#[test]
-fn designing_slash_is_pinned_and_absent_from_product_ssot() {
-    use crate::layout::slash_commands_for_editor;
-    use crate::product_commands::product_slash_commands;
-
-    let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
-    assert!(
-        !ssot.contains(&"designing"),
-        "/designing must not join the product slash SSOT"
-    );
-    let product = slash_commands_for_editor(false, &[]);
-    assert!(product.iter().all(|c| c.name != "designing"));
-    let designing = slash_commands_for_editor(true, &[]);
-    assert_eq!(designing[0].name, "designing");
-}
-
-#[test]
-fn legacy_short_slash_names_are_not_parsed() {
-    use super::commands::parse_slash_command;
-    for legacy in [
-        "/tree", "/fork", "/export", "/import", "/compact", "/resume", "/new", "/clone", "/name",
-    ] {
-        assert!(
-            parse_slash_command(legacy).is_none(),
-            "{legacy} must not parse as PendingSlash"
-        );
-    }
-    assert!(parse_slash_command("/session-tree").is_some());
-    assert!(parse_slash_command("/exit").is_some());
-    assert!(parse_slash_command("/quit").is_some());
-}
-
-#[test]
 fn quit_event_stops_session() {
     let mut session = HostSession::new(TestTerminal::new(80, 24), build_root);
     session.step(HostEvent::Quit).unwrap();
@@ -466,23 +613,76 @@ fn quit_event_stops_session() {
 }
 
 #[test]
-fn build_root_ready_is_component() {
-    let mut kids = build_root(LayoutMode::Ready);
-    assert_eq!(kids.len(), 1);
-    let lines = kids[0].render(80);
-    assert!(!lines.is_empty());
+fn idle_tick_skips_paint_when_clean() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.render_now().expect("warm");
+    let frames = session.tui.frame_count();
+    session.step(HostEvent::Tick).expect("tick");
+    assert_eq!(
+        session.tui.frame_count(),
+        frames,
+        "idle Tick must not paint when nothing is dirty"
+    );
 }
 
-fn ctrl_c_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Char('c'),
-        modifiers: KeyModifiers::CONTROL,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
+#[test]
+fn interaction_mode_defaults_to_application_owned() {
+    let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    assert_eq!(
+        session.tui.interaction_mode(),
+        xylitol_tui::InteractionMode::ApplicationOwned
+    );
+    assert!(
+        session.tui.application_session_active(),
+        "product default MUST begin ApplicationOwned session"
+    );
+    assert!(session.tui.mouse_capture_enabled());
+    assert_eq!(
+        crate::TuiRunOptions::default().interaction_mode,
+        xylitol_tui::InteractionMode::ApplicationOwned
+    );
 }
 
+#[test]
+fn lab_inline_env_selects_inline_at_construction() {
+    assert_eq!(
+        crate::lab_interaction_mode(Some("1")),
+        xylitol_tui::InteractionMode::Inline
+    );
+    assert_eq!(
+        crate::lab_interaction_mode(Some(" true ")),
+        xylitol_tui::InteractionMode::Inline
+    );
+    assert_eq!(
+        crate::lab_interaction_mode(Some("YES")),
+        xylitol_tui::InteractionMode::Inline
+    );
+    assert_eq!(
+        crate::lab_interaction_mode(Some("0")),
+        xylitol_tui::InteractionMode::ApplicationOwned
+    );
+    assert_eq!(
+        crate::lab_interaction_mode(None),
+        xylitol_tui::InteractionMode::ApplicationOwned
+    );
+}
+
+#[test]
+fn interaction_application_owned_at_construction_registers_dock() {
+    let mut session = HostSession::new_product_ui_with_meta_mode(
+        TestTerminal::new(80, 24),
+        "/tmp".into(),
+        "model".into(),
+        xylitol_tui::InteractionMode::ApplicationOwned,
+    );
+    assert!(session.tui.application_session_active());
+    assert!(session.tui.mouse_capture_enabled());
+    assert!(session.tui.dock_rows() >= 4);
+    session.render_now().unwrap();
+    assert!(session.tui.dock_rows() >= 4);
+}
+
+// ==== Harness pump: keys, slash & steering ==== ~keep
 #[test]
 fn harness_ctrl_c_clears_editor_then_quits() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -599,16 +799,6 @@ fn harness_busy_alt_enter_queues_follow_up() {
         "Follow-up must be docked next to status (not under startup card); gap={}; {frame:?}",
         status_idx - follow_idx
     );
-}
-
-fn alt_up_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Up,
-        modifiers: KeyModifiers::ALT,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
 }
 
 #[test]
@@ -855,89 +1045,6 @@ async fn harness_enter_assistant_does_not_prefill() {
     assert_eq!(driver.travel_calls(), vec!["a1".to_string()]);
 }
 
-#[tokio::test]
-async fn dock_chip_click_toggles_popup_in_host() {
-    use super::harness::{ScriptedDriver, pump_host_driver};
-    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-    async fn click_chip(
-        session: &mut HostSession<TestTerminal>,
-        driver: &mut ScriptedDriver,
-        chip: &str,
-    ) -> bool {
-        session.render_now().expect("chip render");
-        let lines: Vec<String> = session.tui.last_painted_lines().to_vec();
-        let coord = lines.iter().enumerate().find_map(|(idx, line)| {
-            let plain = xylitol_tui::utils::strip_ansi_codes(line);
-            plain
-                .find(chip)
-                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
-        });
-        let Some((col, row)) = coord else {
-            return false;
-        };
-        for kind in [
-            MouseEventKind::Down(MouseButton::Left),
-            MouseEventKind::Up(MouseButton::Left),
-        ] {
-            session
-                .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-                    kind,
-                    column: col,
-                    row,
-                    modifiers: crossterm::event::KeyModifiers::NONE,
-                })))
-                .expect("mouse step");
-        }
-        let mut stream = None;
-        pump_host_driver(session, driver, &mut stream)
-            .await
-            .expect("chip pump");
-        true
-    }
-    let mut session = HostSession::new_product_ui(TestTerminal::new(120, 40));
-    let mut driver = ScriptedDriver::new();
-    assert!(
-        !click_chip(&mut session, &mut driver, "[详情]").await,
-        "[详情] chip must not be painted"
-    );
-}
-
-#[test]
-fn dock_chip_click_opens_sidebar_in_host() {
-    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-    let mut session = HostSession::new_product_ui(TestTerminal::new(120, 40));
-    let root = session.ui_root().expect("product ui").clone();
-    session.render_now().expect("render");
-    let lines: Vec<String> = session.tui.last_painted_lines().to_vec();
-    let (col, row) = lines
-        .iter()
-        .enumerate()
-        .find_map(|(idx, line)| {
-            let plain = xylitol_tui::utils::strip_ansi_codes(line);
-            plain
-                .find('◨')
-                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
-        })
-        .expect("input marker painted");
-    for kind in [
-        MouseEventKind::Down(MouseButton::Left),
-        MouseEventKind::Up(MouseButton::Left),
-    ] {
-        session
-            .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-                kind,
-                column: col,
-                row,
-                modifiers: crossterm::event::KeyModifiers::NONE,
-            })))
-            .expect("mouse step");
-    }
-    assert!(
-        root.borrow().has_pending_session_sidebar(),
-        "marker click must queue the sidebar open request"
-    );
-}
-
 #[test]
 fn harness_editor_slot_mutex_and_esc_closes() {
     use super::layout::{EditorSlot, EditorSlotKind};
@@ -1108,6 +1215,7 @@ fn harness_app_thinking_toggle_action_unbound_by_default() {
     );
 }
 
+// ==== Harness: copy, trust & reload gates ==== ~keep
 #[tokio::test]
 async fn harness_idle_slash_reload_keeps_history_and_calls_runtime() {
     use super::harness::{ScriptedDriver, pump_host_driver};
@@ -1445,6 +1553,7 @@ fn harness_busy_unknown_slash_not_steered() {
     );
 }
 
+// ==== Harness: paste, history seed & resume ==== ~keep
 #[test]
 fn harness_keybindings_reload_keeps_old_on_bad_json() {
     use crate::keybindings::{ReloadOutcome, matches_binding};
@@ -1491,16 +1600,6 @@ fn harness_long_paste_collapses_display_and_submit_expands() {
     assert_eq!(root.borrow().editor_text(), pasted);
     session.step(HostEvent::Input(enter_event())).unwrap();
     assert_eq!(session.take_submit().as_deref(), Some(pasted.as_str()));
-}
-
-fn ctrl_v_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Char('v'),
-        modifiers: KeyModifiers::CONTROL,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
 }
 
 #[tokio::test]
@@ -1665,16 +1764,6 @@ async fn harness_paste_image_err_with_text_fallback() {
         "text after image err must not error; got {:?}",
         session.ui_model().entries
     );
-}
-
-fn arrow_up_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Up,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
 }
 
 #[test]
@@ -1891,454 +1980,88 @@ fn harness_cli_restored_session_rebuilds_transcript() {
     assert_eq!(root.borrow().editor_text(), "hi");
 }
 
-#[test]
-fn apply_xy_event_sequence_snapshot() {
-    let mut model = UiModel::new();
-    model.begin_run("prompt");
-    apply_xy_event(
-        &mut model,
-        &XyEvent::AgentStart {
-            session_id: "s".into(),
-            model: "m".into(),
-        },
-    );
-    apply_xy_event(&mut model, &XyEvent::StepStart { step_index: 0 });
-    apply_xy_event(&mut model, &XyEvent::TextDelta("A".into()));
-    apply_xy_event(&mut model, &XyEvent::StepEnd { step_index: 0 });
-    apply_xy_event(&mut model, &XyEvent::StepStart { step_index: 1 });
-    apply_xy_event(
-        &mut model,
-        &XyEvent::MessageEnd {
-            role: "assistant".into(),
-            message: None,
-        },
-    );
-    apply_xy_event(
-        &mut model,
-        &XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 0,
-        },
-    );
-    apply_xy_event(
-        &mut model,
-        &XyEvent::AgentEnd {
-            reason: None,
-            messages: vec![],
-        },
-    );
-
-    let lines = model.scrollback_lines();
-    assert!(lines.iter().any(|l| l.contains("user: prompt")));
-    assert!(lines.iter().any(|l| l.contains("assistant: A")));
-    assert_eq!(model.phase, UiPhase::Idle);
-    assert!(model.status.is_none());
-}
-
-#[test]
-fn idle_scrollback_is_silent_no_placeholder_wall() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta("~/x", "m");
-    root.apply_ui_model(&UiModel::new());
-    let joined = root.render(80).join("\n");
+// ==== Harness: mouse, pointer & folds ==== ~keep
+#[tokio::test]
+async fn dock_chip_click_toggles_popup_in_host() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    async fn click_chip(
+        session: &mut HostSession<TestTerminal>,
+        driver: &mut ScriptedDriver,
+        chip: &str,
+    ) -> bool {
+        session.render_now().expect("chip render");
+        let lines: Vec<String> = session.tui.last_painted_lines().to_vec();
+        let coord = lines.iter().enumerate().find_map(|(idx, line)| {
+            let plain = xylitol_tui::utils::strip_ansi_codes(line);
+            plain
+                .find(chip)
+                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
+        });
+        let Some((col, row)) = coord else {
+            return false;
+        };
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            session
+                .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+                    kind,
+                    column: col,
+                    row,
+                    modifiers: crossterm::event::KeyModifiers::NONE,
+                })))
+                .expect("mouse step");
+        }
+        let mut stream = None;
+        pump_host_driver(session, driver, &mut stream)
+            .await
+            .expect("chip pump");
+        true
+    }
+    let mut session = HostSession::new_product_ui(TestTerminal::new(120, 40));
+    let mut driver = ScriptedDriver::new();
     assert!(
-        !joined.contains("empty — submit"),
-        "idle must not shout placeholder: {joined}"
-    );
-    assert!(joined.contains('─'), "editor operation-zone border missing");
-    assert!(joined.contains("~/x"), "footer missing");
-}
-
-#[test]
-fn idle_editor_operation_zone_is_compact() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta("~/x", "m");
-    root.apply_ui_model(&UiModel::new());
-    let lines = root.render(80);
-    assert!(
-        lines.iter().any(|l| l.contains("XYlitol")),
-        "idle must show startup resources card: {lines:?}"
-    );
-    let border_rows = lines.iter().filter(|l| l.contains('─')).count();
-    assert!(
-        border_rows >= 2,
-        "operation-zone borders missing: {lines:?}"
-    );
-
-    root.set_editor_text("line1\nline2\nline3\nline4\nline5\nline6");
-    let grown = root.render(80);
-    assert!(
-        grown.len() > lines.len(),
-        "multi-line draft must grow editor slot: idle={} grown={}",
-        lines.len(),
-        grown.len()
+        !click_chip(&mut session, &mut driver, "[详情]").await,
+        "[详情] chip must not be painted"
     );
 }
 
 #[test]
-fn layout_idle_status_is_one_blank_above_editor() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "model-name");
-    root.apply_ui_model(&UiModel::new());
-    let lines = root.render(80);
-    assert!(
-        !lines.iter().any(|l| l.contains("Working")),
-        "idle must not show busy status: {lines:?}"
-    );
-    let marker_row = lines
+fn dock_chip_click_opens_sidebar_in_host() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let mut session = HostSession::new_product_ui(TestTerminal::new(120, 40));
+    let root = session.ui_root().expect("product ui").clone();
+    session.render_now().expect("render");
+    let lines: Vec<String> = session.tui.last_painted_lines().to_vec();
+    let (col, row) = lines
         .iter()
-        .position(|l| xylitol_tui::utils::strip_ansi_codes(l).contains('◨'))
-        .expect("input marker row");
-    let editor_border = lines[..marker_row]
-        .iter()
-        .rposition(|l| xylitol_tui::utils::strip_ansi_codes(l).contains('╭'))
-        .expect("editor top border");
+        .enumerate()
+        .find_map(|(idx, line)| {
+            let plain = xylitol_tui::utils::strip_ansi_codes(line);
+            plain
+                .find('◨')
+                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
+        })
+        .expect("input marker painted");
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        session
+            .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+                kind,
+                column: col,
+                row,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            })))
+            .expect("mouse step");
+    }
     assert!(
-        editor_border > 0 && lines[editor_border - 1].is_empty(),
-        "idle must keep one blank above editor: {lines:?}"
+        root.borrow().has_pending_session_sidebar(),
+        "marker click must queue the sidebar open request"
     );
-    let footer = footer_line(&lines);
-    assert!(footer.contains("~/xylitol"), "{footer}");
-    assert!(footer.contains("model-name"), "{footer}");
-    assert!(
-        !footer.contains("enter submit"),
-        "footer must not be a key-chord wall: {footer}"
-    );
-}
-
-#[test]
-fn layout_busy_status_stays_one_row() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "model-name");
-    let mut model = UiModel::new();
-    model.begin_run("hello");
-    root.apply_ui_model(&model);
-    let lines = root.render(80);
-    let working: Vec<_> = lines.iter().filter(|l| l.contains("Working")).collect();
-    assert_eq!(
-        working.len(),
-        1,
-        "busy status must stay one spinner row: {lines:?}"
-    );
-}
-
-#[test]
-fn layout_compacting_and_retry_stay_single_status_row() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "model-name");
-
-    let mut compacting = UiModel::new();
-    compacting.begin_run("hi");
-    compacting.status = Some("Compacting".into());
-    root.apply_ui_model(&compacting);
-    let compact_lines = root.render(80);
-    let compact_status: Vec<_> = compact_lines
-        .iter()
-        .filter(|l| l.contains("Compacting"))
-        .collect();
-    assert_eq!(
-        compact_status.len(),
-        1,
-        "Compacting must be a single status row: {compact_lines:?}"
-    );
-    let footer = footer_line(&compact_lines);
-    assert!(
-        !footer.contains("Compacting"),
-        "Compacting must not live in footer: {footer}"
-    );
-
-    let mut retrying = UiModel::new();
-    retrying.begin_run("hi");
-    retrying.status = Some("Retry 1/3".into());
-    root.apply_ui_model(&retrying);
-    let retry_lines = root.render(80);
-    let retry_status: Vec<_> = retry_lines.iter().filter(|l| l.contains("Retry")).collect();
-    assert_eq!(
-        retry_status.len(),
-        1,
-        "Retry must be a single status row: {retry_lines:?}"
-    );
-    let footer = footer_line(&retry_lines);
-    assert!(
-        !footer.contains("Retry"),
-        "Retry must not live in footer: {footer}"
-    );
-}
-
-#[test]
-fn layout_busy_status_is_separate_from_footer() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "model-name");
-    let mut model = UiModel::new();
-    model.begin_run("hello");
-    root.apply_ui_model(&model);
-    let lines = root.render(80);
-    assert!(
-        lines.iter().any(|l| l.contains("Working")),
-        "busy status row missing: {lines:?}"
-    );
-    assert!(
-        lines.iter().any(|l| {
-            l.contains('⠋')
-                || l.contains('⠙')
-                || l.contains('⠹')
-                || l.contains('⠸')
-                || l.contains('⠼')
-                || l.contains('⠴')
-                || l.contains('⠦')
-                || l.contains('⠧')
-                || l.contains('⠇')
-                || l.contains('⠏')
-                || l.contains('⬢')
-        }),
-        "busy status must include spinner frame: {lines:?}"
-    );
-    let footer = footer_line(&lines);
-    assert!(
-        !footer.contains("Working"),
-        "Working must not live in footer: {footer}"
-    );
-    assert!(
-        !footer.contains('⠋') && !footer.contains('⠙'),
-        "spinner must not live in footer: {footer}"
-    );
-    assert!(
-        footer.contains("~/xylitol") && footer.contains("model-name"),
-        "{footer}"
-    );
-
-    let _ = root.tick();
-    let after = root.render(80);
-    assert!(
-        after.iter().any(|l| l.contains("Working")),
-        "tick must keep busy status: {after:?}"
-    );
-}
-
-#[test]
-fn scrollback_user_message_no_wash_bg() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta(".", "m");
-    let mut model = UiModel::new();
-    model.entries.push(super::bridge::UiEntry::User {
-        text: "hello bg".into(),
-    });
-    root.apply_ui_model(&model);
-    let joined = root.render(80).join("\n");
-    assert!(joined.contains("hello bg"), "user text missing: {joined}");
-    let user_line = joined
-        .lines()
-        .find(|l| strip_ansi(l).contains("hello bg"))
-        .expect("user line");
-    assert!(
-        !user_line.contains("\x1b[48;2;"),
-        "user row MUST NOT apply user-message-bg wash: {user_line:?}"
-    );
-}
-
-#[test]
-fn scrollback_bash_block_tint_and_gap() {
-    use super::bridge::BashBlockStatus;
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta(".", "m");
-    let mut model = UiModel::new();
-    model.entries.push(super::bridge::UiEntry::User {
-        text: "before".into(),
-    });
-    model.entries.push(super::bridge::UiEntry::Bash {
-        id: "bash-t".into(),
-        command: "echo hi".into(),
-        status: BashBlockStatus::Success,
-        output: "hi".into(),
-        exclude_from_context: false,
-    });
-    root.apply_ui_model(&model);
-    let lines = root.render(80);
-    let is_inter_spacer = |l: &str| l.contains("\x1b[49m") && !l.contains("\x1b[48;2");
-    let before = lines
-        .iter()
-        .position(|l| strip_ansi(l).contains("before"))
-        .expect("user");
-    let bash = lines
-        .iter()
-        .position(|l| strip_ansi(l).contains("$ echo hi"))
-        .expect("bash");
-    assert!(before < bash);
-    let spacer_run = lines[before + 1..bash]
-        .iter()
-        .filter(|l| is_inter_spacer(l))
-        .count();
-    assert!(
-        spacer_run >= 1,
-        "att10 untinted spacer between blocks: {spacer_run}"
-    );
-    let joined = lines.join("\n");
-    assert!(
-        joined.contains("\x1b[48;2;"),
-        "bash success status rail missing: {joined:?}"
-    );
-    let bash_line = lines
-        .iter()
-        .find(|l| strip_ansi(l).contains("$ echo hi"))
-        .expect("$ echo");
-    let wash = {
-        let p = xylitol_tui::Palette::dark();
-        format!(
-            "\x1b[48;2;{};{};{}m",
-            p.tool_success_bg.r, p.tool_success_bg.g, p.tool_success_bg.b
-        )
-    };
-    assert!(
-        !bash_line.contains(&wash),
-        "bash MUST NOT use full tool-success-bg wash: {bash_line:?}"
-    );
-}
-
-#[test]
-fn scrollback_bash_ctrl_o_viewport_keeps_rail() {
-    use super::bridge::BashBlockStatus;
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta(".", "m");
-    let mut model = UiModel::new();
-    let long_out: String = (0..20).map(|i| format!("line-{i}\n")).collect();
-    model.entries.push(super::bridge::UiEntry::Bash {
-        id: "bash-t".into(),
-        command: "seq".into(),
-        status: BashBlockStatus::Success,
-        output: long_out,
-        exclude_from_context: false,
-    });
-    root.apply_ui_model(&model);
-
-    let collapsed = root.render(160);
-    let joined = collapsed.join("\n");
-    assert!(
-        strip_ansi(&joined).contains("click to expand"),
-        "collapsed viewport hint missing"
-    );
-    let bash_line = collapsed
-        .iter()
-        .find(|l| strip_ansi(l).contains("$ seq"))
-        .expect("$ seq");
-    assert!(
-        bash_line.contains("\x1b[48;2;"),
-        "bash header must have status rail"
-    );
-    assert!(
-        xylitol_tui::visible_width(bash_line) >= 160,
-        "railed row must span terminal width, got {}",
-        xylitol_tui::visible_width(bash_line)
-    );
-
-    root.toggle_tools_output_default();
-    assert!(root.fold().defaults.tools_output_expanded);
-    let expanded = root.render(160).join("\n");
-    assert!(
-        !strip_ansi(&expanded).contains("click to expand"),
-        "expanded viewport should not show collapse hint"
-    );
-    assert!(strip_ansi(&expanded).contains("line-0"));
-    assert!(strip_ansi(&expanded).contains("line-19"));
-}
-
-#[test]
-fn layout_ascii_user_glyph() {
-    use super::layout::UiRoot;
-    use super::widgets::GlyphSet;
-
-    let mut root = UiRoot::new();
-    root.set_glyphs(GlyphSet::Ascii);
-    root.set_layout_meta(".", "m");
-    let mut model = UiModel::new();
-    model.begin_run("hi");
-    root.apply_ui_model(&model);
-    let lines = root.render(80);
-    let joined = lines.join("\n");
-    assert!(
-        joined.contains("> hi") || joined.contains(">\x1b") || joined.contains("> "),
-        "ascii user glyph missing: {joined}"
-    );
-    assert!(!joined.contains('❯'), "{joined}");
-}
-
-#[test]
-fn scrollback_assistant_uses_markdown_not_plain_prefix() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    root.set_layout_meta(".", "m");
-    let mut model = UiModel::new();
-    model.entries.push(super::bridge::UiEntry::Assistant {
-        text: "**bold** hi".into(),
-    });
-    root.apply_ui_model(&model);
-    let joined = root.render(80).join("\n");
-    assert!(
-        !joined.contains("assistant:"),
-        "must not use plain assistant: prefix: {joined}"
-    );
-    assert!(joined.contains("hi"), "{joined}");
-}
-
-#[test]
-fn scrollback_thinking_fold_shows_no_key_hint() {
-    use super::layout::UiRoot;
-    use super::widgets::FoldTarget;
-    use xylitol_tui::InputEvent;
-
-    let mut root = UiRoot::new();
-    let mut model = UiModel::new();
-    model.entries.push(super::bridge::UiEntry::Thinking {
-        id: super::bridge::allocate_thinking_id(&[], "secret plan"),
-        text: "secret plan".into(),
-        elapsed_secs: None,
-    });
-    root.apply_ui_model(&model);
-    let idle = root.render(80).join("\n");
-    assert!(!idle.contains("(Ctrl+T)"), "{idle}");
-    assert!(
-        idle.contains("Thought"),
-        "flushed thinking L1 is Thought: {idle}"
-    );
-    assert!(
-        !idle.contains("secret plan"),
-        "collapsed must hide body: {idle}"
-    );
-
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    root.handle_input(InputEvent::Key(KeyEvent::new(
-        KeyCode::Char('t'),
-        KeyModifiers::CONTROL,
-    )));
-    let after_unbound = root.render(80).join("\n");
-    assert!(
-        !after_unbound.contains("secret plan"),
-        "ctrl+t default chord contracted: {after_unbound}"
-    );
-    root.toggle_fold_target(FoldTarget::Thinking(super::bridge::allocate_thinking_id(
-        &[],
-        "secret plan",
-    )));
-    let open = root.render(80).join("\n");
-    assert!(open.contains("secret plan"), "{open}");
 }
 
 #[test]
@@ -3687,6 +3410,624 @@ fn compaction_and_viewport_toggle_miss_bound() {
 }
 
 #[test]
+fn harness_ready_narrow_with_long_cwd_does_not_hang() {
+    let long_cwd = super::host::display_path(env!("CARGO_MANIFEST_DIR"));
+    let mut session = HostSession::new_product_ui_with_meta(
+        TestTerminal::new(80, 24),
+        long_cwd,
+        "fake-model-with-a-very-long-name".into(),
+    );
+    session.render_now().expect("warm");
+    for cols in [50u16, 45, 44, 42, 40] {
+        session
+            .step(HostEvent::Resize { cols, rows: 24 })
+            .unwrap_or_else(|e| panic!("step {cols}: {e}"));
+        session
+            .render_now()
+            .unwrap_or_else(|e| panic!("render_now {cols}: {e}"));
+        assert_eq!(session.mode(), LayoutMode::Ready, "cols={cols}");
+    }
+    session
+        .step(HostEvent::Resize { cols: 8, rows: 3 })
+        .expect("too small");
+    session.render_now().expect("hint");
+    assert_eq!(session.mode(), LayoutMode::TooSmall);
+    session
+        .step(HostEvent::Resize { cols: 80, rows: 24 })
+        .expect("restore");
+    session.render_now().expect("ready again");
+    assert_eq!(session.mode(), LayoutMode::Ready);
+}
+
+#[test]
+fn gutter_host_click_jumps_and_selection_stays_clean() {
+    use crossterm::event::MouseButton;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(40, 12));
+    for i in 0..40 {
+        session.push_scroll_notice(format!("hist{i:02}xx"));
+    }
+    session.render_now().expect("seed long AO");
+    let notch = session.tui.application_owned_wheel_notch();
+    session
+        .apply_ao_wheel_delta(-(notch * 2))
+        .expect("scroll up");
+    let top0 = session.tui.application_owned_scroll_top();
+    assert!(top0 > 0, "must be away from head, got {top0}");
+
+    step_left_click(&mut session, 39, 0);
+    assert_eq!(
+        session.tui.application_owned_scroll_top(),
+        0,
+        "gutter top click jumps to head"
+    );
+    assert!(!session.tui.application_owned_has_selection());
+
+    session
+        .apply_ao_wheel_delta(-(notch * 2))
+        .expect("up again");
+    let rows = 12;
+    let dock = session.tui.dock_rows();
+    let bottom_row = (rows - dock as u16).saturating_sub(1);
+    step_left_click(&mut session, 39, bottom_row);
+    let content = session
+        .tui
+        .application_owned_content_lines()
+        .map(<[String]>::len)
+        .unwrap_or(0);
+    assert_eq!(
+        session.tui.application_owned_scroll_top(),
+        content.saturating_sub(rows as usize - dock),
+        "gutter bottom call lands at bottom"
+    );
+
+    let drag = |session: &mut HostSession<TestTerminal>, kind, col, row| {
+        session
+            .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+                kind, col, row,
+            ))))
+            .unwrap();
+    };
+    use crossterm::event::MouseEventKind as K;
+    drag(&mut session, K::Down(MouseButton::Left), 39, 1);
+    drag(&mut session, K::Drag(MouseButton::Left), 39, 3);
+    drag(&mut session, K::Up(MouseButton::Left), 39, 3);
+    assert!(
+        !session.tui.application_owned_has_selection(),
+        "drag ending on gutter must not select"
+    );
+}
+
+#[test]
+fn harness_hover_survives_streaming_full_render() {
+    use super::widgets::FoldTarget;
+    use crossterm::event::MouseEventKind;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
+            id: "hover-stream".into(),
+            name: "read".into(),
+            args_preview: "s.rs".into(),
+            args_full: String::new(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "body".into(),
+            is_error: false,
+            done: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    session.render_now().unwrap();
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "hover-stream"))
+        .cloned()
+        .expect("tool hit");
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            region.col_start as u16,
+            screen_row,
+        ))))
+        .unwrap();
+    assert!(
+        session.tui.pointer_hover_id().is_some(),
+        "hover must arm before streaming"
+    );
+
+    session.on_turn_started("stream");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::ThinkingDelta(
+            "stream".into(),
+        ))))
+        .unwrap();
+    assert!(
+        session.tui.ao_components_stale(),
+        "stream must mark components stale"
+    );
+    session.render_now().unwrap();
+    assert!(
+        session.tui.pointer_hover_id().is_some(),
+        "stream-driven full render must not drop hover"
+    );
+}
+
+// ==== Layout, scrollback & history window ==== ~keep
+#[test]
+fn build_root_ready_is_component() {
+    let mut kids = build_root(LayoutMode::Ready);
+    assert_eq!(kids.len(), 1);
+    let lines = kids[0].render(80);
+    assert!(!lines.is_empty());
+}
+
+#[test]
+fn apply_xy_event_sequence_snapshot() {
+    let mut model = UiModel::new();
+    model.begin_run("prompt");
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentStart {
+            session_id: "s".into(),
+            model: "m".into(),
+        },
+    );
+    apply_xy_event(&mut model, &XyEvent::StepStart { step_index: 0 });
+    apply_xy_event(&mut model, &XyEvent::TextDelta("A".into()));
+    apply_xy_event(&mut model, &XyEvent::StepEnd { step_index: 0 });
+    apply_xy_event(&mut model, &XyEvent::StepStart { step_index: 1 });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::MessageEnd {
+            role: "assistant".into(),
+            message: None,
+        },
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::QueueUpdate {
+            steer_count: 0,
+            follow_up_count: 0,
+        },
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentEnd {
+            reason: None,
+            messages: vec![],
+        },
+    );
+
+    let lines = model.scrollback_lines();
+    assert!(lines.iter().any(|l| l.contains("user: prompt")));
+    assert!(lines.iter().any(|l| l.contains("assistant: A")));
+    assert_eq!(model.phase, UiPhase::Idle);
+    assert!(model.status.is_none());
+}
+
+#[test]
+fn idle_scrollback_is_silent_no_placeholder_wall() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta("~/x", "m");
+    root.apply_ui_model(&UiModel::new());
+    let joined = root.render(80).join("\n");
+    assert!(
+        !joined.contains("empty — submit"),
+        "idle must not shout placeholder: {joined}"
+    );
+    assert!(joined.contains('─'), "editor operation-zone border missing");
+    assert!(joined.contains("~/x"), "footer missing");
+}
+
+#[test]
+fn idle_editor_operation_zone_is_compact() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta("~/x", "m");
+    root.apply_ui_model(&UiModel::new());
+    let lines = root.render(80);
+    assert!(
+        lines.iter().any(|l| l.contains("XYlitol")),
+        "idle must show startup resources card: {lines:?}"
+    );
+    let border_rows = lines.iter().filter(|l| l.contains('─')).count();
+    assert!(
+        border_rows >= 2,
+        "operation-zone borders missing: {lines:?}"
+    );
+
+    root.set_editor_text("line1\nline2\nline3\nline4\nline5\nline6");
+    let grown = root.render(80);
+    assert!(
+        grown.len() > lines.len(),
+        "multi-line draft must grow editor slot: idle={} grown={}",
+        lines.len(),
+        grown.len()
+    );
+}
+
+#[test]
+fn layout_idle_status_is_one_blank_above_editor() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta("~/xylitol", "model-name");
+    root.apply_ui_model(&UiModel::new());
+    let lines = root.render(80);
+    assert!(
+        !lines.iter().any(|l| l.contains("Working")),
+        "idle must not show busy status: {lines:?}"
+    );
+    let marker_row = lines
+        .iter()
+        .position(|l| xylitol_tui::utils::strip_ansi_codes(l).contains('◨'))
+        .expect("input marker row");
+    let editor_border = lines[..marker_row]
+        .iter()
+        .rposition(|l| xylitol_tui::utils::strip_ansi_codes(l).contains('╭'))
+        .expect("editor top border");
+    assert!(
+        editor_border > 0 && lines[editor_border - 1].is_empty(),
+        "idle must keep one blank above editor: {lines:?}"
+    );
+    let footer = footer_line(&lines);
+    assert!(footer.contains("~/xylitol"), "{footer}");
+    assert!(footer.contains("model-name"), "{footer}");
+    assert!(
+        !footer.contains("enter submit"),
+        "footer must not be a key-chord wall: {footer}"
+    );
+}
+
+#[test]
+fn layout_busy_status_stays_one_row() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta("~/xylitol", "model-name");
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    root.apply_ui_model(&model);
+    let lines = root.render(80);
+    let working: Vec<_> = lines.iter().filter(|l| l.contains("Working")).collect();
+    assert_eq!(
+        working.len(),
+        1,
+        "busy status must stay one spinner row: {lines:?}"
+    );
+}
+
+#[test]
+fn layout_compacting_and_retry_stay_single_status_row() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta("~/xylitol", "model-name");
+
+    let mut compacting = UiModel::new();
+    compacting.begin_run("hi");
+    compacting.status = Some("Compacting".into());
+    root.apply_ui_model(&compacting);
+    let compact_lines = root.render(80);
+    let compact_status: Vec<_> = compact_lines
+        .iter()
+        .filter(|l| l.contains("Compacting"))
+        .collect();
+    assert_eq!(
+        compact_status.len(),
+        1,
+        "Compacting must be a single status row: {compact_lines:?}"
+    );
+    let footer = footer_line(&compact_lines);
+    assert!(
+        !footer.contains("Compacting"),
+        "Compacting must not live in footer: {footer}"
+    );
+
+    let mut retrying = UiModel::new();
+    retrying.begin_run("hi");
+    retrying.status = Some("Retry 1/3".into());
+    root.apply_ui_model(&retrying);
+    let retry_lines = root.render(80);
+    let retry_status: Vec<_> = retry_lines.iter().filter(|l| l.contains("Retry")).collect();
+    assert_eq!(
+        retry_status.len(),
+        1,
+        "Retry must be a single status row: {retry_lines:?}"
+    );
+    let footer = footer_line(&retry_lines);
+    assert!(
+        !footer.contains("Retry"),
+        "Retry must not live in footer: {footer}"
+    );
+}
+
+#[test]
+fn layout_busy_status_is_separate_from_footer() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta("~/xylitol", "model-name");
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    root.apply_ui_model(&model);
+    let lines = root.render(80);
+    assert!(
+        lines.iter().any(|l| l.contains("Working")),
+        "busy status row missing: {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| {
+            l.contains('⠋')
+                || l.contains('⠙')
+                || l.contains('⠹')
+                || l.contains('⠸')
+                || l.contains('⠼')
+                || l.contains('⠴')
+                || l.contains('⠦')
+                || l.contains('⠧')
+                || l.contains('⠇')
+                || l.contains('⠏')
+                || l.contains('⬢')
+        }),
+        "busy status must include spinner frame: {lines:?}"
+    );
+    let footer = footer_line(&lines);
+    assert!(
+        !footer.contains("Working"),
+        "Working must not live in footer: {footer}"
+    );
+    assert!(
+        !footer.contains('⠋') && !footer.contains('⠙'),
+        "spinner must not live in footer: {footer}"
+    );
+    assert!(
+        footer.contains("~/xylitol") && footer.contains("model-name"),
+        "{footer}"
+    );
+
+    let _ = root.tick();
+    let after = root.render(80);
+    assert!(
+        after.iter().any(|l| l.contains("Working")),
+        "tick must keep busy status: {after:?}"
+    );
+}
+
+#[test]
+fn scrollback_user_message_no_wash_bg() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta(".", "m");
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::User {
+        text: "hello bg".into(),
+    });
+    root.apply_ui_model(&model);
+    let joined = root.render(80).join("\n");
+    assert!(joined.contains("hello bg"), "user text missing: {joined}");
+    let user_line = joined
+        .lines()
+        .find(|l| strip_ansi(l).contains("hello bg"))
+        .expect("user line");
+    assert!(
+        !user_line.contains("\x1b[48;2;"),
+        "user row MUST NOT apply user-message-bg wash: {user_line:?}"
+    );
+}
+
+#[test]
+fn scrollback_bash_block_tint_and_gap() {
+    use super::bridge::BashBlockStatus;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta(".", "m");
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::User {
+        text: "before".into(),
+    });
+    model.entries.push(super::bridge::UiEntry::Bash {
+        id: "bash-t".into(),
+        command: "echo hi".into(),
+        status: BashBlockStatus::Success,
+        output: "hi".into(),
+        exclude_from_context: false,
+    });
+    root.apply_ui_model(&model);
+    let lines = root.render(80);
+    let is_inter_spacer = |l: &str| l.contains("\x1b[49m") && !l.contains("\x1b[48;2");
+    let before = lines
+        .iter()
+        .position(|l| strip_ansi(l).contains("before"))
+        .expect("user");
+    let bash = lines
+        .iter()
+        .position(|l| strip_ansi(l).contains("$ echo hi"))
+        .expect("bash");
+    assert!(before < bash);
+    let spacer_run = lines[before + 1..bash]
+        .iter()
+        .filter(|l| is_inter_spacer(l))
+        .count();
+    assert!(
+        spacer_run >= 1,
+        "att10 untinted spacer between blocks: {spacer_run}"
+    );
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("\x1b[48;2;"),
+        "bash success status rail missing: {joined:?}"
+    );
+    let bash_line = lines
+        .iter()
+        .find(|l| strip_ansi(l).contains("$ echo hi"))
+        .expect("$ echo");
+    let wash = {
+        let p = xylitol_tui::Palette::dark();
+        format!(
+            "\x1b[48;2;{};{};{}m",
+            p.tool_success_bg.r, p.tool_success_bg.g, p.tool_success_bg.b
+        )
+    };
+    assert!(
+        !bash_line.contains(&wash),
+        "bash MUST NOT use full tool-success-bg wash: {bash_line:?}"
+    );
+}
+
+#[test]
+fn scrollback_bash_ctrl_o_viewport_keeps_rail() {
+    use super::bridge::BashBlockStatus;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta(".", "m");
+    let mut model = UiModel::new();
+    let long_out: String = (0..20).map(|i| format!("line-{i}\n")).collect();
+    model.entries.push(super::bridge::UiEntry::Bash {
+        id: "bash-t".into(),
+        command: "seq".into(),
+        status: BashBlockStatus::Success,
+        output: long_out,
+        exclude_from_context: false,
+    });
+    root.apply_ui_model(&model);
+
+    let collapsed = root.render(160);
+    let joined = collapsed.join("\n");
+    assert!(
+        strip_ansi(&joined).contains("click to expand"),
+        "collapsed viewport hint missing"
+    );
+    let bash_line = collapsed
+        .iter()
+        .find(|l| strip_ansi(l).contains("$ seq"))
+        .expect("$ seq");
+    assert!(
+        bash_line.contains("\x1b[48;2;"),
+        "bash header must have status rail"
+    );
+    assert!(
+        xylitol_tui::visible_width(bash_line) >= 160,
+        "railed row must span terminal width, got {}",
+        xylitol_tui::visible_width(bash_line)
+    );
+
+    root.toggle_tools_output_default();
+    assert!(root.fold().defaults.tools_output_expanded);
+    let expanded = root.render(160).join("\n");
+    assert!(
+        !strip_ansi(&expanded).contains("click to expand"),
+        "expanded viewport should not show collapse hint"
+    );
+    assert!(strip_ansi(&expanded).contains("line-0"));
+    assert!(strip_ansi(&expanded).contains("line-19"));
+}
+
+#[test]
+fn layout_ascii_user_glyph() {
+    use super::layout::UiRoot;
+    use super::widgets::GlyphSet;
+
+    let mut root = UiRoot::new();
+    root.set_glyphs(GlyphSet::Ascii);
+    root.set_layout_meta(".", "m");
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    root.apply_ui_model(&model);
+    let lines = root.render(80);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("> hi") || joined.contains(">\x1b") || joined.contains("> "),
+        "ascii user glyph missing: {joined}"
+    );
+    assert!(!joined.contains('❯'), "{joined}");
+}
+
+#[test]
+fn scrollback_assistant_uses_markdown_not_plain_prefix() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta(".", "m");
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "**bold** hi".into(),
+    });
+    root.apply_ui_model(&model);
+    let joined = root.render(80).join("\n");
+    assert!(
+        !joined.contains("assistant:"),
+        "must not use plain assistant: prefix: {joined}"
+    );
+    assert!(joined.contains("hi"), "{joined}");
+}
+
+#[test]
+fn scrollback_thinking_fold_shows_no_key_hint() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+    use xylitol_tui::InputEvent;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: super::bridge::allocate_thinking_id(&[], "secret plan"),
+        text: "secret plan".into(),
+        elapsed_secs: None,
+    });
+    root.apply_ui_model(&model);
+    let idle = root.render(80).join("\n");
+    assert!(!idle.contains("(Ctrl+T)"), "{idle}");
+    assert!(
+        idle.contains("Thought"),
+        "flushed thinking L1 is Thought: {idle}"
+    );
+    assert!(
+        !idle.contains("secret plan"),
+        "collapsed must hide body: {idle}"
+    );
+
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('t'),
+        KeyModifiers::CONTROL,
+    )));
+    let after_unbound = root.render(80).join("\n");
+    assert!(
+        !after_unbound.contains("secret plan"),
+        "ctrl+t default chord contracted: {after_unbound}"
+    );
+    root.toggle_fold_target(FoldTarget::Thinking(super::bridge::allocate_thinking_id(
+        &[],
+        "secret plan",
+    )));
+    let open = root.render(80).join("\n");
+    assert!(open.contains("secret plan"), "{open}");
+}
+
+#[test]
 fn scrollback_diff_header_tint_and_body() {
     use super::layout::UiRoot;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -3719,48 +4060,209 @@ fn scrollback_diff_header_tint_and_body() {
 }
 
 #[test]
-fn harness_ready_narrow_with_long_cwd_does_not_hang() {
-    let long_cwd = super::host::display_path(env!("CARGO_MANIFEST_DIR"));
-    let mut session = HostSession::new_product_ui_with_meta(
-        TestTerminal::new(80, 24),
-        long_cwd,
-        "fake-model-with-a-very-long-name".into(),
-    );
-    session.render_now().expect("warm");
-    for cols in [50u16, 45, 44, 42, 40] {
-        session
-            .step(HostEvent::Resize { cols, rows: 24 })
-            .unwrap_or_else(|e| panic!("step {cols}: {e}"));
-        session
-            .render_now()
-            .unwrap_or_else(|e| panic!("render_now {cols}: {e}"));
-        assert_eq!(session.mode(), LayoutMode::Ready, "cols={cols}");
+fn scrollback_entry_cache_limits_misses_under_streaming() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    for i in 0..30 {
+        model.entries.push(super::bridge::UiEntry::Assistant {
+            text: format!("history-{i}\n\nparagraph"),
+        });
     }
-    session
-        .step(HostEvent::Resize { cols: 8, rows: 3 })
-        .expect("too small");
-    session.render_now().expect("hint");
-    assert_eq!(session.mode(), LayoutMode::TooSmall);
-    session
-        .step(HostEvent::Resize { cols: 80, rows: 24 })
-        .expect("restore");
-    session.render_now().expect("ready again");
-    assert_eq!(session.mode(), LayoutMode::Ready);
-}
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.clear_scrollback_entry_misses_for_test();
 
-#[test]
-fn idle_tick_skips_paint_when_clean() {
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.render_now().expect("warm");
-    let frames = session.tui.frame_count();
-    session.step(HostEvent::Tick).expect("tick");
-    assert_eq!(
-        session.tui.frame_count(),
-        frames,
-        "idle Tick must not paint when nothing is dirty"
+    for i in 0..20 {
+        model.streaming_assistant.push_str(&format!("x{i}"));
+        root.apply_ui_model(&model);
+        let _ = root.render(80);
+    }
+    let misses = root.scrollback_entry_misses_for_test();
+    assert!(
+        misses <= 2,
+        "TextDelta must not re-Markdown all history; misses={misses}"
     );
 }
 
+#[tokio::test]
+async fn load_earlier_prepends_page_from_store() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session(
+        "s1",
+        vec![history_message("u2", Some("u1"), "current")],
+        true,
+    );
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    driver.set_session_messages(vec![history_message("u1", None, "older")]);
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(!session.loaded_history_has_more());
+    assert!(
+        session.ui_model().entries.iter().any(
+            |entry| matches!(entry, super::bridge::UiEntry::User { text } if text.contains("older"))
+        ),
+        "loaded page must be prepended: {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn load_earlier_keeps_the_scroll_anchor_on_the_same_content_row() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let mut entries = Vec::new();
+    let mut prev: Option<String> = None;
+    for i in 0..60 {
+        let id = format!("e{i:02}");
+        let body = if i == 30 {
+            "anchored-body".to_string()
+        } else {
+            format!("filler-{i:02}")
+        };
+        entries.push(history_message(&id, prev.as_deref(), &body));
+        prev = Some(id);
+    }
+    session.apply_resume_session("s1", entries, true);
+    session.render_now().unwrap();
+    session.render_now().unwrap();
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(
+        session.tui.application_owned_scroll_by(-(notch * 6)),
+        "fixture must be scrollable"
+    );
+    session.render_now().unwrap();
+    let lines = session
+        .tui
+        .application_owned_content_lines()
+        .unwrap_or_default();
+    if let Some(known) = lines
+        .iter()
+        .position(|line| strip_ansi(line).contains("filler-20"))
+    {
+        session.tui.application_owned_set_scroll_top(known);
+        session.render_now().unwrap();
+    }
+
+    let marker = |s: &HostSession<TestTerminal>| {
+        s.tui
+            .application_owned_content_lines()
+            .map(|lines| {
+                lines
+                    .iter()
+                    .position(|l| xylitol_tui::utils::strip_ansi_codes(l).contains("anchored-body"))
+            })
+            .unwrap_or(None)
+    };
+    let before = marker(&session).expect("anchored row must be rendered");
+    let scroll_before = session.tui.application_owned_scroll_top();
+    assert!(scroll_before > 0, "must be scrolled off the content top");
+
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    driver.set_session_messages(vec![history_message("u1", None, "older-body")]);
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    session.render_now().unwrap();
+
+    let after = marker(&session).expect("anchored row must survive the prepend");
+    let scroll_after = session.tui.application_owned_scroll_top();
+    let offset_before = before as isize - scroll_before as isize;
+    let offset_after = after as isize - scroll_after as isize;
+    assert_eq!(
+        offset_after, offset_before,
+        "prepending a page must keep the anchored row at the same screen offset          (before row={before} top={scroll_before}, after row={after} top={scroll_after})"
+    );
+}
+
+#[tokio::test]
+async fn load_earlier_expands_buffer_when_store_exhausted() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::history_window::{HISTORY_PAGE, HISTORY_WINDOW};
+
+    let entries: Vec<_> = (0..HISTORY_WINDOW + HISTORY_PAGE)
+        .map(|i| {
+            let parent = (i > 0).then(|| format!("u{}", i - 1));
+            history_message(&format!("u{i}"), parent.as_deref(), "body")
+        })
+        .collect();
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session("s1", entries, false);
+    let before = session.ui_model().entries.len();
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(
+        session.ui_model().entries.len() > before,
+        "collapsed buffer must expand: before={before} after={}",
+        session.ui_model().entries.len()
+    );
+}
+
+#[tokio::test]
+async fn load_earlier_reports_driver_error_and_clears_hint_on_empty_page() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session(
+        "s1",
+        vec![history_message("u2", Some("u1"), "current")],
+        true,
+    );
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    driver.set_get_messages_error(Some("boom".into()));
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|entry| matches!(entry, super::bridge::UiEntry::ScrollNotice { text } if text.contains("boom"))),
+        "driver error must surface as a scroll notice: {:?}",
+        session.ui_model().entries
+    );
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session(
+        "s1",
+        vec![history_message("u2", Some("u1"), "current")],
+        true,
+    );
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert!(
+        !session.ui_model().entries.iter().any(
+            |entry| matches!(entry, super::bridge::UiEntry::ScrollNotice { text } if text.contains("加载更早"))
+        ),
+        "empty page must clear the load-earlier hint: {:?}",
+        session.ui_model().entries
+    );
+}
+
+// ==== Paint cache, streaming & viewport anchoring ==== ~keep
 #[test]
 fn bang_chunk_marks_dirty_and_paints_on_tick() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -3860,34 +4362,6 @@ fn set_loaded_resources_skips_identical_snap_upper_bump() {
     assert!(
         root.upper_rebuild_count_for_test() > rebuilt,
         "label change MUST invalidate upper"
-    );
-}
-
-#[test]
-fn scrollback_entry_cache_limits_misses_under_streaming() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    let mut model = UiModel::new();
-    model.begin_run("hello");
-    for i in 0..30 {
-        model.entries.push(super::bridge::UiEntry::Assistant {
-            text: format!("history-{i}\n\nparagraph"),
-        });
-    }
-    root.apply_ui_model(&model);
-    let _ = root.render(80);
-    root.clear_scrollback_entry_misses_for_test();
-
-    for i in 0..20 {
-        model.streaming_assistant.push_str(&format!("x{i}"));
-        root.apply_ui_model(&model);
-        let _ = root.render(80);
-    }
-    let misses = root.scrollback_entry_misses_for_test();
-    assert!(
-        misses <= 2,
-        "TextDelta must not re-Markdown all history; misses={misses}"
     );
 }
 
@@ -4189,63 +4663,6 @@ fn models_picker_left_right_step_thinking_levels() {
         panic!("right confirm");
     };
     assert_eq!(right.thinking, "high");
-}
-
-#[test]
-fn interaction_mode_defaults_to_application_owned() {
-    let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    assert_eq!(
-        session.tui.interaction_mode(),
-        xylitol_tui::InteractionMode::ApplicationOwned
-    );
-    assert!(
-        session.tui.application_session_active(),
-        "product default MUST begin ApplicationOwned session"
-    );
-    assert!(session.tui.mouse_capture_enabled());
-    assert_eq!(
-        crate::TuiRunOptions::default().interaction_mode,
-        xylitol_tui::InteractionMode::ApplicationOwned
-    );
-}
-
-#[test]
-fn lab_inline_env_selects_inline_at_construction() {
-    assert_eq!(
-        crate::lab_interaction_mode(Some("1")),
-        xylitol_tui::InteractionMode::Inline
-    );
-    assert_eq!(
-        crate::lab_interaction_mode(Some(" true ")),
-        xylitol_tui::InteractionMode::Inline
-    );
-    assert_eq!(
-        crate::lab_interaction_mode(Some("YES")),
-        xylitol_tui::InteractionMode::Inline
-    );
-    assert_eq!(
-        crate::lab_interaction_mode(Some("0")),
-        xylitol_tui::InteractionMode::ApplicationOwned
-    );
-    assert_eq!(
-        crate::lab_interaction_mode(None),
-        xylitol_tui::InteractionMode::ApplicationOwned
-    );
-}
-
-#[test]
-fn interaction_application_owned_at_construction_registers_dock() {
-    let mut session = HostSession::new_product_ui_with_meta_mode(
-        TestTerminal::new(80, 24),
-        "/tmp".into(),
-        "model".into(),
-        xylitol_tui::InteractionMode::ApplicationOwned,
-    );
-    assert!(session.tui.application_session_active());
-    assert!(session.tui.mouse_capture_enabled());
-    assert!(session.tui.dock_rows() >= 4);
-    session.render_now().unwrap();
-    assert!(session.tui.dock_rows() >= 4);
 }
 
 #[test]
@@ -4594,26 +5011,7 @@ fn client_notice_stack_pins_after_reproject_without_rerender() {
     );
 }
 
-fn activity_turn(user: &str, tool_id: &str, path: &str, asst: &str) -> Vec<super::bridge::UiEntry> {
-    vec![
-        super::bridge::UiEntry::User { text: user.into() },
-        super::bridge::UiEntry::Tool {
-            timeout_secs: None,
-            id: tool_id.into(),
-            name: "read".into(),
-            args_preview: path.into(),
-            args_full: String::new(),
-            tool_path: Some(path.into()),
-            write_content: None,
-            display_diff: None,
-            output: "ok".into(),
-            is_error: false,
-            done: true,
-        },
-        super::bridge::UiEntry::Assistant { text: asst.into() },
-    ]
-}
-
+// ==== Activity fold ==== ~keep
 #[test]
 fn activity_fold_att23_l2_shows_summary_keeps_user_asst_scrollnotice() {
     use super::activity_fold::SegmentLevel;
@@ -6286,6 +6684,96 @@ fn activity_fold_live_ask_close_idles_and_drops_asking() {
 }
 
 #[test]
+fn activity_fold_live_thinking_visible_in_open_tool_cluster() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
+        id: "t1".into(),
+        name: "bash".into(),
+        args_preview: "ls".into(),
+        args_full: String::new(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: "file.rs\n".into(),
+        is_error: false,
+        done: true,
+    });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ThinkingDelta("live thought body".into()),
+    );
+    root.apply_ui_model(&model);
+    let plain = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Thinking"),
+        "live thinking header must appear inside an open tool cluster: {plain}"
+    );
+    assert!(
+        plain.contains("live thought body"),
+        "live thinking body must be visible while streaming: {plain}"
+    );
+
+    assert!(
+        root.expand_nearest_activity(),
+        "Alt+Shift+E must still expand the live thinking cluster"
+    );
+    let opened = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("live thought body"),
+        "live thinking body stays visible after opening the cluster: {opened}"
+    );
+}
+
+#[test]
+fn activity_fold_live_thinking_folds_after_channel_end() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ThinkingDelta("live thought body".into()),
+    );
+    root.apply_ui_model(&model);
+    let streaming = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        streaming.contains("live thought body"),
+        "live body visible before channel end: {streaming}"
+    );
+
+    apply_xy_event(&mut model, &XyEvent::TextDelta("answer".into()));
+    root.apply_ui_model(&model);
+    let settled = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        settled.contains("Thought"),
+        "settled thinking must switch to Thought: {settled}"
+    );
+    assert!(
+        settled
+            .lines()
+            .any(|l| l.contains("Thought") && l.contains("live thought body")),
+        "folded Thought header must preview the latest line: {settled}"
+    );
+    assert!(
+        !settled.lines().any(|l| l.trim() == "live thought body"),
+        "settled thinking body folds by default: {settled}"
+    );
+}
+
+// ==== Scene & fixed-zone ops ==== ~keep
+#[test]
 fn scene_dump_thinking_plus_todo_is_used_not_thought() {
     use super::activity_fold::scene::SceneBuilder;
     use super::activity_fold::{count_cluster, partition_segments};
@@ -6572,33 +7060,7 @@ fn scene_dump_covers_product_render_scrollback() {
     );
 }
 
-fn ask_args_fixture() -> xylitol_plugin_sdk::ask::AskArgs {
-    use xylitol_plugin_sdk::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
-    xylitol_plugin_sdk::ask::AskArgs {
-        questions: vec![AskQuestionArg {
-            id: "next".into(),
-            prompt: "continue?".into(),
-            label: Some("Next".into()),
-            mode: AskModeArg::Single,
-            options: vec![
-                AskOptionArg {
-                    value: "go".into(),
-                    label: "Go on".into(),
-                    description: None,
-                    recommended: true,
-                },
-                AskOptionArg {
-                    value: "halt".into(),
-                    label: "Halt".into(),
-                    description: None,
-                    recommended: false,
-                },
-            ],
-            allow_other: false,
-        }],
-    }
-}
-
+// ==== Ask gateway, busy phase & host invariants ==== ~keep
 #[tokio::test]
 async fn harness_ask_gateway_submit_resolves_answered_payload() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -6723,427 +7185,6 @@ async fn harness_ask_gateway_esc_resolves_skipped_success_payload() {
     assert!(result.contains("\"status\":\"skipped\""), "{result}");
 }
 
-#[test]
-fn gutter_host_click_jumps_and_selection_stays_clean() {
-    use crossterm::event::MouseButton;
-
-    let mut session = HostSession::new_product_ui(TestTerminal::new(40, 12));
-    for i in 0..40 {
-        session.push_scroll_notice(format!("hist{i:02}xx"));
-    }
-    session.render_now().expect("seed long AO");
-    let notch = session.tui.application_owned_wheel_notch();
-    session
-        .apply_ao_wheel_delta(-(notch * 2))
-        .expect("scroll up");
-    let top0 = session.tui.application_owned_scroll_top();
-    assert!(top0 > 0, "must be away from head, got {top0}");
-
-    step_left_click(&mut session, 39, 0);
-    assert_eq!(
-        session.tui.application_owned_scroll_top(),
-        0,
-        "gutter top click jumps to head"
-    );
-    assert!(!session.tui.application_owned_has_selection());
-
-    session
-        .apply_ao_wheel_delta(-(notch * 2))
-        .expect("up again");
-    let rows = 12;
-    let dock = session.tui.dock_rows();
-    let bottom_row = (rows - dock as u16).saturating_sub(1);
-    step_left_click(&mut session, 39, bottom_row);
-    let content = session
-        .tui
-        .application_owned_content_lines()
-        .map(<[String]>::len)
-        .unwrap_or(0);
-    assert_eq!(
-        session.tui.application_owned_scroll_top(),
-        content.saturating_sub(rows as usize - dock),
-        "gutter bottom call lands at bottom"
-    );
-
-    let drag = |session: &mut HostSession<TestTerminal>, kind, col, row| {
-        session
-            .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
-                kind, col, row,
-            ))))
-            .unwrap();
-    };
-    use crossterm::event::MouseEventKind as K;
-    drag(&mut session, K::Down(MouseButton::Left), 39, 1);
-    drag(&mut session, K::Drag(MouseButton::Left), 39, 3);
-    drag(&mut session, K::Up(MouseButton::Left), 39, 3);
-    assert!(
-        !session.tui.application_owned_has_selection(),
-        "drag ending on gutter must not select"
-    );
-}
-
-fn history_message(
-    id: &str,
-    parent: Option<&str>,
-    text: &str,
-) -> xylitol_plugin_sdk::session::SessionEntry {
-    use xylitol_plugin_sdk::session::{
-        EntryBase, MessageEntry, SessionEntry, fixture_message_json,
-    };
-
-    SessionEntry::Message(MessageEntry {
-        base: EntryBase {
-            entry_type: "message".into(),
-            id: id.into(),
-            parent_id: parent.map(str::to_string),
-            timestamp: 0,
-        },
-        message: fixture_message_json("user", text),
-    })
-}
-
-fn request_load_earlier(session: &HostSession<TestTerminal>) {
-    session
-        .ui_root()
-        .expect("product ui")
-        .borrow_mut()
-        .toggle_fold_target(crate::FoldTarget::LoadEarlier);
-}
-
-#[tokio::test]
-async fn load_earlier_prepends_page_from_store() {
-    use super::harness::{ScriptedDriver, pump_host_driver};
-
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_resume_session(
-        "s1",
-        vec![history_message("u2", Some("u1"), "current")],
-        true,
-    );
-    request_load_earlier(&session);
-    let mut driver = ScriptedDriver::new();
-    driver.set_session_messages(vec![history_message("u1", None, "older")]);
-    let mut stream = None;
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-
-    assert!(!session.loaded_history_has_more());
-    assert!(
-        session.ui_model().entries.iter().any(
-            |entry| matches!(entry, super::bridge::UiEntry::User { text } if text.contains("older"))
-        ),
-        "loaded page must be prepended: {:?}",
-        session.ui_model().entries
-    );
-}
-
-#[tokio::test]
-async fn load_earlier_keeps_the_scroll_anchor_on_the_same_content_row() {
-    use super::harness::{ScriptedDriver, pump_host_driver};
-
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    let mut entries = Vec::new();
-    let mut prev: Option<String> = None;
-    for i in 0..60 {
-        let id = format!("e{i:02}");
-        let body = if i == 30 {
-            "anchored-body".to_string()
-        } else {
-            format!("filler-{i:02}")
-        };
-        entries.push(history_message(&id, prev.as_deref(), &body));
-        prev = Some(id);
-    }
-    session.apply_resume_session("s1", entries, true);
-    session.render_now().unwrap();
-    session.render_now().unwrap();
-    let notch = session.tui.application_owned_wheel_notch();
-    assert!(
-        session.tui.application_owned_scroll_by(-(notch * 6)),
-        "fixture must be scrollable"
-    );
-    session.render_now().unwrap();
-    let lines = session
-        .tui
-        .application_owned_content_lines()
-        .unwrap_or_default();
-    if let Some(known) = lines
-        .iter()
-        .position(|line| strip_ansi(line).contains("filler-20"))
-    {
-        session.tui.application_owned_set_scroll_top(known);
-        session.render_now().unwrap();
-    }
-
-    let marker = |s: &HostSession<TestTerminal>| {
-        s.tui
-            .application_owned_content_lines()
-            .map(|lines| {
-                lines
-                    .iter()
-                    .position(|l| xylitol_tui::utils::strip_ansi_codes(l).contains("anchored-body"))
-            })
-            .unwrap_or(None)
-    };
-    let before = marker(&session).expect("anchored row must be rendered");
-    let scroll_before = session.tui.application_owned_scroll_top();
-    assert!(scroll_before > 0, "must be scrolled off the content top");
-
-    request_load_earlier(&session);
-    let mut driver = ScriptedDriver::new();
-    driver.set_session_messages(vec![history_message("u1", None, "older-body")]);
-    let mut stream = None;
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    session.render_now().unwrap();
-
-    let after = marker(&session).expect("anchored row must survive the prepend");
-    let scroll_after = session.tui.application_owned_scroll_top();
-    let offset_before = before as isize - scroll_before as isize;
-    let offset_after = after as isize - scroll_after as isize;
-    assert_eq!(
-        offset_after, offset_before,
-        "prepending a page must keep the anchored row at the same screen offset          (before row={before} top={scroll_before}, after row={after} top={scroll_after})"
-    );
-}
-
-#[tokio::test]
-async fn load_earlier_expands_buffer_when_store_exhausted() {
-    use super::harness::{ScriptedDriver, pump_host_driver};
-    use crate::history_window::{HISTORY_PAGE, HISTORY_WINDOW};
-
-    let entries: Vec<_> = (0..HISTORY_WINDOW + HISTORY_PAGE)
-        .map(|i| {
-            let parent = (i > 0).then(|| format!("u{}", i - 1));
-            history_message(&format!("u{i}"), parent.as_deref(), "body")
-        })
-        .collect();
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_resume_session("s1", entries, false);
-    let before = session.ui_model().entries.len();
-    request_load_earlier(&session);
-    let mut driver = ScriptedDriver::new();
-    let mut stream = None;
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-
-    assert!(
-        session.ui_model().entries.len() > before,
-        "collapsed buffer must expand: before={before} after={}",
-        session.ui_model().entries.len()
-    );
-}
-
-#[tokio::test]
-async fn load_earlier_reports_driver_error_and_clears_hint_on_empty_page() {
-    use super::harness::{ScriptedDriver, pump_host_driver};
-
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_resume_session(
-        "s1",
-        vec![history_message("u2", Some("u1"), "current")],
-        true,
-    );
-    request_load_earlier(&session);
-    let mut driver = ScriptedDriver::new();
-    driver.set_get_messages_error(Some("boom".into()));
-    let mut stream = None;
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert!(
-        session
-            .ui_model()
-            .entries
-            .iter()
-            .any(|entry| matches!(entry, super::bridge::UiEntry::ScrollNotice { text } if text.contains("boom"))),
-        "driver error must surface as a scroll notice: {:?}",
-        session.ui_model().entries
-    );
-
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_resume_session(
-        "s1",
-        vec![history_message("u2", Some("u1"), "current")],
-        true,
-    );
-    request_load_earlier(&session);
-    let mut driver = ScriptedDriver::new();
-    let mut stream = None;
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert!(
-        !session.ui_model().entries.iter().any(
-            |entry| matches!(entry, super::bridge::UiEntry::ScrollNotice { text } if text.contains("加载更早"))
-        ),
-        "empty page must clear the load-earlier hint: {:?}",
-        session.ui_model().entries
-    );
-}
-
-#[test]
-fn harness_hover_survives_streaming_full_render() {
-    use super::widgets::FoldTarget;
-    use crossterm::event::MouseEventKind;
-
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    let root = session.ui_root().expect("product ui").clone();
-    {
-        let mut model = session.ui_model().clone();
-        model.entries.push(super::bridge::UiEntry::Tool {
-            timeout_secs: None,
-            id: "hover-stream".into(),
-            name: "read".into(),
-            args_preview: "s.rs".into(),
-            args_full: String::new(),
-            tool_path: None,
-            write_content: None,
-            display_diff: None,
-            output: "body".into(),
-            is_error: false,
-            done: true,
-        });
-        *session.ui_model_mut() = model;
-        session.sync_ui_root_from_model();
-    }
-    session.step(HostEvent::Tick).unwrap();
-    session.tui.request_render(true);
-    session.step_paint_only().unwrap();
-    session.render_now().unwrap();
-
-    let region = root
-        .borrow()
-        .fold_hits()
-        .regions
-        .iter()
-        .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "hover-stream"))
-        .cloned()
-        .expect("tool hit");
-    let screen_row = region
-        .content_row
-        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
-            MouseEventKind::Moved,
-            region.col_start as u16,
-            screen_row,
-        ))))
-        .unwrap();
-    assert!(
-        session.tui.pointer_hover_id().is_some(),
-        "hover must arm before streaming"
-    );
-
-    session.on_turn_started("stream");
-    session
-        .step(HostEvent::Xy(Box::new(XyEvent::ThinkingDelta(
-            "stream".into(),
-        ))))
-        .unwrap();
-    assert!(
-        session.tui.ao_components_stale(),
-        "stream must mark components stale"
-    );
-    session.render_now().unwrap();
-    assert!(
-        session.tui.pointer_hover_id().is_some(),
-        "stream-driven full render must not drop hover"
-    );
-}
-
-#[test]
-fn activity_fold_live_thinking_visible_in_open_tool_cluster() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    let mut model = UiModel::new();
-    model.phase = UiPhase::Busy;
-    model
-        .entries
-        .push(super::bridge::UiEntry::User { text: "u".into() });
-    model.entries.push(super::bridge::UiEntry::Tool {
-        timeout_secs: None,
-        id: "t1".into(),
-        name: "bash".into(),
-        args_preview: "ls".into(),
-        args_full: String::new(),
-        tool_path: None,
-        write_content: None,
-        display_diff: None,
-        output: "file.rs\n".into(),
-        is_error: false,
-        done: true,
-    });
-    apply_xy_event(
-        &mut model,
-        &XyEvent::ThinkingDelta("live thought body".into()),
-    );
-    root.apply_ui_model(&model);
-    let plain = strip_ansi(&root.render(100).join("\n"));
-    assert!(
-        plain.contains("Thinking"),
-        "live thinking header must appear inside an open tool cluster: {plain}"
-    );
-    assert!(
-        plain.contains("live thought body"),
-        "live thinking body must be visible while streaming: {plain}"
-    );
-
-    assert!(
-        root.expand_nearest_activity(),
-        "Alt+Shift+E must still expand the live thinking cluster"
-    );
-    let opened = strip_ansi(&root.render(100).join("\n"));
-    assert!(
-        opened.contains("live thought body"),
-        "live thinking body stays visible after opening the cluster: {opened}"
-    );
-}
-
-#[test]
-fn activity_fold_live_thinking_folds_after_channel_end() {
-    use super::layout::UiRoot;
-
-    let mut root = UiRoot::new();
-    let mut model = UiModel::new();
-    model.phase = UiPhase::Busy;
-    model
-        .entries
-        .push(super::bridge::UiEntry::User { text: "u".into() });
-    apply_xy_event(
-        &mut model,
-        &XyEvent::ThinkingDelta("live thought body".into()),
-    );
-    root.apply_ui_model(&model);
-    let streaming = strip_ansi(&root.render(100).join("\n"));
-    assert!(
-        streaming.contains("live thought body"),
-        "live body visible before channel end: {streaming}"
-    );
-
-    apply_xy_event(&mut model, &XyEvent::TextDelta("answer".into()));
-    root.apply_ui_model(&model);
-    let settled = strip_ansi(&root.render(100).join("\n"));
-    assert!(
-        settled.contains("Thought"),
-        "settled thinking must switch to Thought: {settled}"
-    );
-    assert!(
-        settled
-            .lines()
-            .any(|l| l.contains("Thought") && l.contains("live thought body")),
-        "folded Thought header must preview the latest line: {settled}"
-    );
-    assert!(
-        !settled.lines().any(|l| l.trim() == "live thought body"),
-        "settled thinking body folds by default: {settled}"
-    );
-}
-
 #[tokio::test]
 async fn host_busy_reload_survives_bash_end() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -7224,16 +7265,7 @@ fn esc_suppression_is_host_owned() {
     );
 }
 
-fn question_key_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Char('?'),
-        modifiers: KeyModifiers::SHIFT,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
-}
-
+// ==== Editor & help panel ==== ~keep
 #[test]
 fn empty_editor_shows_shortcut_hint() {
     let mut root = UiRoot::new();
@@ -7407,33 +7439,7 @@ fn busy_question_mark_opens_help_and_esc_closes_before_abort() {
     assert!(!session.take_abort());
 }
 
-struct ScriptedLines {
-    state: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
-}
-
-impl Component for ScriptedLines {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.state.borrow().clone()
-    }
-    fn handle_input(&mut self, _event: InputEvent) {}
-    fn invalidate(&mut self) {}
-}
-
-fn scripted_lines_session(
-    state: &std::rc::Rc<std::cell::RefCell<Vec<String>>>,
-) -> HostSession<TestTerminal> {
-    let lines = state.clone();
-    HostSession::new(TestTerminal::new(80, 24), move |_| {
-        vec![Box::new(ScriptedLines {
-            state: lines.clone(),
-        })]
-    })
-}
-
-fn set_scripted_lines(state: &std::rc::Rc<std::cell::RefCell<Vec<String>>>, lines: &[&str]) {
-    *state.borrow_mut() = lines.iter().map(|s| s.to_string()).collect();
-}
-
+// ==== Inline differential rendering ==== ~keep
 #[test]
 fn inline_differential_pure_append_paints_only_new_tail() {
     let state = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -7582,4 +7588,195 @@ fn inline_differential_shrink_with_edit_repaints_span_and_clears_tail() {
         !batch.contains("c") && !batch.contains("d"),
         "removed rows must be cleared, not repainted: {batch:?}"
     );
+}
+
+// ==== Render failure degradation (c3400 T4) ==== ~keep
+
+// ==== SSOT & architecture guards ==== ~keep
+#[test]
+fn render_modules_do_not_match_xy_event() {
+    let root = include_str!("layout/root/mod.rs");
+    assert!(
+        !root.contains("XyEvent"),
+        "layout/root must stay XyEvent-free"
+    );
+    let slot_input = include_str!("layout/root/slot_input.rs");
+    assert!(
+        !slot_input.contains("XyEvent"),
+        "layout/root/slot_input must stay XyEvent-free"
+    );
+    let slots = include_str!("layout/slots/mod.rs");
+    assert!(
+        !slots.contains("XyEvent"),
+        "layout/slots must stay XyEvent-free"
+    );
+    let bridge = include_str!("bridge/mod.rs");
+    assert!(
+        bridge.contains("apply_xy_event"),
+        "bridge must own apply_xy_event"
+    );
+}
+
+#[test]
+fn shared_effect_pump_is_single_entry() {
+    let effects = include_str!("effects/mod.rs");
+    assert!(
+        effects.contains("pub async fn drain_pending"),
+        "effects must export drain_pending"
+    );
+    let lib_src = include_str!("lib.rs");
+    assert!(
+        lib_src.contains("drain_pending"),
+        "production host loop must call drain_pending"
+    );
+    assert!(
+        !lib_src.contains("PendingSlash::Exit"),
+        "lib.rs must not duplicate PendingSlash match"
+    );
+    let harness = include_str!("harness/mod.rs");
+    assert!(
+        harness.contains("drain_pending"),
+        "harness pump must call drain_pending"
+    );
+    assert!(
+        !harness.contains("PendingSlash::Exit"),
+        "harness must not duplicate PendingSlash match"
+    );
+}
+
+#[test]
+fn product_slash_catalog_matches_agent_ssot() {
+    use crate::layout::product_slash_commands_for_editor;
+    use crate::product_commands::product_slash_commands;
+
+    let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
+    let catalog: Vec<String> = product_slash_commands_for_editor()
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(
+        catalog,
+        ssot.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn designing_slash_is_pinned_and_absent_from_product_ssot() {
+    use crate::layout::slash_commands_for_editor;
+    use crate::product_commands::product_slash_commands;
+
+    let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
+    assert!(
+        !ssot.contains(&"designing"),
+        "/designing must not join the product slash SSOT"
+    );
+    let product = slash_commands_for_editor(false, &[]);
+    assert!(product.iter().all(|c| c.name != "designing"));
+    let designing = slash_commands_for_editor(true, &[]);
+    assert_eq!(designing[0].name, "designing");
+}
+
+#[test]
+fn legacy_short_slash_names_are_not_parsed() {
+    use super::commands::parse_slash_command;
+    for legacy in [
+        "/tree", "/fork", "/export", "/import", "/compact", "/resume", "/new", "/clone", "/name",
+    ] {
+        assert!(
+            parse_slash_command(legacy).is_none(),
+            "{legacy} must not parse as PendingSlash"
+        );
+    }
+    assert!(parse_slash_command("/session-tree").is_some());
+    assert!(parse_slash_command("/exit").is_some());
+    assert!(parse_slash_command("/quit").is_some());
+}
+
+// ==== Render guardrails (c3400) ==== ~keep
+#[test]
+fn render_error_degrades_to_toosmall_hint_and_recovers() {
+    render_degrade_log::install();
+    let rebuild = |mode: LayoutMode| -> Vec<Box<dyn Component>> {
+        match mode {
+            LayoutMode::TooSmall => vec![Box::new(MinimalFrameStub)],
+            LayoutMode::Ready => vec![Box::new(OverwideFrameStub)],
+        }
+    };
+    let mut session = HostSession::new(TestTerminal::new(80, 24), rebuild);
+    assert_eq!(session.mode(), LayoutMode::Ready);
+
+    // The Ready frame is 200 columns wide, wider than the 80-column terminal, so the engine ~keep
+    // width check must return RenderError. step_paint_only catches it through ~keep
+    // recover_from_render_error; if that recovery were removed the error would ~keep
+    // propagate and this expect would fail (reverse verification). ~keep
+    session
+        .step_paint_only()
+        .expect("render overflow must degrade instead of propagating");
+
+    assert_eq!(session.mode(), LayoutMode::TooSmall);
+    let warns = render_degrade_log::warnings_for("xylitol::tui");
+    assert!(
+        warns
+            .iter()
+            .any(|m| m.contains("degraded to TooSmall hint")),
+        "expected a degradation warn on target xylitol::tui, got {warns:?}"
+    );
+
+    // Restoring the size must return to Ready through the resize path. ~keep
+    session
+        .step(HostEvent::Resize {
+            cols: 100,
+            rows: 30,
+        })
+        .expect("resize after degradation");
+    assert_eq!(session.mode(), LayoutMode::Ready);
+}
+
+// ==== Width boundary invariant (c3400 T5) ==== ~keep
+
+#[test]
+fn fixed_zone_renders_ok_or_toosmall_across_width_ladder() {
+    // The product fixed zone must render successfully or sit in the TooSmall ~keep
+    // hint at every terminal width; an unhandled RenderError escaping to the ~keep
+    // caller is a contract breach (r3372). ~keep
+    for cols in [1u16, 5, 9, 10, 12, 20, 39, 40, 80, 200] {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(cols, 24));
+        let expected = if is_too_small(cols, 24) {
+            LayoutMode::TooSmall
+        } else {
+            LayoutMode::Ready
+        };
+        assert_eq!(session.mode(), expected, "mount at cols={cols}");
+        session
+            .step_paint_only()
+            .unwrap_or_else(|e| panic!("width {cols}: unhandled render failure: {e}"));
+        assert_eq!(session.mode(), expected, "paint at cols={cols}");
+    }
+
+    // Height boundary too: 40x6 is the smallest Ready mount, 40x5 degrades. ~keep
+    for (cols, rows) in [(40u16, 6u16), (40, 5), (200, 6), (200, 5)] {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(cols, rows));
+        let expected = if is_too_small(cols, rows) {
+            LayoutMode::TooSmall
+        } else {
+            LayoutMode::Ready
+        };
+        assert_eq!(session.mode(), expected, "mount at {cols}x{rows}");
+        session
+            .step_paint_only()
+            .unwrap_or_else(|e| panic!("size {cols}x{rows}: unhandled render failure: {e}"));
+        assert_eq!(session.mode(), expected, "paint at {cols}x{rows}");
+    }
+}
+
+// ==== Full-screen fixed-zone snapshot baseline (c3400 T6) ==== ~keep
+
+#[test]
+fn full_screen_fixed_zone_80x24_snapshot() {
+    insta::assert_snapshot!("full_screen_fixed_zone_80x24", mount_fixed_zone(80, 24));
+}
+
+#[test]
+fn full_screen_fixed_zone_40x6_snapshot() {
+    insta::assert_snapshot!("full_screen_fixed_zone_40x6", mount_fixed_zone(40, 6));
 }
