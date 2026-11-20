@@ -3,6 +3,7 @@ use strum::IntoStaticStr;
 use crate::agent::HookBlockedError;
 use crate::agent::compaction::CompactionError;
 use crate::agent::runtime::RuntimeControlError;
+use xylitol_plugin_sdk::dispatch::DispatchRejection;
 use xylitol_plugin_sdk::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
@@ -331,6 +332,106 @@ impl From<HookBlockedError> for XyDriverError {
     }
 }
 
+impl From<DispatchRejection> for XyDriverError {
+    fn from(rejection: DispatchRejection) -> Self {
+        match rejection {
+            DispatchRejection::NotFound {
+                message,
+                source_kind,
+            } => Self::NotFound {
+                message,
+                source_kind,
+            },
+            DispatchRejection::Unsupported {
+                message,
+                source_kind,
+            } => Self::Unsupported {
+                message,
+                source_kind,
+            },
+            DispatchRejection::InvalidInput {
+                message,
+                source_kind,
+            } => Self::InvalidInput {
+                message,
+                source_kind,
+            },
+            DispatchRejection::Io {
+                message,
+                source_kind,
+            } => Self::Io {
+                message,
+                source_kind,
+            },
+            DispatchRejection::Remote {
+                message,
+                source_kind,
+            } => Self::Remote {
+                message,
+                source_kind,
+            },
+            DispatchRejection::Agent(inner) => Self::Agent(inner),
+            DispatchRejection::Message {
+                message,
+                source_kind,
+            } => Self::Message {
+                message,
+                source_kind,
+            },
+        }
+    }
+}
+
+impl From<XyDriverError> for DispatchRejection {
+    fn from(err: XyDriverError) -> Self {
+        match err {
+            XyDriverError::NotFound {
+                message,
+                source_kind,
+            } => DispatchRejection::NotFound {
+                message,
+                source_kind,
+            },
+            XyDriverError::Unsupported {
+                message,
+                source_kind,
+            } => DispatchRejection::Unsupported {
+                message,
+                source_kind,
+            },
+            XyDriverError::InvalidInput {
+                message,
+                source_kind,
+            } => DispatchRejection::InvalidInput {
+                message,
+                source_kind,
+            },
+            XyDriverError::Io {
+                message,
+                source_kind,
+            } => DispatchRejection::Io {
+                message,
+                source_kind,
+            },
+            XyDriverError::Remote {
+                message,
+                source_kind,
+            } => DispatchRejection::Remote {
+                message,
+                source_kind,
+            },
+            XyDriverError::Agent(inner) => DispatchRejection::Agent(inner),
+            XyDriverError::Message {
+                message,
+                source_kind,
+            } => DispatchRejection::Message {
+                message,
+                source_kind,
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -504,5 +605,28 @@ mod tests {
         let err = XyDriverError::not_found("session xyz");
         assert_eq!(err.to_string(), "not found: session xyz");
         assert_eq!(err.kind(), "NotFound");
+    }
+
+    #[test]
+    fn dispatch_rejection_round_trips_losslessly() {
+        let samples: Vec<Box<dyn Fn() -> XyDriverError>> = vec![
+            Box::new(|| XyDriverError::not_found("session abc")),
+            Box::new(|| XyDriverError::unsupported("op x")),
+            Box::new(|| XyDriverError::invalid_input("thinking level must not be empty")),
+            Box::new(|| XyDriverError::io("write: boom")),
+            Box::new(|| XyDriverError::remote("server error: y")),
+            Box::new(|| XyDriverError::message("opaque note")),
+            Box::new(|| XyDriverError::from(XyError::Aborted)),
+            Box::new(|| XyDriverError::from(XySessionError::entry_not_found("e1"))),
+            Box::new(|| XyDriverError::from(XySessionStoreError::not_found("abc"))),
+        ];
+        for make in samples {
+            let original = make();
+            let round_trip: XyDriverError = DispatchRejection::from(make()).into();
+            assert_eq!(original.kind(), round_trip.kind());
+            assert_eq!(original.to_string(), round_trip.to_string());
+            assert_eq!(original.detail_kind(), round_trip.detail_kind());
+            assert_eq!(format!("{original:?}"), format!("{round_trip:?}"));
+        }
     }
 }

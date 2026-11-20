@@ -369,13 +369,11 @@ async fn maybe_print_resume_hint_tui(driver: &mut dyn xylitol_app_tui::XyDriver)
     }
 }
 
-async fn maybe_print_resume_hint<D>(driver: &mut D)
-where
-    D: xylitol_kernel::driver::XyDriver + xylitol_kernel::dispatch::SessionCommandExecutor,
-{
+async fn maybe_print_resume_hint(driver: &mut xylitol_kernel::driver::XyInProcessDriver) {
     let sid = driver.session_id();
+    let mut executor = xylitol_kernel::driver::CommandExecutorView(driver);
     let listed = match xylitol_kernel::dispatch::dispatch(
-        driver,
+        &mut executor,
         xylitol_protocol::Command::ListSessions {},
     )
     .await

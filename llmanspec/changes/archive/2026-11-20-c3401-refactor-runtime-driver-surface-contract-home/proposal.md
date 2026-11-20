@@ -2,6 +2,9 @@
 title: runtime 装配面与门协议同源（XyDriver 形状单一真值）
 depends_on: []
 needs_specs_change: false
+branch: sdd/c3401-refactor-runtime-driver-surface-contract-home
+base_branch: main
+base_sha: 5cc978c94b9dfa35dc8c11e30d57b6532c04528f
 ---
 
 # c3401 — runtime 装配面与门协议同源

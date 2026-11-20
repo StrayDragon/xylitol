@@ -4,52 +4,59 @@ use super::XyDriver;
 use super::XyDriverError;
 use super::XyInProcessDriver;
 
-use crate::dispatch::{DispatchOutcome, transport_variant_error, validate_nonempty_thinking_level};
+use crate::dispatch::{
+    DispatchOutcome, DispatchRejection, transport_variant_error, validate_nonempty_thinking_level,
+};
 use xylitol_protocol::Command;
 
+pub struct CommandExecutorView<'a>(pub &'a mut XyInProcessDriver);
+
 #[async_trait]
-impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
+impl crate::dispatch::SessionCommandExecutor for CommandExecutorView<'_> {
     async fn execute_session_command(
         &mut self,
         cmd: Command,
-    ) -> Result<DispatchOutcome, XyDriverError> {
-        match cmd {
-            Command::Abort { .. } => Ok(exec_abort(self)),
-            Command::GetState { .. } => Ok(DispatchOutcome::State(XyDriver::get_state(self))),
-            Command::SetModel { model_id, .. } => exec_set_model(self, &model_id).await,
-            Command::CycleModel { .. } => exec_cycle_model(self).await,
+    ) -> Result<DispatchOutcome, DispatchRejection> {
+        let driver: &mut XyInProcessDriver = &mut *self.0;
+        let outcome: Result<DispatchOutcome, XyDriverError> = match cmd {
+            Command::Abort { .. } => Ok(exec_abort(driver)),
+            Command::GetState { .. } => Ok(DispatchOutcome::State(XyDriver::get_state(driver))),
+            Command::SetModel { model_id, .. } => exec_set_model(driver, &model_id).await,
+            Command::CycleModel { .. } => exec_cycle_model(driver).await,
             Command::GetAvailableModels { .. } => {
-                Ok(DispatchOutcome::Models(XyDriver::available_models(self)))
+                Ok(DispatchOutcome::Models(XyDriver::available_models(driver)))
             }
-            Command::SetThinkingLevel { level, .. } => exec_set_thinking_level(self, level).await,
+            Command::SetThinkingLevel { level, .. } => exec_set_thinking_level(driver, level).await,
             Command::Bash {
                 command,
                 exclude_from_context,
                 ..
-            } => exec_bash(self, &command, exclude_from_context).await,
-            Command::Compact { instructions, .. } => exec_compact(self, instructions).await,
-            Command::GetSessionStats { .. } => exec_session_stats(self).await,
-            Command::ExportHtml { output_path, .. } => exec_export_html(self, output_path).await,
-            Command::ExportJsonl { output_path, .. } => exec_export_jsonl(self, output_path).await,
-            Command::ImportJsonl { input_path, .. } => exec_import_jsonl(self, &input_path).await,
+            } => exec_bash(driver, &command, exclude_from_context).await,
+            Command::Compact { instructions, .. } => exec_compact(driver, instructions).await,
+            Command::GetSessionStats { .. } => exec_session_stats(driver).await,
+            Command::ExportHtml { output_path, .. } => exec_export_html(driver, output_path).await,
+            Command::ExportJsonl { output_path, .. } => {
+                exec_export_jsonl(driver, output_path).await
+            }
+            Command::ImportJsonl { input_path, .. } => exec_import_jsonl(driver, &input_path).await,
             Command::SwitchSession { session_path, .. } => {
-                exec_switch_session(self, &session_path).await
+                exec_switch_session(driver, &session_path).await
             }
             Command::Fork {
                 entry_id, position, ..
-            } => exec_fork(self, &entry_id, position.as_deref()).await,
+            } => exec_fork(driver, &entry_id, position.as_deref()).await,
             Command::GetMessages {
                 limit,
                 before_entry_id,
-            } => exec_get_messages(self, limit, before_entry_id.as_deref()).await,
-            Command::EstimateContext { .. } => exec_estimate_context(self).await,
-            Command::SessionTree { kind, .. } => exec_session_tree(self, kind).await,
+            } => exec_get_messages(driver, limit, before_entry_id.as_deref()).await,
+            Command::EstimateContext { .. } => exec_estimate_context(driver).await,
+            Command::SessionTree { kind, .. } => exec_session_tree(driver, kind).await,
             Command::TravelSessionTree { kind, entry_id, .. } => {
-                exec_travel_session_tree(self, kind, &entry_id).await
+                exec_travel_session_tree(driver, kind, &entry_id).await
             }
             Command::AppendEntryLabel {
                 target_id, label, ..
-            } => exec_append_entry_label(self, &target_id, label.as_deref()).await,
+            } => exec_append_entry_label(driver, &target_id, label.as_deref()).await,
             cmd @ (Command::ListSessions { .. }
             | Command::LoadSessionEntries { .. }
             | Command::NewSession { .. }
@@ -57,26 +64,26 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
             | Command::SetSessionName { .. }
             | Command::SetSessionNameFor { .. }
             | Command::GenerateSessionName { .. }
-            | Command::DeleteSession { .. }) => exec_session_meta(self, cmd).await,
-            Command::Reload { .. } => exec_reload(self).await,
-            Command::LoadedResources { .. } => exec_loaded_resources(self).await,
-            Command::GetQueueStats { .. } => Ok(queue_stats_outcome(self)),
+            | Command::DeleteSession { .. }) => exec_session_meta(driver, cmd).await,
+            Command::Reload { .. } => exec_reload(driver).await,
+            Command::LoadedResources { .. } => exec_loaded_resources(driver).await,
+            Command::GetQueueStats { .. } => Ok(queue_stats_outcome(driver)),
             Command::GetCommands { .. } => {
-                Ok(DispatchOutcome::Commands(XyDriver::get_commands(self)))
+                Ok(DispatchOutcome::Commands(XyDriver::get_commands(driver)))
             }
             Command::PluginCommand { plugin, args } => {
-                exec_plugin_command(self, &plugin, &args).await
+                exec_plugin_command(driver, &plugin, &args).await
             }
             cmd @ (Command::GetCapabilities { .. }
             | Command::SetCapability { .. }
-            | Command::ClearCapabilities { .. }) => exec_capability(self, cmd),
-            Command::Steer { message, .. } => exec_steer(self, &message).await,
-            Command::FollowUp { message, .. } => exec_follow_up(self, &message).await,
+            | Command::ClearCapabilities { .. }) => exec_capability(driver, cmd),
+            Command::Steer { message, .. } => exec_steer(driver, &message).await,
+            Command::FollowUp { message, .. } => exec_follow_up(driver, &message).await,
             Command::ClearQueue {
                 clear_steer,
                 clear_follow_up,
                 ..
-            } => exec_clear_queue(self, clear_steer, clear_follow_up).await,
+            } => exec_clear_queue(driver, clear_steer, clear_follow_up).await,
             Command::SessionDetach { .. } => Ok(DispatchOutcome::Empty),
             Command::Prompt { .. }
             | Command::Quit { .. }
@@ -88,8 +95,9 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
             | Command::McpPromptGet { .. }
             | Command::McpOAuthStart { .. }
             | Command::McpOAuthCancel { .. }
-            | Command::McpOAuthStatus { .. } => Err(transport_variant_error(&cmd)),
-        }
+            | Command::McpOAuthStatus { .. } => Err(transport_variant_error(&cmd).into()),
+        };
+        outcome.map_err(DispatchRejection::from)
     }
 }
 
@@ -133,7 +141,7 @@ fn exec_capability(
         Command::ClearCapabilities { .. } => {
             XyDriver::clear_capabilities(driver).map(DispatchOutcome::Capabilities)
         }
-        other => Err(transport_variant_error(&other)),
+        other => Err(transport_variant_error(&other).into()),
     }
 }
 
@@ -154,7 +162,7 @@ async fn exec_session_meta(
         } => exec_set_session_name_for(driver, &session_id, &name).await,
         Command::GenerateSessionName { force } => exec_generate_session_name(driver, force).await,
         Command::DeleteSession { session_id, .. } => exec_delete_session(driver, &session_id).await,
-        other => Err(transport_variant_error(&other)),
+        other => Err(transport_variant_error(&other).into()),
     }
 }
 

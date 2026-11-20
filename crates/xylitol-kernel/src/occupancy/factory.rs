@@ -332,7 +332,8 @@ impl OccupancyEngine for OccupancyDriver {
     }
 
     async fn execute_command(&mut self, cmd: Command) -> Result<serde_json::Value, XyDriverError> {
-        let outcome = SessionCommandExecutor::execute_session_command(&mut self.inner, cmd).await?;
+        let mut executor = crate::driver::CommandExecutorView(&mut self.inner);
+        let outcome = SessionCommandExecutor::execute_session_command(&mut executor, cmd).await?;
         Ok(outcome_to_value(outcome))
     }
 

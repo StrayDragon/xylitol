@@ -6,6 +6,8 @@ pub mod compaction_error;
 pub mod compaction_settings;
 pub mod compat;
 pub mod config_section;
+pub mod dispatch;
+pub mod driver;
 pub mod dto;
 pub mod error;
 pub mod file_lock;
@@ -56,6 +58,14 @@ pub use compaction_settings::{
     CompactionSettings, effective_trigger_threshold, merge_compaction_runtime,
 };
 pub use compat::Compat;
+pub use dispatch::{
+    DispatchOutcome, DispatchRejection, SessionCommandExecutor, transport_variant_error,
+    validate_nonempty_thinking_level, variant_name,
+};
+pub use driver::{
+    CommandInfo, LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot, ModelInfo,
+    ReloadStepReport, RuntimeReloadReport, SessionState,
+};
 pub use dto::{
     ContextTokenEstimate, Diagnostic, ImageContent, PromptCacheRead, TokenProvenance,
     collect_text_parts, now_ms,

@@ -89,7 +89,9 @@ mod tests {
     use super::drain_pending_ui;
     use super::theme;
     use crate::bridge::UiEntry;
-    use crate::dispatch::{DispatchOutcome, SessionCommandExecutor, transport_variant_error};
+    use crate::dispatch::{
+        DispatchOutcome, DispatchRejection, SessionCommandExecutor, transport_variant_error,
+    };
     use crate::driver::{
         CommandInfo, EventStream, LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
         ModelInfo, XyDriver, XyDriverError,
@@ -192,7 +194,7 @@ mod tests {
         async fn execute_session_command(
             &mut self,
             cmd: Command,
-        ) -> Result<DispatchOutcome, XyDriverError> {
+        ) -> Result<DispatchOutcome, DispatchRejection> {
             Err(transport_variant_error(&cmd))
         }
     }

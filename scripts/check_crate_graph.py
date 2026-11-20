@@ -45,7 +45,7 @@ REQUIRED_MEMBERS: dict[str, str] = {
 }
 
 ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
-    "xylitol-plugin-sdk": frozenset(),
+    "xylitol-plugin-sdk": frozenset({"xylitol-protocol"}),
     "xylitol-protocol": frozenset(),
     "xylitol-wire": frozenset({"xylitol-protocol", "xylitol-plugin-sdk"}),
     "xylitol-tui": frozenset(),

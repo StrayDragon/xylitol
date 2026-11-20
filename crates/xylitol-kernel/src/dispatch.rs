@@ -1,62 +1,26 @@
-use async_trait::async_trait;
-
 pub use crate::driver::XyDriverError;
-use crate::driver::{
-    CommandInfo, LoadedResourcesSnapshot, ModelInfo, RuntimeReloadReport, SessionListEntry,
-    SessionState,
+pub use xylitol_plugin_sdk::dispatch::{
+    DispatchOutcome, DispatchRejection, SessionCommandExecutor, transport_variant_error,
+    validate_nonempty_thinking_level, variant_name,
 };
-use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
-use xylitol_plugin_sdk::{BashOutcome, XyBashResult};
+
+use xylitol_plugin_sdk::BashOutcome;
+use xylitol_plugin_sdk::driver::ModelInfo;
 use xylitol_protocol::Command;
 
-#[async_trait]
-pub trait SessionCommandExecutor: Send {
-    async fn execute_session_command(
-        &mut self,
-        cmd: Command,
-    ) -> Result<DispatchOutcome, XyDriverError>;
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub enum DispatchOutcome {
-    Aborted {
-        cancelled: bool,
-    },
-    State(SessionState),
-    Model(ModelInfo),
-    Models(Vec<ModelInfo>),
-    ThinkingLevel(String),
-    Bash(XyBashResult),
-    Compacted(bool),
-    SessionStats(serde_json::Value),
-    ExportedPath(String),
-    NewSession(String),
-    SwitchedSession(String),
-    Messages {
-        session_id: String,
-        entries: Vec<SessionEntry>,
-        has_more: bool,
-    },
-    EstimateContext(xylitol_plugin_sdk::model::ContextTokenEstimate),
-    SessionTree(Vec<SessionTreeNode>),
-    SessionTreeTravel(SessionTreeTravel),
-    Sessions(Vec<SessionListEntry>),
-    SessionEntries(Vec<SessionEntry>),
-    SessionName(Option<String>),
-    Reload(RuntimeReloadReport),
-    LoadedResources(LoadedResourcesSnapshot),
-    Capabilities(xylitol_plugin_sdk::session::CapabilitySnapshot),
-    Empty,
-    Commands(Vec<CommandInfo>),
-    PluginCommandOutput {
-        plugin: String,
-        text: String,
-    },
-    QueueStats {
-        steer_count: usize,
-        follow_up_count: usize,
-    },
+pub async fn dispatch(
+    driver: &mut dyn SessionCommandExecutor,
+    cmd: Command,
+) -> Result<DispatchOutcome, XyDriverError> {
+    let where_ = format!("dispatch.{}", variant_name(&cmd));
+    match driver.execute_session_command(cmd).await {
+        Ok(outcome) => Ok(outcome),
+        Err(rejection) => {
+            let err = XyDriverError::from(rejection);
+            err.log_failure(&where_);
+            Err(err)
+        }
+    }
 }
 
 fn model_data(m: &ModelInfo) -> serde_json::Value {
@@ -159,40 +123,6 @@ fn session_outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
     }
 }
 
-pub fn validate_nonempty_thinking_level(s: &str) -> Result<(), XyDriverError> {
-    if s.trim().is_empty() {
-        return Err(XyDriverError::invalid_input(
-            "thinking level must not be empty",
-        ));
-    }
-    Ok(())
-}
-
-fn variant_name(cmd: &Command) -> &'static str {
-    cmd.into()
-}
-
-pub async fn dispatch(
-    driver: &mut dyn SessionCommandExecutor,
-    cmd: Command,
-) -> Result<DispatchOutcome, XyDriverError> {
-    let where_ = format!("dispatch.{}", variant_name(&cmd));
-    match driver.execute_session_command(cmd).await {
-        Ok(outcome) => Ok(outcome),
-        Err(err) => {
-            err.log_failure(&where_);
-            Err(err)
-        }
-    }
-}
-
-pub fn transport_variant_error(cmd: &Command) -> XyDriverError {
-    let name: &'static str = cmd.into();
-    XyDriverError::invalid_input(format!(
-        "Command variant {name:?} is not handled by shared dispatch; the caller must handle it before calling dispatch()"
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,7 +185,7 @@ mod tests {
         async fn execute_session_command(
             &mut self,
             cmd: Command,
-        ) -> Result<DispatchOutcome, XyDriverError> {
+        ) -> Result<DispatchOutcome, DispatchRejection> {
             match cmd {
                 Command::SetThinkingLevel { level, .. } => {
                     validate_nonempty_thinking_level(&level)?;

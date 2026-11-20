@@ -14,7 +14,7 @@ crate 边界按替换、开关、生命周期划，不得按 `app / agent / infr
 
 ```mermaid
 flowchart TB
-  subgraph contracts["1 契约叶 · tui 与 sdk、protocol 互不依赖；sdk 到 protocol 单向允许（Command 词表，现状未依赖）"]
+  subgraph contracts["1 契约叶 · tui 与 sdk、protocol 互不依赖；sdk 到 protocol 单向允许（Command 词表）"]
     direction LR
     xylitol_plugin_sdk["xylitol-plugin-sdk<br/>词表 + 端口 + rt"]
     xylitol_protocol["xylitol-protocol<br/>JSON-RPC 信封"]

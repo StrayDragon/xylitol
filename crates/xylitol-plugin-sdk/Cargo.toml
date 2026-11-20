@@ -29,6 +29,7 @@ tokio = { workspace = true, features = ["sync", "macros", "rt", "time", "process
 tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 rutis = { workspace = true }
+xylitol-protocol = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

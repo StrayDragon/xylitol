@@ -16,3 +16,4 @@ pub use xylitol_runtime::{
 };
 
 mod command_exec;
+pub use command_exec::CommandExecutorView;

@@ -1606,10 +1606,10 @@ where
     async fn execute_session_command(
         &mut self,
         cmd: xylitol_protocol::Command,
-    ) -> Result<DispatchOutcome, XyDriverError> {
+    ) -> Result<DispatchOutcome, crate::dispatch::DispatchRejection> {
         use xylitol_protocol::Command;
 
-        match cmd {
+        let outcome: Result<DispatchOutcome, XyDriverError> = match cmd {
             Command::Abort { .. } => {
                 crate::driver::XyDriver::abort(self);
                 Ok(DispatchOutcome::Aborted { cancelled: true })
@@ -1690,8 +1690,11 @@ where
             | Command::McpPromptGet { .. }
             | Command::McpOAuthStart { .. }
             | Command::McpOAuthCancel { .. }
-            | Command::McpOAuthStatus { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
-        }
+            | Command::McpOAuthStatus { .. } => {
+                Err(crate::dispatch::transport_variant_error(&cmd).into())
+            }
+        };
+        outcome.map_err(crate::dispatch::DispatchRejection::from)
     }
 }
 
@@ -2079,7 +2082,7 @@ where
             Command::GetCapabilities { .. } => self.exec_get_capabilities().await,
             Command::SetCapability { id, enabled } => self.exec_set_capability(id, enabled).await,
             Command::ClearCapabilities { .. } => self.exec_clear_capabilities().await,
-            other => Err(crate::dispatch::transport_variant_error(&other)),
+            other => Err(crate::dispatch::transport_variant_error(&other).into()),
         }
     }
 
@@ -2103,7 +2106,7 @@ where
                 self.detach_session().await?;
                 Ok(DispatchOutcome::Empty)
             }
-            other => Err(crate::dispatch::transport_variant_error(&other)),
+            other => Err(crate::dispatch::transport_variant_error(&other).into()),
         }
     }
 

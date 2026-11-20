@@ -8383,6 +8383,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uuid",
+ "xylitol-protocol",
  "yaml_serde",
 ]
 

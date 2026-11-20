@@ -1003,10 +1003,10 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
     async fn execute_session_command(
         &mut self,
         cmd: xylitol_protocol::Command,
-    ) -> Result<crate::dispatch::DispatchOutcome, XyDriverError> {
+    ) -> Result<crate::dispatch::DispatchOutcome, crate::dispatch::DispatchRejection> {
         use crate::dispatch::DispatchOutcome;
         use xylitol_protocol::Command;
-        match cmd {
+        let outcome: Result<DispatchOutcome, XyDriverError> = match cmd {
             Command::Abort { .. } => {
                 crate::driver::XyDriver::abort(self);
                 Ok(DispatchOutcome::Aborted { cancelled: true })
@@ -1042,10 +1042,10 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                         .iter()
                         .any(|supported| supported == &level)
                 {
-                    return Err(format!(
+                    return Err(XyDriverError::from(format!(
                         "thinking level `{}` is not supported by the current model",
                         level
-                    )
+                    ))
                     .into());
                 }
                 self.thinking_level = level.clone();
@@ -1135,7 +1135,7 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             }
             Command::GetMessages { .. } => {
                 if let Some(err) = &self.get_messages_error {
-                    return Err(XyDriverError::message(err.clone()));
+                    return Err(XyDriverError::message(err.clone()).into());
                 }
                 let session_id = self.active_session_id.lock().expect("sid").clone();
                 Ok(DispatchOutcome::Messages {
@@ -1342,8 +1342,11 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             | Command::McpPromptGet { .. }
             | Command::McpOAuthStart { .. }
             | Command::McpOAuthCancel { .. }
-            | Command::McpOAuthStatus { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
-        }
+            | Command::McpOAuthStatus { .. } => {
+                Err(crate::dispatch::transport_variant_error(&cmd).into())
+            }
+        };
+        outcome.map_err(crate::dispatch::DispatchRejection::from)
     }
 }
 
