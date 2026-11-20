@@ -16,7 +16,7 @@ profiles:
     max_steps_per_turn: 8
     wall_seconds: 600
   compare:
-    max_steps_per_turn: 120
+    max_steps_per_turn: 80
     wall_seconds: 1800
 
 benchmarks:

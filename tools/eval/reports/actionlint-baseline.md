@@ -51,4 +51,3 @@ python3 tools/eval/scripts/summarize_harbor.py \
   --out tools/eval/reports/actionlint-baseline.md \
   --json tools/eval/reports/actionlint-baseline.json
 ```
-> 2026-11-15 后续：原始 `jobs/` 已清理；下次 baseline 使用 `max_steps_per_turn=120`，xylitol/Pi 都放开。
