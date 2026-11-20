@@ -87,29 +87,20 @@ pub struct HostSession<T: Terminal> {
     rebuild: Box<dyn FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>>>,
     ui_model: UiModel,
     pending: PendingOps,
-    stage_name_policy: StageNamePolicy,
-    stage_name_attempted: bool,
-    stage_name_request_pending: bool,
+    stage_name: StageNameState,
     completed_turns: u64,
     agent_started_at: Option<OffsetDateTime>,
-    stream_sync_pending: bool,
+    stream_paint: StreamPaintState,
     busy: HostBusy,
     reload_cancel: Option<tokio_util::sync::CancellationToken>,
     esc_window: Rc<RefCell<crate::layout::EscWindow>>,
-    suppress_xy_until_stream_end: bool,
-    paint_dirty: bool,
     layout_cwd: String,
     theme_preference: Option<String>,
     #[cfg(test)]
     force_real_external_editor: bool,
     #[cfg(test)]
     external_editor_cmd_override: Option<Result<String, super::error::TuiSurfaceError>>,
-    footer_token_gen: u64,
-    footer_token_tx: tokio::sync::mpsc::UnboundedSender<(u64, Option<String>, bool)>,
-    footer_token_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, Option<String>, bool)>,
-    last_mid_turn_footer_refresh: Option<std::time::Instant>,
-    run_applied_token_settlement: bool,
-    pending_settlement_estimate: Option<xylitol_plugin_sdk::model::ContextTokenEstimate>,
+    footer_token: FooterTokenState,
     pub(crate) client_storage: Option<std::sync::Arc<crate::storage::ClientStorage>>,
     editor_history_seed_sessions: u32,
     editor_history_seed_job: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)>,
@@ -149,6 +140,67 @@ impl HostBusy {
     }
 }
 
+#[derive(Default)]
+struct StageNameState {
+    policy: StageNamePolicy,
+    attempted: bool,
+    request_pending: bool,
+}
+
+impl StageNameState {
+    fn mark_requested(&mut self) {
+        self.attempted = true;
+        self.request_pending = true;
+    }
+
+    fn take_request_pending(&mut self) -> bool {
+        std::mem::take(&mut self.request_pending)
+    }
+}
+
+#[derive(Default)]
+struct StreamPaintState {
+    paint_dirty: bool,
+    stream_sync_pending: bool,
+    suppress_xy_until_stream_end: bool,
+}
+
+impl StreamPaintState {
+    fn take_stream_sync_pending(&mut self) -> bool {
+        std::mem::take(&mut self.stream_sync_pending)
+    }
+}
+
+type FooterTokenMsg = (u64, Option<String>, bool);
+
+struct FooterTokenState {
+    generation: u64,
+    tx: tokio::sync::mpsc::UnboundedSender<FooterTokenMsg>,
+    rx: tokio::sync::mpsc::UnboundedReceiver<FooterTokenMsg>,
+    last_mid_turn_refresh: Option<std::time::Instant>,
+    run_applied_settlement: bool,
+    pending_settlement_estimate: Option<xylitol_plugin_sdk::model::ContextTokenEstimate>,
+}
+
+impl FooterTokenState {
+    fn new() -> Self {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        Self {
+            generation: 0,
+            tx,
+            rx,
+            last_mid_turn_refresh: None,
+            run_applied_settlement: false,
+            pending_settlement_estimate: None,
+        }
+    }
+
+    fn next_gen(&mut self) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.generation
+    }
+}
+
 impl<T: Terminal> HostSession<T> {
     pub fn new(
         terminal: T,
@@ -175,7 +227,6 @@ impl<T: Terminal> HostSession<T> {
         }
         tui.set_focus(Some(0));
         tui.request_render(false);
-        let (footer_token_tx, footer_token_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             tui,
             mode,
@@ -185,29 +236,20 @@ impl<T: Terminal> HostSession<T> {
             rebuild: Box::new(rebuild),
             ui_model: UiModel::new(),
             pending: PendingOps::default(),
-            stage_name_policy: StageNamePolicy::default(),
-            stage_name_attempted: false,
-            stage_name_request_pending: false,
+            stage_name: StageNameState::default(),
             completed_turns: 0,
             agent_started_at: None,
-            stream_sync_pending: false,
+            stream_paint: StreamPaintState::default(),
             busy: HostBusy::default(),
             reload_cancel: None,
             esc_window: Rc::new(RefCell::new(crate::layout::EscWindow::default())),
-            suppress_xy_until_stream_end: false,
-            paint_dirty: false,
             layout_cwd: display_cwd(),
             theme_preference: None,
             #[cfg(test)]
             force_real_external_editor: false,
             #[cfg(test)]
             external_editor_cmd_override: None,
-            footer_token_gen: 0,
-            footer_token_tx,
-            footer_token_rx,
-            last_mid_turn_footer_refresh: None,
-            run_applied_token_settlement: false,
-            pending_settlement_estimate: None,
+            footer_token: FooterTokenState::new(),
             client_storage: None,
             editor_history_seed_sessions: 1,
             editor_history_seed_job: None,
@@ -387,7 +429,7 @@ impl<T: Terminal> HostSession<T> {
             session.sync_dock_rows();
             session.sync_fold_hit_viewport();
             session.tui.request_render(true);
-            session.paint_dirty = true;
+            session.stream_paint.paint_dirty = true;
         }
         session
     }
@@ -545,7 +587,7 @@ impl<T: Terminal> HostSession<T> {
 
     #[cfg(test)]
     pub(crate) fn run_applied_settlement_for_test(&self) -> bool {
-        self.run_applied_token_settlement
+        self.footer_token.run_applied_settlement
     }
 
     #[cfg(test)]
@@ -626,7 +668,7 @@ impl<T: Terminal> HostSession<T> {
         self.busy.agent_run = false;
         self.recalc_busy();
         self.pending.abort = false;
-        self.suppress_xy_until_stream_end = true;
+        self.stream_paint.suppress_xy_until_stream_end = true;
         self.esc_window.borrow_mut().suppress_idle = true;
         self.sync_ui_root_from_model();
     }
@@ -679,7 +721,7 @@ impl<T: Terminal> HostSession<T> {
         };
         let added = root.borrow_mut().mcp_tray_add(server, uri);
         if added {
-            self.paint_dirty = true;
+            self.stream_paint.paint_dirty = true;
         }
         added
     }
@@ -690,7 +732,7 @@ impl<T: Terminal> HostSession<T> {
         };
         let cleared = root.borrow_mut().mcp_tray_clear();
         if cleared {
-            self.paint_dirty = true;
+            self.stream_paint.paint_dirty = true;
         }
         cleared
     }
@@ -714,7 +756,7 @@ impl<T: Terminal> HostSession<T> {
             return;
         };
         if root.borrow_mut().drain_mcp_completion_picks() > 0 {
-            self.paint_dirty = true;
+            self.stream_paint.paint_dirty = true;
         }
     }
 
@@ -786,7 +828,7 @@ impl<T: Terminal> HostSession<T> {
     pub fn append_bash_chunk(&mut self, chunk: &[u8]) {
         self.ui_model.append_bash_output(chunk);
         self.sync_ui_root_from_model();
-        self.paint_dirty = true;
+        self.stream_paint.paint_dirty = true;
     }
 
     pub fn set_queue_badge(&mut self, steer_count: usize, follow_up_count: usize) {
@@ -799,16 +841,15 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn request_stage_name(&mut self) {
-        self.stage_name_attempted = true;
-        self.stage_name_request_pending = true;
+        self.stage_name.mark_requested();
     }
 
     pub fn take_stage_name_request(&mut self) -> bool {
-        std::mem::take(&mut self.stage_name_request_pending)
+        self.stage_name.take_request_pending()
     }
 
     pub fn set_stage_name_policy(&mut self, policy: StageNamePolicy) {
-        self.stage_name_policy = policy;
+        self.stage_name.policy = policy;
     }
 
     pub fn set_stage_name(&mut self, name: Option<String>) {
@@ -912,12 +953,13 @@ impl<T: Terminal> HostSession<T> {
         const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(750);
         let now = std::time::Instant::now();
         if self
-            .last_mid_turn_footer_refresh
+            .footer_token
+            .last_mid_turn_refresh
             .is_some_and(|t| now.duration_since(t) < MIN_INTERVAL)
         {
             return;
         }
-        self.last_mid_turn_footer_refresh = Some(now);
+        self.footer_token.last_mid_turn_refresh = Some(now);
         self.pending.footer_token_refresh = true;
     }
 
@@ -926,26 +968,23 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn begin_footer_token_job(&mut self) -> u64 {
-        self.footer_token_gen = self.footer_token_gen.wrapping_add(1);
-        self.footer_token_gen
+        self.footer_token.next_gen()
     }
 
-    pub fn footer_token_tx(
-        &self,
-    ) -> tokio::sync::mpsc::UnboundedSender<(u64, Option<String>, bool)> {
-        self.footer_token_tx.clone()
+    pub fn footer_token_tx(&self) -> tokio::sync::mpsc::UnboundedSender<FooterTokenMsg> {
+        self.footer_token.tx.clone()
     }
 
-    pub fn try_recv_footer_token(&mut self) -> Option<(u64, Option<String>, bool)> {
-        self.footer_token_rx.try_recv().ok()
+    pub fn try_recv_footer_token(&mut self) -> Option<FooterTokenMsg> {
+        self.footer_token.rx.try_recv().ok()
     }
 
-    pub async fn recv_footer_token(&mut self) -> Option<(u64, Option<String>, bool)> {
-        self.footer_token_rx.recv().await
+    pub async fn recv_footer_token(&mut self) -> Option<FooterTokenMsg> {
+        self.footer_token.rx.recv().await
     }
 
     pub fn footer_token_gen(&self) -> u64 {
-        self.footer_token_gen
+        self.footer_token.generation
     }
 
     pub fn push_scroll_notice(&mut self, text: impl Into<String>) {
@@ -958,21 +997,21 @@ impl<T: Terminal> HostSession<T> {
     pub fn push_toast_notice(&mut self, text: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().push_toast_notice(text);
-            self.paint_dirty = true;
+            self.stream_paint.paint_dirty = true;
         }
     }
 
     pub fn push_toast_info_notice(&mut self, text: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().push_toast_info_notice(text);
-            self.paint_dirty = true;
+            self.stream_paint.paint_dirty = true;
         }
     }
 
     pub fn arm_copy_last_msg_notice(&mut self) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().arm_copy_last_msg_notice();
-            self.paint_dirty = true;
+            self.stream_paint.paint_dirty = true;
         }
     }
 
@@ -998,9 +1037,9 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn on_turn_started(&mut self, prompt: &str) {
         self.esc_window.borrow_mut().suppress_idle = false;
-        self.suppress_xy_until_stream_end = false;
+        self.stream_paint.suppress_xy_until_stream_end = false;
         self.busy.agent_run = true;
-        self.run_applied_token_settlement = false;
+        self.footer_token.run_applied_settlement = false;
         self.ui_model.begin_run(prompt);
         self.sync_ui_root_from_model();
     }
@@ -1008,9 +1047,9 @@ impl<T: Terminal> HostSession<T> {
     pub fn on_run_stream_closed(&mut self) {
         self.busy.agent_run = false;
         self.recalc_busy();
-        self.suppress_xy_until_stream_end = false;
+        self.stream_paint.suppress_xy_until_stream_end = false;
         self.ui_model.on_stream_closed_without_agent_end();
-        if !self.run_applied_token_settlement {
+        if !self.footer_token.run_applied_settlement {
             self.pending.footer_token_refresh = true;
         }
         self.sync_ui_root_from_model();
@@ -1022,20 +1061,20 @@ impl<T: Terminal> HostSession<T> {
         reason: xylitol_plugin_sdk::settlement::ContextTokenSettlementReason,
     ) {
         use xylitol_plugin_sdk::settlement::ContextTokenSettlementReason;
-        self.pending_settlement_estimate = Some(estimate);
+        self.footer_token.pending_settlement_estimate = Some(estimate);
         if matches!(
             reason,
             ContextTokenSettlementReason::TurnSettled
                 | ContextTokenSettlementReason::AfterCompaction
         ) {
-            self.run_applied_token_settlement = true;
+            self.footer_token.run_applied_settlement = true;
         }
     }
 
     pub fn take_pending_settlement_estimate(
         &mut self,
     ) -> Option<xylitol_plugin_sdk::model::ContextTokenEstimate> {
-        self.pending_settlement_estimate.take()
+        self.footer_token.pending_settlement_estimate.take()
     }
 
     pub(crate) fn sync_ui_root_from_model(&mut self) {
@@ -1052,7 +1091,7 @@ impl<T: Terminal> HostSession<T> {
 
     #[cfg(test)]
     pub fn stream_sync_pending(&self) -> bool {
-        self.stream_sync_pending
+        self.stream_paint.stream_sync_pending
     }
 
     fn sync_stream_ui_root_from_model(&mut self) {
@@ -1080,8 +1119,7 @@ impl<T: Terminal> HostSession<T> {
                 self.quit = true;
             }
             HostEvent::Tick => {
-                if self.stream_sync_pending {
-                    self.stream_sync_pending = false;
+                if self.stream_paint.take_stream_sync_pending() {
                     self.sync_stream_ui_root_from_model();
                 }
                 let anim_dirty = if self.mode == LayoutMode::Ready {
@@ -1089,7 +1127,7 @@ impl<T: Terminal> HostSession<T> {
                 } else {
                     false
                 };
-                if anim_dirty || self.paint_dirty {
+                if anim_dirty || self.stream_paint.paint_dirty {
                     self.tui.request_render(false);
                 }
             }
@@ -1103,7 +1141,7 @@ impl<T: Terminal> HostSession<T> {
                 self.handle_xy(xy);
             }
             HostEvent::FooterTokens { job_id, label, .. } => {
-                if job_id == self.footer_token_gen {
+                if job_id == self.footer_token.generation {
                     self.set_footer_token_label(label);
                     self.tui.request_render(false);
                 }
@@ -1128,7 +1166,7 @@ impl<T: Terminal> HostSession<T> {
             Ok(painted) => {
                 if painted {
                     crate::lag::note("host_step_paint", t_render);
-                    self.paint_dirty = false;
+                    self.stream_paint.paint_dirty = false;
                     if self.tui.application_session_active()
                         && !self.tui.last_render_perf().ao_reprojected
                     {
@@ -1183,7 +1221,7 @@ impl<T: Terminal> HostSession<T> {
             Ok(painted) => {
                 if painted {
                     crate::lag::note("host_wheel_paint", t_wheel_render);
-                    self.paint_dirty = false;
+                    self.stream_paint.paint_dirty = false;
                     self.sync_fold_hit_viewport();
                 }
                 Ok(())
@@ -1469,7 +1507,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub(crate) fn handle_xy(&mut self, xy: Box<XyEvent>) {
-        if self.suppress_xy_until_stream_end {
+        if self.stream_paint.suppress_xy_until_stream_end {
             self.tui.request_render(false);
             return;
         }
@@ -1516,10 +1554,10 @@ impl<T: Terminal> HostSession<T> {
                 let phase = match reason {
                     Some(AgentEndReason::UserCancel) => StageNamePhase::Aborted,
                     _ if self.ui_model.stage_name.is_some() => StageNamePhase::Named,
-                    _ if self.stage_name_attempted => StageNamePhase::Requested,
+                    _ if self.stage_name.attempted => StageNamePhase::Requested,
                     _ => StageNamePhase::NotStarted,
                 };
-                if self.stage_name_policy.should_request(phase) {
+                if self.stage_name.policy.should_request(phase) {
                     self.request_stage_name();
                 }
             }
@@ -1555,7 +1593,7 @@ impl<T: Terminal> HostSession<T> {
             _ => {}
         }
         if stream_delta {
-            self.stream_sync_pending = true;
+            self.stream_paint.stream_sync_pending = true;
         } else {
             self.sync_ui_root_from_model();
         }
@@ -1610,7 +1648,7 @@ impl<T: Terminal> HostSession<T> {
         }
         match self.tui.render_now() {
             Ok(_) => {
-                self.paint_dirty = false;
+                self.stream_paint.paint_dirty = false;
                 if self.tui.application_session_active() {
                     self.sync_dock_rows();
                     self.sync_fold_hit_viewport();

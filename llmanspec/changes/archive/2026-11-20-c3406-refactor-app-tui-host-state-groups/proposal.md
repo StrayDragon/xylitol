@@ -2,6 +2,9 @@
 depends_on: []
 title: "HostSession 状态字段按组类型化（照 HostBusy 范式）"
 needs_specs_change: false
+branch: sdd/c3406-refactor-app-tui-host-state-groups
+base_branch: main
+base_sha: 6c6678de4c2502716b80cd4ff879aa83c9eb7f8e
 ---
 
 # HostSession 状态组类型化

@@ -596,9 +596,9 @@ impl<T: Terminal> HostSession<T> {
                 None
             }
         });
-        self.stage_name_attempted = restored_stage_name.is_some();
+        self.stage_name.attempted = restored_stage_name.is_some();
         self.ui_model.stage_name = restored_stage_name;
-        self.stage_name_request_pending = false;
+        self.stage_name.request_pending = false;
         crate::history_window::trim_to_window(&mut self.ui_model, buffer_has_more);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
@@ -655,7 +655,7 @@ impl<T: Terminal> HostSession<T> {
                 if let Some(root) = self.ui_root.as_ref() {
                     root.borrow_mut()
                         .set_status_next_turn_cue(Some("Next turn: preview".into()));
-                    self.paint_dirty = true;
+                    self.stream_paint.paint_dirty = true;
                 }
             }
             FixedZoneOp::SlotModels => {

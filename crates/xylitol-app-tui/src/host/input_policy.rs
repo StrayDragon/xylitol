@@ -97,7 +97,7 @@ impl<T: Terminal> HostSession<T> {
         if matches_binding(key, "app.interrupt") || matches_binding(key, "app.clear") {
             self.pending.abort = true;
             self.pending.steer = None;
-            self.suppress_xy_until_stream_end = true;
+            self.stream_paint.suppress_xy_until_stream_end = true;
             self.ui_model.flush_streaming();
             return true;
         }
