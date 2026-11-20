@@ -10,7 +10,7 @@ MethodEntry {
     auth:            Auth           有消费者（is_writer_method, host.rs:1114）
     idem:            Idem           零消费者
     resp:            Resp           零消费者
-    command_backed:  bool           有消费者（parse_command 守卫、BDD 步断言）
+    command_backed:  bool           有消费者（registry 内部守卫测试 :570/:705/:1019-1031、tests/bdd/steps_server.rs:4358；`parse_command` 本身不读该列）
     exec:            Exec           有消费者（r1197 钉死；effects/mod.rs:32）
 }
 ```

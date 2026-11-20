@@ -10,12 +10,12 @@ needs_specs_change: false
 
 `crates/xylitol-protocol/src/registry.rs` 的 `MethodEntry` 有六列：`name` / `auth` / `idem` / `resp` / `command_backed` / `exec`。其中两列**零产品消费**：
 
-- `Resp`（`Result` / `Stream` / `Job`）：`rg '\bResp\b|Resp::' --glob '!target' --glob '!llmanspec/changes/archive/**'` 只命中 `registry.rs` 定义与 `lib.rs` 导出，无任何调用方读取。全部 50 行 `Resp::Result`，仅 `prompt` 一行为 `Resp::Stream`；`Resp::Job` 从未使用。
+- `Resp`（`Result` / `Stream` / `Job`）：`rg '\bResp\b|Resp::' --glob '!target' --glob '!llmanspec/changes/archive/**'` 只命中 `registry.rs` 定义与 `lib.rs` 导出，无任何调用方读取。50 行中 49 行 `Resp::Result`，仅 `prompt`（`registry.rs:135`）一行为 `Resp::Stream`；`Resp::Job` 从未使用。
 - `Idem`（`PerRpc` / `Bypass`）：同样只命中定义与导出。真实幂等语义由 `server-core` 的「unary 幂等准入」按 JSON-RPC request id 实现（`llmanspec/specs/server-core/server-core.feature:555`），与 registry 列无关。
 
 同时 `names()`（`registry.rs:495-497`）零消费者：`rg 'registry::names'` 无命中。
 
-后果：新增一个 wire 方法要在 `REGISTRY` 行里手填四个无语义的列（`idem` 与 `resp` 尤其：每行都写 `Idem::PerRpc, Resp::Result`，是纯样板）。`writer_set_and_bypass_set_match_declaration`（`registry.rs:622-678`）这个守卫测试把 `Bypass` 名单逐字钉死在测试里，钉的是一列没有产品消费者的数据。
+后果：新增一个 wire 方法要在 `REGISTRY` 行里手填两个无语义的列（`idem`：45 行 `Idem::PerRpc` + 5 行 `Idem::Bypass`（reload / mcp_oauth_start / mcp_oauth_cancel / loaded_resources / host.describe，即守卫测试钉死名单）；`resp`：49 `Result` + 1 `Stream`——纯样板）。`writer_set_and_bypass_set_match_declaration`（`registry.rs:622-678`）这个守卫测试把 `Bypass` 名单逐字钉死在测试里，钉的是一列没有产品消费者的数据。
 
 ## 与既有约束的关系
 

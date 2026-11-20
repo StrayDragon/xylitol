@@ -70,6 +70,8 @@ crates/xylitol-app-tui/src/snapshots/
 
 ## 深挖结论（2026-11-20）
 
+- **D0 spec 落点（已决，按推荐定案、可推翻）**：两条产品可观察规则追加 `app-tui-host`；不新建 `app-tui-test-guardrails`；snapshot 基线与夹具面稳定不进 spec。tasks 已补 T9（specs 落地）。
+
 - **降级路径覆盖缺口已确认**：现有 `TooSmall` 测试全部走「终端尺寸直接判定」路径，无一由 `RenderError` 驱动 `recover_from_render_error`。这是真实护栏缺口。
 - **旧名快照清理已确认**：`xylitol__app__tui__commands__parse_tests__slash_bang_parse_surface.snap` 无引用且已漂移，删除。
 - **拆分依据已确认**：三种调用者接口面不同（假驱动实现 `XyDriver` / 夹具实现 `Terminal` / 切片测试只调夹具），不以行数为由。
@@ -78,3 +80,28 @@ crates/xylitol-app-tui/src/snapshots/
 
 - `recover_from_render_error` 的测试是否需为 `host/mod.rs` 加测试可见钩子——见 proposal D3，优先走 `TestTerminal` 注入超宽帧。
 - `tests.rs` 的分组粒度——见 proposal D2。
+
+## Spec 落地草案（绑定分支后一致化，不在此编辑 live .feature）
+
+> 供 T9 在 `change start` 绑定分支后原样写入 `llmanspec/specs/app-tui-host/app-tui-host.feature`（追加在 r1270 同域附近）；`@req:rN` 由 apply 期 `llman-sdd spec next-req-id` 分配后替换。
+
+规则草案一（渲染溢出降级）：
+
+    @req:rN
+    规则: render-overflow-degradation
+      产品 TUI 在 Ready 渲染因行宽超出终端列宽失败（RenderError）时 须降级为 TooSmall 提示继续运行，不得 panic、不得把终端留在损坏状态；降级 须记 warn 日志（target xylitol::tui）；降级帧再次渲染仍失败时 须干净恢复终端并以 IO 错误退出。
+
+      场景: 渲染溢出降级为提示不崩
+        假如 以超宽行内容挂载主机泵并触发渲染
+        当 渲染返回 RenderError
+        那么 进入 TooSmall 提示且进程不 panic 且恢复尺寸后回到 Ready
+
+规则草案二（宽度边界不变量）：
+
+    @req:rN
+    规则: render-width-boundary
+      产品 TUI 在任意终端宽度下渲染结果 须为成功或进入 TooSmall 降级，不得向调用方漏出未处理的 RenderError；最小尺寸提示语义沿用 r1270，不重复约定。
+
+      场景: 宽度边界全档不漏错误
+        当 以 1、5、9、10、12、20、39、40、80、200 列宽分别渲染固定区
+        那么 每次渲染为成功或 TooSmall 且无未处理的 RenderError

@@ -39,7 +39,7 @@
 证据与理由：
 
 1. `xylitol-protocol` 是信封 crate，`src/AGENTS.md` 明文「不认识端口；不认识 `XyEvent`；不得承接 plugin-sdk」。`XyDriver` 方法签名大量引用 `XyEvent` / `McpCatalog` / `CapabilitySnapshot` / `ContextTokenEstimate`，放进 protocol 会同时违反两条禁令。
-2. `xylitol-plugin-sdk` 已是词表 + 端口 crate，`XyModel` / `XyTool` / `XySessionStore` / `XyEventSink` 等 16 个 port 都在 `crates/xylitol-plugin-sdk/src/ports/`。`XyDriver` 是同一族的应用协议端口，落点一致。
+2. `xylitol-plugin-sdk` 已是词表 + 端口 crate，`XyModel` / `XyTool` / `XySessionStore` / `XyEventSink` 等 17 个 port（深挖实测勘误，原称 16；research 存档保留原数）都在 `crates/xylitol-plugin-sdk/src/ports/`。`XyDriver` 是同一族的应用协议端口，落点一致。
 3. `sdk → protocol` 单向边已被 `src/AGENTS.md` 允许（Command 词表），c3385 已确认该边无环。本 change 复用该边，不新增依赖边。
 4. sdk 现有依赖已含 `tokio` / `tokio-util` / `async-trait` / `futures` / `serde_json`，`XyDriver` 的异步签名与 `EventStream` 所需全部就绪，零新增重依赖。
 
@@ -117,7 +117,7 @@ runtime `mcp_tools_pending() -> bool`（types.rs:111-138）与 app-tui `mcp_read
 
 仓库当前无任何 `llmanspec/specs/*/design.md`（`find llmanspec/specs -name design.md` 零命中），无既有 ADR 可冲突。唯一的规则冲突是 r1535，已在 Q4 处置且不重开。
 
-## 未决项
+## 未决项（均已闭合，2026-11-20 二次核验）
 
-- `McpReadyState` 六态中 `Arming` 与 `BootstrapPending` 的精确边界以代码为准（types.rs:110-149），tasks T5 需逐态核对后定稿。
-- sdk 新增 `ports/driver.rs` 后是否触发 sdk 收纳准则第 1 条（纯数据/纯函数无新增依赖）复核——本 change 零新增依赖，判为满足。
+- ~~`McpReadyState` 六态边界核对~~：随 Q5 移出本 change，留给后续「MCP 状态机」change；本 change 不触 types.rs 的 MCP 代码。
+- ~~sdk 收纳准则第 1 条复核~~：实测 sdk `[dependencies]` 现无 `xylitol-protocol`，本 change 仅新增这一个 workspace 依赖，判满足，闭合。

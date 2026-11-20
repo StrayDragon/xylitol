@@ -27,7 +27,7 @@
 
 ### C16 · bridge 家族路由注释导航
 
-**现状**：`apply_xy_event`（`crates/xylitol-app-tui/src/bridge/mod.rs:27-36`）按 `agent → stream → tools → lifecycle` 顺序 `||` 短路。家族实现在 `handlers/` 四文件（`agent.rs` 62 行、`stream.rs` 28、`tools.rs` 84、`lifecycle.rs` 206，`mod.rs` 9 行）。`ToolExecutionEnd` 的完整链路：wire `event.rs:48-56` → serve 分派 → `driver/remote.rs:711` → `host/mod.rs:1465` → `apply_xy_event` → `handlers/tools.rs:24-33` → `apply_tool_end`（:67-84）→ `tool_projection::apply_tool_result_to_entries` → layout 渲染。
+**现状**：`apply_xy_event`（`crates/xylitol-app-tui/src/bridge/mod.rs:27-36`）按 `agent → stream → tools → lifecycle` 顺序 `||` 短路。家族实现在 `handlers/` 四文件（`agent.rs` 62 行、`stream.rs` 28、`tools.rs` 84、`lifecycle.rs` 206，`mod.rs` 9 行）。`ToolExecutionEnd` 的完整链路：wire `event.rs:48-56` → serve 分派 → `driver/remote.rs:711` → app-tui `lib.rs:609` / `:618`（`apply_xy_event` 扇入点；深挖勘误：原写 serve `host/mod.rs:1465`，该处实为 `occupancy_err`，serve 侧不调 `apply_xy_event`）→ `apply_xy_event` → `handlers/tools.rs:24-33` → `apply_tool_end`（:67-84）→ `tool_projection::apply_tool_result_to_entries` → layout 渲染。
 
 **问题**：定位「某事件由谁处理」须通读四个家族文件并注意短路顺序；短路顺序本身是隐式不变量（先匹配者胜，后续家族不再执行）。
 
@@ -48,7 +48,7 @@
 | `flush_pending_runtime_for_test` | `.../host.rs:539` | `tests/occupancy/assembly_fixture_tests.rs:1842` | 保留 + doc |
 | `agent_cwd_for_test`（trait） | `crates/xylitol-serve/src/occupancy/engine.rs:24` | 同上外部集成测试 | 保留 |
 
-**原提案断言被推翻**：原 design 称 `mark_run_inflight_for_test` 与 `flush_pending_runtime_for_test` 「仓内零调用点」，实测**均有调用点**。`rg -n 'mark_run_inflight_for_test|flush_pending_runtime_for_test' --glob '!target'` 命中上述 11 处测试调用。
+**原提案断言被推翻**：原 design 称 `mark_run_inflight_for_test` 与 `flush_pending_runtime_for_test` 「仓内零调用点」，实测**均有调用点**。`rg -n 'mark_run_inflight_for_test|flush_pending_runtime_for_test' --glob '!target'` 命中上述 8 处测试调用点 + 2 处定义（serve `host.rs:535/:539`；深挖口径更正，原称 11 处）。
 
 **问题本质**：`#[cfg(test)]` 只在被测 crate 自身测试编译时激活；`xylitol-kernel` / `tests/` 调用 `xylitol-runtime` 与 `xylitol-serve` 的这些方法时，对方以普通依赖编译，方法不存在。故五个方法**都不能**挂 `#[cfg(test)]` 门。
 
@@ -59,7 +59,7 @@
 
 **删除验证**：删掉任一方法，对应测试调用点会编译失败——复杂度在 N 个调用点重新冒出来，说明它们在扛事（提供产品路径不可达的内部状态观测）。这是**测试接缝**，不是纯透传。
 
-**与既有 change 的关系**：`c3401-refactor-runtime-driver-surface-contract-home`（draft，XyDriver 形状单一真值）正处理 runtime 驱动面，本项改名可能与之冲突，故本 change 只做零调用点删除，改名留给 c3401。
+**与既有 change 的关系**：`c3401`（planned）处理翻译合约与 5 数据类型落 sdk；`_for_test` 改名方案已否决（见上），本 change 对五个方法零删除、零改名（深挖更正原句——本 change 从不做零调用点删除，因五方法均有调用点）。
 
 ## 实施顺序
 
@@ -69,3 +69,24 @@
 4. C17 doc 注释补齐（纯注释，不删不改可见性）。
 
 四项互不依赖，可任意顺序；C15-b 与 C15-a 同文件（`wire/src/event.rs`），须串行。
+
+## Spec 落地草案（绑定分支后一致化）
+
+> 供 T2/T3 在 `change start` 绑定分支后对 `llmanspec/specs/protocol-app/protocol-app.feature` 原样执行。
+
+一、r1698「Event 变体完整」枚举修复：变体清单在 `TodoUpdated` 之后插入 `WorkflowUpdated`（其余文本不动）：
+
+    现行：…QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd…
+    改为：…QueueUpdate、TodoUpdated、WorkflowUpdated、AutoRetryStart、AutoRetryEnd…
+
+二、新增载荷规则（对齐 r1718 形态；`@req:rN` 经 next-req-id 分配）：
+
+    @req:rN
+    规则: workflow-updated-payload-fidelity
+      领域事件 WorkflowUpdated 须能经 wire Event 表达并往返保真（Workflow 目标、嵌套任务与可选子工作流逐字段不丢失）；未映射端 须可降级忽略且不 panic。
+
+      场景: 工作流事件往返保真
+        当 以含嵌套任务与子工作流的 WorkflowUpdated 做线协议序列化与反序列化往返
+        那么 载荷逐字段一致且未映射端忽略不 panic
+
+三、C15-b 的 spec 侧：r1698 现行文本未提及 `generation`（已核对 feature:35-37），T3 删字段后 spec 无需改句，只需 `llman-sdd validate protocol-app` + 既有场景回归通过；若实施中发现其他条款依赖该字段，再按实况最小改句。

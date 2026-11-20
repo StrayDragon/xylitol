@@ -27,6 +27,8 @@ app-tui 的测试护栏集中在两个巨文件里，且渲染不变量没有任
 
 ### 已定（2026-11-20 深挖）
 
+- **D0 spec 落点（已确认，用户 2026-11-20）**：渲染溢出降级与宽度边界两条产品可观察规则追加 `app-tui-host`（与 r1270 同域）；snapshot 基线与夹具面稳定属代码组织，不进 spec（spec 约束层级禁止钉代码组织）；撤销新 capability `app-tui-test-guardrails`，`needs_specs_change` 保持 true。
+
 - **降级路径覆盖（已定）**：现有 `TooSmall` 测试不经过 `recover_from_render_error`；须新增一条测试由 `RenderError` 驱动进入降级，并断言 `log::warn` 的 target 为 `xylitol::tui`、文案含 `degraded to TooSmall hint`。
 - **旧名快照清理（已定）**：`xylitol__app__tui__commands__parse_tests__slash_bang_parse_surface.snap` 无测试引用且内容已漂移，删除；保留 `xylitol_app_tui__...` 那份。删除前须用 `rg 'slash_bang_parse_surface'` 确认引用点唯一。
 - **拆分依据（已定）**：不以行数为由拆（`src/AGENTS.md`「复杂度与体量」明文禁止行数 KPI）。依据是三种调用者接口面不同：假驱动实现 `XyDriver`、夹具实现 `Terminal`、切片测试只调用夹具。
@@ -49,11 +51,11 @@ app-tui 的测试护栏集中在两个巨文件里，且渲染不变量没有任
 
 ### New Capabilities
 
-- `app-tui-test-guardrails`：app-tui 测试护栏的可执行不变量——渲染失败降级可观测、整屏渲染在宽度边界不溢出、固定区 snapshot 有基线、harness 夹具面稳定。
+无。不新建 capability：harness 模块形状与 snapshot 基线属代码组织 / QA 实践，按 spec 约束层级不进 `.feature`，落点为 design.md 不变量与 tasks.md 判据。
 
 ### Modified Capabilities
 
-无。既有 `app-tui-host` / `app-tui-fixed-zone` / `app-tui-bridge` 的产品行为不变；本 change 只新增护栏合约。
+- `app-tui-host`：追加两条产品可观察规则——渲染溢出 须降级为 TooSmall 提示而非 panic / 损坏帧（扩展 r1270 尺寸降级语义）；任意宽度下渲染结果为成功或降级，不得漏出未处理的 RenderError。既有规则不动。
 
 ## Impact
 

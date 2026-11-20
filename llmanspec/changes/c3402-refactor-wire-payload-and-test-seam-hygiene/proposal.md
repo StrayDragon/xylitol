@@ -10,7 +10,7 @@ needs_specs_change: true
 
 三项来自架构审查（llman-sdd-arch-review）的低风险卫生项，各自有可定位证据：
 
-- **C15 · wire 载荷锚测缺口**：`every_domain_variant_round_trips` 的 23 个样本不含 `XyEvent::WorkflowUpdated`（`crates/xylitol-wire/src/event.rs:374-459`，`assert_eq!(cases.len(), 23)` 于 :459）。该变体走 `serde_json::to_value`/`from_value` 通用 reshape（:612-620、:646-652），载荷是嵌套结构（`Workflow` 含 `Vec<WorkflowTask>`，任务含可选 `sub_workflow`，见 `crates/xylitol-plugin-sdk/src/session/workflow.rs:76-114`），无逐字段断言时字段漂移不会被发现。`llmanspec/specs/` 中亦无任何 `WorkflowUpdated` 条款。
+- **C15 · wire 载荷锚测缺口**：`every_domain_variant_round_trips` 的 23 个样本不含 `XyEvent::WorkflowUpdated`（`crates/xylitol-wire/src/event.rs:374-459`，`assert_eq!(cases.len(), 23)` 于 :459）。该变体走 `serde_json::to_value`/`from_value` 通用 reshape（:612-620、:646-652），载荷是嵌套结构（`Workflow` 含 `Vec<WorkflowTask>`，任务含可选 `sub_workflow`，见 `crates/xylitol-plugin-sdk/src/session/workflow.rs:76-114`），无逐字段断言时字段漂移不会被发现。`protocol-app` 对该事件零条款（深挖二次更正：生产方合约在 `agent-workflow` r2966 与 `agent-llm-projection`，非「specs 全树零提及」）。
 - **C15 · settlement 载荷**：wire 侧 `Event::ContextTokenSettlement` 携带 `generation: u64`（`crates/xylitol-protocol/src/event.rs:110`），但 `xylitol-wire` 序列化时硬编码 `generation: 0`（`crates/xylitol-wire/src/event.rs:100`）。该字段在 `XyEvent::ContextTokenSettlement` 与 `ContextTokenEstimate` 中均不存在（`crates/xylitol-plugin-sdk/src/settlement.rs:30-34`、`crates/xylitol-plugin-sdk/src/dto/chunk.rs:72-80`），runtime 无写入点，反序列化侧亦不消费——即全链路恒为 0 的死字段。
 - **C16 · bridge 家族路由**：`ToolExecutionEnd` 到屏幕的路径跨 8 个文件（wire 映射 → serve 分派 → remote driver → host 事件扇入 → `bridge::apply_xy_event` 四家族依次尝试 → `handlers/tools.rs` → `tool_projection.rs` → layout 渲染）。`bridge::apply_xy_event` 以四路 `||` 短路尝试定位家族（`crates/xylitol-app-tui/src/bridge/mod.rs:27-36`），读者须逐文件确认事件归属。
 - **C17 · 测试接缝长在生产 pub 面**：`crates/xylitol-runtime/src/driver/in_process/mod.rs:448/460/473` 三个 `pub fn *_for_test` 无 `#[cfg(test)]` 门；`crates/xylitol-serve/src/occupancy/host.rs:535/539` 两个 `pub fn *_for_test` 同样无门，且仓内无任何调用点。
@@ -61,8 +61,13 @@ needs_specs_change: true
 - **C16 注释导航（已定）**：按 `llmanspec/AGENTS.md`「spec 约束层级」，注释属代码组织，不改变产品可观察行为，不得写成 spec 条款。**仅作代码注释，不改 spec。**
 - **C17 范围（已定）**：见「事实更正」第 3 条，收窄为保留并补 doc 注释。
 
-### 待你决定
+### 已全部定案
 
-- **D1 `protocol-app` 是否新增 `WorkflowUpdated` 载荷条款？** 现提案 C15-a 要加条款，但这属**新增产品合约**，会把 wire 载荷形状钉进 spec。
-  - 选项 A（推荐）：加条款，形态对齐 r1718 `todo-updated-wire`（领域事件须能经 wire 表达、往返保真、未映射端可降级忽略且不 panic）。理由：载荷形状无护栏，字段漂移不会被发现。
-  - 选项 B：只加测试不加 spec 条款，`needs_specs_change` 改 false。理由：载荷形状是实现细节，测试已足够。
+- **D1 `WorkflowUpdated` 载荷是否钉进 `protocol-app`？**（2026-11-20 深挖补充证据）
+  - r1698 枚举已漂移：其「须覆盖全部 XyEvent 变体」列举 23 个变体，缺 `WorkflowUpdated`；`protocol-app` 全文对该事件零提及。**枚举修复两案共通**，均在本 change 落 spec（事件变体清单是产品合约非组织条款，不适用维护性直接编辑豁免）。
+  - 当前零消费方：TUI bridge 吞掉该事件不渲染（`crates/xylitol-app-tui/src/bridge/handlers/tools.rs:15`）；生产方合约为 agent-workflow r2966。
+  - 载荷无护栏：wire 侧 `serde_json::Value` 透传 reshape（`crates/xylitol-wire/src/event.rs:612-652`），字段漂移静默；持久化侧有插件 DAG 校验兜底，线协议侧无。
+  - 选项 A（推荐）：枚举修复 + 新增载荷往返条款（对齐 r1718 形态）+ BDD 场景。零消费方时钉形状零成本；等有消费方再钉则形状已冻结。
+  - 选项 B：只修 r1698 枚举（spec 仍要改，`needs_specs_change` 保持 true），载荷护栏交给 wire 单测（T1）。符合「有消费方才钉 spec」先例，避免提前固化无消费方的形状。
+
+  **决议（已确认，用户 2026-11-20）**：选项 A。理由：载荷已是线上事实——wire 双向映射存在（`event.rs:117/:254/:612-652`）、生产方合约 r2966 要求发布事件，「零消费方」仅指端侧渲染未接；现在钉护栏成本最低（bridge 吞掉事件期间形状未冻结）；T1 锚测无论 A/B 都要做，A 边际成本低；条款形态对齐 r1718，不逐字段钉 serde 细节。

@@ -8,13 +8,13 @@ needs_specs_change: false
 
 ## Why
 
-arch-review c12。HostSession 约 45 个字段平铺（crates/xylitol-app-tui/src/host/mod.rs:81-121），其中三组内聚字段以裸字段暴露、语义靠字段名猜：
+arch-review c12。HostSession 41 个字段平铺（crates/xylitol-app-tui/src/host/mod.rs:82-124，含 2 个 `#[cfg(test)]` 字段），其中三组内聚字段以裸字段暴露、语义靠字段名猜：
 
 - stream-paint 组：paint_dirty / stream_sync_pending / suppress_xy_until_stream_end（:95 / :99-100）
 - stage-name 组：stage_name_policy / stage_name_attempted / stage_name_request_pending（:90-92）
 - footer-token 组：footer_token_gen / footer_token_tx / footer_token_rx / last_mid_turn_footer_refresh / run_applied_token_settlement / pending_settlement_estimate（:107-112）
 
-HostBusy（:96）已示范「小状态类型 + 组内转移」的形状，三组未跟进。在 191 个 pub fn 的宿主上，字段分组是局部性与 AI 可导航性成本最低的改善：改 paint 策略只动一个类型，不再在散字段间找齐。
+HostBusy（:96）已示范「小状态类型 + 组内转移」的形状，三组未跟进。在 190 个 pub fn 的宿主上，字段分组是局部性与 AI 可导航性成本最低的改善：改 paint 策略只动一个类型，不再在散字段间找齐。
 
 ## What Changes
 

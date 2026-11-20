@@ -30,7 +30,7 @@
 ## 5. 回归与门禁
 
 - [ ] 5.1 `cargo nextest run -p xylitol-runtime` 全绿，记录输出。
-- [ ] 5.2 `cargo nextest run --all-features --test bdd` 中 `domain-security`（r73/r74）与 `app-tui-trust`（r3307）场景绿，记录输出。
+- [ ] 5.2 `cargo nextest run --all-features --test bdd` 中 `domain-security`（r73/r74）与 `app-tui-trust`（r3307；r1375「信任选择主题与取消」，绑定 `tests/bdd/bindings_app_tui_trust_extra.rs:5`）场景绿，记录输出。
 - [ ] 5.3 `just fmt` + `just lint`，记录输出。
-- [ ] 5.4 前后对比：`rg -n 'label.starts_with|label ==' crates/xylitol-runtime/src` 由 2 处降为 0 处；`rg -n 'apply_updates' src/cli/trust_gate.rs crates/xylitol-runtime/src/trust/resolve.rs crates/xylitol-runtime/src/driver/in_process/mod.rs` 只剩 `apply_option` 内部一处。
+- [ ] 5.4 前后对比（生产代码口径）：`rg -n 'label.starts_with|label ==' crates/xylitol-runtime/src/driver` 由 2 处（mod.rs:492/:494）降为 0 处——`store.rs:1027` 测试断言按 2.4 保留为预期残留；`rg -n 'apply_updates' src/cli/trust_gate.rs crates/xylitol-runtime/src/trust/resolve.rs crates/xylitol-runtime/src/driver/in_process/mod.rs` 生产代码只剩 `apply_option` 内部一处——`resolve.rs:174` 测试内调用按 3.3 保留为预期残留。
 - [ ] 5.5 `llman-sdd validate c3396-refactor-trust-option-key` failed 0。

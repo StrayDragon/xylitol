@@ -6,11 +6,12 @@
 - [ ] 将 `XyEvent::WorkflowUpdated` 加入 `every_domain_variant_round_trips` 样本集，计数断言 `cases.len()` 由 23 改为 24。
 - 验证：`cargo nextest run -p xylitol-wire` 全绿；新增用例在删除任一字段断言时失败（手工验证一次）。
 
-## T2 追加 WorkflowUpdated 线协议条款
+## T2 WorkflowUpdated 线协议条款（D1 已定：选项 A）
 
-- [ ] 在 `llmanspec/specs/protocol-app/protocol-app.feature` 用 `llman-sdd spec next-req-id` 分配 rN，`spec add-req` 追加规则块（形态对齐 r1718 `todo-updated-wire`：领域事件须能经 wire Event 表达、往返保真、未映射端可降级忽略且不 panic），并以 `spec add-scenario` 挂嵌套场景。
-- [ ] 在 `tests/bdd` 增加对应 `#[scenario]` 绑定（复用既有 wire 往返 harness seam，不新建 seam）。
-- 验证：`llman-sdd validate protocol-app` failed 0；`cargo nextest run --all-features --test bdd` 相关场景绿。
+- [ ] 修 r1698 枚举漂移：「须覆盖全部 XyEvent 变体」的列举补 `WorkflowUpdated`（两案共通）。
+- [ ] （D1=A 已定）`llman-sdd spec next-req-id` 分配 rN，`spec add-req` 追加载荷规则块（形态对齐 r1718：领域事件须能经 wire Event 表达、往返保真、未映射端可降级忽略且不 panic），`spec add-scenario` 挂嵌套场景。
+- [ ] （D1=A 已定）`tests/bdd` 增加对应 `#[scenario]` 绑定（复用既有 wire 往返 harness seam，不新建 seam）。
+- 验证：`llman-sdd validate protocol-app` failed 0；D1=A 已定，`cargo nextest run --all-features --test bdd` 相关场景绿。
 
 ## T3 删除 ContextTokenSettlement.generation 死字段
 
@@ -33,9 +34,9 @@
 - [ ] 为 `crates/xylitol-serve/src/occupancy/host.rs:535/539` 补 doc 注释：同上，并注明调用方为 `tests/bdd/steps_server.rs` 与 `tests/occupancy/assembly_fixture_tests.rs`。
 - [ ] 为 `crates/xylitol-serve/src/occupancy/engine.rs:24` 的 trait 方法补 doc 注释。
 - [ ] 不改任何方法的可见性，不删除任何方法，不新增 `#[cfg(test)]` 门。
-- 验证：`rg 'mark_run_inflight_for_test|flush_pending_runtime_for_test' crates tests` 仍命中原有 11 处调用点（数量不变）；`cargo nextest run -p xylitol-serve -p xylitol-runtime` 全绿；`just doc` 无新增告警。
+- 验证：`rg 'mark_run_inflight_for_test|flush_pending_runtime_for_test' crates tests` 仍命中原有 8 处测试调用点 + 2 处定义（数量不变）；`cargo nextest run -p xylitol-serve -p xylitol-runtime` 全绿；`just doc` 无新增告警。
 
-## T7 全量门禁
+## T6 全量门禁
 
 - [ ] `just qa` 全绿。
 - 验证：门禁输出附于 tasks 收口记录；`llman-sdd validate c3402-refactor-wire-payload-and-test-seam-hygiene --strict` failed 0。

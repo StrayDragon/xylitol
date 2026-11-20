@@ -47,6 +47,12 @@
 - [ ] 把 `crates/xylitol-app-tui/src/tests.rs` 的 194 个测试按 host / effects / bridge / layout 域分组，或迁入就近模块的 `tests.rs`。
 - [ ] 判据：测试数量与名称不变；全绿。
 
+## T9 落地 specs（绑定分支后执行）
+
+- [ ] 在绑定分支向 `llmanspec/specs/app-tui-host/app-tui-host.feature` 追加两条规则（渲染溢出降级为 TooSmall 提示而非 panic / 损坏帧；任意宽度渲染结果为成功或降级，不得漏出未处理的 RenderError），各带嵌套 `场景:`（无头 harness 驱动）。
+- [ ] 在 `tests/bdd/` 补对应 scenario 绑定（bindings_app_tui_host.rs 与 steps）。
+- [ ] 判据：`llman-sdd validate app-tui-host` 通过；`cargo nextest run --all-features --test bdd` 绿。
+
 ## T8 全量门禁
 
 - [ ] `just fmt`、`just lint`、`cargo nextest run -p xylitol-app-tui`、`just qa` 全绿。

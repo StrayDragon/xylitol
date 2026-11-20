@@ -31,7 +31,7 @@ needs_specs_change: false
 
 - Trust 域内新增按行为意图选择并应用选项的单一入口，取代按展示文案查找选项。
 - 行为选择不再读取 `label`；文案改动不影响持久化语义。
-- 门禁路径与 driver 路径共用同一「选项 → 落盘 / 仅会话」实现，重复逻辑收敛为一处。
+- 门禁路径、driver 路径与 CLI 路径（`src/cli/trust_gate.rs`）共用同一「选项 → 落盘 / 仅会话」实现，三份收敛为一处。
 - `get_trust_options` 与 `TrustOption.label` 保留，仅承担呈现职责（ChoicePrompt 展示、stdio 数字菜单）。
 - 错误语义保持不变：无父目录可信任时仍报 "no parent folder to trust"；其余不可用时报 "trust option unavailable"。
 - `ProjectTrustMode`、`ProjectTrustPersistReport` 的公开形状与文案不变；app-tui `/trust` 命令（经 `persist_project_trust`）行为不变。
@@ -45,7 +45,7 @@ needs_specs_change: false
 
 ## Impact
 
-- 受影响 crate：`xylitol-runtime`（trust 域 + driver in_process）。
+- 受影响 crate：`xylitol-runtime`（trust 域 + driver in_process）与根包 `xylitol`（`src/cli/trust_gate.rs` 收敛到同一入口，错误文案映射保留）。
 - 不触碰 `xylitol-app-tui`、`xylitol-kernel`、`xylitol-serve`、`xylitol-wire`、`xylitol-protocol`。
 - 无线协议、无配置 schema、无持久化格式变更（trust store 文件格式不变）。
 - 无破坏性合约变更，不需要迁移路径。
