@@ -410,17 +410,26 @@ impl XyInProcessDriver {
             self.trust_audit.clone(),
         );
         let options = mgr.get_trust_options(&cwd, false);
-        let opt = find_trust_option(&options, mode).map_err(|_| match mode {
-            ProjectTrustMode::TrustParent => {
-                XyDriverError::invalid_input("no parent folder to trust")
-            }
-            _ => XyDriverError::invalid_input("trust option unavailable"),
-        })?;
+        let Some(opt) = crate::trust::select_option(&options, trust_mode_key(mode)) else {
+            return Err(match mode {
+                ProjectTrustMode::TrustParent => {
+                    XyDriverError::invalid_input("no parent folder to trust")
+                }
+                _ => XyDriverError::invalid_input("trust option unavailable"),
+            });
+        };
         let audit = crate::trust::TrustAuditContext::new(
             crate::trust::TrustActor::Host,
             crate::trust::TrustSource::HostUnary,
         );
-        apply_trust_option(&mgr, opt, &cwd, &audit)
+        let applied = mgr.apply_option(opt, &cwd, &audit)?;
+        let saved = applied.saved_path.unwrap_or_else(|| cwd.clone());
+        let verb = if applied.trusted { "trusted" } else { "denied" };
+        Ok(ProjectTrustPersistReport {
+            trusted: applied.trusted,
+            saved_path: Some(saved),
+            message: format!("Project {verb}. {}", ProjectTrustPersistReport::RELOAD_HINT),
+        })
     }
 
     pub fn apply_prompt_resources(
@@ -482,43 +491,12 @@ impl XyInProcessDriver {
     }
 }
 
-fn find_trust_option(
-    options: &[crate::trust::TrustOption],
-    mode: ProjectTrustMode,
-) -> Result<&crate::trust::TrustOption, XyDriverError> {
+fn trust_mode_key(mode: ProjectTrustMode) -> &'static str {
     match mode {
-        ProjectTrustMode::TrustCwd => options.first(),
-        ProjectTrustMode::TrustParent => {
-            options.iter().find(|o| o.label.starts_with("Trust parent"))
-        }
-        ProjectTrustMode::Deny => options.iter().find(|o| o.label == "Do not trust"),
+        ProjectTrustMode::TrustCwd => "trust",
+        ProjectTrustMode::TrustParent => "trust_parent",
+        ProjectTrustMode::Deny => "deny",
     }
-    .ok_or(XyDriverError::invalid_input("trust option unavailable"))
-}
-
-fn session_only_event(trusted: bool) -> &'static str {
-    if trusted { "trust_grant" } else { "trust_deny" }
-}
-
-fn apply_trust_option(
-    mgr: &crate::trust::TrustManager,
-    opt: &crate::trust::TrustOption,
-    cwd: &str,
-    audit: &crate::trust::TrustAuditContext,
-) -> Result<ProjectTrustPersistReport, XyDriverError> {
-    if !opt.updates.is_empty() {
-        mgr.apply_updates(&opt.updates, audit)?;
-    } else {
-        let event = session_only_event(opt.trusted);
-        mgr.record_decision(event, cwd, Some(opt.trusted), audit, "session_only");
-    }
-    let saved = opt.saved_path.clone().unwrap_or_else(|| cwd.to_string());
-    let verb = if opt.trusted { "trusted" } else { "denied" };
-    Ok(ProjectTrustPersistReport {
-        trusted: opt.trusted,
-        saved_path: Some(saved),
-        message: format!("Project {verb}. {}", ProjectTrustPersistReport::RELOAD_HINT),
-    })
 }
 
 fn bind_session_or_err(
@@ -1084,6 +1062,8 @@ mod persist_trust_tests {
     use crate::driver::types::ProjectTrustMode;
     use crate::test_support::{MemoryStore, NoopSink};
 
+    use super::trust_mode_key;
+
     fn trust_driver(cwd: &str, store: Arc<dyn XySessionStore>) -> XyInProcessDriver {
         let baseline = RuntimeBaseline {
             store: store.clone(),
@@ -1186,5 +1166,41 @@ mod persist_trust_tests {
         assert_eq!(report.saved_path.as_deref(), Some(expected.as_str()));
         let mgr = crate::trust::TrustManager::new(agent_dir.path().to_path_buf());
         assert_eq!(mgr.is_project_trusted(&expected), Some(false));
+    }
+
+    #[tokio::test]
+    async fn persist_project_trust_selects_by_key_after_label_tampering() {
+        let root = tempfile::tempdir().expect("root dir");
+        let agent_dir = tempfile::tempdir().expect("agent dir");
+        let project = root.path().join("proj");
+        std::fs::create_dir_all(&project).expect("create project");
+        let cwd = project.to_string_lossy().into_owned();
+
+        let mgr = crate::trust::TrustManager::new(agent_dir.path().to_path_buf());
+        let mut options = mgr.get_trust_options(&cwd, false);
+        for opt in &mut options {
+            opt.label = "Do not trust".into();
+        }
+        for (mode, expected_key) in [
+            (ProjectTrustMode::TrustCwd, "trust"),
+            (ProjectTrustMode::TrustParent, "trust_parent"),
+            (ProjectTrustMode::Deny, "deny"),
+        ] {
+            let selected = crate::trust::select_option(&options, trust_mode_key(mode))
+                .unwrap_or_else(|| panic!("{expected_key} must be selected by key"));
+            assert_eq!(selected.key, expected_key);
+        }
+
+        let mut driver = trust_driver(&cwd, Arc::new(MemoryStore::new()));
+        driver.enable_reload_state(project.clone(), agent_dir.path().to_path_buf(), false);
+        let report = driver
+            .persist_project_trust(ProjectTrustMode::Deny)
+            .expect("deny must persist after label tampering");
+        assert!(!report.trusted);
+        let store_mgr = crate::trust::TrustManager::new(agent_dir.path().to_path_buf());
+        assert_eq!(
+            store_mgr.is_project_trusted(&canonical(&project)),
+            Some(false)
+        );
     }
 }

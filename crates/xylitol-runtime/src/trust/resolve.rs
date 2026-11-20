@@ -73,16 +73,7 @@ where
     if let Some(selected_idx) = on_prompt(&trust_options)
         && let Some(selected) = trust_options.get(selected_idx)
     {
-        if !selected.updates.is_empty() {
-            let _ = manager.apply_updates(&selected.updates, audit);
-        } else {
-            let event = if selected.trusted {
-                "trust_grant"
-            } else {
-                "trust_deny"
-            };
-            manager.record_decision(event, cwd, Some(selected.trusted), audit, "session_only");
-        }
+        let _ = manager.apply_option(selected, cwd, audit);
         return TrustResolution {
             trusted: selected.trusted,
             reason: TrustReason::UserPrompt,

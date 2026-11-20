@@ -87,19 +87,10 @@ pub fn run_trust_gate_if_needed(trust_override: Option<bool>) -> Result<(), Trus
                 xylitol_runtime::TrustActor::Cli,
                 xylitol_runtime::TrustSource::Startup,
             );
-            if !opt.updates.is_empty() {
-                manager
-                    .apply_updates(&opt.updates, &audit)
-                    .map_err(|e| TrustGateError::Other(format!("trust store write failed: {e}")))?;
-            } else {
-                let event = if opt.trusted {
-                    "trust_grant"
-                } else {
-                    "trust_deny"
-                };
-                manager.record_decision(event, &cwd, Some(opt.trusted), &audit, "session_only");
-            }
-            if opt.trusted {
+            let applied = manager
+                .apply_option(opt, &cwd, &audit)
+                .map_err(|e| TrustGateError::Other(format!("trust store write failed: {e}")))?;
+            if applied.trusted {
                 Ok(())
             } else {
                 Err(TrustGateError::Denied)

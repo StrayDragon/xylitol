@@ -2,6 +2,9 @@
 depends_on: []
 title: Trust 选项按稳定 key 选择，展示文案不再承载行为
 needs_specs_change: false
+branch: sdd/c3396-refactor-trust-option-key
+base_branch: main
+base_sha: 82b315aeef8752d86b7a4612d50eea35161e66d2
 ---
 
 ## Why

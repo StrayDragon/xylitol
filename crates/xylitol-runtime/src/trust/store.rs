@@ -38,10 +38,20 @@ pub fn resolve_trust_answer(options: &[TrustOption], answer: Option<&str>) -> Op
     options.iter().position(|option| option.key == key)
 }
 
+pub fn select_option<'a>(options: &'a [TrustOption], key: &'a str) -> Option<&'a TrustOption> {
+    options.iter().find(|option| option.key == key)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustUpdate {
     pub path: String,
     pub decision: TrustDecision,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustApplied {
+    pub trusted: bool,
+    pub saved_path: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -465,6 +475,28 @@ impl TrustManager {
                 );
             }
             Ok(())
+        })
+    }
+
+    pub fn apply_option(
+        &self,
+        opt: &TrustOption,
+        cwd: &str,
+        ctx: &TrustAuditContext,
+    ) -> Result<TrustApplied, XyTrustError> {
+        if !opt.updates.is_empty() {
+            self.apply_updates(&opt.updates, ctx)?;
+        } else {
+            let event = if opt.trusted {
+                "trust_grant"
+            } else {
+                "trust_deny"
+            };
+            self.record_decision(event, cwd, Some(opt.trusted), ctx, "session_only");
+        }
+        Ok(TrustApplied {
+            trusted: opt.trusted,
+            saved_path: opt.saved_path.clone(),
         })
     }
 
@@ -1045,6 +1077,114 @@ mod tests {
             mgr.get_trust_options(&cwd_str, false).len() + 2,
             options.len()
         );
+    }
+
+    #[test]
+    fn test_select_option_by_key_ignores_label() {
+        let mut options = vec![
+            TrustOption {
+                key: "trust".into(),
+                label: "Trust".into(),
+                trusted: true,
+                updates: vec![TrustUpdate {
+                    path: "/tmp/project".into(),
+                    decision: Some(true),
+                }],
+                saved_path: Some("/tmp/project".into()),
+            },
+            TrustOption {
+                key: "deny".into(),
+                label: "Do not trust".into(),
+                trusted: false,
+                updates: vec![TrustUpdate {
+                    path: "/tmp/project".into(),
+                    decision: Some(false),
+                }],
+                saved_path: Some("/tmp/project".into()),
+            },
+        ];
+        options[0].label = "Do not trust".into();
+        options[1].label = "Trust".into();
+
+        let trust = select_option(&options, "trust").expect("trust option selected by key");
+        assert_eq!(trust.key, "trust");
+        assert!(trust.trusted);
+        let deny = select_option(&options, "deny").expect("deny option selected by key");
+        assert_eq!(deny.key, "deny");
+        assert!(!deny.trusted);
+        assert!(select_option(&options, "trust_parent").is_none());
+        assert!(select_option(&options, "unknown").is_none());
+    }
+
+    #[test]
+    fn test_apply_option_updates_branch_audits_once() {
+        let (mgr, dir) = setup();
+        let path = dir.path().join("applied");
+        fs::create_dir_all(&path).unwrap();
+        let cwd = path.to_string_lossy().to_string();
+
+        let options = mgr.get_trust_options(&cwd, false);
+        let opt = select_option(&options, "trust").expect("trust option");
+        assert!(!opt.updates.is_empty());
+        let applied = mgr.apply_option(opt, &cwd, &ctx()).unwrap();
+        assert!(applied.trusted);
+        assert_eq!(
+            applied.saved_path.as_deref(),
+            Some(TrustManager::normalize_cwd(&cwd).as_str())
+        );
+
+        let log = fs::read_to_string(dir.path().join("audit/trust.log")).unwrap();
+        let events: Vec<serde_json::Value> = log
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let grants: Vec<_> = events
+            .iter()
+            .filter(|v| v["event"] == "trust_grant")
+            .collect();
+        assert_eq!(grants.len(), 1, "updates branch must audit exactly once");
+        assert_eq!(grants[0]["reason"], "apply_updates");
+        assert_eq!(mgr.is_project_trusted(&cwd), Some(true));
+    }
+
+    #[test]
+    fn test_apply_option_session_only_branch_audits_once() {
+        let (mgr, dir) = setup();
+        let path = dir.path().join("session-only");
+        fs::create_dir_all(&path).unwrap();
+        let cwd = path.to_string_lossy().to_string();
+
+        let options = mgr.get_trust_options(&cwd, true);
+        let opt = select_option(&options, "trust_session").expect("session trust option");
+        assert!(opt.updates.is_empty());
+        let applied = mgr.apply_option(opt, &cwd, &ctx()).unwrap();
+        assert!(applied.trusted);
+        assert_eq!(applied.saved_path, None);
+
+        let log = fs::read_to_string(dir.path().join("audit/trust.log")).unwrap();
+        let events: Vec<serde_json::Value> = log
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let session_only: Vec<_> = events
+            .iter()
+            .filter(|v| v["reason"] == "session_only")
+            .collect();
+        assert_eq!(
+            session_only.len(),
+            1,
+            "session-only branch must audit exactly once"
+        );
+        assert_eq!(session_only[0]["event"], "trust_grant");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|v| v["event"] == "trust_store_write")
+                .count(),
+            0,
+            "session-only branch must not write the store"
+        );
+        assert_eq!(mgr.is_project_trusted(&cwd), None);
     }
 
     #[test]
