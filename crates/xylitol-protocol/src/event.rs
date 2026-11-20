@@ -107,7 +107,6 @@ pub enum Event {
         #[serde(default)]
         prompt_cache_tokens: Option<u64>,
         reason: String,
-        generation: u64,
     },
     ModelSelect {
         provider: String,
@@ -249,7 +248,6 @@ mod tests {
                 prompt_cache: "hit".into(),
                 prompt_cache_tokens: Some(2),
                 reason: "r".into(),
-                generation: 5,
             },
             Event::ModelSelect {
                 provider: "p".into(),

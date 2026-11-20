@@ -532,10 +532,16 @@ impl SessionSlot {
         }
     }
 
+    /// ~keep 测试接缝：供集成测试手动翻转 turn in-flight 标记以模拟并发窗口，非产品 API。
+    /// ~keep 调用方：`tests/bdd/steps_server.rs` 与 `tests/occupancy/assembly_fixture_tests.rs`。
+    /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。
     pub fn mark_run_inflight_for_test(&self, on: bool) {
         self.turn_inflight.store(on, Ordering::SeqCst);
     }
 
+    /// ~keep 测试接缝：供集成测试手动触发 pending 运行时配置 flush，非产品 API。
+    /// ~keep 调用方：`tests/occupancy/assembly_fixture_tests.rs`。
+    /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。
     pub async fn flush_pending_runtime_for_test(&self) {
         self.flush_pending_runtime().await;
     }

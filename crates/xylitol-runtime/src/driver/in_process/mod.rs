@@ -454,6 +454,9 @@ impl XyInProcessDriver {
         self.agent.loaded_skills()
     }
 
+    /// ~keep 测试接缝：仅供外部集成测试观测 agent 工作目录，非产品 API。
+    /// ~keep 调用方：`xylitol-kernel` occupancy factory 转发与 `tests/occupancy/assembly_fixture_tests.rs`。
+    /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。
     pub fn agent_cwd_for_test(&self) -> String {
         self.agent.cwd().to_string()
     }
@@ -466,6 +469,9 @@ impl XyInProcessDriver {
             .collect()
     }
 
+    /// ~keep 测试接缝：仅供外部测试断言已注册工具表，非产品 API。
+    /// ~keep 调用方：`crates/xylitol-kernel/src/composition.rs`。
+    /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。
     pub fn tool_names_for_test(&self) -> Vec<String> {
         self.agent.tool_names()
     }
@@ -479,6 +485,9 @@ impl XyInProcessDriver {
             .collect()
     }
 
+    /// ~keep 测试接缝：仅供外部测试断言系统提示词装配，非产品 API。
+    /// ~keep 调用方：`crates/xylitol-kernel/src/bootstrap_tests.rs`。
+    /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。
     pub fn system_prompt_for_test(&self) -> Option<String> {
         self.agent.system_prompt().map(String::from)
     }

@@ -314,3 +314,9 @@ fn test_pa_r1927_depth_tree_scale(protocol_bdd: ProtocolBdd) {}
     name = "消息快照分页"
 )]
 fn test_proto_get_messages_paging() {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "工作流事件往返保真"
+)]
+fn test_c3402_workflow_updated_wire(protocol_bdd: ProtocolBdd) {}

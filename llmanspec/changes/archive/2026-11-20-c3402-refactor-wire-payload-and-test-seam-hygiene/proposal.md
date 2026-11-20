@@ -2,6 +2,9 @@
 title: 线协议载荷断言补齐与测试接缝可见性收口
 depends_on: []
 needs_specs_change: true
+branch: sdd/c3402-refactor-wire-payload-and-test-seam-hygiene
+base_branch: main
+base_sha: 3a866eccb5a63ee13854115e6d218e583b46b6b8
 ---
 
 # 线协议载荷断言补齐与测试接缝可见性收口

@@ -6,7 +6,7 @@ use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_protocol::codec::{self, Inbound, Rejected};
 use xylitol_protocol::{Command, Event, Message, Outcome, RequestId};
 use xylitol_serve::MAX_BODY_BYTES;
-use xylitol_wire::event_from_wire;
+use xylitol_wire::{event_from_wire, event_to_wire};
 
 pub struct ProtocolBdd {
     pub cmds: RefCell<Vec<Result<Command, String>>>,
@@ -800,7 +800,6 @@ fn w_c2994_settlement_cache_roundtrip(protocol_bdd: &ProtocolBdd) {
             prompt_cache: status.into(),
             prompt_cache_tokens: tokens,
             reason: "turn_settled".into(),
-            generation: 1,
         };
         let json = serde_json::to_string(&event).expect("serialize settlement");
         events.push(serde_json::from_str::<Event>(&json).expect("deserialize settlement"));
@@ -830,4 +829,102 @@ fn t_c2994_settlement_cache_roundtrip(protocol_bdd: &ProtocolBdd) {
         ],
         "c2994: cache tri-state must survive the wire"
     );
+}
+
+fn c3402_workflow_fixture() -> xylitol_plugin_sdk::session::Workflow {
+    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowTask, WorkflowTaskStatus};
+    let sub_workflow = Workflow {
+        goal: "子工作流目标".into(),
+        tasks: vec![WorkflowTask {
+            id: "sub-1".into(),
+            description: "嵌套任务".into(),
+            depends_on: Vec::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            tools: Vec::new(),
+            risk: WorkflowRisk::High,
+            verification: None,
+            rollback: None,
+            requires_human: true,
+            status: WorkflowTaskStatus::Blocked,
+            output_ref: None,
+            sub_workflow: None,
+        }],
+        resume_cursor: Some("sub-cursor".into()),
+        updated_at: 2,
+    };
+    Workflow {
+        goal: "主目标".into(),
+        tasks: vec![
+            WorkflowTask {
+                id: "t1".into(),
+                description: "完整字段任务".into(),
+                depends_on: vec!["t0".into()],
+                inputs: vec!["in".into()],
+                outputs: vec!["out".into()],
+                tools: vec!["read".into()],
+                risk: WorkflowRisk::High,
+                verification: Some("检查".into()),
+                rollback: Some("回滚".into()),
+                requires_human: true,
+                status: WorkflowTaskStatus::InProgress,
+                output_ref: Some("out-ref".into()),
+                sub_workflow: Some(Box::new(sub_workflow)),
+            },
+            WorkflowTask {
+                id: "t2".into(),
+                description: "可选字段全空任务".into(),
+                depends_on: Vec::new(),
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                tools: Vec::new(),
+                risk: WorkflowRisk::Low,
+                verification: None,
+                rollback: None,
+                requires_human: false,
+                status: WorkflowTaskStatus::Pending,
+                output_ref: None,
+                sub_workflow: None,
+            },
+        ],
+        resume_cursor: Some("cursor".into()),
+        updated_at: 42,
+    }
+}
+
+#[when("以含嵌套任务与子工作流的 WorkflowUpdated 做线协议序列化与反序列化往返")]
+fn w_c3402_workflow_updated_roundtrip(protocol_bdd: &ProtocolBdd) {
+    let domain = XyEvent::WorkflowUpdated {
+        workflow: c3402_workflow_fixture(),
+    };
+    let wire = event_to_wire(&domain).expect("XyEvent → wire Event");
+    let text = serde_json::to_string(&wire).expect("serialize WorkflowUpdated");
+    let back: Event = serde_json::from_str(&text).expect("deserialize WorkflowUpdated");
+    assert_eq!(serde_json::to_string(&back).unwrap(), text);
+    *protocol_bdd.events.borrow_mut() = vec![back];
+}
+
+#[then("载荷逐字段一致且未映射端忽略不 panic")]
+fn t_c3402_workflow_updated_fidelity(protocol_bdd: &ProtocolBdd) {
+    let events = protocol_bdd.events.borrow();
+    let Some(Event::WorkflowUpdated { workflow: value }) = events.first() else {
+        panic!("c3402: 期望 WorkflowUpdated");
+    };
+    assert_eq!(value["goal"], "主目标");
+    assert_eq!(value["resume_cursor"], "cursor");
+    assert_eq!(value["tasks"][0]["id"], "t1");
+    assert_eq!(value["tasks"][0]["sub_workflow"]["goal"], "子工作流目标");
+    assert_eq!(value["tasks"][0]["sub_workflow"]["tasks"][0]["id"], "sub-1");
+    assert_eq!(value["tasks"][1]["id"], "t2");
+    let back = event_from_wire(events.first().expect("event")).expect("wire → XyEvent");
+    match back {
+        XyEvent::WorkflowUpdated { workflow } => {
+            assert_eq!(workflow, c3402_workflow_fixture(), "c3402: 载荷逐字段一致");
+        }
+        other => panic!("c3402: 期望 WorkflowUpdated，得到 {}", other.description()),
+    }
+    // ~keep 未映射端只读 type 标记并整包忽略载荷，不得 panic。
+    let frame = serde_json::to_value(events.first().expect("event")).expect("frame to value");
+    assert_eq!(frame["type"], "workflow_updated");
+    let _ = frame["workflow"].clone();
 }

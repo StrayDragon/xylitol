@@ -24,6 +24,20 @@ use crate::driver::XyEvent;
 use crate::tool_display::is_ask_tool;
 use xylitol_plugin_sdk::message::AgentMessage;
 
+// ~keep bridge 家族路由导航表（短路顺序即优先级：先命中者胜，同一事件不得被两个家族同时声明）。
+// ~keep 事件族 → 家族函数 → 文件 → 渲染落点：
+// ~keep   agent 族 AgentStart / AgentEnd / StepStart / StepEnd / Message{Start,Update,End}
+// ~keep     → apply_agent_family → handlers/agent.rs → busy 占位与状态、user 条目去重尾插、流式缓冲 flush。
+// ~keep   stream 族 TextDelta / ThinkingDelta
+// ~keep     → apply_stream_family → handlers/stream.rs → 流式助手缓冲与思考缓冲（STREAMING_THINK_ID）。
+// ~keep   tools 族 TodoUpdated / WorkflowUpdated / ToolExecution{Start,Update,End}
+// ~keep     → apply_tools_family → handlers/tools.rs → 待办栏与工具 / Ask 条目，经 tool_projection 写入
+// ~keep       entries，由 layout 渲染。
+// ~keep   lifecycle 族 QueueUpdate / Compaction{Start,End} / AutoRetry{Start,End} / Error /
+// ~keep     SessionInfoChanged / ModelSelect / ThinkingLevelChanged / ContextTokenSettlement
+// ~keep     → apply_lifecycle_family → handlers/lifecycle.rs → 队列条、通知栈、状态条。
+// ~keep 完整链路：xylitol-wire event_to_wire → serve host event_to_wire → SessionEventPayload →
+// ~keep   WS 下行 → app-tui driver/remote.rs → lib.rs 扇入 apply_xy_event → 上表家族 → layout。
 pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
     if handlers::apply_agent_family(model, event)
         || handlers::apply_stream_family(model, event)

@@ -97,7 +97,6 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             prompt_cache: prompt_cache_status(estimate.prompt_cache_read).to_string(),
             prompt_cache_tokens: prompt_cache_tokens(estimate.prompt_cache_read),
             reason: reason.clone(),
-            generation: 0,
         }),
         XyEvent::ModelSelect { provider, model_id } => Ok(Event::ModelSelect {
             provider: provider.clone(),
@@ -351,7 +350,9 @@ fn prompt_cache_from_wire(status: &str, tokens: Option<u64>) -> PromptCacheRead 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xylitol_plugin_sdk::session::{TodoItem, TodoStatus};
+    use xylitol_plugin_sdk::session::{
+        TodoItem, TodoStatus, Workflow, WorkflowRisk, WorkflowTask, WorkflowTaskStatus,
+    };
 
     fn sample_estimate() -> ContextTokenEstimate {
         ContextTokenEstimate {
@@ -441,6 +442,9 @@ mod tests {
                 follow_up_count: 2,
             },
             XyEvent::TodoUpdated { list: todo },
+            XyEvent::WorkflowUpdated {
+                workflow: workflow_fixture(),
+            },
             XyEvent::AutoRetryStart {
                 attempt: 1,
                 max_retries: 3,
@@ -456,7 +460,7 @@ mod tests {
                 value: serde_json::json!("demo"),
             },
         ];
-        assert_eq!(cases.len(), 23);
+        assert_eq!(cases.len(), 24);
         for case in &cases {
             let wire = event_to_wire(case).expect("to wire");
             let back = event_from_wire(&wire).expect("from wire");
@@ -522,7 +526,6 @@ mod tests {
             prompt_cache: "mystery".into(),
             prompt_cache_tokens: Some(9),
             reason: "turn_settled".into(),
-            generation: 1,
         };
         match event_from_wire(&wire).expect("unknown cache status") {
             XyEvent::ContextTokenSettlement { estimate, .. } => {
@@ -574,6 +577,118 @@ mod tests {
         assert_eq!(wire_list.items[0].content, "c");
         let back = event_from_wire(&wire).expect("back");
         assert!(matches!(back, XyEvent::TodoUpdated { list: ref l } if *l == list));
+    }
+
+    fn workflow_fixture() -> Workflow {
+        let sub_workflow = Workflow {
+            goal: "sub goal".into(),
+            tasks: vec![WorkflowTask {
+                id: "sub-1".into(),
+                description: "nested task".into(),
+                depends_on: Vec::new(),
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                tools: Vec::new(),
+                risk: WorkflowRisk::High,
+                verification: None,
+                rollback: None,
+                requires_human: true,
+                status: WorkflowTaskStatus::Blocked,
+                output_ref: None,
+                sub_workflow: None,
+            }],
+            resume_cursor: Some("sub-cursor".into()),
+            updated_at: 2,
+        };
+        Workflow {
+            goal: "main goal".into(),
+            tasks: vec![
+                WorkflowTask {
+                    id: "t1".into(),
+                    description: "full task".into(),
+                    depends_on: vec!["t0".into()],
+                    inputs: vec!["in".into()],
+                    outputs: vec!["out".into()],
+                    tools: vec!["read".into()],
+                    risk: WorkflowRisk::High,
+                    verification: Some("check".into()),
+                    rollback: Some("undo".into()),
+                    requires_human: true,
+                    status: WorkflowTaskStatus::InProgress,
+                    output_ref: Some("out-ref".into()),
+                    sub_workflow: Some(Box::new(sub_workflow)),
+                },
+                WorkflowTask {
+                    id: "t2".into(),
+                    description: "minimal task".into(),
+                    depends_on: Vec::new(),
+                    inputs: Vec::new(),
+                    outputs: Vec::new(),
+                    tools: Vec::new(),
+                    risk: WorkflowRisk::Low,
+                    verification: None,
+                    rollback: None,
+                    requires_human: false,
+                    status: WorkflowTaskStatus::Pending,
+                    output_ref: None,
+                    sub_workflow: None,
+                },
+            ],
+            resume_cursor: Some("cursor".into()),
+            updated_at: 42,
+        }
+    }
+
+    #[test]
+    fn workflow_updated_keeps_fields_by_field() {
+        let workflow = workflow_fixture();
+        let wire = event_to_wire(&XyEvent::WorkflowUpdated {
+            workflow: workflow.clone(),
+        })
+        .expect("wire");
+        let Event::WorkflowUpdated { workflow: value } = &wire else {
+            panic!("expected workflow_updated");
+        };
+        assert_eq!(value["goal"], "main goal");
+        assert_eq!(value["resume_cursor"], "cursor");
+        assert_eq!(value["updated_at"], 42);
+        let tasks = value["tasks"].as_array().expect("tasks array");
+        assert_eq!(tasks.len(), 2);
+        let full = &tasks[0];
+        assert_eq!(full["id"], "t1");
+        assert_eq!(full["description"], "full task");
+        assert_eq!(full["depends_on"][0], "t0");
+        assert_eq!(full["inputs"][0], "in");
+        assert_eq!(full["outputs"][0], "out");
+        assert_eq!(full["tools"][0], "read");
+        assert_eq!(full["risk"], "high");
+        assert_eq!(full["status"], "in_progress");
+        assert_eq!(full["requires_human"], true);
+        assert_eq!(full["verification"], "check");
+        assert_eq!(full["rollback"], "undo");
+        assert_eq!(full["output_ref"], "out-ref");
+        assert_eq!(full["sub_workflow"]["goal"], "sub goal");
+        assert_eq!(full["sub_workflow"]["resume_cursor"], "sub-cursor");
+        assert_eq!(full["sub_workflow"]["tasks"][0]["id"], "sub-1");
+        assert_eq!(full["sub_workflow"]["tasks"][0]["risk"], "high");
+        assert_eq!(full["sub_workflow"]["tasks"][0]["status"], "blocked");
+        assert_eq!(full["sub_workflow"]["tasks"][0]["requires_human"], true);
+        let minimal = &tasks[1];
+        assert_eq!(minimal["id"], "t2");
+        assert_eq!(minimal["risk"], "low");
+        assert_eq!(minimal["status"], "pending");
+        assert_eq!(minimal["requires_human"], false);
+        for absent in ["verification", "rollback", "output_ref", "sub_workflow"] {
+            assert!(
+                minimal.get(absent).is_none(),
+                "None optional field must stay off the wire: {absent}"
+            );
+        }
+        let back = event_from_wire(&wire).expect("from wire");
+        assert!(
+            matches!(back, XyEvent::WorkflowUpdated { workflow: ref w } if *w == workflow),
+            "round trip must keep the workflow payload field by field"
+        );
     }
 }
 

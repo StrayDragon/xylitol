@@ -34,7 +34,7 @@
 
   @req:r1698
   规则: Event 变体完整
-    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、StepStart、StepEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。`AgentEnd` 的可选 `reason`（见 agent-runtime r3305）须线上携带，None 时省略字段。MessageUpdate 须只携带 message（完整 AgentMessage 快照），不得另带累积 text 或 thinking：二者是 message 的子集且无生产消费方，重复载荷会放大线协议帧体。ContextTokenSettlement 须携带 prompt cache 三态：`prompt_cache` ∈ {hit, unknown, not_applicable} 与可选 `prompt_cache_tokens`（仅 hit 时出现）；旧载荷缺省字段 须按 not_applicable 处理，未知字符串 须按 unknown，不得 panic。
+    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、StepStart、StepEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、WorkflowUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。`AgentEnd` 的可选 `reason`（见 agent-runtime r3305）须线上携带，None 时省略字段。MessageUpdate 须只携带 message（完整 AgentMessage 快照），不得另带累积 text 或 thinking：二者是 message 的子集且无生产消费方，重复载荷会放大线协议帧体。ContextTokenSettlement 须携带 prompt cache 三态：`prompt_cache` ∈ {hit, unknown, not_applicable} 与可选 `prompt_cache_tokens`（仅 hit 时出现）；旧载荷缺省字段 须按 not_applicable 处理，未知字符串 须按 unknown，不得 panic。
 
     场景: agent流式事件往返
       当 对 Agent 流族事件做线协议序列化与反序列化往返
@@ -410,3 +410,11 @@
   @req:r3296
   规则: session-detach
     产品方法表 须登记 `session_detach` unary（写入、Result、Inline），参数 session_id；最后一个 client detach 时释放该 session 资源租约；仍有其他 client 或 turn in flight 时不得释放。client clean exit 须发送该 unary；失败由 transport close / linger 兜底。由协议注册表 / host 单测覆盖，不扩 BDD step。
+
+  @req:r3370
+  规则: workflow-updated-payload-fidelity
+    领域事件 WorkflowUpdated 须能经 wire Event 表达并往返保真（Workflow 目标、嵌套任务与可选子工作流逐字段不丢失）；未映射该变体的端 须可降级忽略，不得 panic。
+
+    场景: 工作流事件往返保真
+      当 以含嵌套任务与子工作流的 WorkflowUpdated 做线协议序列化与反序列化往返
+      那么 载荷逐字段一致且未映射端忽略不 panic
