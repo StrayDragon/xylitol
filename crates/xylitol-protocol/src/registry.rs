@@ -9,19 +9,6 @@ pub enum Auth {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Idem {
-    PerRpc,
-    Bypass,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Resp {
-    Result,
-    Stream,
-    Job,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exec {
     Exclusive,
     Inline,
@@ -32,42 +19,23 @@ pub enum Exec {
 pub struct MethodEntry {
     pub name: &'static str,
     pub auth: Auth,
-    pub idem: Idem,
-    pub resp: Resp,
     pub command_backed: bool,
     pub exec: Exec,
 }
 
-const fn m(
-    name: &'static str,
-    auth: Auth,
-    idem: Idem,
-    resp: Resp,
-    command_backed: bool,
-) -> MethodEntry {
+const fn m(name: &'static str, auth: Auth, command_backed: bool) -> MethodEntry {
     MethodEntry {
         name,
         auth,
-        idem,
-        resp,
         command_backed,
         exec: Exec::Queued,
     }
 }
 
-const fn mx(
-    name: &'static str,
-    auth: Auth,
-    idem: Idem,
-    resp: Resp,
-    command_backed: bool,
-    exec: Exec,
-) -> MethodEntry {
+const fn mx(name: &'static str, auth: Auth, command_backed: bool, exec: Exec) -> MethodEntry {
     MethodEntry {
         name,
         auth,
-        idem,
-        resp,
         command_backed,
         exec,
     }
@@ -128,372 +96,75 @@ pub const METHOD_SUBSCRIBE: &str = "subscribe";
 pub const METHOD_HOST_DESCRIBE: &str = "host.describe";
 
 pub const REGISTRY: &[MethodEntry] = &[
-    mx(
-        METHOD_PROMPT,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Stream,
-        CMD,
-        Exec::Exclusive,
-    ),
-    m(METHOD_ABORT, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
-    mx(
-        METHOD_GET_STATE,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_SET_MODEL,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_CYCLE_MODEL,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
+    mx(METHOD_PROMPT, Auth::Writer, CMD, Exec::Exclusive),
+    m(METHOD_ABORT, Auth::Writer, CMD),
+    mx(METHOD_GET_STATE, Auth::Readonly, true, Exec::Inline),
+    mx(METHOD_SET_MODEL, Auth::Writer, CMD, Exec::Inline),
+    mx(METHOD_CYCLE_MODEL, Auth::Writer, true, Exec::Inline),
     mx(
         METHOD_GET_AVAILABLE_MODELS,
         Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
         true,
         Exec::Inline,
     ),
-    mx(
-        METHOD_SET_THINKING_LEVEL,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_BASH,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-        Exec::Exclusive,
-    ),
-    m(
-        METHOD_COMPACT,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-    ),
-    m(
-        METHOD_GET_SESSION_STATS,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_EXPORT_HTML,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_EXPORT_JSONL,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_IMPORT_JSONL,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_SWITCH_SESSION,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(METHOD_FORK, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
-    m(
-        METHOD_GET_MESSAGES,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_ESTIMATE_CONTEXT,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    mx(
-        METHOD_GET_COMMANDS,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_PLUGIN_COMMAND,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_GET_CAPABILITIES,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_SET_CAPABILITY,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_CLEAR_CAPABILITIES,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    m(
-        METHOD_SESSION_TREE,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_TRAVEL_SESSION_TREE,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    mx(
-        METHOD_APPEND_ENTRY_LABEL,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    m(
-        METHOD_LIST_SESSIONS,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_LOAD_SESSION_ENTRIES,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_NEW_SESSION,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_GET_SESSION_NAME,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    mx(
-        METHOD_SET_SESSION_NAME,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
+    mx(METHOD_SET_THINKING_LEVEL, Auth::Writer, true, Exec::Inline),
+    mx(METHOD_BASH, Auth::Writer, CMD, Exec::Exclusive),
+    m(METHOD_COMPACT, Auth::Writer, CMD),
+    m(METHOD_GET_SESSION_STATS, Auth::Readonly, true),
+    m(METHOD_EXPORT_HTML, Auth::Writer, true),
+    m(METHOD_EXPORT_JSONL, Auth::Writer, true),
+    m(METHOD_IMPORT_JSONL, Auth::Writer, true),
+    m(METHOD_SWITCH_SESSION, Auth::Writer, true),
+    m(METHOD_FORK, Auth::Writer, CMD),
+    m(METHOD_GET_MESSAGES, Auth::Readonly, true),
+    m(METHOD_ESTIMATE_CONTEXT, Auth::Readonly, true),
+    mx(METHOD_GET_COMMANDS, Auth::Readonly, true, Exec::Inline),
+    mx(METHOD_PLUGIN_COMMAND, Auth::Writer, true, Exec::Inline),
+    mx(METHOD_GET_CAPABILITIES, Auth::Readonly, true, Exec::Inline),
+    mx(METHOD_SET_CAPABILITY, Auth::Writer, true, Exec::Inline),
+    mx(METHOD_CLEAR_CAPABILITIES, Auth::Writer, true, Exec::Inline),
+    m(METHOD_SESSION_TREE, Auth::Readonly, true),
+    m(METHOD_TRAVEL_SESSION_TREE, Auth::Writer, true),
+    mx(METHOD_APPEND_ENTRY_LABEL, Auth::Writer, true, Exec::Inline),
+    m(METHOD_LIST_SESSIONS, Auth::Readonly, true),
+    m(METHOD_LOAD_SESSION_ENTRIES, Auth::Readonly, true),
+    m(METHOD_NEW_SESSION, Auth::Writer, true),
+    m(METHOD_GET_SESSION_NAME, Auth::Readonly, true),
+    mx(METHOD_SET_SESSION_NAME, Auth::Writer, true, Exec::Inline),
     mx(
         METHOD_SET_SESSION_NAME_FOR,
         Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
         true,
         Exec::Inline,
     ),
     mx(
         METHOD_GENERATE_SESSION_NAME,
         Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
         CMD,
         Exec::Queued,
     ),
-    m(
-        METHOD_DELETE_SESSION,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    mx(
-        METHOD_SESSION_DETACH,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_RELOAD,
-        Auth::Readonly,
-        Idem::Bypass,
-        Resp::Result,
-        CMD,
-        Exec::Exclusive,
-    ),
-    mx(
-        METHOD_MCP_CATALOG,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_MCP_RESOURCE_READ,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_MCP_PROMPT_GET,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_MCP_OAUTH_START,
-        Auth::Writer,
-        Idem::Bypass,
-        Resp::Result,
-        CMD,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_MCP_OAUTH_CANCEL,
-        Auth::Writer,
-        Idem::Bypass,
-        Resp::Result,
-        CMD,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_MCP_OAUTH_STATUS,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_LOADED_RESOURCES,
-        Auth::Readonly,
-        Idem::Bypass,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    mx(
-        METHOD_QUEUE_STATS,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-        Exec::Inline,
-    ),
-    m(
-        METHOD_ARM_TOOL_FREEZE,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        RAW,
-    ),
-    m(
-        METHOD_PERSIST_TRUST,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        RAW,
-    ),
-    m(METHOD_STEER, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
-    m(
-        METHOD_FOLLOW_UP,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        CMD,
-    ),
-    m(
-        METHOD_CLEAR_QUEUE,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_SUBSCRIBE,
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        METHOD_HOST_DESCRIBE,
-        Auth::Readonly,
-        Idem::Bypass,
-        Resp::Result,
-        RAW,
-    ),
+    m(METHOD_DELETE_SESSION, Auth::Writer, true),
+    mx(METHOD_SESSION_DETACH, Auth::Writer, CMD, Exec::Inline),
+    mx(METHOD_RELOAD, Auth::Readonly, CMD, Exec::Exclusive),
+    mx(METHOD_MCP_CATALOG, Auth::Readonly, CMD, Exec::Inline),
+    mx(METHOD_MCP_RESOURCE_READ, Auth::Readonly, CMD, Exec::Inline),
+    mx(METHOD_MCP_PROMPT_GET, Auth::Readonly, CMD, Exec::Inline),
+    mx(METHOD_MCP_OAUTH_START, Auth::Writer, CMD, Exec::Inline),
+    mx(METHOD_MCP_OAUTH_CANCEL, Auth::Writer, CMD, Exec::Inline),
+    mx(METHOD_MCP_OAUTH_STATUS, Auth::Readonly, CMD, Exec::Inline),
+    mx(METHOD_LOADED_RESOURCES, Auth::Readonly, true, Exec::Inline),
+    mx(METHOD_QUEUE_STATS, Auth::Readonly, true, Exec::Inline),
+    m(METHOD_ARM_TOOL_FREEZE, Auth::Writer, RAW),
+    m(METHOD_PERSIST_TRUST, Auth::Writer, RAW),
+    m(METHOD_STEER, Auth::Writer, CMD),
+    m(METHOD_FOLLOW_UP, Auth::Writer, CMD),
+    m(METHOD_CLEAR_QUEUE, Auth::Writer, true),
+    m(METHOD_SUBSCRIBE, Auth::Readonly, true),
+    m(METHOD_HOST_DESCRIBE, Auth::Readonly, RAW),
 ];
 
 pub fn lookup(name: &str) -> Option<&'static MethodEntry> {
     REGISTRY.iter().find(|e| e.name == name)
-}
-
-pub fn names() -> impl Iterator<Item = &'static str> {
-    REGISTRY.iter().map(|e| e.name)
 }
 
 pub fn exec_class(cmd: &Command) -> Exec {
@@ -619,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_set_and_bypass_set_match_declaration() {
+    fn writer_set_matches_declaration() {
         let writers: Vec<_> = REGISTRY
             .iter()
             .filter(|e| e.auth == Auth::Writer)
@@ -658,21 +329,6 @@ mod tests {
                 "steer",
                 "follow_up",
                 "clear_queue",
-            ]
-        );
-        let bypass: Vec<_> = REGISTRY
-            .iter()
-            .filter(|e| e.idem == Idem::Bypass)
-            .map(|e| e.name)
-            .collect();
-        assert_eq!(
-            bypass,
-            vec![
-                "reload",
-                "mcp_oauth_start",
-                "mcp_oauth_cancel",
-                "loaded_resources",
-                "host.describe",
             ]
         );
     }

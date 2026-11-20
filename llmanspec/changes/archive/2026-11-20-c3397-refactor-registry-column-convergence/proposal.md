@@ -2,6 +2,9 @@
 title: wire 方法表零消费者列收敛（registry 方向 B）
 depends_on: []
 needs_specs_change: false
+branch: sdd/c3397-refactor-registry-column-convergence
+base_branch: main
+base_sha: 486b87c4e3720c1da4ddcdad5aca954fd200a7ee
 ---
 
 # wire 方法表零消费者列收敛（registry 方向 B）

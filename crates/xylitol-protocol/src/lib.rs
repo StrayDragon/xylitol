@@ -18,6 +18,6 @@ pub use message::{
     WIRE_FORMAT_JSONRPC,
 };
 pub use method::{DOWNLINK_METHODS, is_downlink_method, is_unary_method};
-pub use registry::{Auth, Idem, MethodEntry, REGISTRY, Resp, lookup, names, parse_command};
+pub use registry::{Auth, MethodEntry, REGISTRY, lookup, parse_command};
 pub use session_tree::SessionTreeKind;
 pub use todo::{TodoItem, TodoList, TodoStatus};
