@@ -21,12 +21,13 @@ pub struct ContextInjectMiddleware {
     started: Mutex<HashSet<String>>,
 }
 
-type GroupedInjectors = Vec<(Option<String>, Vec<(String, String, bool)>)>;
+type GroupedInjectors = Vec<(Option<String>, Vec<(String, String, bool, String)>)>;
 
 struct InjectorRow {
     group: Option<String>,
     text: String,
     injector_ids: Vec<String>,
+    points: Vec<String>,
     persist: bool,
 }
 
@@ -161,32 +162,40 @@ impl ContextInjectMiddleware {
                 continue;
             };
             let persist = injector.placement == Placement::HistoryRow;
+            let point = serde_json::to_value(injector.point)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
             if injector.group.is_none() {
-                grouped.push((None, vec![(injector.id.clone(), text, persist)]));
+                grouped.push((None, vec![(injector.id.clone(), text, persist, point)]));
                 continue;
             }
             let slot = grouped
                 .iter_mut()
                 .find(|(group, _)| group.as_deref() == injector.group.as_deref());
             match slot {
-                Some((_, items)) => items.push((injector.id.clone(), text, persist)),
+                Some((_, items)) => items.push((injector.id.clone(), text, persist, point)),
                 None => grouped.push((
                     injector.group.clone(),
-                    vec![(injector.id.clone(), text, persist)],
+                    vec![(injector.id.clone(), text, persist, point)],
                 )),
             }
         }
         grouped
             .into_iter()
             .map(|(group, items)| {
-                let persist = items.iter().any(|(_, _, persist)| *persist);
+                let persist = items.iter().any(|(_, _, persist, _)| *persist);
                 let injector_ids = items
                     .iter()
-                    .map(|(id, _, _)| id.clone())
+                    .map(|(id, _, _, _)| id.clone())
+                    .collect::<Vec<_>>();
+                let points = items
+                    .iter()
+                    .map(|(_, _, _, point)| point.clone())
                     .collect::<Vec<_>>();
                 let lines = items
                     .into_iter()
-                    .map(|(_, text, _)| text)
+                    .map(|(_, text, _, _)| text)
                     .collect::<Vec<_>>();
                 let text = match group.as_deref() {
                     Some(group) => format!("<{group}>\n{}\n</{group}>", lines.join("\n")),
@@ -196,6 +205,7 @@ impl ContextInjectMiddleware {
                     group,
                     text,
                     injector_ids,
+                    points,
                     persist,
                 }
             })
@@ -224,6 +234,28 @@ impl ContextInjectMiddleware {
                 "context reminder append failed session={session_id} injectors={:?} error={error}",
                 row.injector_ids
             );
+        }
+        let preview = xylitol_plugin_sdk::session::QueueItem::preview_of(&row.text);
+        for (injector_id, point) in row.injector_ids.iter().zip(row.points.iter()) {
+            let fact =
+                SessionEntry::ContextInjected(xylitol_plugin_sdk::session::ContextInjectedEntry {
+                    base: EntryBase {
+                        entry_type: "contextInjected".into(),
+                        id: String::new(),
+                        parent_id: None,
+                        timestamp: 0,
+                    },
+                    injector_id: injector_id.clone(),
+                    point: point.clone(),
+                    fingerprint: None,
+                    preview: Some(preview.clone()),
+                });
+            if let Err(error) = store.append_session_entry(session_id, &fact).await {
+                log::warn!(
+                    target: "xylitol::context_inject",
+                    "context injected fact append failed session={session_id} injector={injector_id} error={error}"
+                );
+            }
         }
     }
 

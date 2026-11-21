@@ -3,8 +3,7 @@ use serde_json::Value;
 
 use crate::message::{AgentMessage, BashExecutionStatus, EnvMessage};
 
-pub const SESSION_VERSION: u32 = 7;
-pub const LEGACY_SESSION_VERSION: u32 = 6;
+pub const SESSION_VERSION: u32 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ForkPosition {
@@ -224,6 +223,21 @@ pub enum SessionEntry {
     Label(LabelEntry),
     #[serde(rename = "sessionInfo")]
     SessionInfo(SessionInfoEntry),
+    #[serde(rename = "contextInjected")]
+    ContextInjected(ContextInjectedEntry),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextInjectedEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub injector_id: String,
+    pub point: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
 }
 
 impl SessionEntry {
@@ -239,6 +253,7 @@ impl SessionEntry {
             SessionEntry::CustomMessage(e) => Some(&e.base),
             SessionEntry::Label(e) => Some(&e.base),
             SessionEntry::SessionInfo(e) => Some(&e.base),
+            SessionEntry::ContextInjected(e) => Some(&e.base),
         }
     }
 
@@ -254,6 +269,7 @@ impl SessionEntry {
             SessionEntry::CustomMessage(_) => "customMessage",
             SessionEntry::Label(_) => "label",
             SessionEntry::SessionInfo(_) => "sessionInfo",
+            SessionEntry::ContextInjected(_) => "contextInjected",
         }
     }
 

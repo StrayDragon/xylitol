@@ -817,3 +817,124 @@ async fn load_validated_error_carries_both_cwd_paths() {
     assert!(text.contains("/definitely-missing/xylitol-cwd"), "{text}");
     assert!(text.contains("/also-missing/fallback"), "{text}");
 }
+
+fn compaction_entry(id: &str, parent: Option<&str>, first_kept: &str) -> SessionEntry {
+    SessionEntry::Compaction(xylitol_plugin_sdk::session::CompactionEntry {
+        base: EntryBase {
+            entry_type: "compaction".into(),
+            id: id.into(),
+            parent_id: parent.map(str::to_string),
+            timestamp: ts(id),
+        },
+        summary: "compacted".into(),
+        first_kept_entry_id: first_kept.into(),
+        tokens_before: 0,
+        details: None,
+        policy: None,
+    })
+}
+
+#[tokio::test]
+async fn commit_compaction_marks_without_rewriting_unknown_rows() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    seed(
+        &store,
+        "s",
+        &[
+            msg("u1", None, "user", "first"),
+            msg("u2", Some("u1"), "user", "second"),
+        ],
+    )
+    .await;
+    let log_dir = dir.path().join("sessions").join("s").join("log");
+    let active = log_dir
+        .read_dir()
+        .expect("log dir")
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .find(|p| p.extension().is_none_or(|ext| ext == "jsonl"))
+        .expect("active log file");
+    let before = std::fs::read_to_string(&active).expect("read log before");
+    store
+        .commit_compaction("s", &compaction_entry("c1", Some("u2"), "u2"))
+        .await
+        .expect("commit compaction");
+    let after = std::fs::read_to_string(&active).expect("read log after");
+    assert!(
+        after.starts_with(&before),
+        "compaction must append a marker without rewriting existing rows"
+    );
+    assert!(after.contains("compaction"), "the marker must be appended");
+}
+
+#[tokio::test]
+async fn context_injected_entry_round_trips_through_the_store() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    let fact = SessionEntry::ContextInjected(xylitol_plugin_sdk::session::ContextInjectedEntry {
+        base: EntryBase {
+            entry_type: "contextInjected".into(),
+            id: "ci1".into(),
+            parent_id: None,
+            timestamp: ts("ci1"),
+        },
+        injector_id: "skills".into(),
+        point: "turn_pre".into(),
+        fingerprint: Some("fp-1".into()),
+        preview: Some("injected preview".into()),
+    });
+    seed(&store, "s", &[fact]).await;
+    let loaded = store.load_entries("s").await.expect("load");
+    assert_eq!(
+        loaded
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::ContextInjected(_)))
+            .count(),
+        1,
+        "the first-class injection fact must load back: {loaded:?}"
+    );
+    let back = loaded
+        .iter()
+        .find_map(|e| match e {
+            SessionEntry::ContextInjected(c) => Some(c.clone()),
+            _ => None,
+        })
+        .expect("fact entry");
+    assert_eq!(back.injector_id, "skills");
+    assert_eq!(back.point, "turn_pre");
+    assert_eq!(back.fingerprint.as_deref(), Some("fp-1"));
+    assert_eq!(back.preview.as_deref(), Some("injected preview"));
+}
+
+#[tokio::test]
+async fn appends_are_durable_and_ordered_ack_barriers() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = LogSessionStore::new(dir.path().join("sessions"));
+    create(&store, "s", Some("."), None).await.expect("create");
+    let shared = Arc::new(store);
+    let mut handles = Vec::new();
+    for i in 0..8 {
+        let store = Arc::clone(&shared);
+        handles.push(tokio::spawn(async move {
+            store
+                .append_session_entry("s", &msg(&format!("m{i}"), None, "user", "concurrent"))
+                .await
+                .expect("append")
+        }));
+    }
+    for handle in handles {
+        handle.await.expect("join");
+    }
+    let loaded = shared.load_entries("s").await.expect("load");
+    assert_eq!(
+        loaded
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::Message(_)))
+            .count(),
+        8,
+        "every acked append must be durable exactly once: {loaded:?}"
+    );
+    let ids: Vec<&str> = loaded.iter().filter_map(|e| e.entry_id()).collect();
+    let unique: HashSet<&str> = ids.iter().copied().collect();
+    assert_eq!(ids.len(), unique.len(), "append ids must be unique");
+}

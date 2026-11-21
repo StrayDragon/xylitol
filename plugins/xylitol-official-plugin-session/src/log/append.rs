@@ -49,6 +49,7 @@ pub(crate) fn base_mut(entry: &mut SessionEntry) -> Option<&mut EntryBase> {
         SessionEntry::CustomMessage(e) => Some(&mut e.base),
         SessionEntry::Label(e) => Some(&mut e.base),
         SessionEntry::SessionInfo(e) => Some(&mut e.base),
+        SessionEntry::ContextInjected(e) => Some(&mut e.base),
     }
 }
 

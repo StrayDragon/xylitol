@@ -1114,11 +1114,14 @@ async fn then_header_lacks_cut(sess: &XySessionStore, id: String) {
     );
 }
 
-#[then("新会话磁盘头 version 为 7 且外壳字段为 camelCase")]
+#[then("新会话磁盘头 version 为 8 且外壳字段为 camelCase")]
 async fn then_header_camelcase(sess: &XySessionStore) {
     let id = sess.current_id.borrow().clone().expect("current session");
     let header = first_disk_line(sess, &id);
-    assert_eq!(header.get("version").and_then(|v| v.as_u64()), Some(7));
+    assert_eq!(
+        header.get("version").and_then(|v| v.as_u64()),
+        Some(xylitol_plugin_sdk::session::SESSION_VERSION as u64)
+    );
     let keys: Vec<&str> = header
         .as_object()
         .expect("header object")

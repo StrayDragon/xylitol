@@ -254,6 +254,7 @@ fn session_tree_display_label(node: &SessionTreeNode) -> String {
         SessionEntry::ThinkingLevelChange(t) => t.thinking_level.clone(),
         SessionEntry::Label(l) => l.label.clone().unwrap_or_else(|| l.target_id.clone()),
         SessionEntry::SessionInfo(s) => s.name.clone().unwrap_or_else(|| "session".into()),
+        SessionEntry::ContextInjected(c) => format!("{} @ {}", c.injector_id, c.point),
         SessionEntry::Header(h) => h.id.clone(),
     };
     preview_label_line(&raw)

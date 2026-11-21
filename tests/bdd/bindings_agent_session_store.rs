@@ -208,3 +208,15 @@ async fn test_r1950_second_process_write_open(sess: XySessionStore) {}
     name = "锁释放时持有者丢弃"
 )]
 async fn test_r1950_lock_releases_on_holder_drop(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "旧版本文件拒载报版本"
+)]
+async fn test_ass_old_version_file_refused(ws: Workspace, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "同版本文件完整解析"
+)]
+async fn test_ass_same_version_parses_complete(ws: Workspace, sess: XySessionStore) {}

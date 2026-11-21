@@ -23,6 +23,7 @@ pub use checkpoint::{
     latest_todo_checkpoint,
 };
 
+pub use entries::ContextInjectedEntry;
 pub use entries::{
     BranchSummaryEntry, CompactionEntry, CompactionPolicySnapshot, CustomEntry, CustomMessageEntry,
     EntryBase, ForkPosition, LabelEntry, MessageEntry, ModelChangeEntry, SESSION_VERSION,
@@ -41,11 +42,8 @@ pub use helpers::{
     tool_file_paths, transcript_ancestry_ids, transcript_leaf_anchor,
 };
 pub use manifest::{ParentRef, SealedIndex, SessionManifest, SessionSegment};
-pub use parse::{
-    enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
-    parse_session_jsonl_lines,
-};
-pub use queue::{CUSTOM_TYPE_CONTEXT_INJECTED, ContextInjectedEntry, QueueItem, QueueItemKind};
+pub use parse::{enforce_session_version, parse_session_jsonl, parse_session_jsonl_lines};
+pub use queue::{CUSTOM_TYPE_CONTEXT_INJECTED, QueueItem, QueueItemKind};
 pub use todo::TodoItem;
 pub use todo::{
     CUSTOM_TYPE_AGENT_TODO, TodoItemDraft, TodoItemPatch, TodoList, TodoStatus, apply_todo_patches,
@@ -151,7 +149,7 @@ mod session_tree_tests {
             agent_profile_fingerprint: None,
         });
         let v = serde_json::to_value(&header).unwrap();
-        assert_eq!(v["version"], 7);
+        assert_eq!(v["version"], SESSION_VERSION);
         assert_eq!(v["parentSession"], "p");
         assert!(v.get("forkAtEntryId").is_none());
 
@@ -336,9 +334,9 @@ mod session_tree_tests {
         let content = r#"{"type":"session","version":5,"id":"s1","timestamp":0,"cwd":"/tmp"}
 "#;
         let err = parse_session_jsonl(content).unwrap_err();
+        let expected = format!("require {SESSION_VERSION}");
         assert!(
-            err.to_string().contains("require 7")
-                || err.to_string().contains("require {SESSION_VERSION}"),
+            err.to_string().contains(&expected),
             "v5 refusal must carry current version: {err}"
         );
         assert!(

@@ -91,8 +91,8 @@ async fn persisted_load_all(
     }
     if header_version != Some(SESSION_VERSION) {
         return Err(XySessionStoreError::validation(format!(
-            "session header version {:?} is not supported (require {SESSION_VERSION})",
-            header_version
+            "session header version {} is not supported (require {SESSION_VERSION})",
+            header_version.map_or("missing".to_string(), |v| v.to_string())
         )));
     }
     let mut lines: Vec<RawLine> = map.into_values().chain(untracked).collect();

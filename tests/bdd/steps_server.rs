@@ -2495,7 +2495,7 @@ async fn g_server_ready(server_test: &ServerTest) {
 
 #[when("推送 content 载荷导入会话")]
 async fn w_staged_wire_import(server_test: &ServerTest) {
-    let content = "{\"type\":\"session\",\"version\":6,\"id\":\"imp-scenario-1\",\"timestamp\":1,\"cwd\":\"/tmp\"}\n";
+    let content = "{\"type\":\"session\",\"version\":8,\"format\":\"log-v1\",\"id\":\"imp-scenario-1\",\"timestamp\":1,\"cwd\":\"/tmp\"}\n";
     let (status, resp) = post_rpc(
         server_test.port.get(),
         "r-staged-import",

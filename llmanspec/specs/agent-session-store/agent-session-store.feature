@@ -232,12 +232,12 @@
 
   @req:r1095
   规则: 日志条目驼峰
-    Session persisted JSONL 须以 camelCase 为唯一磁盘格式 SSOT：header 行内嵌 format 字段，每行含 seq；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash 须使用 type=message 且 message.role=bashExecution，不得再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version 须等于 SESSION_VERSION（7）。不得再写出 parent_id 或 version≤5 作为新会话真源；旧格式文件 不得被自动迁移为现行日志格式（见 s26 旧格式边界）、不得提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
+    Session persisted JSONL 须以 camelCase 为唯一磁盘格式 SSOT：header 行内嵌 format 字段，每行含 seq；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash 须使用 type=message 且 message.role=bashExecution，不得再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version 须等于 SESSION_VERSION（8）。不得再写出 parent_id 或 version≤5 作为新会话真源；旧格式文件 不得被自动迁移为现行日志格式（见 s26 旧格式边界）、不得提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
 
     场景: 日志壳驼峰与bash消息
       假如 存在会话 "fmt7"
       当 向会话追加 bash 执行记录（命令 "make test" 输出 "all ok"）
-      那么 新会话磁盘头 version 为 7 且外壳字段为 camelCase
+      那么 新会话磁盘头 version 为 8 且外壳字段为 camelCase
       并且 bash 记录行 type 为 message 且 role 为 bashExecution
 
   @req:r1096
@@ -252,7 +252,7 @@
 
   @req:r1098
   规则: session-load-skip-warn
-    load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 须跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn 须至多 3 条，超出后 须以单条省略标记（如 ...）收敛，不得刷屏。尾部半行 须截断。header 的 version 不等于 SESSION_VERSION（7）或 format 不等于现行日志格式名时 须拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），不得静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与会话存储 须共用此策略。
+    load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 须跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn 须至多 3 条，超出后 须以单条省略标记（如 ...）收敛，不得刷屏。尾部半行 须截断。header 的 version 不等于 SESSION_VERSION（8）或 format 不等于现行日志格式名时 须拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），不得静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与会话存储 须共用此策略。
 
     场景: 加载跳过无法解析行
       假如 目录中植入含坏 JSON 行的现行日志格式会话 "mixed"

@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::entries::EntryBase;
-
 pub const CUSTOM_TYPE_CONTEXT_INJECTED: &str = "contextInjected";
 
 pub const QUEUE_ITEM_PREVIEW_CHARS: usize = 80;
@@ -48,32 +46,9 @@ impl QueueItem {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ContextInjectedEntry {
-    #[serde(flatten)]
-    pub base: EntryBase,
-    pub injector_id: String,
-    pub point: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fingerprint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preview: Option<String>,
-}
-
-impl ContextInjectedEntry {
-    pub fn to_custom_entry(&self) -> Value {
-        serde_json::json!({
-            "injectorId": self.injector_id,
-            "point": self.point,
-            "fingerprint": self.fingerprint,
-            "preview": self.preview,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::entries::{ContextInjectedEntry, EntryBase};
     use super::*;
 
     #[test]
@@ -131,9 +106,18 @@ mod tests {
             fingerprint: Some("fp".into()),
             preview: Some("pre".into()),
         };
-        let value = entry.to_custom_entry();
-        assert_eq!(value["injectorId"], "skills");
-        assert_eq!(value["point"], "turnSubmission");
-        assert_eq!(value["fingerprint"], "fp");
+        let session_entry = super::super::entries::SessionEntry::ContextInjected(entry);
+        let line = serde_json::to_string(&session_entry).expect("encode session entry");
+        let back: super::super::entries::SessionEntry =
+            serde_json::from_str(&line).expect("decode session entry");
+        assert!(matches!(
+            back,
+            super::super::entries::SessionEntry::ContextInjected(_)
+        ));
+        assert_eq!(back.entry_type(), "contextInjected");
+        assert!(line.contains("\"type\":\"contextInjected\""), "{line}");
+        assert!(line.contains("\"injectorId\":\"skills\""), "{line}");
+        assert!(line.contains("\"point\":\"turnSubmission\""), "{line}");
+        assert!(line.contains("\"fingerprint\":\"fp\""), "{line}");
     }
 }

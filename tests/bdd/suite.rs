@@ -128,6 +128,7 @@ mod steps_runtime_resource_discovery_extra;
 mod steps_sandbox;
 mod steps_server;
 mod steps_session;
+mod steps_session_format;
 mod steps_shared_thens;
 mod steps_storage;
 mod steps_task_model;

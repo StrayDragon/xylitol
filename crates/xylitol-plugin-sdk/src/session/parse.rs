@@ -1,4 +1,4 @@
-use super::entries::{LEGACY_SESSION_VERSION, SESSION_VERSION, SessionEntry};
+use super::entries::{SESSION_VERSION, SessionEntry};
 use crate::error::XySessionStoreError;
 
 pub fn parse_session_jsonl(content: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
@@ -44,22 +44,6 @@ pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), XySession
         Some(v) => Err(XySessionStoreError::validation(
             unsupported_session_version_msg(v),
         )),
-        None => Err(XySessionStoreError::validation(
-            "session has no header entry",
-        )),
-    }
-}
-
-pub fn enforce_legacy_session_version(entries: &[SessionEntry]) -> Result<(), XySessionStoreError> {
-    let version = entries.iter().find_map(|e| match e {
-        SessionEntry::Header(h) => Some(h.version),
-        _ => None,
-    });
-    match version {
-        Some(v) if v == LEGACY_SESSION_VERSION => Ok(()),
-        Some(v) => Err(XySessionStoreError::validation(format!(
-            "session header version {v} cannot be migrated (only v{LEGACY_SESSION_VERSION} is supported)"
-        ))),
         None => Err(XySessionStoreError::validation(
             "session has no header entry",
         )),

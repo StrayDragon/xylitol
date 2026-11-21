@@ -6,8 +6,7 @@ use crate::driver::XyDriverError;
 use crate::utils::xml_escape;
 use xylitol_plugin_sdk::error::XySessionStoreError;
 use xylitol_plugin_sdk::session::{
-    CompactionPolicySnapshot, MessageEntry, SESSION_VERSION, SessionEntry,
-    enforce_legacy_session_version, enforce_session_version, message_role,
+    CompactionPolicySnapshot, MessageEntry, SESSION_VERSION, SessionEntry, message_role,
     parse_session_jsonl_lines,
 };
 use xylitol_plugin_sdk::{XyExportIo, XySessionStore};
@@ -114,6 +113,18 @@ pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String {
 
 fn render_entry_html(entry: &SessionEntry) -> String {
     match entry {
+        SessionEntry::ContextInjected(ci) => block(
+            "contextInjected",
+            &format!(
+                "{} @ {}{}",
+                ci.injector_id,
+                ci.point,
+                ci.preview
+                    .as_deref()
+                    .map(|p| format!(" — {}", p))
+                    .unwrap_or_default()
+            ),
+        ),
         SessionEntry::Header(h) => block(
             "header",
             &format!(
@@ -205,20 +216,8 @@ pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyDriverError> {
 pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyDriverError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|e| XyDriverError::invalid_input(format!("jsonl is not utf-8: {e}")))?;
-    let entries = match xylitol_plugin_sdk::session::parse_session_jsonl(text) {
-        Ok(entries) => entries,
-        Err(current_error) => {
-            let (mut entries, _) = parse_session_jsonl_lines(text);
-            if enforce_session_version(&entries).is_ok() {
-                entries
-            } else if enforce_legacy_session_version(&entries).is_ok() {
-                normalize_import_entries(&mut entries);
-                entries
-            } else {
-                return Err(current_error.into());
-            }
-        }
-    };
+    let mut entries = xylitol_plugin_sdk::session::parse_session_jsonl(text)?;
+    normalize_import_entries(&mut entries);
     if entries.is_empty() {
         return Err(XyDriverError::invalid_input("jsonl contained no entries"));
     }

@@ -72,7 +72,7 @@
         "id": "s_fork_parent",
         "timestamp": 0,
         "type": "session",
-        "version": 7
+        "version": 8
       },
       {
         "id": "u1",
@@ -145,7 +145,7 @@
         "parentSession": "s_fork_parent",
         "timestamp": 0,
         "type": "session",
-        "version": 7
+        "version": 8
       },
       {
         "fromId": "u_right",
@@ -326,7 +326,7 @@
           "parentSession": "s_fork_parent",
           "timestamp": 0,
           "type": "session",
-          "version": 7
+          "version": 8
         },
         {
           "fromId": "u_right",

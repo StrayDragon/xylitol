@@ -121,6 +121,7 @@ pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
         }
         SessionEntry::Label(_) => 0,
         SessionEntry::SessionInfo(_) => 0,
+        SessionEntry::ContextInjected(_) => 0,
     }
 }
 

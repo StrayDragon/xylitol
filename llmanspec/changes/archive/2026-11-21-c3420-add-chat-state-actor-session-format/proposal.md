@@ -1,7 +1,10 @@
 ---
-depends_on: ["c3415-refactor-session-actor-mailbox"]
+depends_on: [ "c3415-refactor-session-actor-mailbox" ]
 needs_specs_change: false
 title: ChatStateActor 与会话格式重定版：持久化 Ack 与 append-only 一等条目
+branch: sdd/c3420-add-chat-state-actor-session-format
+base_branch: main
+base_sha: ebe8771b0e8c4745e9296ce7e0a5c119aa835b24
 ---
 
 ## Why
