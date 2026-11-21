@@ -133,9 +133,33 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
         .map_err(|e| kernel_failed(format!("loader reconcile: {e}")))?;
 
     wait_active(&ctx, &loader).await?;
+    if let (Some(registry), Some(store)) = (
+        ctx.get::<crate::external_plugin::ExternalMcpRegistry>(),
+        crate::external_plugin::approval_store_path(),
+    ) {
+        for name in crate::external_plugin::load_approved_plugins(&store) {
+            registry.approve(&name);
+        }
+    }
     let external_mcp = ctx
         .get::<crate::external_plugin::ExternalMcpRegistry>()
-        .map(|registry| registry.servers())
+        .map(|registry| {
+            let approved = registry.servers();
+            let declared = registry.declared();
+            let pending: Vec<String> = declared
+                .iter()
+                .filter(|server| approved.iter().all(|a| a.name != server.name))
+                .map(|server| server.name.clone())
+                .collect();
+            if !pending.is_empty() {
+                log::warn!(
+                    target: "xylitol::plugin",
+                    "external plugins declaring mcp are awaiting approval: {}",
+                    pending.join(", ")
+                );
+            }
+            approved
+        })
         .unwrap_or_default();
     if !external_mcp.is_empty() {
         let servers = serde_json::to_value(&external_mcp).unwrap_or(serde_json::Value::Null);

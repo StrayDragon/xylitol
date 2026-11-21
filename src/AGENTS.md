@@ -151,7 +151,7 @@ rutis 用法：一张监听器表、发射方选 mode；`Call::next` 仅 waterfa
 
 subagent 与外进程插件（`external_plugins`）配置启用；外进程插件须显式 `trusted: true`，只贡献工具（公开名 `{plugin}__{tool}`），不替换核心 / 官方插件名。未交付方向见根 `AGENTS.md`「产品定调」。
 
-静态工具源（含外进程插件工具）须经 `HostRegistries.tools` 注册；`compose_tools` 以注册表快照为基座（空则回落 `core_tools()`）。模型可见集 须由配置 `tools` 列表（`+name` / `-name`）与 `XyTool::replaces()` 解析：替换工具胜出、同类只留一个、未知名告警。内核 不得为单个工具插件写特判；session 专属工具（todo / workflow / ask）仍由装配层注入。
+静态工具源须经 `HostRegistries.tools` 注册（外进程插件不再直注工具：命令走 `plugin:<name>` 委派，mcp 声明经批准入 MCP 管线）；`compose_tools` 以注册表快照为基座（空则回落 `core_tools()`）。模型可见集 须由配置 `tools` 列表（`+name` / `-name`）与 `XyTool::replaces()` 解析：替换工具胜出、同类只留一个、未知名告警。内核 不得为单个工具插件写特判；session 专属工具（todo / workflow / ask）仍由装配层注入。
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`TurnId` 仅运行时内部，不得进 `XyEvent` / 信封。
 

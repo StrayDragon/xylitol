@@ -131,7 +131,7 @@ fn g_discovered_mcp_unapproved(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd
         infra_plugin_bdd,
         "fixture",
         mcp_declaring_script(),
-        "plugins:\n  enabled: [\"other\"]\n",
+        "plugins:\n  enabled: [\"fixture\"]\n",
     );
 }
 
@@ -144,6 +144,9 @@ fn g_discovered_mcp_approved(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) 
         mcp_declaring_script(),
         "plugins:\n  enabled: [\"fixture\"]\n",
     );
+    let store = PathBuf::from(ws.ws("plugins")).join("approved.json");
+    std::fs::write(&store, "{\"version\": 1, \"approved\": [\"fixture\"]}\n")
+        .expect("write approval store");
 }
 
 #[given("已批准的外部插件被 config 显式停用")]

@@ -34,16 +34,16 @@ flowchart LR
 
 ## 产品定调
 
-个人开箱即用的 coding harness。第三方外进程插件最小切片已交付（配置驱动、trust 门禁、JSON-RPC stdio 工具桥）；插件市场、签名、dylib、同进程静态链入未交付，不得写成现行必须。
+个人开箱即用的 coding harness。第三方外进程插件最小切片已交付（plugins/bin 发现、describe 清单、命令委派、清单 mcp 声明与首用批准）；插件市场、签名、dylib、同进程静态链入未交付，不得写成现行必须。
 
-现行扩展入口 = 官方插件 + 配置 + MCP / shell hook + `external_plugins`。
+现行扩展入口 = 官方插件 + 配置 + MCP / shell hook + `plugins` 启停清单与 plugins/bin 发现。
 
 `xylitol-tui` 是源自 pi-tui 的独立 fork，不追平上游。
 
 | 关注点 | 现行规则 | 真源 |
 |---|---|---|
-| Trust / 配置后置 | Trust 门禁项目本地资源是否加载，工具开箱 allow-all；外进程插件须显式 `trusted: true`；集成件装配策略见下「开箱与配置后置」 | `llmanspec/specs/domain-security/` 等；实现边界 `src/AGENTS.md` |
-| Loop 参与 | 官方插件经 rutis 生命周期注册 loop 中间件参与 ReAct 决策；core 持 turn 边界、取消、权限终裁；插件不得整段替换 loop；外进程插件只贡献工具 | `llmanspec/specs/agent-runtime/`；`src/AGENTS.md`「Loop 中间件」 |
+| Trust / 配置后置 | Trust 门禁项目本地资源是否加载，工具开箱 allow-all；外进程插件的 mcp 声明须首用批准（approved.json 持久化），config 停用优先级最高；集成件装配策略见下「开箱与配置后置」 | `llmanspec/specs/domain-security/` 等；实现边界 `src/AGENTS.md` |
+| Loop 参与 | 官方插件经 rutis 生命周期注册 loop 中间件参与 ReAct 决策；core 持 turn 边界、取消、权限终裁；插件不得整段替换 loop；外进程插件只贡献命令与 MCP 声明 | `llmanspec/specs/agent-runtime/`；`src/AGENTS.md`「Loop 中间件」 |
 | 产品端 | Print 与 TUI（TTY 默认）已开放；Print 与库嵌入可同进程（本机 Host 行为见「开箱与配置后置」） | `crates/xylitol-app-tui/src/AGENTS.md`；`llmanspec/specs/protocol-app/`、`server-core/` |
 | CS 角色 | 端是 client（键、画、TTY）；模型 / 会话 / MCP / trust 是 host；跨进程走四象限 JSON-RPC 2.0 文本信封 | `src/AGENTS.md` |
 | 跨端公共体验 | 已开放端动作语义一套；未开放端见 GitHub FR，不得写成现行必须 | `llmanspec/specs/protocol-app/`、`user-experience/` |

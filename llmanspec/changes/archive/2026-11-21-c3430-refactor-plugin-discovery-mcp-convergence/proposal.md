@@ -1,7 +1,10 @@
 ---
-depends_on: ["c3410-update-actor-execution-contract"]
+depends_on: [ "c3410-update-actor-execution-contract" ]
 needs_specs_change: false
 title: 插件单一脊柱：发现委派保留、清单 MCP 声明、私有工具桥退役
+branch: sdd/c3430-refactor-plugin-discovery-mcp-convergence
+base_branch: main
+base_sha: 20f2e308cf554b81734388ea31fc4def92b21239
 ---
 
 ## Why

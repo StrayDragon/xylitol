@@ -254,7 +254,6 @@ impl ExternalClient {
 
 pub struct ExternalPlugin {
     name: String,
-    launch: Option<ExternalPluginConfig>,
     timeout: Duration,
     bin_dir_override: Option<std::path::PathBuf>,
 }
@@ -263,7 +262,6 @@ impl ExternalPlugin {
     pub fn new(config: &ExternalPluginConfig) -> Result<Self> {
         Ok(Self {
             name: config.name.clone(),
-            launch: Some(config.clone()),
             timeout: EXTERNAL_PLUGIN_DEFAULT_TIMEOUT,
             bin_dir_override: None,
         })
@@ -272,11 +270,6 @@ impl ExternalPlugin {
     pub fn discovered_at(name: &str, bin_dir: &std::path::Path) -> Self {
         Self {
             name: name.to_string(),
-            launch: Some(ExternalPluginConfig {
-                name: name.to_string(),
-                enabled: true,
-                disabled: false,
-            }),
             timeout: EXTERNAL_PLUGIN_DEFAULT_TIMEOUT,
             bin_dir_override: Some(bin_dir.to_path_buf()),
         }
@@ -304,19 +297,6 @@ impl ExternalPlugin {
             std::collections::HashMap::new(),
         ))
     }
-}
-
-fn plugin_bin_dir() -> Option<std::path::PathBuf> {
-    std::env::var_os("XYLITOL_PLUGINS_DIR")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| {
-                std::path::PathBuf::from(home)
-                    .join(".xylitol")
-                    .join("plugins")
-                    .join("bin")
-            })
-        })
 }
 
 impl Plugin for ExternalPlugin {
@@ -482,25 +462,106 @@ impl Plugin for ExternalPlugin {
 
 #[derive(Default)]
 pub struct ExternalMcpRegistry {
-    servers: std::sync::Mutex<Vec<xylitol_official_plugin_mcp::McpServerConfig>>,
+    declared: std::sync::Mutex<Vec<xylitol_official_plugin_mcp::McpServerConfig>>,
+    approved: std::sync::Mutex<Vec<String>>,
 }
 
 impl ExternalMcpRegistry {
     pub fn register(&self, server: xylitol_official_plugin_mcp::McpServerConfig) {
         let mut guard = self
-            .servers
+            .declared
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         guard.retain(|existing| existing.name != server.name);
         guard.push(server);
     }
 
-    pub fn servers(&self) -> Vec<xylitol_official_plugin_mcp::McpServerConfig> {
-        self.servers
+    pub fn declared(&self) -> Vec<xylitol_official_plugin_mcp::McpServerConfig> {
+        self.declared
             .lock()
             .map(|guard| guard.clone())
             .unwrap_or_default()
     }
+
+    pub fn approve(&self, name: &str) {
+        let mut guard = self
+            .approved
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !guard.iter().any(|approved| approved == name) {
+            guard.push(name.to_string());
+        }
+    }
+
+    pub fn is_approved(&self, name: &str) -> bool {
+        self.approved
+            .lock()
+            .map(|guard| guard.iter().any(|approved| approved == name))
+            .unwrap_or(false)
+    }
+
+    pub fn approved_names(&self) -> Vec<String> {
+        self.approved
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn servers(&self) -> Vec<xylitol_official_plugin_mcp::McpServerConfig> {
+        let approved = self.approved_names();
+        self.declared()
+            .into_iter()
+            .filter(|server| approved.iter().any(|name| name == &server.name))
+            .collect()
+    }
+}
+
+pub fn plugin_bin_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("XYLITOL_PLUGINS_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| {
+                std::path::PathBuf::from(home)
+                    .join(".xylitol")
+                    .join("plugins")
+                    .join("bin")
+            })
+        })
+}
+
+pub fn approval_store_path() -> Option<std::path::PathBuf> {
+    plugin_bin_dir().and_then(|bin| bin.parent().map(|root| root.join("approved.json")))
+}
+
+pub fn load_approved_plugins(path: &std::path::Path) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        log::warn!(
+            "plugin approval store `{}` is not valid JSON; ignoring it",
+            path.display()
+        );
+        return Vec::new();
+    };
+    value
+        .get("approved")
+        .and_then(serde_json::Value::as_array)
+        .map(|names| {
+            names
+                .iter()
+                .filter_map(|name| name.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn persist_approved_plugins(path: &std::path::Path, names: &[String]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let payload = serde_json::json!({ "version": 1, "approved": names });
+    std::fs::write(path, format!("{payload}\n"))
 }
 
 fn mcp_server_from_declaration(
@@ -561,6 +622,72 @@ impl xylitol_plugin_sdk::XyPluginCommand for ExternalPluginCommand {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string())
+    }
+}
+
+#[cfg(test)]
+mod approval_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn stdio(name: &str) -> xylitol_official_plugin_mcp::McpServerConfig {
+        mcp_server_from_declaration(
+            name,
+            ExternalMcpSpec {
+                command: format!("{name}-server"),
+                args: vec!["--stdio".into()],
+                env: Default::default(),
+            },
+        )
+    }
+
+    #[test]
+    fn declared_but_unapproved_server_is_not_served() {
+        let registry = ExternalMcpRegistry::default();
+        registry.register(stdio("demo"));
+        assert_eq!(registry.declared().len(), 1, "the declaration is recorded");
+        assert!(
+            registry.servers().is_empty(),
+            "an unapproved declaration must not reach the MCP pipeline"
+        );
+        assert!(!registry.is_approved("demo"));
+    }
+
+    #[test]
+    fn approved_server_is_served() {
+        let registry = ExternalMcpRegistry::default();
+        registry.register(stdio("demo"));
+        registry.approve("demo");
+        let servers = registry.servers();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "demo");
+        assert_eq!(servers[0].command.as_deref(), Some("demo-server"));
+    }
+
+    #[test]
+    fn approval_round_trips_through_the_store() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("approved.json");
+        assert!(
+            load_approved_plugins(&path).is_empty(),
+            "a missing store approves nothing"
+        );
+        persist_approved_plugins(&path, &["demo".to_string()]).expect("persist approvals");
+        assert_eq!(load_approved_plugins(&path), vec!["demo".to_string()]);
+        std::fs::write(&path, "not json").expect("corrupt store");
+        assert!(
+            load_approved_plugins(&path).is_empty(),
+            "a corrupt store must fail closed"
+        );
+    }
+
+    #[test]
+    fn approval_store_lives_beside_the_plugin_bin_dir() {
+        let bin = PathBuf::from("/home/u/.xylitol/plugins/bin");
+        assert_eq!(
+            bin.parent().map(|root| root.join("approved.json")),
+            Some(PathBuf::from("/home/u/.xylitol/plugins/approved.json"))
+        );
     }
 }
 
@@ -799,6 +926,14 @@ for line in sys.stdin:
                 env: Default::default(),
             },
         ));
+        let declared = registry.declared();
+        assert_eq!(declared.len(), 1);
+        assert_eq!(declared[0].command.as_deref(), Some("second"));
+        assert!(
+            registry.servers().is_empty(),
+            "an unapproved declaration stays out of the served set"
+        );
+        registry.approve("demo");
         let servers = registry.servers();
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].command.as_deref(), Some("second"));
