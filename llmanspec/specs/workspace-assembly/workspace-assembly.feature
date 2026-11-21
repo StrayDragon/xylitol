@@ -35,7 +35,7 @@
 
   @req:r2914
   规则: ReAct 循环留在执行权威
-    ReAct 循环必须留在执行权威，并作为不可经 loader rows 替换的核心插件。不得做成可卸的官方插件。未绑定 session 时，无工具 agent 必须仍能跑完一轮并出现 AgentEnd。
+    执行权威 须为每会话一个会话 actor（SessionActor），经有界命令信箱按序消费提交；ReAct 循环必须留在执行权威，并作为不可经 loader rows 替换的核心插件。不得做成可卸的官方插件。未绑定 session 时，无工具 agent 必须仍能跑完一轮并出现 AgentEnd。
     场景: 无会话无工具仍跑完一轮
       假如 未注册 should_stop_after_step 的无工具 agent
       当 运行 AgentRuntime

@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
+# purpose: "薄编排 ReAct 运行时：SessionActor 会话信箱、AgentRuntime 循环、工具批执行、steer/follow-up 队列与逐项撤销、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 
 功能: agent-runtime
 
@@ -83,7 +83,7 @@
 
   @req:r1059
   规则: pending-queues
-    须提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；缺省 QueueMode / SteeringMode 须为 OneAtATime（一次 drain 一条；配置可显式 all）；ReAct 须在模型调用前 drain steer；turn 收尾时 须从 follow_up FIFO 弹一条作为下一次提交（新 turn，独立 AgentStart/AgentEnd）；队列空时才结束事件流；若 should_stop_after_step 已请求停，不得 drain steer 或 follow_up。
+    会话信箱 须收编独立的 steer 与 follow_up 队列（enqueue/drain/clear）；缺省 QueueMode / SteeringMode 须为 OneAtATime（一次 drain 一条；配置可显式 all）；ReAct 须在模型调用前 drain steer；turn 收尾时 须从 follow_up FIFO 弹一条作为下一次提交（新 turn，独立 AgentStart/AgentEnd）；队列空时才结束事件流；若 should_stop_after_step 已请求停，不得 drain steer 或 follow_up。对话通道队列项 须携带入队时分配的 message_id；仅未出队项可撤销（steer 与 follow_up 两队列一致），撤销后该项不得进入任何 turn。
 
     场景: 改向之前模型
       假如 装配并运行入队 steer 的 agent
@@ -95,27 +95,78 @@
       当 运行 AgentRuntime
       那么 本 turn 以 AgentEnd 结束且 follow_up 未被注入历史
 
+    场景: 撤销未出队项
+      假如 装配 agent 并入队两条 follow_up
+      当 撤销第一条队列项
+      那么 队列项列表仅剩第二条且其不入本轮 turn
+
   @req:r3322
   规则: one-submission-one-turn
-    每次提交（含 follow_up FIFO 弹出）须产生独立 turn 与独立 AgentStart/AgentEnd；follow_up 须逐条弹出，不得合并进同一次模型调用；steer 在 turn 在途时 须在 step 边界注入当前 turn，settle 后到达的 steer 视为一次提交（新 turn）。abort 须取消当前 turn、清空 steer 并保留 follow_up FIFO。队列非空时 须立即弹出下一条（新 turn）；队列空时才进入空闲。
+    会话提交 须一律进入会话信箱按序消费：每次提交（含 follow_up FIFO 弹出）须产生独立 turn 与独立 AgentStart/AgentEnd；follow_up 须逐条弹出，不得合并进同一次模型调用；steer 在 turn 在途时 须在 step 边界注入当前 turn，settle 后到达的 steer 视为一次提交（新 turn）。abort 须取消当前 turn、清空 steer 并保留 follow_up FIFO。队列非空时 须立即弹出下一条（新 turn）；队列空时才进入空闲。
 
     场景: 追问逐条独立回合
       假如 装配无工具 agent 并入队 follow_up
       当 运行至将结束
       那么 follow_up 逐条独立成回合
 
+  @req:r3375
+  规则: 会话信箱单写者
+    每一会话槽 须由单一会话 actor 经有界命令信箱物理化单写者：所有提交按信箱到达序逐条处理，同一时刻至多一个 turn 在写会话；第二路提交 须排队等待而非并行写入。信箱容量满时 发送方须等待（纯内部背压，用户无感）；不得设对话队列容量上限或 QueueFull 语义。
+
+    场景: 两提交一处理一排队
+      假如 会话空闲时连续提交两条对话
+      当 会话 actor 按信箱顺序消费
+      那么 第一条进入 turn 处理且第二条仍在队列等待
+
   @req:r1060
   规则: queue-update-events
-    入队/drain/clear 后 须发射 XyEvent::QueueUpdate（steer_count / follow_up_count）。
+    入队/drain/clear/撤销后 须发射 XyEvent::QueueUpdate；载荷 须为队列项列表（items-only）：每项含 id（入队时分配）、kind（steer / follow_up）与 preview（截断 80 字符）；不得携带计数标量，计数由列表派生。QueueUpdate 须为 journal 事实事件：中段订阅的客户端经 resync 须取得完整队列项列表；PROTOCOL_VERSION 升版 须经 host.describe 协商拦截不识别该载荷的旧端。
 
     场景: 队列更新
       假如 装配 agent 并入队 steer
       当 观察事件流
-      那么 出现 QueueUpdate 且计数正确
+      那么 出现 QueueUpdate 且载荷为队列项列表含 id 与 kind
+
+    场景: 中段订阅补发队列项
+      假如 队列已有两个队列项且客户端中段订阅
+      当 订阅经 resync 补发
+      那么 QueueUpdate 携带完整队列项列表
+
+    场景: 旧协议版本端被拦
+      假如 客户端以低于当前的 PROTOCOL_VERSION 附着
+      当 经 host.describe 协商
+      那么 旧端被拦截且不得消费新载荷
+
+  @req:r3374
+  规则: 队列项逐项撤销
+    会话 须提供 revoke_queue_item：仅未出队队列项可撤销（steer 与 follow_up 两队列一致），出队即成事实——steer 已注入 turn 上下文、follow_up 已成为新 turn 提交，出队后撤销 须应答 kind=NotFound；队列项 id 须入队时分配且全局唯一；并发撤销同一 id 须经会话信箱串行化，恰好一次成功、其余 NotFound；撤销语义 嵌入端（driver 直调）与线协议端必须一致；撤销经任一客户端发起时 须对同会话全部客户端可见（控制面会话级共享）；print 端 不得受撤销影响。
+
+    场景: 出队后 NotFound
+      假如 装配 agent 并入队一条 follow_up 且该队列项已出队成为新 turn
+      当 撤销该队列项
+      那么 应答 kind=NotFound
+
+    场景: 双客户端队列同步与跨端撤销
+      假如 两个客户端附着同一会话且队列中有一项
+      当 任一客户端撤销该项
+      那么 另一客户端经 QueueUpdate 收到更新后的队列项列表
+
+    场景: 嵌入端与线协议端撤销一致
+      假如 分别经嵌入 driver 直调与线协议 revoke_queue_item 撤销同一队列项
+      那么 两者语义一致且剩余队列项列表相同
+
+    场景: print 端无感
+      假如 print 端运行一轮对话且队列撤销并发发生
+      那么 print 端输出不受撤销影响
+
+    场景: 并发撤销恰好一次成功
+      假如 两个客户端并发撤销同一队列项
+      当 撤销请求经会话信箱串行化处理
+      那么 恰好一次成功且另一次应答 kind=NotFound
 
   @req:r1028
   规则: abort-queue-semantics
-    abort 须取消当前 turn、清空 steer 并保留 follow_up FIFO（后续提交照常弹出）；须取消当前 CancellationToken 与进行中工具/交互 bash；不得仅靠无人订阅的 EventBus 旁路传队列状态。
+    abort 须立即投递会话信箱且不得等待回执；须取消当前 turn、清空 steer 并保留 follow_up FIFO（后续提交照常弹出）；须取消当前 CancellationToken 与进行中工具/交互 bash；不得仅靠无人订阅的 EventBus 旁路传队列状态。
 
     场景: 中止清除改向
       假如 装配 agent 并入队 steer 与 follow_up
@@ -265,6 +316,15 @@
       当 运行 AgentRuntime 并收集事件
       那么 恰出现一次 AutoRetryEnd 且其后再无 AutoRetryEnd
 
+  @req:r3373
+  规则: 采样请求统一登记
+    并行模型调用 须经每会话的采样 actor 统一登记：发起时登记、完成或取消时注销，登记序 须等于发起序；旁路模型调用（标题生成、compaction 摘要等）须登记进同一记账；按请求取消与运行中配置变更 为预留能力，本条只约束记账语义。
+
+    场景: 双请求并行汇聚按发起序
+      假如 同一会话并行发起两个模型请求
+      当 两个请求先后完成
+      那么 采样记账按发起序汇聚
+
   @req:r1843
   规则: iteration-close-vs-settle
     一次提交即一个 turn（观测根 agent.turn，AgentStart…AgentEnd）内，每一轮模型 generate 及其工具批是一次 iteration（观测 agent.iteration，XyEvent StepStart/StepEnd 成对）。本轮仍有 tool_calls、将再 generate 时 须以 ContinueTools 关闭 iteration：发 StepEnd 配成对，不得 ContextTokenSettlement、不得 auto-compact 预检、不得 should_stop_after_step。本轮不再要工具时 须 Settle：StepEnd + settlement + threshold/overflow 预检 + should_stop。generate 失败走 overflow Case1 的收尾仍为 Settle。不得用「跳过 StepEnd」或「导出侧去重 skipped」代替这组穷举。由单测覆盖，不得为静态存在性单独扩 BDD step。
@@ -347,7 +407,7 @@
 
   @req:r2920
   规则: loop-middleware-spi
-    插件 须经 rutis 生命周期注册 loop 中间件参与 ReAct 决策：阶段闭集为 before_step、before_llm_request、after_llm_response、before_tool、after_tool、decide_continue、after_step；注册表 须按阶段分组并按 order 升序排列，同 order 保持注册序；注册 须返回卸载句柄，插件停止时 须卸干净。每次提交（turn）须在启动时快照中间件链，进行中 turn 不得受后挂中间件影响；链为空时 须零开销直走基线路径，不得创建观测 span 或额外事件。core 须永远持有 turn 边界、取消、权限最终裁决与消息落盘格式，不得允许插件整段替换 ReAct。
+    插件 须经 rutis 生命周期注册 loop 中间件参与 ReAct 决策：阶段闭集为 before_step、before_llm_request、after_llm_response、before_tool、after_tool、decide_continue、after_step；注册表 须按阶段分组并按 order 升序排列，同 order 保持注册序；注册 须返回卸载句柄，插件停止时 须卸干净。每次提交（turn）须在启动时快照中间件链，进行中 turn 不得受后挂中间件影响；链为空时 须零开销直走基线路径，不得创建观测 span 或额外事件。SessionActor 须永远持有 turn 边界、取消、权限最终裁决与消息落盘格式，不得允许插件整段替换 ReAct。
 
     场景: 中间件有序且卸载后消失
       假如 注册 before_llm_request 阶段 order 10 与 order 5 的两个中间件
@@ -361,7 +421,7 @@
 
   @req:r2921
   规则: loop-middleware-control
-    中间件返回值 须为 { ctx, control }；control 闭集为 continue、stop、compact、handoff。decide_continue 须仅在 Settle 的 StepEnd 之后、settle 与压缩预检之后调用，ContinueTools 不得调用；stop 须以 AgentEnd 结束本 turn 且不得再 drain steer 或 follow_up；compact 须由 core 执行一次强制压缩后继续；handoff 本 change 未支持，core 须以稳定 kind LoopMiddlewareHandoffUnsupported 的错误结束本 turn，不得静默忽略。中间件不得自行再调模型，下一次 generate 只能由 core 调度。after_step 的 control 须仅为 continue，其他取值须记入观测并忽略，不得静默改变行为。
+    中间件返回值 须为 { ctx, control }；control 闭集为 continue、stop、compact、handoff。decide_continue 须仅在 Settle 的 StepEnd 之后、settle 与压缩预检之后调用，ContinueTools 不得调用；stop 须以 AgentEnd 结束本 turn 且不得再 drain steer 或 follow_up；compact 须由 SessionActor 执行一次强制压缩后继续；handoff 本 change 未支持，SessionActor 须以稳定 kind LoopMiddlewareHandoffUnsupported 的错误结束本 turn，不得静默忽略。中间件不得自行再调模型，下一次 generate 只能由 SessionActor 调度。after_step 的 control 须仅为 continue，其他取值须记入观测并忽略，不得静默改变行为。
 
     场景: 自定义停止结束运行
       假如 注册 decide_continue 中间件在首次结算返回 stop

@@ -2,6 +2,9 @@
 depends_on: []
 needs_specs_change: true
 title: Actor 执行模型行为合约：会话信箱、三通道队列撤销、会话格式重定版与插件单一脊柱
+branch: sdd/c3410-update-actor-execution-contract
+base_branch: main
+base_sha: 522c922f9d84c9009bc00e6f7639eb7ffc2cf142
 ---
 
 ## Why
@@ -35,7 +38,23 @@ title: Actor 执行模型行为合约：会话信箱、三通道队列撤销、�
 
 ## Further Notes
 
-- 调研底稿见本 change research/ 目录：grok-build actor 形态与 turn 消息流（01）、ReAct 拓扑谱系与行业横评（02）、三轴基线判定（03）、thoughtdag 耦合面（04）。
+- 调研底稿见本 change research/ 目录：grok-build actor 形态与 turn 消息流（01）、ReAct 拓扑谱系与行业横评（02）、三轴基线判定（03）、thoughtdag 耦合面（04）、T1 基线自检与改写清单核对（05，含 design §5 处置表的三处修正：r3304 引用漂移更正为 r3322、r2910 随触清在 workspace-assembly 无对象、r3376 并入 r1104 不单独分配）。
+- 主线漂移核对（2026-11-21）：规划 squash 6c2b782 之后主线落地的 c3431（aff58d1 + 522c922）未触碰 `llmanspec/specs/` 任何文件，design §5 处置表六处 capability 无重叠无冲突；`llman-sdd spec next-req-id` = r3373 与预留一致，新 req id 实际分配为 r3373 / r3374 / r3375 / r3377（r3376 并入 r1104 改写，未消耗）。
+- 【红名单（T6 定稿）】specs 重写后 `--strict` / `--check` 的预期红清单，非失败；清零责任分属本组后续 change，c3415 T9 统一收口：
+  1. 步骤文本改写 → 既有场景绑定断裂（场景名未动，步骤断言随载荷重形）：
+     - agent-runtime r1060 场景「队列更新」：断言由计数改为 items 载荷（绑定 `tests/bdd/bindings_agent_runtime.rs`）。
+     - protocol-app r1719 场景「队列更新线协议往返」：断言由队列计数保真改为队列项列表保真（绑定 `tests/bdd/bindings_protocol_app.rs`）。
+  2. 既有场景删除 → 绑定悬空（私有工具桥退役，绑定清理归 c3415）：infra-plugin 七场景——「受信外部插件装配工具」「未受信外部插件不装配」「保留名外部插件不装配」「外部插件握手与调用」「协议版本不匹配拒绝」「进程消亡后工具调用不可用」「失败插件不阻断装配」（`tests/bdd/bindings_infra_plugin.rs` 全量）。
+  3. 新场景无 step 定义（待实现）：agent-runtime 十个（「撤销未出队项」「出队后 NotFound」「双客户端队列同步与跨端撤销」「嵌入端与线协议端撤销一致」「print 端无感」「并发撤销恰好一次成功」「两提交一处理一排队」「中段订阅补发队列项」「旧协议版本端被拦」→ c3415；「双请求并行汇聚按发起序」→ c3425）；agent-session-store 两个（「旧版本文件拒载报版本」「同版本文件完整解析」→ c3420）；infra-plugin 三个（「未批准插件不注册工具」「批准后注册为 MCP 工具」「停用覆盖批准」→ c3430）。
+  4. 红窗窗口：c3410 归档后至 c3415 落地前主线 BDD 存在短暂红窗，维护者已明确接受（2026-11-20），无需请示。
+- 【跨 change 合并顺序备忘（T7）】本组六条 change 全部在独立 worktree（xylitol.actor-rewrite-refactor）进行，finalize 缺省 squash 单笔入主线，合并时机由维护者通知控制。落地顺序（依 design D0-D7 与 tasks 依赖）：
+  1. c3410（本 change）合约重写，specs 即实现体；
+  2. c3412 XyDriver 表面收窄（剪贴板三件删、attach 六件删、session_store 由 kernel 直供、XySessionOps 独立 trait）；
+  3. c3415 SessionActor + 三通道信箱 + 逐项撤销实现，含本红名单清零（T9）与 infra-plugin 旧绑定清理；
+  4. c3420 会话格式重定版实施（contextInjected 首批升格、严格演进、commit_compaction 未知行行为首项验证）；
+  5. c3425 采样编排 SamplerActor（思考循环防护首个消费者）；
+  6. c3430 插件单一脊柱（首用批准、清单 mcp 声明、桥退役实现、thoughtdag describe/install.sh 随之退役）。
+  thoughtdag 双库 lockstep 适配随各实施批次同批进行；多端③④⑥场景的 step 归属为 apply 期补充决定，与①②⑤一并归 c3415。
 
 ## Open Questions
 

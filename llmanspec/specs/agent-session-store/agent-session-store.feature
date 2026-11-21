@@ -31,7 +31,7 @@
 
   @req:r1097
   规则: 条目类型
-    会话存储 须支持条目类型（JSONL type 判别为 camelCase）：message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo；bang-bash 不作为顶层 type，而走 message+role=bashExecution。不得将 snake_case type 标签（如 branch_summary、bash_execution）视为合法 SSOT。
+    会话存储 须支持条目类型（JSONL type 判别为 camelCase）：message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo、contextInjected（上下文注入条目：含注入器 id、注入点与内容指纹或预览）；bang-bash 不作为顶层 type，而走 message+role=bashExecution。不得将 snake_case type 标签（如 branch_summary、bash_execution）视为合法 SSOT。
 
     场景: 模型变更
       假如 存在会话 "model-test"
@@ -184,14 +184,26 @@
       那么 恢复投影模型为 "claude-sonnet" 且思考档为 "high" 且无抵消条目
 
   @req:r1104
-  规则: 旧格式边界
-    仅存在旧 v6/v5 或未知单文件 `{id}.jsonl` 且无 log 目录时，System 不得自动迁移、不得静默删除、不得创建同 id 的新会话覆盖旧文件；自动恢复与写入入口 须返回可操作的不支持错误并保留源文件；用户显式 delete 仍可清理；list 须跳过该条目并记录有限诊断，不得把它当作可 resume 的会话。
+  规则: 格式严格演进
+    会话格式 须严格演进：新增条目变体或破坏既有字段语义的变更 须先升 SESSION_VERSION；header 版本等值门 须保留，版本不等的文件 须整体拒载且错误须携带文件版本与当前版本；LEGACY 迁移路径 须删除——不得自动迁移、不得静默删除、不得创建同 id 的新会话覆盖旧文件，用户显式 delete 仍可清理，list 须跳过该条目并记录有限诊断，不得把它当作可 resume 的会话；可选字段的增删 不得升版本（未知字段经 serde 天然穿透）；同版本文件 须必然可完整解析。
 
     场景: 列表跳过旧版仅会话
       假如 会话存储目录已初始化
       当 目录中植入旧格式会话文件 "legacy-only"
       当 列出所有会话
       那么 结果不包含 "legacy-only"
+
+    场景: 旧版本文件拒载报版本
+      假如 会话存储目录已初始化
+      当 目录中植入版本号低于当前的会话文件
+      当 加载该会话
+      那么 拒载错误含文件版本号
+
+    场景: 同版本文件完整解析
+      假如 会话存储目录已初始化
+      当 创建当前版本会话并追加各类型条目
+      当 加载该会话
+      那么 全部条目完整解析无丢失
 
   @req:r1094
   规则: CWD 校验与回退

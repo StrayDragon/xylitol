@@ -75,7 +75,7 @@
 
   @req:r1691
   规则: steer 与 followup 命令
-    protocol::Command 须包含 Steer、FollowUp 与 ClearQueue（或语义等价变体）；client 经线协议入队或清队列 须反序列化为这些变体。
+    protocol::Command 须包含 Steer、FollowUp、ClearQueue 与 RevokeQueueItem（或语义等价变体）；client 经线协议入队、清队列或撤销队列项 须反序列化为这些变体；revoke_queue_item 须为 Inline / Writer 语义方法，撤销未知队列项 须应答 kind=NotFound，不得报成功。
 
     场景: 命令队列变体解析
       当 解析队列命令 steer、follow_up、clear_queue 的线协议 JSON
@@ -105,11 +105,11 @@
 
   @req:r1719
   规则: 线协议映射队列与闭集
-    protocol Event 须能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；未映射变体 须可降级忽略，不得 panic。
+    protocol Event 须能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；QueueUpdate 线协议载荷 须为 items-only 队列项列表（id / kind / preview 截断 80 字符），不得镜像计数标量；未知队列项 kind 须降级为 Unknown 且不得 panic；其余未映射变体 须可降级忽略，不得 panic。
 
     场景: 队列更新线协议往返
       当 对 QueueUpdate 事件做线协议序列化与反序列化往返
-      那么 队列计数保真且未知 type 落入 Unknown 而非 panic
+      那么 队列项列表保真且未知 type 落入 Unknown 而非 panic
 
   @req:r1711
   规则: agent-part-tagged-wire
