@@ -88,12 +88,6 @@ impl Shared {
     }
 }
 
-/// Per-session sampling ledger and parallel model-call coordinator.
-///
-/// Every model call registers here at submission order; completion, failure or
-/// cancellation flips the ledger state. Parallel calls run as independent
-/// tasks with child cancellation tokens; aggregation stays in submission
-/// order regardless of completion order.
 #[derive(Clone)]
 pub struct SamplerActor {
     shared: Arc<Shared>,
@@ -138,8 +132,6 @@ impl SamplerActor {
         }
     }
 
-    /// Applies to new submissions only; in-flight requests keep the config
-    /// they were submitted under (turn-start binding principle).
     pub fn update_config(&self, config: SamplerConfig) {
         *self
             .shared
@@ -148,7 +140,6 @@ impl SamplerActor {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = config;
     }
 
-    /// Process-wide concurrency injection point; unlimited by default.
     pub fn set_semaphore(&self, semaphore: Arc<tokio::sync::Semaphore>) {
         *self
             .shared
@@ -193,7 +184,6 @@ impl SamplerActor {
         }
     }
 
-    /// Registers an externally driven model call in the same ledger.
     pub fn register_external(&self, kind: SampleKind) -> ExternalSample {
         let id = self.shared.next_id.fetch_add(1, Ordering::SeqCst);
         self.shared.lock_ledger().push(LedgerRecord {
@@ -313,7 +303,6 @@ async fn run_sampled_request(
     }
 }
 
-/// Aggregates parallel submissions in submission order.
 pub async fn aggregate(handles: Vec<SampleHandle>) -> Vec<Result<XyStream, XyError>> {
     let mut results = Vec::with_capacity(handles.len());
     for handle in handles {
@@ -344,6 +333,7 @@ impl ExternalSample {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
     use serde_json::json;
     use xylitol_plugin_sdk::model::XyChunk;
 
@@ -447,8 +437,6 @@ mod tests {
             )
             .await;
         assert_eq!(sampler.active_count(), 2);
-        // Release the second (later-submitted) request first and let it
-        // finish; completion order must not reorder aggregation or the ledger.
         second.release.notify_one();
         tokio::task::yield_now().await;
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
