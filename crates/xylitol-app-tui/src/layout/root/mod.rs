@@ -1205,10 +1205,6 @@ impl UiRoot {
     }
 
     fn queue_strip_hit(&self, width: usize, transcript_rows: usize) -> Option<Hit> {
-        eprintln!(
-            "QHIT trows={} strip={} dstart={} rows={}",
-            transcript_rows, self.queue_strip_row, self.dock_start_frame_row, self.last_queue_rows
-        );
         let screen_row = self.queue_strip_screen_row(transcript_rows)?;
         Some(
             Hit::at_cell(

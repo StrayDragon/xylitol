@@ -1295,7 +1295,6 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn dispatch_chrome_click(&mut self, id: xylitol_tui::HitId) {
-        eprintln!("QCLICK id={id:?}");
         if id == crate::layout::UiRoot::QUEUE_STRIP_HIT_ID {
             if self.dequeue_to_editor() {
                 self.tui.request_render(false);
