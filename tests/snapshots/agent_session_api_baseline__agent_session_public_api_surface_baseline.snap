@@ -69,6 +69,7 @@ pub fn replace_model_registry(&self, registry: ModelRegistry)
 pub fn revoke(&mut self, id: &str) -> bool
 pub fn revoke(&self, id: &str) -> RevokeOutcome
 pub fn revoke_queue_item(&self, id: &str) -> crate::agent::capabilities::RevokeOutcome
+pub fn sampler(&self) -> Arc<crate::agent::sampler::SamplerActor>
 pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>

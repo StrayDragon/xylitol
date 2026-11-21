@@ -81,6 +81,7 @@ pub struct AgentCapabilities {
     store: Arc<dyn XySessionStore>,
     sink: Arc<dyn XyEventSink>,
     queues: Arc<AsyncQueueRuntime>,
+    sampler: Arc<crate::agent::sampler::SamplerActor>,
     hook_bus: Option<Arc<dyn XyHookBus>>,
     context_policy: crate::agent::context_policy::ContextPolicy,
     session_name: Option<String>,
@@ -145,6 +146,7 @@ impl AgentCapabilities {
             sink,
             permission,
             queues: Arc::new(AsyncQueueRuntime::new(steering_mode, follow_up_mode)),
+            sampler: Arc::new(crate::agent::sampler::SamplerActor::new()),
             hook_bus,
             context_policy: crate::agent::context_policy::ContextPolicy::default(),
             session_name: None,
@@ -265,6 +267,10 @@ impl AgentCapabilities {
             .enqueue(msg);
         self.queues.notify_queue_update();
         item.id
+    }
+
+    pub fn sampler(&self) -> Arc<crate::agent::sampler::SamplerActor> {
+        Arc::clone(&self.sampler)
     }
 
     pub fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {

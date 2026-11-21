@@ -8,6 +8,7 @@ pub mod llm_project;
 pub mod model;
 pub mod prompt;
 pub mod runtime;
+pub mod sampler;
 pub mod stage_name;
 pub mod tools;
 

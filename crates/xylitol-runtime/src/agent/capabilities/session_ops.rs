@@ -292,9 +292,18 @@ impl AgentCapabilities {
             obs_session: self.obs_session_snapshot(),
             ..Default::default()
         };
-        let stream = model
-            .generate_stream(vec![XyLlmMessage::user(input)], &[], false, options)
-            .await?;
+        let handle = self
+            .sampler
+            .submit_stream(
+                crate::agent::sampler::SampleKind::StageName,
+                model,
+                vec![XyLlmMessage::user(input)],
+                Vec::new(),
+                options,
+                None,
+            )
+            .await;
+        let stream = handle.resolve().await?;
         let generated = tokio::time::timeout(
             Duration::from_millis(self.stage_name_config.timeout_ms),
             collect_stage_name_text(stream),

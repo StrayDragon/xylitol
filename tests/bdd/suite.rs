@@ -125,6 +125,7 @@ mod steps_provider_openai_accounting_extra;
 mod steps_remote_resilience;
 mod steps_runtime_config;
 mod steps_runtime_resource_discovery_extra;
+mod steps_sampler;
 mod steps_sandbox;
 mod steps_server;
 mod steps_session;

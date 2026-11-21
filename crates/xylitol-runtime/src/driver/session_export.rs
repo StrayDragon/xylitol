@@ -327,24 +327,20 @@ mod tests {
     }
 
     #[test]
-    fn jsonl_import_normalizes_supported_legacy_entries() {
+    fn jsonl_import_refuses_lower_version_entries() {
         let legacy = r#"{"type":"session","version":6,"id":"legacy","timestamp":1,"cwd":"."}
 {"type":"compaction","id":"c1","parentId":null,"timestamp":2,"summary":"old","firstKeptEntryId":"m1","tokensBefore":10}
 "#;
-        let entries = parse_jsonl(legacy.as_bytes()).unwrap();
-        assert!(matches!(
-            entries.first(),
-            Some(SessionEntry::Header(header)) if header.version == SESSION_VERSION
-        ));
-        assert!(matches!(
-            entries.get(1),
-            Some(SessionEntry::Compaction(compaction))
-                if compaction
-                    .policy
-                    .as_ref()
-                    .and_then(|policy| policy.status.as_deref())
-                    == Some("legacy/unknown")
-        ));
+        let err = parse_jsonl(legacy.as_bytes()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("version 6"),
+            "a lower-version import must be refused with its file version: {msg}"
+        );
+        assert!(
+            msg.contains(&format!("require {SESSION_VERSION}")),
+            "the refusal must name the current version: {msg}"
+        );
     }
 
     #[test]
@@ -364,7 +360,7 @@ mod tests {
         let err = parse_jsonl(v5_numeric.as_bytes()).unwrap_err();
         let msg = err.to_string();
         assert!(
-            msg.contains("require 7"),
+            msg.contains(&format!("require {SESSION_VERSION}")),
             "must name current version: {msg}"
         );
     }

@@ -1,4 +1,5 @@
 use crate::bdd::fixtures::*;
+use crate::bdd::steps_sampler::{SamplerBdd, sampler_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -321,3 +322,9 @@ async fn test_ar_legacy_protocol_client_blocked(protocol_bdd: ProtocolBdd) {}
     name = "中段订阅补发队列项"
 )]
 async fn test_ar_midstream_resync_queue_items(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "双请求并行汇聚按发起序"
+)]
+async fn test_ar_parallel_sampling_aggregates_in_order(sampler_bdd: SamplerBdd) {}

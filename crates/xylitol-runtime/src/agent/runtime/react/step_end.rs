@@ -77,6 +77,7 @@ pub(crate) async fn close_iteration(
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     event_sink: &Arc<dyn xylitol_plugin_sdk::XyEventSink>,
+    sampler: &Arc<crate::agent::sampler::SamplerActor>,
     compaction_settings: &crate::agent::compaction::CompactionSettings,
     compaction: &dyn crate::agent::compaction::XyCompaction,
     fixed_context: &crate::agent::compaction::FixedRequestContext,
@@ -131,6 +132,7 @@ pub(crate) async fn close_iteration(
             session_id,
             model_manager,
             event_sink,
+            sampler,
             compaction_settings,
             compaction,
             fixed_context,
@@ -297,6 +299,7 @@ pub(crate) async fn try_turn_end_compaction(
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     event_sink: &Arc<dyn xylitol_plugin_sdk::XyEventSink>,
+    sampler: &Arc<crate::agent::sampler::SamplerActor>,
     settings: &crate::agent::compaction::CompactionSettings,
     compaction: &dyn crate::agent::compaction::XyCompaction,
     fixed_context: &crate::agent::compaction::FixedRequestContext,
@@ -345,7 +348,8 @@ pub(crate) async fn try_turn_end_compaction(
 
     let mut fallback_notice_emitted = false;
 
-    match compaction
+    let bypass = sampler.register_external(crate::agent::sampler::SampleKind::CompactionSummary);
+    let compact_outcome = compaction
         .maybe_overflow_compact(
             store.as_ref(),
             session_id,
@@ -361,8 +365,8 @@ pub(crate) async fn try_turn_end_compaction(
             &mut fallback_notice_emitted,
             Some(&mut *floor_notice_emitted),
         )
-        .await
-    {
+        .await;
+    match compact_outcome {
         Ok(OverflowCompactOutcome::Ran { will_retry }) => {
             if will_retry {
                 *overflow_recovery_attempted = true;
@@ -443,5 +447,6 @@ pub(crate) async fn try_turn_end_compaction(
     {
         log::warn!("turn-end compaction failed: {e}");
     }
+    bypass.complete();
     false
 }

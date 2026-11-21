@@ -1,7 +1,10 @@
 ---
-depends_on: ["c3420-add-chat-state-actor-session-format"]
+depends_on: [ "c3420-add-chat-state-actor-session-format" ]
 needs_specs_change: false
 title: SamplerActor：模型调用并发化与并行 model call 解锁
+branch: sdd/c3425-add-sampler-actor-parallel-model-call
+base_branch: main
+base_sha: ac9c43922b8d95493de2d56330eaca0b0bef99f6
 ---
 
 ## Why
