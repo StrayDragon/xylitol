@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use xylitol_tui::{
     BorderedPanel, Component, KeybindingsManager, fg_rgb, truncate_to_width, visible_width,
 };
@@ -128,7 +128,8 @@ impl UiRoot {
                 }
                 _ => true,
             }
-        } else if key.code == KeyCode::Char('?')
+        } else if matches!(key.code, KeyCode::Char('?') | KeyCode::Char('？'))
+            && key.modifiers.difference(KeyModifiers::SHIFT).is_empty()
             && self.slot.is_editor()
             && self.editor.get_text().is_empty()
         {

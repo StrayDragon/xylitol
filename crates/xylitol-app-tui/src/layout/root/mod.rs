@@ -172,6 +172,7 @@ pub struct UiRoot {
     last_help_rows: usize,
     last_queue_rows: usize,
     queue_strip_row: usize,
+    dock_start_frame_row: usize,
     last_footer_hits: Vec<footer_chips::FooterChipHit>,
     last_chip_row: Option<usize>,
     last_chip_width: usize,
@@ -322,6 +323,7 @@ impl UiRoot {
             last_help_rows: 0,
             last_queue_rows: 0,
             queue_strip_row: 0,
+            dock_start_frame_row: 0,
             last_footer_hits: Vec::new(),
             last_chip_row: None,
             last_chip_width: 0,
@@ -1184,20 +1186,37 @@ impl UiRoot {
     pub fn overlay_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
         let mut hits = Vec::new();
 
-        hits.extend(self.queue_strip_hit(width));
+        hits.extend(self.queue_strip_hit(width, transcript_rows));
         hits.extend(self.sidebar_hits(width, transcript_rows));
         hits
     }
 
-    fn queue_strip_hit(&self, width: usize) -> Option<Hit> {
+    fn queue_strip_screen_row(&self, transcript_rows: usize) -> Option<usize> {
         if self.last_queue_rows == 0 {
             return None;
         }
+        if self.dock_start_frame_row == 0 {
+            // Sentinel: row already expressed in screen space (tests, or a
+            // dock-less frame where transcript ends at row 0).
+            return Some(self.queue_strip_row);
+        }
+        let dock_offset = self
+            .queue_strip_row
+            .saturating_sub(self.dock_start_frame_row);
+        Some(transcript_rows.saturating_add(dock_offset))
+    }
+
+    fn queue_strip_hit(&self, width: usize, transcript_rows: usize) -> Option<Hit> {
+        eprintln!(
+            "QHIT trows={} strip={} dstart={} rows={}",
+            transcript_rows, self.queue_strip_row, self.dock_start_frame_row, self.last_queue_rows
+        );
+        let screen_row = self.queue_strip_screen_row(transcript_rows)?;
         Some(
             Hit::at_cell(
                 Self::QUEUE_STRIP_HIT_ID,
                 0,
-                u16::try_from(self.queue_strip_row).unwrap_or(u16::MAX),
+                u16::try_from(screen_row).unwrap_or(u16::MAX),
             )
             .cols(0, width)
             .tall(self.last_queue_rows)
@@ -1206,9 +1225,9 @@ impl UiRoot {
         )
     }
 
-    pub fn overlay_hover_hits(&self, width: usize) -> Vec<Hit> {
+    pub fn overlay_hover_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
         let mut hits = Vec::new();
-        if let Some(hit) = self.queue_strip_hover_hit(width) {
+        if let Some(hit) = self.queue_strip_hover_hit(width, transcript_rows) {
             hits.push(hit);
         }
         if let Some(hit) = self.todo_summary_hover_hit() {
@@ -1217,15 +1236,13 @@ impl UiRoot {
         hits
     }
 
-    fn queue_strip_hover_hit(&self, width: usize) -> Option<Hit> {
-        if self.last_queue_rows == 0 {
-            return None;
-        }
+    fn queue_strip_hover_hit(&self, width: usize, transcript_rows: usize) -> Option<Hit> {
+        let screen_row = self.queue_strip_screen_row(transcript_rows)?;
         Some(
             Hit::at_screen(
                 Self::QUEUE_STRIP_HIT_ID,
                 0,
-                u16::try_from(self.queue_strip_row).unwrap_or(u16::MAX),
+                u16::try_from(screen_row).unwrap_or(u16::MAX),
             )
             .cols(0, width)
             .tall(self.last_queue_rows),
@@ -2147,7 +2164,7 @@ mod tests {
     #[test]
     fn dock_registers_hover_hits_for_queue_and_todo_summary() {
         let root = root_with_dock(3);
-        let hovers = root.overlay_hover_hits(120);
+        let hovers = root.overlay_hover_hits(120, 20);
         let ids: Vec<_> = hovers.iter().map(|h| (*h).into_region().id).collect();
         assert!(
             ids.contains(&UiRoot::QUEUE_STRIP_HIT_ID),
@@ -2172,13 +2189,13 @@ mod tests {
     fn todo_summary_hover_sits_below_the_queue_strip() {
         let root = root_with_dock(3);
         let todo = root
-            .overlay_hover_hits(120)
+            .overlay_hover_hits(120, 20)
             .into_iter()
             .map(|hit| hit.into_region())
             .find(|region| region.id == UiRoot::TODO_SUMMARY_HOVER_HIT_ID)
             .expect("todo summary hover hit");
         let queue = root
-            .overlay_hover_hits(120)
+            .overlay_hover_hits(120, 20)
             .into_iter()
             .map(|hit| hit.into_region())
             .find(|region| region.id == UiRoot::QUEUE_STRIP_HIT_ID)
@@ -2196,7 +2213,7 @@ mod tests {
     fn empty_dock_registers_no_hover_hits() {
         let root = UiRoot::new();
         assert!(
-            root.overlay_hover_hits(120).is_empty(),
+            root.overlay_hover_hits(120, 20).is_empty(),
             "no queue and no todo means no dock hover targets"
         );
     }

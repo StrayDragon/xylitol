@@ -1908,10 +1908,12 @@ pub(crate) async fn w_c2826_queue_strip_click(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
     pump_once(host_pump_bdd).await;
     let before = c2826_frame(host_pump_bdd);
-    let row = before
-        .lines()
-        .position(|line| line.contains("Steering"))
-        .expect("queue strip rendered") as u16;
+    let pump = take_pump(host_pump_bdd);
+    let row = pump
+        .session
+        .queue_strip_click_row()
+        .expect("queue strip hit registered");
+    put_pump(host_pump_bdd, pump);
     c2911_click(host_pump_bdd, 5, row).await;
     pump_once(host_pump_bdd).await;
     let after_text = editor_text(host_pump_bdd);
@@ -3517,10 +3519,12 @@ pub(crate) async fn w_c3001_click_queue(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
     pump_once(host_pump_bdd).await;
     let frame = c2826_frame(host_pump_bdd);
-    let row = frame
-        .lines()
-        .position(|line| line.contains("Steering"))
-        .expect("queue strip rendered") as u16;
+    let pump = take_pump(host_pump_bdd);
+    let row = pump
+        .session
+        .queue_strip_click_row()
+        .expect("queue strip hit registered");
+    put_pump(host_pump_bdd, pump);
     c2911_click(host_pump_bdd, 5, row).await;
     pump_once(host_pump_bdd).await;
 }
@@ -4495,4 +4499,14 @@ pub(crate) fn t_c3400_width_ladder_ok(host_pump_bdd: &HostPumpBdd) {
             "width {cols} ended in {label}"
         );
     }
+}
+
+pub(crate) fn strip_screen_row(frame: &str, needle: &str, term_rows: u16) -> u16 {
+    let frame_row = frame
+        .lines()
+        .position(|line| line.contains(needle))
+        .expect("queue strip rendered") as usize;
+    let total = frame.lines().count();
+    let offscreen = total.saturating_sub(term_rows as usize);
+    frame_row.saturating_sub(offscreen) as u16
 }

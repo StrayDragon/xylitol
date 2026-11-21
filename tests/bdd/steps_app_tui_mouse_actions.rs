@@ -351,10 +351,12 @@ async fn g_mat34_busy_followup(host_pump_bdd: &HostPumpBdd) {
 #[when("左键单击队列条")]
 async fn w_mat34_click_queue_strip(host_pump_bdd: &HostPumpBdd) {
     let frame = render_frame(host_pump_bdd, 100);
-    let row = frame
-        .lines()
-        .position(|line| line.contains("Follow-up"))
-        .expect("队列条已渲染") as u16;
+    let pump = take_pump(host_pump_bdd);
+    let row = pump
+        .session
+        .queue_strip_click_row()
+        .expect("queue strip hit registered");
+    put_pump(host_pump_bdd, pump);
     c2911_click(host_pump_bdd, 5, row).await;
     pump_once(host_pump_bdd).await;
 }

@@ -7112,3 +7112,67 @@ fn sidebar_hidden_harness_preserves_open_intent() {
         Some(xylitol_tui::PanelPlacement::DockRight)
     );
 }
+
+#[tokio::test]
+async fn idle_alt_up_restores_follow_up_after_abort() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    session.on_turn_started("hello");
+    root.borrow_mut().set_editor_text("queued-question");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert!(
+        root.borrow_mut()
+            .render(80)
+            .iter()
+            .any(|l| l.contains("Follow-up")),
+        "follow_up strip must be visible before abort"
+    );
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    session.step(HostEvent::Input(alt_up_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    let restored = root.borrow().editor_text().contains("queued-question");
+    assert!(
+        restored,
+        "idle Alt+Up must restore surviving follow_up into the editor, got {:?}",
+        root.borrow().editor_text()
+    );
+}
+
+fn question_key_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Char('?'),
+        modifiers: KeyModifiers::SHIFT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[tokio::test]
+async fn busy_empty_editor_question_mark_opens_help() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    session.on_turn_started("hello");
+    session
+        .step(HostEvent::Input(question_key_event()))
+        .unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert!(
+        root.borrow().help_open(),
+        "busy empty-editor ? must open the help panel"
+    );
+}

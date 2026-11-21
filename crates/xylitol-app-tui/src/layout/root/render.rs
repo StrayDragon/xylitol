@@ -551,6 +551,7 @@ impl Component for UiRoot {
             .saturating_add(1)
             .saturating_add(self.hint_rows());
         self.sync_editor_screen_origin();
+        self.dock_start_frame_row = lines.len();
         lines.extend(help);
         self.queue_strip_row = lines.len();
         lines.extend(queue);

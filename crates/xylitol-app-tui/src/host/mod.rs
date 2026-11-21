@@ -447,6 +447,26 @@ impl<T: Terminal> HostSession<T> {
         self.sync_pointer_hits();
     }
 
+    /// Screen row the queue strip hit region is registered at, if any.
+    pub fn queue_strip_click_row(&self) -> Option<u16> {
+        let cols = self.tui.terminal.columns() as usize;
+        let term_rows = self.tui.terminal.rows() as usize;
+        let dock = self.tui.dock_rows();
+        let transcript_rows = term_rows.saturating_sub(dock);
+        let root = self.ui_root.as_ref()?;
+        let root = root.borrow();
+        root.overlay_hits(cols, transcript_rows)
+            .iter()
+            .find(|hit| {
+                let region = (*hit).into_region();
+                region.id == crate::layout::UiRoot::QUEUE_STRIP_HIT_ID
+            })
+            .map(|hit| {
+                let region = (*hit).into_region();
+                u16::try_from(region.content_row).unwrap_or(u16::MAX)
+            })
+    }
+
     fn sync_pointer_hits(&mut self) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -459,7 +479,7 @@ impl<T: Terminal> HostSession<T> {
         let mut clicks = root.fold_hits().pointer_click_hits();
         let mut hovers = root.fold_hits().pointer_hover_hits();
         clicks.extend(root.overlay_hits(cols, transcript_rows as usize));
-        hovers.extend(root.overlay_hover_hits(cols));
+        hovers.extend(root.overlay_hover_hits(cols, transcript_rows as usize));
         drop(root);
         clicks.extend(self.tui.scroll_gutter_hit_set());
         self.tui.replace_hits(clicks);
@@ -1276,6 +1296,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn dispatch_chrome_click(&mut self, id: xylitol_tui::HitId) {
+        eprintln!("QCLICK id={id:?}");
         if id == crate::layout::UiRoot::QUEUE_STRIP_HIT_ID {
             if self.dequeue_to_editor() {
                 self.tui.request_render(false);
@@ -1393,6 +1414,7 @@ impl<T: Terminal> HostSession<T> {
                 || self.try_paste_image(&input)
                 || self.try_reload_input(&input)
                 || self.try_busy_input(&input)
+                || self.try_idle_dequeue(&input)
                 || self.try_idle_enter_submit(&input)
                 || self.try_ctrl_g(&input)
             {

@@ -2419,7 +2419,7 @@ fn harness_hovering_todo_summary_sets_a_hover_id() {
 
     let summary_row = {
         let root = root.borrow();
-        root.overlay_hover_hits(100)
+        root.overlay_hover_hits(100, 20)
             .into_iter()
             .map(|hit| hit.into_region())
             .find(|region| region.id == super::layout::UiRoot::TODO_SUMMARY_HOVER_HIT_ID)
