@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 pub const CUSTOM_TYPE_CONTEXT_INJECTED: &str = "contextInjected";
 

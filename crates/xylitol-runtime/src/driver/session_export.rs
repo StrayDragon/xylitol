@@ -7,7 +7,6 @@ use crate::utils::xml_escape;
 use xylitol_plugin_sdk::error::XySessionStoreError;
 use xylitol_plugin_sdk::session::{
     CompactionPolicySnapshot, MessageEntry, SESSION_VERSION, SessionEntry, message_role,
-    parse_session_jsonl_lines,
 };
 use xylitol_plugin_sdk::{XyExportIo, XySessionStore};
 

@@ -1353,7 +1353,7 @@ where
         let result = tokio::task::block_in_place(|| {
             handle.block_on(async move { host.unary("revoke_queue_item", payload).await })
         });
-        let outcome = match result {
+        match result {
             Ok(result) if result.ok => {
                 let value = result.value.unwrap_or(serde_json::Value::Null);
                 let revoked = value
@@ -1390,8 +1390,7 @@ where
                 revoked: false,
                 items: self.cached_queue_items(),
             },
-        };
-        outcome
+        }
     }
 
     fn current_model(&self) -> Option<ModelInfo> {

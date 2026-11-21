@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 use xylitol_plugin_sdk::error::XyError;
 use xylitol_plugin_sdk::message::XyLlmMessage;
