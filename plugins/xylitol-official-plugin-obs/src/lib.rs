@@ -143,6 +143,9 @@ fn logging_requested() -> bool {
     if std::env::var_os("XYLITOL_DEBUG").is_some_and(is_truthy) {
         return true;
     }
+    if std::env::var_os("XYLITOL_NO_LOGGING").is_some_and(is_truthy) {
+        return false;
+    }
     cfg!(debug_assertions)
 }
 

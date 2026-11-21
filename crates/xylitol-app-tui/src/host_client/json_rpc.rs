@@ -73,6 +73,10 @@ fn result_of(outcome: Outcome) -> RpcResult {
     }
 }
 
+pub fn check_describe_for_test(result: &RpcResult) -> Result<(), HostClientError> {
+    check_describe(result)
+}
+
 pub(crate) fn check_describe(result: &RpcResult) -> Result<(), HostClientError> {
     if !result.ok {
         let detail = result

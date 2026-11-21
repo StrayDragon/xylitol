@@ -129,6 +129,37 @@ pub struct ModelInfo {
     pub context_window: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct QueueSnapshot {
+    pub items: Vec<crate::session::QueueItem>,
+}
+
+impl QueueSnapshot {
+    pub fn steer_count(&self) -> usize {
+        self.items
+            .iter()
+            .filter(|item| item.kind == crate::session::QueueItemKind::Steer)
+            .count()
+    }
+
+    pub fn follow_up_count(&self) -> usize {
+        self.items
+            .iter()
+            .filter(|item| item.kind == crate::session::QueueItemKind::FollowUp)
+            .count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevokeQueueItemOutcome {
+    pub revoked: bool,
+    pub items: Vec<crate::session::QueueItem>,
+}
+
 impl From<&XyModelMeta> for ModelInfo {
     fn from(m: &XyModelMeta) -> Self {
         let thinking_levels = if !m.thinking || m.thinking_levels.is_empty() {

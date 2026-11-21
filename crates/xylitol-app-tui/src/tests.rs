@@ -1106,8 +1106,11 @@ fn harness_xy_events_update_ui_model_and_transcript() {
         .unwrap();
     session
         .step(HostEvent::Xy(Box::new(XyEvent::QueueUpdate {
-            steer_count: 1,
-            follow_up_count: 0,
+            items: vec![xylitol_plugin_sdk::session::QueueItem {
+                id: "qs0".into(),
+                kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                preview: "s0".into(),
+            }],
         })))
         .unwrap();
     assert_eq!(session.ui_model().phase, UiPhase::Busy);
@@ -3599,13 +3602,7 @@ fn apply_xy_event_sequence_snapshot() {
             message: None,
         },
     );
-    apply_xy_event(
-        &mut model,
-        &XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 0,
-        },
-    );
+    apply_xy_event(&mut model, &XyEvent::QueueUpdate { items: vec![] });
     apply_xy_event(
         &mut model,
         &XyEvent::AgentEnd {

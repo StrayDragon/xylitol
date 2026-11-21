@@ -267,3 +267,57 @@ async fn test_ar_run_event_boundary(agent: AgentState, ws: Workspace) {}
     name = "启动字段口径"
 )]
 async fn test_ar_agent_start_fields(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "撤销未出队项"
+)]
+async fn test_ar_revoke_pending_item(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "出队后 NotFound"
+)]
+async fn test_ar_revoke_dequeued_item_not_found(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "并发撤销恰好一次成功"
+)]
+async fn test_ar_concurrent_revoke_exactly_once(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "嵌入端与线协议端撤销一致"
+)]
+async fn test_ar_embed_and_wire_revoke_agree(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "双客户端队列同步与跨端撤销"
+)]
+async fn test_ar_two_clients_queue_sync(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "print 端无感"
+)]
+async fn test_ar_print_unaffected_by_revoke(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "两提交一处理一排队"
+)]
+async fn test_ar_two_submissions_one_turn_each(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "旧协议版本端被拦"
+)]
+async fn test_ar_legacy_protocol_client_blocked(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "中段订阅补发队列项"
+)]
+async fn test_ar_midstream_resync_queue_items(agent: AgentState, ws: Workspace) {}

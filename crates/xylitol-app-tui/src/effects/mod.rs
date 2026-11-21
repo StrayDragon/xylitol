@@ -66,12 +66,15 @@ pub async fn session_entries_page(
 
 pub async fn queue_stats(driver: &mut dyn XyDriver) -> QueueStats {
     match crate::dispatch::dispatch(driver, xylitol_protocol::Command::GetQueueStats {}).await {
-        Ok(crate::dispatch::DispatchOutcome::QueueStats {
-            steer_count,
-            follow_up_count,
-        }) => QueueStats {
-            steer_count,
-            follow_up_count,
+        Ok(crate::dispatch::DispatchOutcome::QueueItems(items)) => QueueStats {
+            steer_count: items
+                .iter()
+                .filter(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::Steer)
+                .count(),
+            follow_up_count: items
+                .iter()
+                .filter(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp)
+                .count(),
         },
         _ => QueueStats::default(),
     }
@@ -139,7 +142,7 @@ async fn drain_abort_and_lanes<T: Terminal>(
         let cancelled_gate = session.take_gated_submit().is_some();
         if cancelled_gate {
             let stats = queue_stats(driver).await;
-            session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+            session.set_queue_depth(stats.steer_count, stats.follow_up_count);
         }
         session.note_user_abort();
         let _ = dispatch(
@@ -151,7 +154,7 @@ async fn drain_abort_and_lanes<T: Terminal>(
         )
         .await;
         let stats = queue_stats(driver).await;
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+        session.set_queue_depth(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
     let bang_cancelled = session.take_bash_cancelled();
@@ -236,7 +239,7 @@ pub async fn drain_pending<T: Terminal>(
             session.end_gated_assemble_idle();
         }
         let stats = queue_stats(driver).await;
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+        session.set_queue_depth(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
 
@@ -330,7 +333,7 @@ fn calibrate_queue_after_local_enqueue<T: Terminal>(
     {
         return;
     }
-    session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+    session.set_queue_depth(stats.steer_count, stats.follow_up_count);
 }
 
 async fn start_run_after_tool_gate<T: Terminal>(

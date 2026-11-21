@@ -4,42 +4,29 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/infra-plugin/infra-plugin.feature",
-    name = "受信外部插件装配工具"
+    name = "未批准插件不注册工具"
 )]
-async fn test_infra_plugin_trusted(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
+async fn test_infra_plugin_unapproved_no_tools(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-plugin/infra-plugin.feature",
-    name = "未受信外部插件不装配"
+    name = "批准后注册为 MCP 工具"
 )]
-async fn test_infra_plugin_untrusted(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
+async fn test_infra_plugin_approved_registers_mcp(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {
+}
 
 #[scenario(
     path = "llmanspec/specs/infra-plugin/infra-plugin.feature",
-    name = "保留名外部插件不装配"
+    name = "停用覆盖批准"
 )]
-async fn test_infra_plugin_reserved(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
+async fn test_infra_plugin_disabled_overrides_approval(
+    ws: Workspace,
+    infra_plugin_bdd: InfraPluginBdd,
+) {
+}
 
 #[scenario(
     path = "llmanspec/specs/infra-plugin/infra-plugin.feature",
-    name = "外部插件握手与调用"
+    name = "未声明mcp不注册服务器"
 )]
-async fn test_infra_plugin_handshake(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/infra-plugin/infra-plugin.feature",
-    name = "协议版本不匹配拒绝"
-)]
-async fn test_infra_plugin_protocol_mismatch(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/infra-plugin/infra-plugin.feature",
-    name = "失败插件不阻断装配"
-)]
-async fn test_infra_plugin_failure_isolation(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/infra-plugin/infra-plugin.feature",
-    name = "进程消亡后工具调用不可用"
-)]
-async fn test_infra_plugin_process_death(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}
+async fn test_infra_plugin_no_mcp_declaration(ws: Workspace, infra_plugin_bdd: InfraPluginBdd) {}

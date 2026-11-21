@@ -64,7 +64,7 @@ pub use dispatch::{
 };
 pub use driver::{
     CommandInfo, LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot, ModelInfo,
-    ReloadStepReport, RuntimeReloadReport, SessionState,
+    QueueSnapshot, ReloadStepReport, RevokeQueueItemOutcome, RuntimeReloadReport, SessionState,
 };
 pub use dto::{
     ContextTokenEstimate, Diagnostic, ImageContent, PromptCacheRead, TokenProvenance,

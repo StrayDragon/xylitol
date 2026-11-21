@@ -4,7 +4,7 @@ use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_protocol::codec::{self, Inbound, Rejected};
-use xylitol_protocol::{Command, Event, Message, Outcome, RequestId};
+use xylitol_protocol::{Command, Event, Message, Outcome, QueueItem, RequestId};
 use xylitol_serve::MAX_BODY_BYTES;
 use xylitol_wire::{event_from_wire, event_to_wire};
 
@@ -242,8 +242,23 @@ fn t_tool_end_flag_semantics(protocol_bdd: &ProtocolBdd) {
 #[when("对 QueueUpdate 事件做线协议序列化与反序列化往返")]
 fn w_queue_update_roundtrip(protocol_bdd: &ProtocolBdd) {
     let event = Event::QueueUpdate {
-        steer_count: 2,
-        follow_up_count: 1,
+        items: vec![
+            QueueItem {
+                id: "qs0".into(),
+                kind: "steer".into(),
+                preview: "s0".into(),
+            },
+            QueueItem {
+                id: "qs1".into(),
+                kind: "steer".into(),
+                preview: "s1".into(),
+            },
+            QueueItem {
+                id: "qf0".into(),
+                kind: "follow_up".into(),
+                preview: "f0".into(),
+            },
+        ],
     };
     let text = serde_json::to_string(&event).expect("encode QueueUpdate");
     let back: Event = serde_json::from_str(&text).expect("decode QueueUpdate");
@@ -253,19 +268,33 @@ fn w_queue_update_roundtrip(protocol_bdd: &ProtocolBdd) {
     *protocol_bdd.events.borrow_mut() = vec![back, unknown];
 }
 
-#[then("队列计数保真且未知 type 落入 Unknown 而非 panic")]
+#[then("队列项列表保真且未知 type 落入 Unknown 而非 panic")]
 fn t_queue_update_fidelity(protocol_bdd: &ProtocolBdd) {
     let events = protocol_bdd.events.borrow();
-    assert!(
-        matches!(
-            events.first(),
-            Some(Event::QueueUpdate {
-                steer_count: 2,
-                follow_up_count: 1,
-            })
+    let expected = vec![
+        QueueItem {
+            id: "qs0".into(),
+            kind: "steer".into(),
+            preview: "s0".into(),
+        },
+        QueueItem {
+            id: "qs1".into(),
+            kind: "steer".into(),
+            preview: "s1".into(),
+        },
+        QueueItem {
+            id: "qf0".into(),
+            kind: "follow_up".into(),
+            preview: "f0".into(),
+        },
+    ];
+    match events.first() {
+        Some(Event::QueueUpdate { items }) => assert_eq!(
+            items, &expected,
+            "c2826: QueueUpdate 队列项列表须逐项保真（id / kind / preview）"
         ),
-        "c2826: 期望 QueueUpdate 计数保真: {events:?}"
-    );
+        other => panic!("c2826: 期望 QueueUpdate 队列项列表: {other:?}"),
+    }
     assert!(
         matches!(events.get(1), Some(Event::Unknown)),
         "c2826: 未知 type MUST 落入 Unknown 而非 panic: {events:?}"
@@ -927,4 +956,73 @@ fn t_c3402_workflow_updated_fidelity(protocol_bdd: &ProtocolBdd) {
     let frame = serde_json::to_value(events.first().expect("event")).expect("frame to value");
     assert_eq!(frame["type"], "workflow_updated");
     let _ = frame["workflow"].clone();
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WireRevoke {
+    pub revoked: bool,
+    pub items: Vec<(String, String)>,
+}
+
+pub(crate) fn wire_revoke_queue_item(
+    driver: &mut xylitol::XyInProcessDriver,
+    id: &str,
+) -> WireRevoke {
+    use xylitol::embed::XyDriver;
+    let command = xylitol_protocol::parse_command(
+        xylitol_protocol::registry::METHOD_REVOKE_QUEUE_ITEM,
+        &serde_json::json!({ "id": id }),
+    )
+    .expect("wire revoke_queue_item parses");
+    let xylitol_protocol::Command::RevokeQueueItem { id: parsed_id } = command else {
+        panic!("revoke_queue_item must parse into Command::RevokeQueueItem");
+    };
+    assert_eq!(parsed_id, id);
+    let outcome = XyDriver::revoke_queue_item(driver, &parsed_id);
+    WireRevoke {
+        revoked: outcome.revoked,
+        items: outcome
+            .items
+            .iter()
+            .map(|i| (i.id.clone(), i.kind.as_str().to_string()))
+            .collect(),
+    }
+}
+
+#[given("客户端以低于当前的 PROTOCOL_VERSION 附着")]
+pub(crate) fn _g_legacy_client_attaches(protocol_bdd: &ProtocolBdd) {
+    protocol_bdd.legacy_rejected.set(Some(false));
+}
+
+#[when("经 host.describe 协商")]
+pub(crate) fn _w_legacy_client_negotiates(protocol_bdd: &ProtocolBdd) {
+    use xylitol_app_tui::host_client::check_describe_for_test;
+    let described =
+        check_describe_for_test(&xylitol_protocol::RpcResult::ok_value(serde_json::json!({
+            "protocol": xylitol_protocol::PROTOCOL_VERSION.saturating_sub(1),
+            "formats": [xylitol_protocol::WIRE_FORMAT_JSONRPC],
+        })));
+    protocol_bdd.legacy_rejected.set(Some(described.is_err()));
+}
+
+#[then("旧端被拦截且不得消费新载荷")]
+pub(crate) fn _t_legacy_client_blocked(protocol_bdd: &ProtocolBdd) {
+    assert_eq!(
+        protocol_bdd.legacy_rejected.get(),
+        Some(true),
+        "a client below PROTOCOL_VERSION must be blocked by host.describe"
+    );
+    let legacy_event = serde_json::json!({
+        "type": "queue_update",
+        "steer_count": 1,
+        "follow_up_count": 0
+    });
+    let decoded = serde_json::from_value::<xylitol_protocol::Event>(legacy_event);
+    assert!(
+        matches!(
+            decoded,
+            Ok(xylitol_protocol::Event::QueueUpdate { ref items }) if items.is_empty()
+        ),
+        "count scalars must not survive: the payload decodes to an empty item list, not counts: {decoded:?}"
+    );
 }

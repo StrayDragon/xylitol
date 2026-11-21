@@ -1,5 +1,6 @@
 ---
 source: tests/agent_session_api_baseline.rs
+assertion_line: 98
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn emit_leaf_changed_settlement(&self)
@@ -17,6 +18,7 @@ pub async fn select_model_with_source( &mut self, model_id: &str, source: &str, 
 pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError>
 pub enum QueueMode
 pub enum ToolsWriteOutcome
+pub fn allocate_id(&self) -> String
 pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
 pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>)
@@ -29,10 +31,11 @@ pub fn clear_tool_freeze(&mut self)
 pub fn current_model(&self) -> Option<XyModelMeta>
 pub fn cwd(&self) -> &str
 pub fn drain(&mut self) -> Vec<AgentMessage>
-pub fn enqueue(&mut self, message: AgentMessage)
+pub fn drain_items(&mut self) -> Vec<QueuedItem>
+pub fn enqueue(&mut self, message: AgentMessage) -> QueuedItem
 pub fn fixed_request_context(&self) -> crate::agent::compaction::FixedRequestContext
-pub fn follow_up(&self, message: impl Into<String>)
-pub fn follow_up_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>)
+pub fn follow_up(&self, message: impl Into<String>) -> String
+pub fn follow_up_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) -> String
 pub fn freeze_tools(&mut self, tools: ToolSet)
 pub fn freeze_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
 pub fn frozen_fingerprint_matches_set(&self, candidate: &ToolSet) -> bool
@@ -44,21 +47,28 @@ pub fn install_compaction(&mut self, factory: XyCompactionFactory)
 pub fn install_system_prompt_text(&mut self, prompt: String)
 pub fn is_empty(&self) -> bool
 pub fn is_tools_frozen(&self) -> bool
+pub fn items(&self) -> Vec<QueueItem>
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
 pub fn loaded_skills(&self) -> &[xylitol_plugin_sdk::resource::SkillInfo]
 pub fn model_registry(&self) -> ModelRegistry
 pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: xylitol_plugin_sdk::XyModelBuilder, permission: Arc<dyn XyPermission>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
-pub fn new(mode: QueueMode) -> Self
+pub fn new(mode: QueueMode, kind: QueueItemKind) -> Self
 pub fn new(steering_mode: QueueMode, follow_up_mode: QueueMode) -> Self
 pub fn notify_queue_update(&self)
+pub fn pop_item(&mut self) -> Option<QueuedItem>
 pub fn pop_one(&mut self) -> Option<AgentMessage>
 pub fn prompt_opts(&self) -> SystemPromptOpts
+pub fn queue_item(&self, id: &str) -> Option<QueueItem>
+pub fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem>
 pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
 pub fn replace_model_registry(&self, registry: ModelRegistry)
+pub fn revoke(&mut self, id: &str) -> bool
+pub fn revoke(&self, id: &str) -> RevokeOutcome
+pub fn revoke_queue_item(&self, id: &str) -> crate::agent::capabilities::RevokeOutcome
 pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>
@@ -71,17 +81,21 @@ pub fn set_tools(&mut self, tools: ToolSet) -> ToolsWriteOutcome
 pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> ToolsWriteOutcome
 pub fn set_workspaces(&mut self, workspaces: Vec<String>)
 pub fn stats(&self) -> QueueStats
-pub fn steer(&self, message: impl Into<String>)
-pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>)
+pub fn steer(&self, message: impl Into<String>) -> String
+pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) -> String
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> String
+pub fn to_queue_item(&self, kind: QueueItemKind) -> QueueItem
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
 pub fn unbind_event_tx(&self, turn_id: TurnId)
+pub fn with_id_source(mode: QueueMode, kind: QueueItemKind, next_id: Arc<AtomicU64>) -> Self
 pub fn workspaces(&self) -> &[String]
+pub id: String, pub message: AgentMessage, } impl QueuedItem
 pub model_id: String, pub display_name: String, pub thinking: String, pub omit_thinking: bool, } impl ActiveTurnBinding
+pub revoked: bool, pub items: Vec<QueueItem>, } pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
-pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<(TurnId, EventTx)>>>, } impl AsyncQueueRuntime
-pub steer_count: usize, pub follow_up_count: usize, } pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
+pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, next_id: Arc<AtomicU64>, event_tx: Arc<Mutex<Option<(TurnId, EventTx)>>>, } impl AsyncQueueRuntime
+pub steer_count: usize, pub follow_up_count: usize, } #[derive(Debug, Clone)] pub struct QueuedItem
 pub struct ActiveTurnBinding
 pub struct AgentCapabilities
 pub struct AsyncQueueRuntime
@@ -89,11 +103,12 @@ pub struct ContextUsage
 pub struct HookBlockedError(pub String)
 pub struct PendingMessageQueue
 pub struct QueueStats
+pub struct RevokeOutcome
 pub struct SessionStats
 pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::should_compact
 pub use crate::agent::model::registry::ModelRegistry
 pub use self::hook_bus::HookBlockedError
-pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats}
+pub use self::queue::
 pub use self::stats::SessionStats
 pub use self::stats::{ContextUsage, get_context_usage}
 pub use self::tools_ops::ToolsWriteOutcome

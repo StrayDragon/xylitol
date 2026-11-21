@@ -22,6 +22,8 @@ impl Plugin for RegistriesPlugin {
 
 fn provide_registries(ctx: &Ctx) -> Result {
     ctx.provide(HostRegistries::new()).map(|_| ())?;
+    ctx.provide(crate::external_plugin::ExternalMcpRegistry::default())
+        .map(|_| ())?;
     provide_reload_hub(ctx)?;
     Ok(())
 }

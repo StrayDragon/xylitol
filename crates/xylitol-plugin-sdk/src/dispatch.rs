@@ -96,10 +96,12 @@ pub enum DispatchOutcome {
         plugin: String,
         text: String,
     },
-    QueueStats {
-        steer_count: usize,
-        follow_up_count: usize,
+    QueueItems(Vec<crate::session::QueueItem>),
+    QueueItemEnqueued {
+        id: String,
+        items: Vec<crate::session::QueueItem>,
     },
+    RevokedQueueItem(crate::driver::RevokeQueueItemOutcome),
 }
 
 pub fn validate_nonempty_thinking_level(s: &str) -> Result<(), DispatchRejection> {

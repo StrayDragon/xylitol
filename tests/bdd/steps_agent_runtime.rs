@@ -302,6 +302,456 @@ pub(crate) async fn ar_take_run_store(prompt: &str) {
     ar_store_events(local);
 }
 
+#[given("装配 agent 并入队两条 follow_up")]
+pub(crate) async fn _g_ar_revoke_two_followups(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("revoke ack");
+    let mut runner = ar_make_runner(agent, ws);
+    let first = runner.follow_up("追问一");
+    runner.follow_up("追问二");
+    AR_REVOKE_ID.with(|cell| *cell.borrow_mut() = Some(first));
+    ar_store_runner(runner);
+}
+
+thread_local! {
+    static AR_REVOKE_BROADCAST: RefCell<Option<Vec<xylitol_plugin_sdk::session::QueueItem>>> =
+        const { RefCell::new(None) };
+    static AR_REVOKE_ID: RefCell<Option<String>> = const { RefCell::new(None) };
+    static AR_REVOKE_OUTCOME: RefCell<Option<xylitol_runtime::agent::capabilities::RevokeOutcome>> =
+        const { RefCell::new(None) };
+}
+
+#[when("撤销第一条队列项")]
+pub(crate) fn _w_ar_revoke_first() {
+    let id = AR_REVOKE_ID.with(|cell| cell.borrow().clone().expect("first item id"));
+    let outcome = ar_with_runner(|runner| runner.revoke_queue_item(&id));
+    AR_REVOKE_OUTCOME.with(|cell| *cell.borrow_mut() = Some(outcome));
+}
+
+#[then("队列项列表仅剩第二条且其不入本轮 turn")]
+pub(crate) async fn _t_ar_revoke_leaves_second() {
+    let outcome = AR_REVOKE_OUTCOME.with(|cell| cell.borrow().clone().expect("revoke outcome"));
+    assert!(outcome.revoked, "revoking a pending item must succeed");
+    assert_eq!(
+        outcome.items.len(),
+        1,
+        "only the untouched follow_up must remain: {:?}",
+        outcome.items
+    );
+    assert_eq!(outcome.items[0].preview, "追问二");
+    let items = ar_with_runner(|runner| runner.queue_items());
+    assert_eq!(items, outcome.items, "driver view must match revoke result");
+}
+
+#[given("装配 agent 并入队一条 follow_up 且该队列项已出队成为新 turn")]
+pub(crate) async fn _g_ar_revoke_dequeued(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("dequeued ack");
+    let mut runner = ar_make_runner(agent, ws);
+    let id = runner.follow_up("追问一");
+    AR_REVOKE_ID.with(|cell| *cell.borrow_mut() = Some(id));
+    ar_store_runner(runner);
+}
+
+#[when("撤销该队列项")]
+pub(crate) async fn _w_ar_revoke_dequeued() {
+    ar_take_run_store("主提示").await;
+    let id = AR_REVOKE_ID.with(|cell| cell.borrow().clone().expect("follow_up id"));
+    let outcome = ar_with_runner(|runner| runner.revoke_queue_item(&id));
+    AR_REVOKE_OUTCOME.with(|cell| *cell.borrow_mut() = Some(outcome));
+}
+
+#[then("应答 kind=NotFound")]
+pub(crate) fn _t_ar_revoke_not_found() {
+    let outcome = AR_REVOKE_OUTCOME.with(|cell| cell.borrow().clone().expect("revoke outcome"));
+    assert!(
+        !outcome.revoked,
+        "a dequeued item is a fact and must not be revocable: {outcome:?}"
+    );
+}
+
+#[given("两个客户端并发撤销同一队列项")]
+pub(crate) async fn _g_ar_concurrent_revoke(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("concurrent revoke ack");
+    let mut runner = ar_make_runner(agent, ws);
+    let id = runner.follow_up("并发撤的追问");
+    AR_REVOKE_ID.with(|cell| *cell.borrow_mut() = Some(id));
+    ar_store_runner(runner);
+}
+
+#[when("撤销请求经会话信箱串行化处理")]
+pub(crate) fn _w_ar_concurrent_revoke_serialized() {
+    let id = AR_REVOKE_ID.with(|cell| cell.borrow().clone().expect("item id"));
+    let outcomes = ar_with_runner(|runner| {
+        std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for _ in 0..2 {
+                handles.push(scope.spawn(|| runner.revoke_queue_item(&id)));
+            }
+            handles
+                .into_iter()
+                .map(|h| h.join().expect("revoke thread"))
+                .collect::<Vec<_>>()
+        })
+    });
+    AR_REVOKE_OUTCOMES.with(|cell| *cell.borrow_mut() = Some(outcomes));
+}
+
+thread_local! {
+    static AR_REVOKE_OUTCOMES: RefCell<Option<Vec<xylitol_runtime::agent::capabilities::RevokeOutcome>>> =
+        const { RefCell::new(None) };
+}
+
+#[then("恰好一次成功且另一次应答 kind=NotFound")]
+pub(crate) fn _t_ar_concurrent_revoke_exactly_once() {
+    let outcomes = AR_REVOKE_OUTCOMES.with(|cell| cell.borrow().clone().expect("outcomes"));
+    assert_eq!(outcomes.len(), 2, "both clients must get an answer");
+    let revoked = outcomes.iter().filter(|o| o.revoked).count();
+    let not_found = outcomes.iter().filter(|o| !o.revoked).count();
+    assert_eq!(revoked, 1, "exactly one revoke must win: {outcomes:?}");
+    assert_eq!(not_found, 1, "the loser must answer NotFound: {outcomes:?}");
+    assert!(
+        outcomes.iter().all(|o| o.items.is_empty()),
+        "the queue must be empty after the revoke: {outcomes:?}"
+    );
+}
+
+#[given("分别经嵌入 driver 直调与线协议 revoke_queue_item 撤销同一队列项")]
+pub(crate) async fn _g_ar_embed_and_wire_revoke(agent: &AgentState, ws: &Workspace) {
+    use xylitol::embed::{XyDriver, assemble_driver};
+    set_fake_text("embed revoke ack");
+    ws.init();
+    let (runtime_a, store_a) = crate::bdd::helpers::make_agent_with_store(agent);
+    let mut embed_driver = assemble_driver(runtime_a, store_a);
+    let embed_id = XyDriver::follow_up(&mut embed_driver, "嵌入端追问")
+        .await
+        .expect("embedding follow_up");
+    let embed = XyDriver::revoke_queue_item(&embed_driver, &embed_id);
+    let (runtime_b, store_b) = crate::bdd::helpers::make_agent_with_store(agent);
+    let mut wire_driver = assemble_driver(runtime_b, store_b);
+    let wire_id = XyDriver::follow_up(&mut wire_driver, "嵌入端追问")
+        .await
+        .expect("wire-side follow_up");
+    let wire = crate::bdd::steps_protocol::wire_revoke_queue_item(&mut wire_driver, &wire_id);
+    AR_REVOKE_PAIR.with(|cell| {
+        *cell.borrow_mut() = Some((embed, wire));
+    });
+}
+
+thread_local! {
+    static AR_REVOKE_PAIR: RefCell<
+        Option<(
+            xylitol_plugin_sdk::RevokeQueueItemOutcome,
+            crate::bdd::steps_protocol::WireRevoke,
+        )>,
+    > = const { RefCell::new(None) };
+}
+
+#[then("两者语义一致且剩余队列项列表相同")]
+pub(crate) fn _t_ar_embed_and_wire_same() {
+    let (embed, wire) = AR_REVOKE_PAIR.with(|cell| cell.borrow().clone().expect("revoke pair"));
+    assert_eq!(
+        embed.revoked, wire.revoked,
+        "embedding and wire revoke must answer the same outcome kind"
+    );
+    let embed_items: Vec<(String, String)> = embed
+        .items
+        .iter()
+        .map(|i| (i.id.clone(), i.kind.as_str().to_string()))
+        .collect();
+    assert_eq!(
+        embed_items, wire.items,
+        "both ends must expose the same remaining queue item list"
+    );
+}
+
+#[given("两个客户端附着同一会话且队列中有一项")]
+pub(crate) async fn _g_ar_two_clients_queue(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("two clients ack");
+    let mut runner = ar_make_runner(agent, ws);
+    let mut stream = agent_submit_root(&mut runner, "共享会话主提示").await;
+    let mut local = Vec::new();
+    let mut saw_start = false;
+    while let Some(event) = stream.next().await {
+        if matches!(event, XyEvent::AgentStart { .. }) {
+            saw_start = true;
+        }
+        local.push(event);
+        if saw_start && matches!(local.last(), Some(XyEvent::StepStart { .. })) {
+            break;
+        }
+    }
+    assert!(saw_start, "the shared turn must have started");
+    let id = runner.follow_up("共享队列项");
+    let mut saw_enqueue = false;
+    while let Some(event) = stream.next().await {
+        if matches!(event, XyEvent::QueueUpdate { .. }) {
+            saw_enqueue = true;
+        }
+        local.push(event);
+        if saw_enqueue {
+            break;
+        }
+    }
+    assert!(
+        saw_enqueue,
+        "enqueueing during a live turn must emit QueueUpdate"
+    );
+    AR_REVOKE_ID.with(|cell| *cell.borrow_mut() = Some(id));
+    ar_store_runner(runner);
+    ar_store_events(local);
+}
+
+#[when("任一客户端撤销该项")]
+pub(crate) fn _w_ar_any_client_revokes() {
+    let id = AR_REVOKE_ID.with(|cell| cell.borrow().clone().expect("item id"));
+    let outcome = ar_with_runner(|runner| runner.revoke_queue_item(&id));
+    AR_REVOKE_BROADCAST.with(|cell| *cell.borrow_mut() = Some(outcome.items.clone()));
+    AR_REVOKE_OUTCOME.with(|cell| *cell.borrow_mut() = Some(outcome));
+}
+
+#[then("另一客户端经 QueueUpdate 收到更新后的队列项列表")]
+pub(crate) fn _t_ar_other_client_sees_update() {
+    let outcome = AR_REVOKE_OUTCOME.with(|cell| cell.borrow().clone().expect("revoke outcome"));
+    assert!(outcome.revoked, "the revoke must succeed");
+    let events = AR_RUNNER_EVENTS.with(|e| e.borrow().clone());
+    let queue_updates: Vec<Vec<xylitol_plugin_sdk::session::QueueItem>> = events
+        .iter()
+        .filter_map(|e| match e {
+            XyEvent::QueueUpdate { items } => Some(items.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !queue_updates.is_empty(),
+        "a revoke must emit QueueUpdate: {events:?}"
+    );
+    let broadcast = AR_REVOKE_BROADCAST.with(|c| c.borrow().clone().expect("broadcast list"));
+    assert_eq!(
+        broadcast, outcome.items,
+        "the shared QueueUpdate must carry the post-revoke item list"
+    );
+    let revoked_id = AR_REVOKE_ID.with(|c| c.borrow().clone().unwrap_or_default());
+    assert!(
+        broadcast.iter().all(|item| item.id != revoked_id),
+        "the revoked id must be gone from the broadcast list: {broadcast:?}"
+    );
+    assert!(
+        queue_updates
+            .iter()
+            .any(|items| items.iter().any(|i| i.id == revoked_id)),
+        "the pre-revoke QueueUpdate must have carried the item: {queue_updates:?}"
+    );
+}
+
+#[given("print 端运行一轮对话且队列撤销并发发生")]
+pub(crate) async fn _g_ar_print_with_concurrent_revoke(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("print ack");
+    let mut runner = ar_make_runner(agent, ws);
+    let extra = runner.follow_up("并发撤销的追问");
+    let _ = extra;
+    AR_REVOKE_ID.with(|cell| *cell.borrow_mut() = Some(extra));
+    let mut stream = agent_submit_root(&mut runner, "print 主提示").await;
+    let mut local = Vec::new();
+    while let Some(event) = stream.next().await {
+        if matches!(event, XyEvent::AgentStart { .. }) {
+            let id = AR_REVOKE_ID.with(|cell| cell.borrow().clone().expect("extra id"));
+            let _ = runner.revoke_queue_item(&id);
+        }
+        local.push(event);
+    }
+    ar_store_runner(runner);
+    ar_store_events(local);
+}
+
+#[then("print 端输出不受撤销影响")]
+pub(crate) fn _t_ar_print_unaffected() {
+    let events = AR_RUNNER_EVENTS.with(|e| e.borrow().clone());
+    let texts: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            XyEvent::TextDelta(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !texts.is_empty() && texts.iter().all(|t| !t.is_empty()),
+        "the print turn must still produce its answer: {texts:?}"
+    );
+    let agent_ends = events
+        .iter()
+        .filter(|e| matches!(e, XyEvent::AgentEnd { .. }))
+        .count();
+    assert_eq!(
+        agent_ends, 1,
+        "a concurrent revoke must not spawn or drop turns: {events:?}"
+    );
+}
+
+#[given("会话空闲时连续提交两条对话")]
+pub(crate) async fn _g_ar_two_submissions(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("one submission ack");
+    let mut runner = ar_make_runner(agent, ws);
+    let first = agent_submit_root(&mut runner, "第一条对话").await;
+    ar_store_runner(runner);
+    AR_FIRST_SUBMISSION.with(|cell| *cell.borrow_mut() = Some(first));
+}
+
+thread_local! {
+    static AR_FIRST_SUBMISSION: RefCell<Option<xylitol_runtime::agent::XyEventStream>> =
+        const { RefCell::new(None) };
+    static AR_SUBMISSION_ORDER: RefCell<Option<(Vec<XyEvent>, Vec<XyEvent>)>> =
+        const { RefCell::new(None) };
+}
+
+#[when("会话 actor 按信箱顺序消费")]
+pub(crate) async fn _w_ar_actor_consumes_in_order() {
+    let mut first =
+        AR_FIRST_SUBMISSION.with(|cell| cell.borrow_mut().take().expect("first submission"));
+    let mut first_events = Vec::new();
+    while let Some(event) = first.next().await {
+        let ended = matches!(event, XyEvent::AgentEnd { .. });
+        first_events.push(event);
+        if ended {
+            break;
+        }
+    }
+    drop(first);
+    let mut runner = ar_take_runner();
+    let mut second = agent_submit_root(&mut runner, "第二条对话").await;
+    let mut second_events = Vec::new();
+    while let Some(event) = second.next().await {
+        let ended = matches!(event, XyEvent::AgentEnd { .. });
+        second_events.push(event);
+        if ended {
+            break;
+        }
+    }
+    ar_store_runner(runner);
+    AR_SUBMISSION_ORDER.with(|cell| {
+        *cell.borrow_mut() = Some((first_events, second_events));
+    });
+}
+
+#[then("第一条进入 turn 处理且第二条仍在队列等待")]
+pub(crate) fn _t_ar_second_submission_waits() {
+    let (first_events, second_events) =
+        AR_SUBMISSION_ORDER.with(|cell| cell.borrow().clone().expect("submission order"));
+    assert!(
+        first_events
+            .iter()
+            .any(|e| matches!(e, XyEvent::AgentStart { .. })),
+        "the first submission must run its own turn: {first_events:?}"
+    );
+    assert!(
+        first_events
+            .iter()
+            .any(|e| matches!(e, XyEvent::AgentEnd { .. })),
+        "the first turn must complete before the second starts: {first_events:?}"
+    );
+    assert!(
+        second_events
+            .iter()
+            .any(|e| matches!(e, XyEvent::AgentStart { .. })),
+        "the second submission must run after the first turn ended: {second_events:?}"
+    );
+    assert!(
+        !second_events.iter().any(|e| matches!(e, XyEvent::Error(_))),
+        "a second submission after the first turn must not be rejected: {second_events:?}"
+    );
+    assert_eq!(
+        first_events
+            .iter()
+            .chain(second_events.iter())
+            .filter(|e| matches!(e, XyEvent::AgentStart { .. }))
+            .count(),
+        2,
+        "one submission must produce exactly one turn"
+    );
+}
+
+#[given("队列已有两个队列项且客户端中段订阅")]
+pub(crate) async fn _g_ar_midstream_queue(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("midstream ack");
+    let mut runner = ar_make_runner(agent, ws);
+    let mut stream = agent_submit_root(&mut runner, "中段订阅主提示").await;
+    let mut saw_start = false;
+    while let Some(event) = stream.next().await {
+        if matches!(event, XyEvent::AgentStart { .. }) {
+            saw_start = true;
+        }
+        if saw_start && matches!(event, XyEvent::StepStart { .. }) {
+            break;
+        }
+    }
+    assert!(
+        saw_start,
+        "the turn must be live before the mid-stream subscribe"
+    );
+    runner.follow_up("中段一");
+    runner.follow_up("中段二");
+    AR_MIDSTREAM_ITEMS.with(|cell| *cell.borrow_mut() = Some(runner.queue_items()));
+    ar_store_runner(runner);
+}
+
+thread_local! {
+    static AR_MIDSTREAM_ITEMS: RefCell<Option<Vec<xylitol_plugin_sdk::session::QueueItem>>> =
+        const { RefCell::new(None) };
+    static AR_MIDSTREAM_RESYNC: RefCell<Option<Vec<xylitol_plugin_sdk::session::QueueItem>>> =
+        const { RefCell::new(None) };
+}
+
+#[when("订阅经 resync 补发")]
+pub(crate) fn _w_ar_resync_replays_queue() {
+    let live = AR_MIDSTREAM_ITEMS.with(|cell| cell.borrow().clone().expect("queued items"));
+    let mut journal = xylitol_serve::occupancy::EventJournal::new("s0", 64);
+    let wire = xylitol_protocol::Event::QueueUpdate {
+        items: live
+            .iter()
+            .map(|item| xylitol_protocol::QueueItem {
+                id: item.id.clone(),
+                kind: item.kind.as_str().to_string(),
+                preview: item.preview.clone(),
+            })
+            .collect(),
+    };
+    journal.append(wire);
+    let replayed = journal.replay_from(0).expect("journal retains the event");
+    let mut resynced = Vec::new();
+    for (_, event) in replayed {
+        if let xylitol_protocol::Event::QueueUpdate { items } = event {
+            resynced = items
+                .into_iter()
+                .map(|item| xylitol_plugin_sdk::session::QueueItem {
+                    id: item.id,
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::from_wire(&item.kind),
+                    preview: item.preview,
+                })
+                .collect();
+        }
+    }
+    AR_MIDSTREAM_RESYNC.with(|cell| *cell.borrow_mut() = Some(resynced));
+}
+
+#[then("QueueUpdate 携带完整队列项列表")]
+pub(crate) fn _t_ar_resync_queue_complete() {
+    let live = AR_MIDSTREAM_ITEMS.with(|cell| cell.borrow().clone().expect("queued items"));
+    let resynced = AR_MIDSTREAM_RESYNC.with(|cell| cell.borrow().clone().expect("resynced items"));
+    assert_eq!(
+        live.len(),
+        2,
+        "the live queue must hold two items: {live:?}"
+    );
+    assert_eq!(
+        resynced, live,
+        "resync must replay the complete queue item list"
+    );
+    assert!(
+        resynced
+            .iter()
+            .all(|item| item.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp),
+        "item kinds must survive the journal round trip: {resynced:?}"
+    );
+}
+
 #[given("装配并运行入队 steer 的 agent")]
 pub(crate) async fn _g_ar8_steer_before_llm_request(agent: &AgentState, ws: &Workspace) {
     set_fake_text("steer ack");
@@ -413,15 +863,34 @@ pub(crate) async fn _w_ar9_observe_stream() {
     ar_take_run_store("主提示").await;
 }
 
-#[then("出现 QueueUpdate 且计数正确")]
+#[then("出现 QueueUpdate 且载荷为队列项列表含 id 与 kind")]
 pub(crate) fn _t_ar9_queue_update_emitted() {
-    let found = ar_events()
+    let events = ar_events();
+    let payloads: Vec<&Vec<xylitol_plugin_sdk::session::QueueItem>> = events
         .iter()
-        .any(|ev| matches!(ev, XyEvent::QueueUpdate { .. }));
+        .filter_map(|ev| match ev {
+            XyEvent::QueueUpdate { items } => Some(items),
+            _ => None,
+        })
+        .collect();
     assert!(
-        found,
-        "expected QueueUpdate after enqueue, got {:?}",
-        ar_events()
+        !payloads.is_empty(),
+        "expected at least one QueueUpdate after enqueue, got {events:?}"
+    );
+    assert!(
+        payloads.iter().all(|items| items.iter().all(|item| {
+            !item.id.is_empty()
+                && item.kind != xylitol_plugin_sdk::session::QueueItemKind::Unknown
+                && !item.preview.is_empty()
+        })),
+        "every QueueUpdate payload must be an items list whose entries carry id / kind / preview: {payloads:?}"
+    );
+    let runtime = ar_with_runner(|runner| runner.queue_items());
+    assert!(
+        runtime.iter().all(|item| !item.id.is_empty()
+            && item.kind != xylitol_plugin_sdk::session::QueueItemKind::Unknown
+            && !item.preview.is_empty()),
+        "driver queue_items must expose id / kind / preview for every pending item: {runtime:?}"
     );
 }
 

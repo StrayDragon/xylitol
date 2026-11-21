@@ -68,10 +68,11 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
                 .collect();
             json!({ "commands": cmds })
         }
-        DispatchOutcome::QueueStats {
-            steer_count,
-            follow_up_count,
-        } => json!({ "steer_count": steer_count, "follow_up_count": follow_up_count }),
+        DispatchOutcome::QueueItems(items) => json!({ "items": items }),
+        DispatchOutcome::QueueItemEnqueued { id, items } => json!({ "id": id, "items": items }),
+        DispatchOutcome::RevokedQueueItem(outcome) => {
+            json!({ "revoked": outcome.revoked, "items": outcome.items })
+        }
         other => session_outcome_to_value(other),
     }
 }
@@ -483,11 +484,37 @@ mod tests {
             json!({ "commands": [{ "name": "n", "description": "d" }] })
         );
         assert_eq!(
-            outcome_to_value(DispatchOutcome::QueueStats {
-                steer_count: 1,
-                follow_up_count: 2,
+            outcome_to_value(DispatchOutcome::QueueItems(vec![
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "q1".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                    preview: "hi".into(),
+                },
+            ])),
+            json!({ "items": [{ "id": "q1", "kind": "steer", "preview": "hi" }] })
+        );
+        assert_eq!(
+            outcome_to_value(DispatchOutcome::QueueItemEnqueued {
+                id: "q2".into(),
+                items: vec![xylitol_plugin_sdk::session::QueueItem {
+                    id: "q2".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "next".into(),
+                }],
             }),
-            json!({ "steer_count": 1, "follow_up_count": 2 })
+            json!({
+                "id": "q2",
+                "items": [{ "id": "q2", "kind": "follow_up", "preview": "next" }]
+            })
+        );
+        assert_eq!(
+            outcome_to_value(DispatchOutcome::RevokedQueueItem(
+                xylitol_plugin_sdk::driver::RevokeQueueItemOutcome {
+                    revoked: true,
+                    items: Vec::new(),
+                }
+            )),
+            json!({ "revoked": true, "items": [] })
         );
     }
 }

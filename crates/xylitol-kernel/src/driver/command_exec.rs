@@ -76,7 +76,7 @@ impl crate::dispatch::SessionCommandExecutor for CommandExecutorView<'_> {
             | Command::DeleteSession { .. }) => exec_session_meta(&mut *driver, cmd).await,
             Command::Reload { .. } => exec_reload(driver).await,
             Command::LoadedResources { .. } => exec_loaded_resources(driver).await,
-            Command::GetQueueStats { .. } => Ok(queue_stats_outcome(driver)),
+            Command::GetQueueStats { .. } => Ok(queue_items_outcome(driver)),
             Command::GetCommands { .. } => {
                 Ok(DispatchOutcome::Commands(XyDriver::get_commands(driver)))
             }
@@ -93,6 +93,7 @@ impl crate::dispatch::SessionCommandExecutor for CommandExecutorView<'_> {
                 clear_follow_up,
                 ..
             } => exec_clear_queue(driver, clear_steer, clear_follow_up).await,
+            Command::RevokeQueueItem { id } => exec_revoke_queue_item(driver, &id).await,
             Command::SessionDetach { .. } => Ok(DispatchOutcome::Empty),
             Command::Prompt { .. }
             | Command::Quit { .. }
@@ -401,16 +402,22 @@ async fn exec_steer(
     driver: &mut XyInProcessDriver,
     message: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {
-    driver.steer(message).await?;
-    Ok(queue_stats_outcome(driver))
+    let id = XyDriver::steer(driver, message).await?;
+    Ok(DispatchOutcome::QueueItemEnqueued {
+        id,
+        items: XyDriver::queue_items(driver),
+    })
 }
 
 async fn exec_follow_up(
     driver: &mut XyInProcessDriver,
     message: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {
-    driver.follow_up(message).await?;
-    Ok(queue_stats_outcome(driver))
+    let id = XyDriver::follow_up(driver, message).await?;
+    Ok(DispatchOutcome::QueueItemEnqueued {
+        id,
+        items: XyDriver::queue_items(driver),
+    })
 }
 
 async fn exec_clear_queue(
@@ -419,15 +426,22 @@ async fn exec_clear_queue(
     clear_follow_up: bool,
 ) -> Result<DispatchOutcome, XyDriverError> {
     driver.clear_queue(clear_steer, clear_follow_up).await?;
-    Ok(queue_stats_outcome(driver))
+    Ok(queue_items_outcome(driver))
 }
 
-fn queue_stats_outcome(driver: &XyInProcessDriver) -> DispatchOutcome {
-    let stats = driver.queue_stats();
-    DispatchOutcome::QueueStats {
-        steer_count: stats.steer_count,
-        follow_up_count: stats.follow_up_count,
+async fn exec_revoke_queue_item(
+    driver: &XyInProcessDriver,
+    id: &str,
+) -> Result<DispatchOutcome, XyDriverError> {
+    let outcome = XyDriver::revoke_queue_item(driver, id);
+    if !outcome.revoked {
+        return Err(XyDriverError::not_found(id.to_string()));
     }
+    Ok(DispatchOutcome::RevokedQueueItem(outcome))
+}
+
+fn queue_items_outcome(driver: &XyInProcessDriver) -> DispatchOutcome {
+    DispatchOutcome::QueueItems(XyDriver::queue_items(driver))
 }
 
 fn export_path(output_path: Option<String>, default: &str) -> std::path::PathBuf {

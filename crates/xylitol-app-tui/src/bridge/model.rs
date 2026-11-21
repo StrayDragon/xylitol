@@ -261,7 +261,20 @@ impl UiModel {
         }
     }
 
-    pub fn sync_queue(&mut self, steer_count: usize, follow_up_count: usize) {
+    pub fn sync_queue(&mut self, items: &[xylitol_plugin_sdk::session::QueueItem]) {
+        use xylitol_plugin_sdk::session::QueueItemKind;
+        let steer = items
+            .iter()
+            .filter(|item| item.kind == QueueItemKind::Steer)
+            .count();
+        let follow_up = items
+            .iter()
+            .filter(|item| item.kind == QueueItemKind::FollowUp)
+            .count();
+        self.sync_queue_depth(steer, follow_up);
+    }
+
+    pub fn sync_queue_depth(&mut self, steer_count: usize, follow_up_count: usize) {
         self.queue = QueueBadge {
             steer_count,
             follow_up_count,

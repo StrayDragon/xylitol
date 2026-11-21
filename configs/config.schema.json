@@ -285,51 +285,6 @@
       ],
       "type": "object"
     },
-    "external_plugins_ExternalPluginConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "args": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "command": {
-          "default": "",
-          "type": "string"
-        },
-        "cwd": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "name": {
-          "default": "",
-          "type": "string"
-        },
-        "timeout_ms": {
-          "default": 30000,
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "trusted": {
-          "default": false,
-          "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
     "hooks_HookEntry": {
       "properties": {
         "command": {
@@ -1284,13 +1239,6 @@
       "title": "ExecutionConfig",
       "type": "object"
     },
-    "external_plugins": {
-      "items": {
-        "$ref": "#/$defs/external_plugins_ExternalPluginConfig"
-      },
-      "title": "Array_of_ExternalPluginConfig",
-      "type": "array"
-    },
     "hooks": {
       "properties": {
         "default_timeout_secs": {
@@ -1488,6 +1436,27 @@
         }
       },
       "title": "OtelConfig",
+      "type": "object"
+    },
+    "plugins": {
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "title": "PluginsConfig",
       "type": "object"
     },
     "security": {

@@ -5,14 +5,13 @@ use crate::bdd::fixtures::Workspace;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol_kernel::boot::{BootOptions, Profile, boot_ctx};
-use xylitol_kernel::config::types::ExternalPluginConfig;
-use xylitol_kernel::external_plugin::ExternalClient;
 use xylitol_plugin_sdk::rt::CtxHost;
 
 pub struct InfraPluginBdd {
     pub config_path: RefCell<Option<PathBuf>>,
     pub script_path: RefCell<Option<PathBuf>>,
     pub tool_names: RefCell<Vec<String>>,
+    pub mcp_servers: RefCell<Vec<xylitol_official_plugin_mcp::McpServerConfig>>,
     pub error: RefCell<Option<String>>,
     pub call_result: RefCell<Option<String>>,
 }
@@ -23,13 +22,14 @@ pub fn infra_plugin_bdd() -> InfraPluginBdd {
         config_path: RefCell::new(None),
         script_path: RefCell::new(None),
         tool_names: RefCell::new(Vec::new()),
+        mcp_servers: RefCell::new(Vec::new()),
         error: RefCell::new(None),
         call_result: RefCell::new(None),
     }
 }
 
-fn fixture_script() -> &'static str {
-    r#"
+fn mcp_declaring_script() -> &'static str {
+    r#"#!/usr/bin/env python3
 import json, sys
 for line in sys.stdin:
     line = line.strip()
@@ -41,11 +41,12 @@ for line in sys.stdin:
             "protocol_version": 1,
             "name": "fixture",
             "version": "0.1.0",
-            "capabilities": ["tools"],
-            "tools": [{"name": "echo", "description": "Echo", "input_schema": {"type": "object"}}],
+            "capabilities": ["commands"],
+            "commands": [{"name": "run", "description": "Run the fixture"}],
+            "mcp": {"command": "fixture-mcp-server", "args": ["--stdio"]},
         }
-    elif request.get("method") == "tools/call":
-        result = {"content": str(request.get("params", {}).get("arguments", {}).get("text", ""))}
+    elif request.get("method") == "commands/call":
+        result = {"text": "ok"}
     else:
         print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "error": {"code": -32601, "message": "unknown"}}), flush=True)
         continue
@@ -53,21 +54,28 @@ for line in sys.stdin:
 "#
 }
 
-fn dying_script() -> &'static str {
-    r#"
-import json, sys
-line = sys.stdin.readline()
-request = json.loads(line)
-print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"protocol_version": 1, "capabilities": ["tools"], "tools": []}}), flush=True)
-"#
-}
-
-fn bad_protocol_script() -> &'static str {
-    r#"
+fn non_mcp_script() -> &'static str {
+    r#"#!/usr/bin/env python3
 import json, sys
 for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
     request = json.loads(line)
-    print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"protocol_version": 99, "capabilities": ["tools"]}}), flush=True)
+    if request.get("method") == "initialize":
+        result = {
+            "protocol_version": 1,
+            "name": "fixture",
+            "version": "0.1.0",
+            "capabilities": ["commands"],
+            "commands": [{"name": "run", "description": "Run the fixture"}],
+        }
+    elif request.get("method") == "commands/call":
+        result = {"text": "ok"}
+    else:
+        print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "error": {"code": -32601, "message": "unknown"}}), flush=True)
+        continue
+    print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}), flush=True)
 "#
 }
 
@@ -77,47 +85,86 @@ fn write_script(ws: &Workspace, name: &str, body: &str) -> PathBuf {
     path
 }
 
-fn write_config(ws: &Workspace, trusted: bool, name: &str, command: &str, script: &Path) {
+fn plugins_bin_dir(ws: &Workspace) -> PathBuf {
+    let dir = PathBuf::from(ws.ws("plugins")).join("bin");
+    std::fs::create_dir_all(&dir).expect("create plugins/bin");
+    dir
+}
+
+fn write_config(ws: &Workspace, plugins_yaml: &str) {
     let path = PathBuf::from(ws.ws("config.yaml"));
     let config = format!(
-        "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\nexternal_plugins:\n  - name: \"{name}\"\n    command: \"{command}\"\n    args: [\"-u\", \"{}\"]\n    trusted: {trusted}\n    timeout_ms: 5000\n",
-        script.to_string_lossy()
+        "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n{plugins_yaml}"
     );
     std::fs::write(&path, config).expect("write config");
 }
 
-fn prepare(ws: &Workspace, bdd: &InfraPluginBdd, trusted: bool, name: &str, command: &str) {
+fn prepare_discovered(
+    ws: &Workspace,
+    bdd: &InfraPluginBdd,
+    name: &str,
+    body: &str,
+    plugins_yaml: &str,
+) {
     ws.init();
-    let script = write_script(ws, "fixture.py", fixture_script());
-    write_config(ws, trusted, name, command, &script);
+    let script = write_script(ws, "fixture.py", body);
+    let bin = plugins_bin_dir(ws);
+    let entry = bin.join(name);
+    std::fs::copy(&script, &entry).expect("install plugin into plugins/bin");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&entry).expect("stat").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&entry, perms).expect("chmod plugin");
+    }
+    write_config(ws, plugins_yaml);
     bdd.config_path
         .replace(Some(PathBuf::from(ws.ws("config.yaml"))));
-    bdd.script_path.replace(Some(script));
+    bdd.script_path.replace(Some(entry));
 }
 
-#[given("配置含受信外部插件 fixture")]
-fn g_trusted_fixture(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
-    prepare(ws, infra_plugin_bdd, true, "fixture", "python3");
-}
-
-#[given("配置含未受信外部插件 fixture")]
-fn g_untrusted_fixture(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
-    prepare(ws, infra_plugin_bdd, false, "fixture", "python3");
-}
-
-#[given("配置含名为 tools-builtin 的受信外部插件")]
-fn g_reserved_name(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
-    prepare(ws, infra_plugin_bdd, true, "tools-builtin", "python3");
-}
-
-#[given("配置含命令不存在的受信外部插件")]
-fn g_missing_command(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
-    prepare(
+#[given("发现清单声明 mcp 的外部插件且未经用户批准")]
+fn g_discovered_mcp_unapproved(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
+    prepare_discovered(
         ws,
         infra_plugin_bdd,
-        true,
-        "missing-command",
-        "definitely-not-a-real-command-xyz",
+        "fixture",
+        mcp_declaring_script(),
+        "plugins:\n  enabled: [\"other\"]\n",
+    );
+}
+
+#[given("发现清单声明 mcp 的外部插件且用户已批准")]
+fn g_discovered_mcp_approved(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
+    prepare_discovered(
+        ws,
+        infra_plugin_bdd,
+        "fixture",
+        mcp_declaring_script(),
+        "plugins:\n  enabled: [\"fixture\"]\n",
+    );
+}
+
+#[given("已批准的外部插件被 config 显式停用")]
+fn g_discovered_mcp_disabled(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
+    prepare_discovered(
+        ws,
+        infra_plugin_bdd,
+        "fixture",
+        mcp_declaring_script(),
+        "plugins:\n  enabled: [\"fixture\"]\n  disabled: [\"fixture\"]\n",
+    );
+}
+
+#[given("发现清单未声明 mcp 的外部插件")]
+fn g_discovered_no_mcp(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
+    prepare_discovered(
+        ws,
+        infra_plugin_bdd,
+        "fixture",
+        non_mcp_script(),
+        "plugins:\n  enabled: [\"fixture\"]\n",
     );
 }
 
@@ -128,10 +175,17 @@ async fn w_boot(infra_plugin_bdd: &InfraPluginBdd) {
         .borrow()
         .clone()
         .expect("config prepared");
+    let plugin_dir = infra_plugin_bdd
+        .script_path
+        .borrow()
+        .clone()
+        .and_then(|script| script.parent().map(Path::to_path_buf))
+        .expect("plugin installed");
     if let Some(parent) = config_path.parent() {
         unsafe {
             std::env::set_var("XYLITOL_CONFIG_DIR", parent.join(".config").join("xylitol"));
             std::env::set_var("HOME", parent);
+            std::env::set_var("XYLITOL_PLUGINS_DIR", &plugin_dir);
         }
     }
     let opts = BootOptions {
@@ -156,176 +210,89 @@ async fn w_boot(infra_plugin_bdd: &InfraPluginBdd) {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
+            let servers = ctx
+                .get::<xylitol_kernel::external_plugin::ExternalMcpRegistry>()
+                .map(|registry| registry.servers())
+                .unwrap_or_default();
             infra_plugin_bdd.tool_names.replace(names);
+            infra_plugin_bdd.mcp_servers.replace(servers);
             infra_plugin_bdd.error.replace(None);
             let _ = ctx.shutdown().await;
         }
         Err(error) => {
             infra_plugin_bdd.tool_names.replace(Vec::new());
+            infra_plugin_bdd.mcp_servers.replace(Vec::new());
             infra_plugin_bdd.error.replace(Some(error.to_string()));
         }
     }
 }
 
-#[then("工具注册表含 fixture__echo")]
-fn t_has_fixture_echo(infra_plugin_bdd: &InfraPluginBdd) {
+fn mcp_tool_names(names: &[String], server: &str) -> Vec<String> {
+    let prefix = format!("mcp__{server}__");
+    names
+        .iter()
+        .filter(|name| name.starts_with(&prefix))
+        .cloned()
+        .collect()
+}
+
+#[then("工具注册表不含该插件的 mcp__ 工具")]
+fn t_unapproved_no_mcp_tools(infra_plugin_bdd: &InfraPluginBdd) {
     let names = infra_plugin_bdd.tool_names.borrow();
     assert!(
-        names.iter().any(|name| name == "fixture__echo"),
-        "trusted external plugin tool must be registered: {names:?}"
+        mcp_tool_names(&names, "fixture").is_empty(),
+        "an unapproved plugin must not register any mcp__ tool: {names:?}"
+    );
+    let servers = infra_plugin_bdd.mcp_servers.borrow();
+    assert!(
+        servers.iter().all(|server| server.name != "fixture"),
+        "an unapproved plugin must not register an MCP server: {servers:?}"
     );
 }
 
-#[then("工具注册表不含 fixture__echo")]
-fn t_no_fixture_echo(infra_plugin_bdd: &InfraPluginBdd) {
-    let names = infra_plugin_bdd.tool_names.borrow();
-    assert!(
-        names.iter().all(|name| name != "fixture__echo"),
-        "untrusted external plugin must not be assembled: {names:?}"
-    );
-}
-
-#[then("工具注册表不含 tools-builtin__echo")]
-fn t_no_reserved_echo(infra_plugin_bdd: &InfraPluginBdd) {
-    let names = infra_plugin_bdd.tool_names.borrow();
-    assert!(
-        names.iter().all(|name| name != "tools-builtin__echo"),
-        "reserved external plugin name must not be registered: {names:?}"
-    );
-}
-
-#[given("外部插件 fixture 声明 echo 工具")]
-fn g_echo_fixture(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
-    ws.init();
-    let script = write_script(ws, "fixture.py", fixture_script());
-    infra_plugin_bdd.script_path.replace(Some(script));
-}
-
-#[given("外部插件 fixture 声明 protocol_version 99")]
-fn g_bad_protocol_fixture(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
-    ws.init();
-    let script = write_script(ws, "bad-protocol.py", bad_protocol_script());
-    infra_plugin_bdd.script_path.replace(Some(script));
-}
-
-fn fixture_config(script: &Path, name: &str) -> ExternalPluginConfig {
-    ExternalPluginConfig {
-        name: name.into(),
-        command: "python3".into(),
-        args: vec!["-u".into(), script.to_string_lossy().into_owned()],
-        trusted: true,
-        timeout_ms: 5_000,
-        ..Default::default()
-    }
-}
-
-#[when("初始化并调用 echo")]
-async fn w_init_and_call(infra_plugin_bdd: &InfraPluginBdd) {
-    let script = infra_plugin_bdd
-        .script_path
-        .borrow()
-        .clone()
-        .expect("script prepared");
-    let client = ExternalClient::spawn(&fixture_config(&script, "fixture"))
-        .await
-        .expect("spawn fixture");
-    client.initialize("fixture").await.expect("initialize");
-    let result = client
-        .request(
-            "tools/call",
-            serde_json::json!({"name": "echo", "arguments": {"text": "hello"}}),
-        )
-        .await
-        .expect("tools/call");
-    infra_plugin_bdd.call_result.replace(Some(
-        result["content"].as_str().unwrap_or_default().to_string(),
-    ));
-    client.shutdown().await;
-}
-
-#[then("返回文本 hello")]
-fn t_call_result(infra_plugin_bdd: &InfraPluginBdd) {
+#[then("工具注册表含该插件的 mcp__ 工具")]
+fn t_approved_mcp_tools(infra_plugin_bdd: &InfraPluginBdd) {
+    let servers = infra_plugin_bdd.mcp_servers.borrow();
+    let server = servers
+        .iter()
+        .find(|server| server.name == "fixture")
+        .unwrap_or_else(|| {
+            panic!(
+                "an approved plugin declaring mcp must register as an MCP server: {servers:?}; error={:?}",
+                infra_plugin_bdd.error.borrow()
+            )
+        });
     assert_eq!(
-        infra_plugin_bdd.call_result.borrow().as_deref(),
-        Some("hello")
+        server.command.as_deref(),
+        Some("fixture-mcp-server"),
+        "the declared mcp command must be the registered server command"
+    );
+    assert_eq!(
+        server.args.as_deref(),
+        Some(["--stdio".to_string()].as_slice()),
+        "the declared mcp args must reach the registered server"
     );
 }
 
-#[when("初始化外部插件")]
-async fn w_init(infra_plugin_bdd: &InfraPluginBdd) {
-    let script = infra_plugin_bdd
-        .script_path
-        .borrow()
-        .clone()
-        .expect("script prepared");
-    let client = ExternalClient::spawn(&fixture_config(&script, "fixture"))
-        .await
-        .expect("spawn fixture");
-    let error = client
-        .initialize("fixture")
-        .await
-        .expect_err("protocol mismatch must fail");
-    infra_plugin_bdd.error.replace(Some(error));
-    client.shutdown().await;
-}
-
-#[given("外部插件进程已消亡")]
-fn g_dying_plugin(ws: &Workspace, infra_plugin_bdd: &InfraPluginBdd) {
-    ws.init();
-    let script = write_script(ws, "dying.py", dying_script());
-    infra_plugin_bdd.script_path.replace(Some(script));
-}
-
-#[when("初始化后调用工具")]
-async fn w_init_then_call(infra_plugin_bdd: &InfraPluginBdd) {
-    let script = infra_plugin_bdd
-        .script_path
-        .borrow()
-        .clone()
-        .expect("script prepared");
-    let client = ExternalClient::spawn(&fixture_config(&script, "fixture"))
-        .await
-        .expect("spawn fixture");
-    client.initialize("fixture").await.expect("initialize");
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    let error = client
-        .request("tools/call", serde_json::json!({"name": "echo"}))
-        .await
-        .expect_err("dead client must fail");
-    infra_plugin_bdd.error.replace(Some(error));
-    client.shutdown().await;
-}
-
-#[then("工具调用报 unavailable 且含死因")]
-fn t_unavailable_with_cause(infra_plugin_bdd: &InfraPluginBdd) {
-    let error = infra_plugin_bdd.error.borrow();
-    let error = error.as_ref().expect("error captured");
-    assert!(error.contains("unavailable"), "{error}");
-    assert!(
-        error.contains("process exited") || error.contains("write failed"),
-        "unavailable must carry the death cause: {error}"
-    );
-}
-
-#[then("握手失败且错误含 protocol mismatch")]
-fn t_protocol_mismatch(infra_plugin_bdd: &InfraPluginBdd) {
-    let error = infra_plugin_bdd.error.borrow();
-    let error = error.as_ref().expect("error captured");
-    assert!(error.contains("protocol mismatch"), "{error}");
-}
-
-#[then("装配成功且无该插件工具")]
-fn t_boot_survives_failure(infra_plugin_bdd: &InfraPluginBdd) {
-    assert!(
-        infra_plugin_bdd.error.borrow().is_none(),
-        "broken external plugin must not fail boot: {:?}",
-        infra_plugin_bdd.error.borrow()
-    );
+#[then("工具注册表不含该插件的工具")]
+fn t_disabled_no_tools(infra_plugin_bdd: &InfraPluginBdd) {
     let names = infra_plugin_bdd.tool_names.borrow();
     assert!(
-        names
-            .iter()
-            .all(|name| !name.starts_with("missing-command__")),
-        "broken external plugin must not register tools: {names:?}"
+        mcp_tool_names(&names, "fixture").is_empty(),
+        "a config-disabled plugin must not register any tool: {names:?}"
+    );
+    let servers = infra_plugin_bdd.mcp_servers.borrow();
+    assert!(
+        servers.iter().all(|server| server.name != "fixture"),
+        "config disabled must override approval and drop the MCP server: {servers:?}"
+    );
+}
+
+#[then("该插件不注册为 MCP server")]
+fn t_no_mcp_declaration(infra_plugin_bdd: &InfraPluginBdd) {
+    let servers = infra_plugin_bdd.mcp_servers.borrow();
+    assert!(
+        servers.iter().all(|server| server.name != "fixture"),
+        "a plugin without an mcp declaration must not register an MCP server: {servers:?}"
     );
 }

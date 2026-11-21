@@ -92,6 +92,7 @@ pub const METHOD_PERSIST_TRUST: &str = "persist_trust";
 pub const METHOD_STEER: &str = "steer";
 pub const METHOD_FOLLOW_UP: &str = "follow_up";
 pub const METHOD_CLEAR_QUEUE: &str = "clear_queue";
+pub const METHOD_REVOKE_QUEUE_ITEM: &str = "revoke_queue_item";
 pub const METHOD_SUBSCRIBE: &str = "subscribe";
 pub const METHOD_HOST_DESCRIBE: &str = "host.describe";
 
@@ -156,9 +157,10 @@ pub const REGISTRY: &[MethodEntry] = &[
     mx(METHOD_QUEUE_STATS, Auth::Readonly, true, Exec::Inline),
     m(METHOD_ARM_TOOL_FREEZE, Auth::Writer, RAW),
     m(METHOD_PERSIST_TRUST, Auth::Writer, RAW),
-    m(METHOD_STEER, Auth::Writer, CMD),
-    m(METHOD_FOLLOW_UP, Auth::Writer, CMD),
-    m(METHOD_CLEAR_QUEUE, Auth::Writer, true),
+    mx(METHOD_STEER, Auth::Writer, CMD, Exec::Inline),
+    mx(METHOD_FOLLOW_UP, Auth::Writer, CMD, Exec::Inline),
+    mx(METHOD_CLEAR_QUEUE, Auth::Writer, true, Exec::Inline),
+    mx(METHOD_REVOKE_QUEUE_ITEM, Auth::Writer, CMD, Exec::Inline),
     m(METHOD_SUBSCRIBE, Auth::Readonly, true),
     m(METHOD_HOST_DESCRIBE, Auth::Readonly, RAW),
 ];
@@ -191,6 +193,10 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::AppendEntryLabel { .. }
         | Command::SetSessionName { .. }
         | Command::SetSessionNameFor { .. }
+        | Command::Steer { .. }
+        | Command::FollowUp { .. }
+        | Command::ClearQueue { .. }
+        | Command::RevokeQueueItem { .. }
         | Command::SessionDetach { .. } => Exec::Inline,
         Command::Abort { .. }
         | Command::GetSessionStats { .. }
@@ -210,9 +216,6 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::GetSessionName { .. }
         | Command::GenerateSessionName { .. }
         | Command::DeleteSession { .. }
-        | Command::Steer { .. }
-        | Command::FollowUp { .. }
-        | Command::ClearQueue { .. }
         | Command::Subscribe { .. }
         | Command::ApproveTool { .. }
         | Command::AnswerQuestion { .. }
@@ -329,6 +332,7 @@ mod tests {
                 "steer",
                 "follow_up",
                 "clear_queue",
+                "revoke_queue_item",
             ]
         );
     }
@@ -440,7 +444,9 @@ mod tests {
             [
                 "append_entry_label",
                 "clear_capabilities",
+                "clear_queue",
                 "cycle_model",
+                "follow_up",
                 "get_available_models",
                 "get_capabilities",
                 "get_commands",
@@ -454,12 +460,14 @@ mod tests {
                 "mcp_resource_read",
                 "plugin_command",
                 "queue_stats",
+                "revoke_queue_item",
                 "session_detach",
                 "set_capability",
                 "set_model",
                 "set_session_name",
                 "set_session_name_for",
                 "set_thinking_level",
+                "steer",
             ]
             .as_slice()
         );
@@ -664,6 +672,10 @@ mod tests {
                 },
             ),
             (
+                "revoke_queue_item",
+                Command::RevokeQueueItem { id: String::new() },
+            ),
+            (
                 "subscribe",
                 Command::Subscribe {
                     session_id: String::new(),
@@ -672,7 +684,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(cases.len(), 47, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 48, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

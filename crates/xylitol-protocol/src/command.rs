@@ -134,6 +134,9 @@ pub enum Command {
     },
     #[serde(rename = "queue_stats")]
     GetQueueStats {},
+    RevokeQueueItem {
+        id: String,
+    },
     Steer {
         message: String,
     },

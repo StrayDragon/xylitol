@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 
-use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -10,18 +9,11 @@ use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::Mutex;
 use xylitol_official_plugin_config::types::ExternalPluginConfig;
 use xylitol_plugin_sdk::HostRegistries;
-use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
-use xylitol_plugin_sdk::tool_name::is_provider_safe_tool_name;
-use xylitol_plugin_sdk::{XyTool, XyToolCtx};
 
 pub const EXTERNAL_PLUGIN_PROTOCOL_VERSION: u64 = 1;
 
-pub const EXTERNAL_PLUGIN_TOOL_DELIMITER: &str = "__";
-
-pub fn external_tool_name(plugin: &str, tool: &str) -> String {
-    format!("{plugin}{EXTERNAL_PLUGIN_TOOL_DELIMITER}{tool}")
-}
+pub const EXTERNAL_PLUGIN_DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct ExternalToolSpec {
@@ -42,7 +34,7 @@ pub struct ExternalCommandSpec {
     pub argument_hint: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
 pub struct ExternalManifest {
     #[serde(default)]
     pub protocol_version: u64,
@@ -60,6 +52,17 @@ pub struct ExternalManifest {
     pub config_key: Option<String>,
     #[serde(default)]
     pub config_schema: Option<Value>,
+    #[serde(default)]
+    pub mcp: Option<ExternalMcpSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct ExternalMcpSpec {
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
 }
 
 impl ExternalManifest {
@@ -88,22 +91,23 @@ pub struct ExternalClient {
 }
 
 impl ExternalClient {
-    pub async fn spawn(config: &ExternalPluginConfig) -> Result<Self, String> {
-        let mut command = tokio::process::Command::new(&config.command);
-        command
-            .args(&config.args)
-            .envs(&config.env)
+    pub async fn spawn(
+        command: &str,
+        args: &[String],
+        env: &std::collections::HashMap<String, String>,
+    ) -> Result<Self, String> {
+        let mut child_command = tokio::process::Command::new(command);
+        child_command
+            .args(args)
+            .envs(env)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit())
             .kill_on_drop(true);
-        if let Some(cwd) = config.cwd.as_deref() {
-            command.current_dir(cwd);
-        }
-        xylitol_plugin_sdk::host_env::scrub_tokio_command(&mut command);
-        let mut child = command
+        xylitol_plugin_sdk::host_env::scrub_tokio_command(&mut child_command);
+        let mut child = child_command
             .spawn()
-            .map_err(|e| format!("spawn `{}`: {e}", config.command))?;
+            .map_err(|e| format!("spawn `{command}`: {e}"))?;
         let stdin = child
             .stdin
             .take()
@@ -249,69 +253,124 @@ impl ExternalClient {
 }
 
 pub struct ExternalPlugin {
-    config: ExternalPluginConfig,
+    name: String,
+    launch: Option<ExternalPluginConfig>,
+    timeout: Duration,
+    bin_dir_override: Option<std::path::PathBuf>,
 }
 
 impl ExternalPlugin {
     pub fn new(config: &ExternalPluginConfig) -> Result<Self> {
         Ok(Self {
-            config: config.clone(),
+            name: config.name.clone(),
+            launch: Some(config.clone()),
+            timeout: EXTERNAL_PLUGIN_DEFAULT_TIMEOUT,
+            bin_dir_override: None,
         })
     }
 
-    fn timeout(&self) -> Duration {
-        Duration::from_millis(self.config.timeout_ms)
+    pub fn discovered_at(name: &str, bin_dir: &std::path::Path) -> Self {
+        Self {
+            name: name.to_string(),
+            launch: Some(ExternalPluginConfig {
+                name: name.to_string(),
+                enabled: true,
+                disabled: false,
+            }),
+            timeout: EXTERNAL_PLUGIN_DEFAULT_TIMEOUT,
+            bin_dir_override: Some(bin_dir.to_path_buf()),
+        }
     }
+
+    fn timeout(&self) -> Duration {
+        self.timeout
+    }
+
+    fn launch_command(
+        &self,
+    ) -> Option<(
+        String,
+        Vec<String>,
+        std::collections::HashMap<String, String>,
+    )> {
+        let bin_dir = self.bin_dir_override.clone().or_else(plugin_bin_dir)?;
+        let executable = bin_dir.join(&self.name);
+        if !executable.is_file() {
+            return None;
+        }
+        Some((
+            executable.to_string_lossy().into_owned(),
+            Vec::new(),
+            std::collections::HashMap::new(),
+        ))
+    }
+}
+
+fn plugin_bin_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("XYLITOL_PLUGINS_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| {
+                std::path::PathBuf::from(home)
+                    .join(".xylitol")
+                    .join("plugins")
+                    .join("bin")
+            })
+        })
 }
 
 impl Plugin for ExternalPlugin {
     type Deps = ();
 
     fn name(&self) -> &str {
-        &self.config.name
+        &self.name
     }
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
         let Some(registries) = ctx.get::<HostRegistries>() else {
             log::warn!(
                 "external plugin `{}`: HostRegistries missing; not assembling tools",
-                self.config.name
+                self.name
             );
             return Ok(());
         };
-        let client = match ExternalClient::spawn(&self.config).await {
+        let Some((command, args, env)) = self.launch_command() else {
+            log::warn!(
+                "external plugin `{}`: executable missing under plugins/bin; skipped",
+                self.name
+            );
+            return Ok(());
+        };
+        let client = match ExternalClient::spawn(&command, &args, &env).await {
             Ok(client) => Arc::new(client),
             Err(error) => {
-                log::warn!("external plugin `{}`: {error}", self.config.name);
+                log::warn!("external plugin `{}`: {error}", self.name);
                 return Ok(());
             }
         };
-        let manifest = match tokio::time::timeout(
-            self.timeout(),
-            client.initialize(&self.config.name),
-        )
-        .await
-        {
-            Ok(Ok(manifest)) => manifest,
-            Ok(Err(error)) => {
-                log::warn!("external plugin `{}`: {error}", self.config.name);
-                client.shutdown().await;
-                return Ok(());
-            }
-            Err(_) => {
-                log::warn!(
-                    "external plugin `{}`: initialize timed out after {:?}",
-                    self.config.name,
-                    self.timeout()
-                );
-                client.shutdown().await;
-                return Ok(());
-            }
-        };
-        if !manifest.has_tools() && !manifest.has_commands() {
+        let manifest =
+            match tokio::time::timeout(self.timeout(), client.initialize(&self.name)).await {
+                Ok(Ok(manifest)) => manifest,
+                Ok(Err(error)) => {
+                    log::warn!("external plugin `{}`: {error}", self.name);
+                    client.shutdown().await;
+                    return Ok(());
+                }
+                Err(_) => {
+                    log::warn!(
+                        "external plugin `{}`: initialize timed out after {:?}",
+                        self.name,
+                        self.timeout()
+                    );
+                    client.shutdown().await;
+                    return Ok(());
+                }
+            };
+        let has_commands = manifest.has_commands();
+        if !has_commands && manifest.mcp.is_none() {
             log::warn!(
-                "external plugin `{}`: manifest declares neither `tools` nor `commands` capability",
-                self.config.name
+                "external plugin `{}`: manifest declares neither `commands` capability nor `mcp` declaration",
+                self.name
             );
             client.shutdown().await;
             return Ok(());
@@ -325,7 +384,7 @@ impl Plugin for ExternalPlugin {
             else {
                 log::error!(
                     "external plugin `{}`: ConfigService missing; cannot validate config section `{config_key}`",
-                    self.config.name
+                    self.name
                 );
                 client.shutdown().await;
                 return Ok(());
@@ -336,7 +395,7 @@ impl Plugin for ExternalPlugin {
                         if let Err(error) = validator.validate(value) {
                             log::error!(
                                 "external plugin `{}`: config section `{config_key}` violates config_schema: {error}",
-                                self.config.name
+                                self.name
                             );
                             client.shutdown().await;
                             return Ok(());
@@ -345,7 +404,7 @@ impl Plugin for ExternalPlugin {
                     Err(error) => {
                         log::error!(
                             "external plugin `{}`: invalid config_schema for `{config_key}`: {error}",
-                            self.config.name
+                            self.name
                         );
                         client.shutdown().await;
                         return Ok(());
@@ -367,51 +426,20 @@ impl Plugin for ExternalPlugin {
             if duplicate {
                 log::error!(
                     "external plugin `{}`: config_key `{config_key}` already claimed by another plugin",
-                    self.config.name
+                    self.name
                 );
                 client.shutdown().await;
                 return Ok(());
             }
         }
-        let has_commands = manifest.has_commands();
         let command_description = manifest
             .commands
             .first()
             .map(|c| c.description.clone())
             .unwrap_or_default();
-        let mut registered = Vec::new();
-        for spec in manifest.tools {
-            let public_name = external_tool_name(&self.config.name, &spec.name);
-            if !is_provider_safe_tool_name(&public_name) {
-                log::warn!(
-                    "external plugin `{}`: tool `{}` is not provider-safe; skipped",
-                    self.config.name,
-                    spec.name
-                );
-                continue;
-            }
-            if registries.tools.get(&public_name).is_some() {
-                log::warn!(
-                    "external plugin `{}`: tool `{}` already registered; skipped",
-                    self.config.name,
-                    public_name
-                );
-                continue;
-            }
-            registries.tools.insert(
-                public_name.clone(),
-                Arc::new(ExternalTool {
-                    public_name: public_name.clone(),
-                    spec,
-                    client: Arc::clone(&client),
-                    timeout: self.timeout(),
-                }),
-            );
-            registered.push(public_name);
-        }
         let mut registered_commands = Vec::new();
         if has_commands {
-            let public_name = format!("plugin:{}", self.config.name);
+            let public_name = format!("plugin:{}", self.name);
             registries.plugin_commands.insert(
                 public_name.clone(),
                 Arc::new(ExternalPluginCommand {
@@ -425,16 +453,76 @@ impl Plugin for ExternalPlugin {
         }
         let cleanup_registries = Arc::clone(&registries);
         ctx.effect(move || async move {
-            for name in registered {
-                cleanup_registries.tools.remove(&name);
-            }
             for name in registered_commands {
                 cleanup_registries.plugin_commands.remove(&name);
             }
             client.shutdown().await;
             Ok(())
         })?;
+        if let Some(mcp) = manifest.mcp {
+            if mcp.command.trim().is_empty() {
+                log::warn!(
+                    "external plugin `{}`: mcp declaration has empty command; not registered",
+                    self.name
+                );
+                return Ok(());
+            }
+            if let Some(registry) = ctx.get::<ExternalMcpRegistry>() {
+                registry.register(mcp_server_from_declaration(&self.name, mcp));
+            } else {
+                log::warn!(
+                    "external plugin `{}`: ExternalMcpRegistry missing; mcp declaration not registered",
+                    self.name
+                );
+            }
+        }
         Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct ExternalMcpRegistry {
+    servers: std::sync::Mutex<Vec<xylitol_official_plugin_mcp::McpServerConfig>>,
+}
+
+impl ExternalMcpRegistry {
+    pub fn register(&self, server: xylitol_official_plugin_mcp::McpServerConfig) {
+        let mut guard = self
+            .servers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.retain(|existing| existing.name != server.name);
+        guard.push(server);
+    }
+
+    pub fn servers(&self) -> Vec<xylitol_official_plugin_mcp::McpServerConfig> {
+        self.servers
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+}
+
+fn mcp_server_from_declaration(
+    name: &str,
+    mcp: ExternalMcpSpec,
+) -> xylitol_official_plugin_mcp::McpServerConfig {
+    xylitol_official_plugin_mcp::McpServerConfig {
+        name: name.to_string(),
+        transport: xylitol_official_plugin_mcp::McpTransportKind::Stdio,
+        command: Some(mcp.command),
+        args: Some(mcp.args),
+        url: None,
+        env: (!mcp.env.is_empty()).then_some(mcp.env),
+        headers: None,
+        scope: xylitol_official_plugin_mcp::McpScope::default(),
+        credential: None,
+        connect_timeout_ms: 30_000,
+        call_timeout_ms: 60_000,
+        keep_alive_ms: 0,
+        idle_ttl_ms: 0,
+        custom_transport: None,
+        oauth: None,
     }
 }
 
@@ -473,60 +561,6 @@ impl xylitol_plugin_sdk::XyPluginCommand for ExternalPluginCommand {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string())
-    }
-}
-
-struct ExternalTool {
-    public_name: String,
-    spec: ExternalToolSpec,
-    client: Arc<ExternalClient>,
-    timeout: Duration,
-}
-
-#[async_trait]
-impl XyTool for ExternalTool {
-    fn name(&self) -> &str {
-        &self.public_name
-    }
-
-    fn description(&self) -> &str {
-        &self.spec.description
-    }
-
-    fn parameters_schema(&self) -> Value {
-        if self.spec.input_schema.is_null() {
-            json!({ "type": "object", "properties": {} })
-        } else {
-            self.spec.input_schema.clone()
-        }
-    }
-
-    async fn execute_outcome(
-        &self,
-        _ctx: &XyToolCtx,
-        args: Value,
-    ) -> Result<xylitol_plugin_sdk::XyToolOutcome, XyToolError> {
-        let call = self.client.request(
-            "tools/call",
-            json!({
-                "name": self.spec.name,
-                "arguments": args,
-            }),
-        );
-        match tokio::time::timeout(self.timeout, call).await {
-            Ok(Ok(result)) => Ok(xylitol_plugin_sdk::XyToolOutcome::text(
-                result
-                    .get("content")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| result.to_string()),
-            )),
-            Ok(Err(error)) => Err(XyToolError::ExecutionFailed(anyhow::anyhow!(error))),
-            Err(_) => {
-                self.client.shutdown().await;
-                Err(XyToolError::Timeout(self.timeout))
-            }
-        }
     }
 }
 
@@ -605,15 +639,23 @@ for line in sys.stdin:
         .to_string()
     }
 
-    fn fixture_config(script: &std::path::Path) -> ExternalPluginConfig {
-        ExternalPluginConfig {
-            name: "fixture".into(),
-            command: "python3".into(),
-            args: vec!["-u".into(), script.to_string_lossy().into_owned()],
-            trusted: true,
-            timeout_ms: 5_000,
-            ..Default::default()
-        }
+    fn fixture_spawn(
+        script: &std::path::Path,
+    ) -> (
+        String,
+        Vec<String>,
+        std::collections::HashMap<String, String>,
+    ) {
+        (
+            "python3".to_string(),
+            vec!["-u".to_string(), script.to_string_lossy().into_owned()],
+            std::collections::HashMap::new(),
+        )
+    }
+
+    async fn spawn_fixture(script: &std::path::Path) -> Result<ExternalClient, String> {
+        let (command, args, env) = fixture_spawn(script);
+        ExternalClient::spawn(&command, &args, &env).await
     }
 
     fn write_fixture(dir: &tempfile::TempDir) -> std::path::PathBuf {
@@ -628,9 +670,7 @@ for line in sys.stdin:
     async fn client_initializes_and_calls_tool() {
         let dir = tempfile::tempdir().expect("tempdir");
         let script = write_fixture(&dir);
-        let client = ExternalClient::spawn(&fixture_config(&script))
-            .await
-            .expect("spawn fixture");
+        let client = spawn_fixture(&script).await.expect("spawn fixture");
         let manifest = client.initialize("fixture").await.expect("initialize");
         assert_eq!(manifest.protocol_version, EXTERNAL_PLUGIN_PROTOCOL_VERSION);
         assert!(manifest.has_tools());
@@ -653,9 +693,7 @@ for line in sys.stdin:
         let mut file = std::fs::File::create(&script).expect("fixture file");
         file.write_all(desync_fixture().as_bytes())
             .expect("write fixture");
-        let client = ExternalClient::spawn(&fixture_config(&script))
-            .await
-            .expect("spawn desync fixture");
+        let client = spawn_fixture(&script).await.expect("spawn desync fixture");
         client
             .initialize("desync-fixture")
             .await
@@ -696,46 +734,74 @@ for line in sys.stdin:
         client.shutdown().await;
     }
 
-    #[tokio::test]
-    async fn tool_names_are_namespaced_and_provider_safe() {
-        assert_eq!(external_tool_name("bun-demo", "echo"), "bun-demo__echo");
-        assert!(is_provider_safe_tool_name(&external_tool_name(
-            "bun-demo", "echo"
-        )));
-        assert!(!is_provider_safe_tool_name(&external_tool_name(
-            "bun demo", "echo"
-        )));
+    #[test]
+    fn mcp_declaration_maps_to_stdio_server() {
+        let manifest: ExternalManifest = serde_json::from_value(json!({
+            "protocol_version": EXTERNAL_PLUGIN_PROTOCOL_VERSION,
+            "name": "demo",
+            "capabilities": ["commands"],
+            "commands": [{"name": "run", "description": "run it"}],
+            "mcp": {"command": "demo-server", "args": ["--stdio"], "env": {"A": "1"}}
+        }))
+        .expect("manifest with mcp declaration");
+        assert!(!manifest.has_tools());
+        assert!(manifest.has_commands());
+        let mcp = manifest.mcp.expect("mcp declaration parsed");
+        let server = mcp_server_from_declaration("demo", mcp);
+        assert_eq!(server.name, "demo");
+        assert_eq!(
+            server.transport,
+            xylitol_official_plugin_mcp::McpTransportKind::Stdio
+        );
+        assert_eq!(server.command.as_deref(), Some("demo-server"));
+        assert_eq!(
+            server.args.as_deref(),
+            Some(["--stdio".to_string()].as_slice())
+        );
+        assert_eq!(
+            server.env.as_ref().and_then(|e| e.get("A")),
+            Some(&"1".to_string())
+        );
+        server.validate().expect("registered server must validate");
     }
 
-    #[tokio::test]
-    #[ignore = "requires bun on PATH; run locally with --ignored"]
-    async fn bun_demo_plugin_roundtrip() {
-        let plugin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/plugins/bun-demo/plugin.ts");
-        let plugin = plugin.canonicalize().expect("bun demo plugin path");
-        let config = ExternalPluginConfig {
-            name: "bun-demo".into(),
-            command: "bun".into(),
-            args: vec![plugin.to_string_lossy().into_owned()],
-            trusted: true,
-            timeout_ms: 5_000,
-            ..Default::default()
-        };
-        let client = ExternalClient::spawn(&config)
-            .await
-            .expect("spawn bun demo");
-        let manifest = client.initialize("bun-demo").await.expect("initialize");
-        assert_eq!(manifest.name, "bun-demo");
-        assert_eq!(manifest.tools.len(), 2);
-        let result = client
-            .request(
-                "tools/call",
-                json!({"name": "add", "arguments": {"a": 2, "b": 40}}),
-            )
-            .await
-            .expect("tools/call");
-        assert_eq!(result["content"], "42");
-        client.shutdown().await;
+    #[test]
+    fn manifest_without_mcp_declaration_registers_no_server() {
+        let manifest: ExternalManifest = serde_json::from_value(json!({
+            "protocol_version": EXTERNAL_PLUGIN_PROTOCOL_VERSION,
+            "name": "legacy",
+            "capabilities": ["tools"],
+            "tools": [{"name": "echo"}]
+        }))
+        .expect("manifest");
+        assert!(
+            manifest.mcp.is_none(),
+            "a plugin without an mcp declaration must not register as an MCP server"
+        );
+    }
+
+    #[test]
+    fn external_mcp_registry_replaces_by_name() {
+        let registry = ExternalMcpRegistry::default();
+        registry.register(mcp_server_from_declaration(
+            "demo",
+            ExternalMcpSpec {
+                command: "first".into(),
+                args: Vec::new(),
+                env: Default::default(),
+            },
+        ));
+        registry.register(mcp_server_from_declaration(
+            "demo",
+            ExternalMcpSpec {
+                command: "second".into(),
+                args: Vec::new(),
+                env: Default::default(),
+            },
+        ));
+        let servers = registry.servers();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].command.as_deref(), Some("second"));
     }
 
     #[tokio::test]
@@ -752,9 +818,7 @@ print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"protocol_ve
 "#,
         )
         .expect("write fixture");
-        let client = ExternalClient::spawn(&fixture_config(&path))
-            .await
-            .expect("spawn fixture");
+        let client = spawn_fixture(&path).await.expect("spawn fixture");
         client.initialize("fixture").await.expect("initialize");
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         let error = client
@@ -787,9 +851,7 @@ for line in sys.stdin:
 "#,
         )
         .expect("write fixture");
-        let client = ExternalClient::spawn(&fixture_config(&path))
-            .await
-            .expect("spawn fixture");
+        let client = spawn_fixture(&path).await.expect("spawn fixture");
         let error = client.initialize("fixture").await.expect_err("mismatch");
         assert!(error.contains("protocol mismatch"), "{error}");
         client.shutdown().await;

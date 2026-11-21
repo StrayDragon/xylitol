@@ -138,7 +138,7 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
     cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
     cached_commands: Arc<std::sync::Mutex<Option<Vec<CommandInfo>>>>,
-    cached_queue: Arc<std::sync::Mutex<QueueStats>>,
+    cached_queue: Arc<std::sync::Mutex<Vec<xylitol_plugin_sdk::session::QueueItem>>>,
     cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
     cached_capabilities: Arc<std::sync::Mutex<xylitol_plugin_sdk::session::CapabilitySnapshot>>,
     cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
@@ -168,7 +168,7 @@ struct DownlinkCtx<C> {
     life: CancellationToken,
     skip_cold_replay: Arc<AtomicBool>,
     attach_observe: Arc<std::sync::Mutex<AttachObserve>>,
-    cached_queue: Arc<std::sync::Mutex<QueueStats>>,
+    cached_queue: Arc<std::sync::Mutex<Vec<xylitol_plugin_sdk::session::QueueItem>>>,
     cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
     cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
     cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
@@ -302,16 +302,10 @@ where
                     return;
                 }
             };
-            if let XyEvent::QueueUpdate {
-                steer_count,
-                follow_up_count,
-            } = &agent_event
+            if let XyEvent::QueueUpdate { items } = &agent_event
                 && let Ok(mut cached) = ctx.cached_queue.lock()
             {
-                *cached = QueueStats {
-                    steer_count: *steer_count,
-                    follow_up_count: *follow_up_count,
-                };
+                *cached = items.clone();
             }
             if let XyEvent::ModelSelect { model_id, .. } = &agent_event {
                 let found = ctx.resolve_model_info(model_id).await;
@@ -638,7 +632,7 @@ where
             cached_model: Arc::new(std::sync::Mutex::new(None)),
             cached_models: Arc::new(std::sync::Mutex::new(None)),
             cached_commands: Arc::new(std::sync::Mutex::new(None)),
-            cached_queue: Arc::new(std::sync::Mutex::new(QueueStats::default())),
+            cached_queue: Arc::new(std::sync::Mutex::new(Vec::new())),
             cached_resources: Arc::new(std::sync::Mutex::new(LoadedResourcesSnapshot::default())),
             cached_capabilities: Arc::new(std::sync::Mutex::new(
                 xylitol_plugin_sdk::session::CapabilitySnapshot::default(),
@@ -670,15 +664,29 @@ where
     }
 
     fn cache_queue_from_value(&self, data: &Value) {
-        let stats = QueueStats {
-            steer_count: data.get("steer_count").and_then(Value::as_u64).unwrap_or(0) as usize,
-            follow_up_count: data
-                .get("follow_up_count")
-                .and_then(Value::as_u64)
-                .unwrap_or(0) as usize,
-        };
+        let items: Vec<xylitol_plugin_sdk::session::QueueItem> = data
+            .get("items")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| {
+                        Some(xylitol_plugin_sdk::session::QueueItem {
+                            id: item.get("id")?.as_str()?.to_string(),
+                            kind: xylitol_plugin_sdk::session::QueueItemKind::from_wire(
+                                item.get("kind")?.as_str()?,
+                            ),
+                            preview: item
+                                .get("preview")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         if let Ok(mut cached) = self.cached_queue.lock() {
-            *cached = stats;
+            *cached = items;
         }
     }
 
@@ -890,7 +898,17 @@ where
     }
 
     pub fn queue_stats(&self) -> QueueStats {
-        self.cached_queue.lock().map(|s| *s).unwrap_or_default()
+        let items = self.cached_queue_items();
+        QueueStats {
+            steer_count: items
+                .iter()
+                .filter(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::Steer)
+                .count(),
+            follow_up_count: items
+                .iter()
+                .filter(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp)
+                .count(),
+        }
     }
 
     fn with_session(&self, mut payload: serde_json::Value) -> serde_json::Value {
@@ -1319,6 +1337,63 @@ where
         });
     }
 
+    fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        self.cached_queue_items()
+    }
+
+    fn revoke_queue_item(&self, id: &str) -> xylitol_plugin_sdk::RevokeQueueItemOutcome {
+        let Some(handle) = tokio::runtime::Handle::try_current().ok() else {
+            return xylitol_plugin_sdk::RevokeQueueItemOutcome {
+                revoked: false,
+                items: self.cached_queue_items(),
+            };
+        };
+        let host = self.host.clone();
+        let payload = self.with_session(serde_json::json!({ "id": id }));
+        let result = tokio::task::block_in_place(|| {
+            handle.block_on(async move { host.unary("revoke_queue_item", payload).await })
+        });
+        let outcome = match result {
+            Ok(result) if result.ok => {
+                let value = result.value.unwrap_or(serde_json::Value::Null);
+                let revoked = value
+                    .get("revoked")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let items: Vec<xylitol_plugin_sdk::session::QueueItem> = value
+                    .get("items")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|item| {
+                                Some(xylitol_plugin_sdk::session::QueueItem {
+                                    id: item.get("id")?.as_str()?.to_string(),
+                                    kind: xylitol_plugin_sdk::session::QueueItemKind::from_wire(
+                                        item.get("kind")?.as_str()?,
+                                    ),
+                                    preview: item
+                                        .get("preview")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or_default()
+                                        .to_string(),
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if let Ok(mut cached) = self.cached_queue.lock() {
+                    *cached = items.clone();
+                }
+                xylitol_plugin_sdk::RevokeQueueItemOutcome { revoked, items }
+            }
+            _ => xylitol_plugin_sdk::RevokeQueueItemOutcome {
+                revoked: false,
+                items: self.cached_queue_items(),
+            },
+        };
+        outcome
+    }
+
     fn current_model(&self) -> Option<ModelInfo> {
         self.cached_model
             .lock()
@@ -1680,6 +1755,7 @@ where
                 clear_follow_up,
                 ..
             } => self.exec_clear_queue(clear_steer, clear_follow_up).await,
+            Command::RevokeQueueItem { id } => self.exec_revoke_queue_item(id).await,
             Command::Prompt { .. }
             | Command::Quit { .. }
             | Command::Subscribe { .. }
@@ -2161,6 +2237,15 @@ where
         Ok(self.queue_outcome())
     }
 
+    async fn exec_revoke_queue_item(
+        &mut self,
+        id: String,
+    ) -> Result<DispatchOutcome, XyDriverError> {
+        let data = self.unary_cmd(Command::RevokeQueueItem { id }).await?;
+        self.cache_queue_from_value(&data);
+        Ok(self.queue_outcome())
+    }
+
     async fn exec_clear_queue(
         &mut self,
         clear_steer: bool,
@@ -2217,11 +2302,14 @@ where
     }
 
     fn queue_outcome(&self) -> DispatchOutcome {
-        let stats = self.queue_stats();
-        DispatchOutcome::QueueStats {
-            steer_count: stats.steer_count,
-            follow_up_count: stats.follow_up_count,
-        }
+        DispatchOutcome::QueueItems(self.cached_queue_items())
+    }
+
+    fn cached_queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        self.cached_queue
+            .lock()
+            .map(|q| q.clone())
+            .unwrap_or_default()
     }
 }
 

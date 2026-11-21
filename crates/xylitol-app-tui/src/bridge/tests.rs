@@ -98,20 +98,24 @@ fn agent_end_keeps_busy_while_follow_up_queue_nonempty() {
     apply_xy_event(
         &mut model,
         &XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 2,
+            items: vec![
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qf0".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "f0".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qf1".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "f1".into(),
+                },
+            ],
         },
     );
     apply_xy_event(&mut model, &assistant_end());
     assert_eq!(model.phase, UiPhase::Busy, "status: {:?}", model.status);
     assert_eq!(model.status.as_deref(), Some("Follow-up pending"));
-    apply_xy_event(
-        &mut model,
-        &XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 0,
-        },
-    );
+    apply_xy_event(&mut model, &XyEvent::QueueUpdate { items: vec![] });
     apply_xy_event(&mut model, &assistant_end());
     assert_eq!(model.phase, UiPhase::Idle);
 }
@@ -370,13 +374,7 @@ fn message_update_tool_path_matches_after_wire_roundtrip() {
 fn agent_end_idles_when_follow_up_empty() {
     let mut model = UiModel::new();
     model.begin_run("x");
-    apply_xy_event(
-        &mut model,
-        &XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 0,
-        },
-    );
+    apply_xy_event(&mut model, &XyEvent::QueueUpdate { items: vec![] });
     apply_xy_event(&mut model, &assistant_end());
     assert_eq!(model.phase, UiPhase::Idle);
     assert_eq!(model.status, None);
@@ -389,8 +387,11 @@ fn agent_end_stays_busy_with_follow_up() {
     apply_xy_event(
         &mut model,
         &XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 1,
+            items: vec![xylitol_plugin_sdk::session::QueueItem {
+                id: "qf0".into(),
+                kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                preview: "f0".into(),
+            }],
         },
     );
     apply_xy_event(&mut model, &assistant_end());
@@ -404,8 +405,33 @@ fn queue_update_sets_badge() {
     apply_xy_event(
         &mut model,
         &XyEvent::QueueUpdate {
-            steer_count: 2,
-            follow_up_count: 3,
+            items: vec![
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qs0".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                    preview: "s0".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qs1".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                    preview: "s1".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qf0".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "f0".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qf1".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "f1".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qf2".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "f2".into(),
+                },
+            ],
         },
     );
     assert_eq!(
@@ -426,8 +452,11 @@ fn queue_update_trims_pending_strip_fifo() {
     apply_xy_event(
         &mut model,
         &XyEvent::QueueUpdate {
-            steer_count: 1,
-            follow_up_count: 0,
+            items: vec![xylitol_plugin_sdk::session::QueueItem {
+                id: "qs0".into(),
+                kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                preview: "s0".into(),
+            }],
         },
     );
     assert_eq!(model.pending_steer, vec!["b".to_string()]);
@@ -455,13 +484,7 @@ fn user_message_start_commits_steer_to_scrollback() {
             message: Some(AgentMessage::user("nudge")),
         },
     );
-    apply_xy_event(
-        &mut model,
-        &XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 0,
-        },
-    );
+    apply_xy_event(&mut model, &XyEvent::QueueUpdate { items: vec![] });
     assert!(model.pending_steer.is_empty());
     let users: Vec<_> = model
         .entries

@@ -97,6 +97,40 @@ impl HostClient for MuxOkHost {
     }
 }
 
+#[derive(Clone)]
+struct QueueHost {
+    revoked: bool,
+}
+
+#[async_trait]
+impl HostClient for QueueHost {
+    async fn unary(&self, method: &str, _payload: Value) -> Result<RpcResult, HostClientError> {
+        match method {
+            METHOD_HOST_DESCRIBE => Ok(describe_ok()),
+            METHOD_SUBSCRIBE => Ok(RpcResult::ok_value(
+                json!({"session_id": "s-test", "seq": 0, "inflight": false}),
+            )),
+            "revoke_queue_item" => {
+                if self.revoked {
+                    Ok(RpcResult::ok_value(json!({"revoked": true, "items": []})))
+                } else {
+                    Ok(RpcResult::error("not_found", "queue item not found: q9"))
+                }
+            }
+            "queue_stats" => Ok(RpcResult::ok_value(json!({"items": []}))),
+            _ => Ok(RpcResult::ok_value(json!({}))),
+        }
+    }
+
+    async fn respond(&self, _call_id: &str, _payload: Value) -> Result<(), HostClientError> {
+        Ok(())
+    }
+
+    async fn mux(&self) -> Result<MuxStream, HostClientError> {
+        Ok(Box::pin(futures::stream::empty()))
+    }
+}
+
 async fn run_downlink_briefly(host: MuxOkHost) -> (usize, bool) {
     let mux_calls = host.mux_calls.clone();
     let driver = XyRemoteDriver::with_host(host, "s-test").with_tunings(LinkTunings {
@@ -712,13 +746,19 @@ async fn session_event_queue_update_refreshes_cached_queue_stats() {
             json!({
                 "session_id": "s-test",
                 "seq": 32,
-                "event": {"type": "queue_update", "steer_count": 2, "follow_up_count": 3},
+                "event": {"type": "queue_update", "items": [
+                    {"id": "qs0", "kind": "steer", "preview": "s0"},
+                    {"id": "qs1", "kind": "steer", "preview": "s1"},
+                    {"id": "qf0", "kind": "follow_up", "preview": "f0"},
+                    {"id": "qf1", "kind": "follow_up", "preview": "f1"},
+                    {"id": "qf2", "kind": "follow_up", "preview": "f2"}
+                ]},
             }),
         ),
     )
     .await;
     let (steer, follow) = {
-        let stats = driver.cached_queue.lock().expect("cached queue");
+        let stats = driver.queue_stats();
         (stats.steer_count, stats.follow_up_count)
     };
     assert_eq!((steer, follow), (2, 3));
@@ -922,4 +962,25 @@ async fn approval_frame_without_reverse_rpc_notify_is_dropped() {
     )
     .await;
     assert!(pushed.into_inner().expect("pushed").is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn revoke_queue_item_reports_success_from_host_result() {
+    let driver = XyRemoteDriver::with_host(QueueHost { revoked: true }, "s-test");
+    let outcome = XyDriver::revoke_queue_item(&driver, "q1");
+    assert!(
+        outcome.revoked,
+        "a host result without an explicit revoked flag must count as revoked"
+    );
+    assert!(outcome.items.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn revoke_queue_item_not_found_is_not_revoked() {
+    let driver = XyRemoteDriver::with_host(QueueHost { revoked: false }, "s-test");
+    let outcome = XyDriver::revoke_queue_item(&driver, "q9");
+    assert!(
+        !outcome.revoked,
+        "a NotFound host answer must surface as not revoked"
+    );
 }

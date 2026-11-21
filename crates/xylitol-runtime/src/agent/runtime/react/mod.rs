@@ -8,7 +8,7 @@ use assistant::{
     streaming_message_update, upsert_streaming_tool,
 };
 use step_end::{
-    FinishTurnOutcome, IterationClose, close_iteration, drain_queue, pop_queue, queue_counts,
+    FinishTurnOutcome, IterationClose, close_iteration, drain_queue, pop_queue, queue_items,
     requeue_pending, try_turn_end_compaction,
 };
 use support::{
@@ -123,12 +123,20 @@ impl AgentRuntime {
         self.inner.clear_steer_queue();
     }
 
-    pub fn steer(&self, message: impl Into<String>) {
-        self.inner.steer(message);
+    pub fn steer(&self, message: impl Into<String>) -> String {
+        self.inner.steer(message)
     }
 
-    pub fn follow_up(&self, message: impl Into<String>) {
-        self.inner.follow_up(message);
+    pub fn follow_up(&self, message: impl Into<String>) -> String {
+        self.inner.follow_up(message)
+    }
+
+    pub fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        self.inner.queue_items()
+    }
+
+    pub fn revoke_queue_item(&self, id: &str) -> crate::agent::capabilities::RevokeOutcome {
+        self.inner.revoke_queue_item(id)
     }
 
     pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool) {
@@ -493,11 +501,11 @@ impl AgentRuntime {
         });
 
         match admit {
-            Admit::Busy => XyEventStream::busy(),
             Admit::Immediate { turn_id, cancel } => {
                 self.start_root_stream(session_id, turn_id, cancel, frozen, seeded_history)
                     .await
             }
+            Admit::Busy => XyEventStream::busy(),
         }
     }
 
@@ -981,7 +989,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         history.push(AgentMessage::user_parts(user_parts.clone()));
         persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
 
-        let mut pending: Vec<AgentMessage> = drain_queue(&steer_queue);
+        let mut pending: Vec<crate::agent::capabilities::QueuedItem> = drain_queue(&steer_queue);
         let mut turn: usize = 0;
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
         let mut overflow_recovery_attempted = false;
@@ -1096,7 +1104,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     .or_else(|| agent_turn_span.as_ref().map(|t| t.turn_id().to_string()));
 
                 if !pending.is_empty() {
-                    for message in pending.drain(..) {
+                    for item in pending.drain(..) {
+                        let message = item.message;
                         yield XyEvent::MessageStart {
                             role: "user".to_string(),
                             message: Some(message.clone()),
@@ -1116,11 +1125,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         }
                         history.push(message.clone());
                     }
-                    let (steer_count, follow_up_count) =
-                        queue_counts(&steer_queue, &follow_up_queue);
                     yield XyEvent::QueueUpdate {
-                        steer_count,
-                        follow_up_count,
+                        items: queue_items(&steer_queue, &follow_up_queue),
                     };
                 }
 
@@ -1698,12 +1704,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             pending: drained,
                             ..
                         } = settle_outcome
-                            && let Some((steer_count, follow_up_count)) =
+                            && let Some(items) =
                                 requeue_pending(&steer_queue, &follow_up_queue, drained)
                         {
-                            yield XyEvent::QueueUpdate {
-                                steer_count,
-                                follow_up_count,
+                            yield XyEvent::QueueUpdate { items,
                             };
                         }
                         break 'outer;
@@ -1739,13 +1743,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         Err(error) => {
                             note_abort(AgentEndReason::ModelError, &mut abort_reason);
                             yield XyEvent::error_msg(format!("goal evaluator failed: {error}"));
-                            if let Some((steer_count, follow_up_count)) =
+                            if let Some(items) =
                                 requeue_pending(&steer_queue, &follow_up_queue, next_pending)
                             {
-                                yield XyEvent::QueueUpdate {
-                                    steer_count,
-                                    follow_up_count,
-                                };
+                                yield XyEvent::QueueUpdate { items };
                             }
                             break 'outer;
                         }
@@ -1761,13 +1762,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         }
                         Some(GoalDecision::Stop) => {
                             note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
-                            if let Some((steer_count, follow_up_count)) =
+                            if let Some(items) =
                                 requeue_pending(&steer_queue, &follow_up_queue, next_pending)
                             {
-                                yield XyEvent::QueueUpdate {
-                                    steer_count,
-                                    follow_up_count,
-                                };
+                                yield XyEvent::QueueUpdate { items };
                             }
                             break 'outer;
                         }
@@ -1798,13 +1796,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 }
                                 LoopControl::Stop => {
                                     note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
-                                    if let Some((steer_count, follow_up_count)) =
+                                    if let Some(items) =
                                         requeue_pending(&steer_queue, &follow_up_queue, next_pending)
                                     {
-                                        yield XyEvent::QueueUpdate {
-                                            steer_count,
-                                            follow_up_count,
-                                        };
+                                        yield XyEvent::QueueUpdate { items };
                                     }
                                     break 'outer;
                                 }
@@ -1817,12 +1812,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
                                         note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                                         yield middleware_limit_event("compact");
-                                        if let Some((steer_count, follow_up_count)) =
+                                        if let Some(items) =
                                             requeue_pending(&steer_queue, &follow_up_queue, next_pending)
                                         {
-                                            yield XyEvent::QueueUpdate {
-                                                steer_count,
-                                                follow_up_count,
+                                            yield XyEvent::QueueUpdate { items,
                                             };
                                         }
                                         break 'outer;
@@ -1855,10 +1848,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                             pending = next_pending;
                                             turn += 1;
                                             settle_count += 1;
-                                            if let Some((steer_count, follow_up_count)) = queue_update {
-                                                yield XyEvent::QueueUpdate {
-                                                    steer_count,
-                                                    follow_up_count,
+                                            if let Some(items) = queue_update {
+                                                yield XyEvent::QueueUpdate { items,
                                                 };
                                             }
                                             continue 'outer;
@@ -1868,12 +1859,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                             yield XyEvent::error_msg(format!(
                                                 "loop middleware {requested_by} compact failed: {e}"
                                             ));
-                                            if let Some((steer_count, follow_up_count)) =
+                                            if let Some(items) =
                                                 requeue_pending(&steer_queue, &follow_up_queue, next_pending)
                                             {
-                                                yield XyEvent::QueueUpdate {
-                                                    steer_count,
-                                                    follow_up_count,
+                                                yield XyEvent::QueueUpdate { items,
                                                 };
                                             }
                                             break 'outer;
@@ -1891,13 +1880,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         ),
                                     );
                                     note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
-                                    if let Some((steer_count, follow_up_count)) =
+                                    if let Some(items) =
                                         requeue_pending(&steer_queue, &follow_up_queue, next_pending)
                                     {
-                                        yield XyEvent::QueueUpdate {
-                                            steer_count,
-                                            follow_up_count,
-                                        };
+                                        yield XyEvent::QueueUpdate { items };
                                     }
                                     break 'outer;
                                 }
@@ -1905,12 +1891,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             Err(fault) => {
                                 note_abort(AgentEndReason::MiddlewareFault, &mut abort_reason);
                                 yield middleware_fault_event(&fault);
-                                if let Some((steer_count, follow_up_count)) =
+                                if let Some(items) =
                                     requeue_pending(&steer_queue, &follow_up_queue, next_pending)
                                 {
-                                    yield XyEvent::QueueUpdate {
-                                        steer_count,
-                                        follow_up_count,
+                                    yield XyEvent::QueueUpdate { items,
                                     };
                                 }
                                 break 'outer;
@@ -1919,13 +1903,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
                             note_abort(AgentEndReason::MiddlewareStop, &mut abort_reason);
                             yield middleware_limit_event("continue");
-                            if let Some((steer_count, follow_up_count)) =
+                            if let Some(items) =
                                 requeue_pending(&steer_queue, &follow_up_queue, next_pending)
                             {
-                                yield XyEvent::QueueUpdate {
-                                    steer_count,
-                                    follow_up_count,
-                                };
+                                yield XyEvent::QueueUpdate { items };
                             }
                             break 'outer;
                         }
@@ -1933,10 +1914,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     turn += 1;
                     settle_count += 1;
                     pending = next_pending;
-                    if let Some((steer_count, follow_up_count)) = queue_update {
-                        yield XyEvent::QueueUpdate {
-                            steer_count,
-                            follow_up_count,
+                    if let Some(items) = queue_update {
+                        yield XyEvent::QueueUpdate { items,
                         };
                     }
                     continue;
@@ -2180,10 +2159,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     } => {
                         turn += 1;
                         pending = next_pending;
-                        if let Some((steer_count, follow_up_count)) = queue_update {
-                            yield XyEvent::QueueUpdate {
-                                steer_count,
-                                follow_up_count,
+                        if let Some(items) = queue_update {
+                            yield XyEvent::QueueUpdate { items,
                             };
                         }
                     }
@@ -2249,10 +2226,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 run_turn_injection(&loop_chain, &submission_ctx, &mut history).await;
             }
             pending = vec![next_submission];
-            let (steer_count, follow_up_count) = queue_counts(&steer_queue, &follow_up_queue);
             yield XyEvent::QueueUpdate {
-                steer_count,
-                follow_up_count,
+                items: queue_items(&steer_queue, &follow_up_queue),
             };
         }
 

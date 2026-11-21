@@ -154,21 +154,26 @@ impl Default for SubagentConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct ExternalPluginConfig {
     pub name: String,
-    pub command: String,
     #[serde(default)]
-    pub args: Vec<String>,
+    pub enabled: bool,
     #[serde(default)]
-    pub env: HashMap<String, String>,
-    #[serde(default)]
-    pub cwd: Option<String>,
-    #[serde(default)]
-    pub trusted: bool,
-    #[serde(default = "default_external_plugin_timeout_ms")]
-    pub timeout_ms: u64,
+    pub disabled: bool,
 }
 
-fn default_external_plugin_timeout_ms() -> u64 {
-    30_000
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PluginsConfig {
+    pub enabled: Vec<String>,
+    pub disabled: Vec<String>,
+}
+
+impl PluginsConfig {
+    pub fn is_enabled(&self, name: &str) -> bool {
+        if self.disabled.iter().any(|entry| entry == name) {
+            return false;
+        }
+        self.enabled.is_empty() || self.enabled.iter().any(|entry| entry == name)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -413,11 +418,31 @@ impl AppConfig {
         let message = format!("unknown config keys: {list}");
         match self.xylitol.unknown_keys {
             UnknownKeyPolicy::Error => Err(LoadError::validation(message)),
-            UnknownKeyPolicy::Warn => {
-                log::warn!(target: "xylitol::config", "{message}");
-                Ok(())
-            }
+            UnknownKeyPolicy::Warn => Ok(()),
         }
+    }
+
+    pub fn unknown_keys_warning(
+        &self,
+        extra_keys: &[String],
+        known_sections: &[xylitol_plugin_sdk::config_section::ConfigSection],
+    ) -> Option<String> {
+        let known: HashSet<&str> = known_sections.iter().map(|section| section.key).collect();
+        let unknown: Vec<&String> = self
+            .unknown_keys
+            .iter()
+            .filter(|key| !known.contains(key.as_str()))
+            .filter(|key| !extra_keys.iter().any(|extra| extra == *key))
+            .collect();
+        if unknown.is_empty() {
+            return None;
+        }
+        let list = unknown
+            .iter()
+            .map(|key| format!("`{key}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(format!("unknown config keys: {list}"))
     }
 
     pub fn validate_thinking_levels(&self) -> Result<(), LoadError> {
@@ -1350,33 +1375,40 @@ agents:
 }
 
 #[cfg(test)]
-mod external_plugins_tests {
+mod plugins_config_tests {
     use super::test_support::*;
     use super::*;
 
     #[test]
-    fn external_plugins_deserialize() {
+    fn plugins_sets_deserialize_and_disabled_wins() {
         let cfg: AppConfig = yaml_serde::from_str(
             r#"
-external_plugins:
-  - name: "bun-demo"
-    command: "bun"
-    args: ["plugin.ts"]
-    trusted: true
-    timeout_ms: 5000
+plugins:
+  enabled: ["alpha", "beta"]
+  disabled: ["beta"]
 "#,
         )
-        .expect("external plugin config");
+        .expect("plugins config");
+        let plugins = get::<PluginsConfig>(&cfg, "plugins");
         assert_eq!(
-            get::<Vec<ExternalPluginConfig>>(&cfg, "external_plugins").len(),
-            1
+            plugins.enabled,
+            vec!["alpha".to_string(), "beta".to_string()]
         );
-        let plugin = &get::<Vec<ExternalPluginConfig>>(&cfg, "external_plugins")[0];
-        assert_eq!(plugin.name, "bun-demo");
-        assert_eq!(plugin.command, "bun");
-        assert_eq!(plugin.args, vec!["plugin.ts".to_string()]);
-        assert!(plugin.trusted);
-        assert_eq!(plugin.timeout_ms, 5_000);
+        assert!(plugins.is_enabled("alpha"));
+        assert!(
+            !plugins.is_enabled("beta"),
+            "disabled must override enabled and have top priority"
+        );
+        assert!(
+            !plugins.is_enabled("gamma"),
+            "enabled list is explicit inclusion"
+        );
+    }
+
+    #[test]
+    fn plugins_sets_default_to_allow_all_not_disabled() {
+        let plugins = PluginsConfig::default();
+        assert!(plugins.is_enabled("anything"));
     }
 
     #[test]
@@ -1434,20 +1466,24 @@ subagent:
     }
 
     #[test]
-    fn external_plugin_timeout_defaults() {
+    fn external_plugin_row_carries_no_launch_or_trust_fields() {
         let cfg: AppConfig = yaml_serde::from_str(
             r#"
-external_plugins:
-  - name: "demo"
-    command: "demo"
+plugins:
+  disabled: ["demo"]
 "#,
         )
-        .expect("external plugin config");
-        assert_eq!(
-            get::<Vec<ExternalPluginConfig>>(&cfg, "external_plugins")[0].timeout_ms,
-            30_000
+        .expect("plugins config");
+        let plugin = ExternalPluginConfig {
+            name: "demo".into(),
+            enabled: false,
+            disabled: true,
+        };
+        assert!(plugin.disabled);
+        assert!(
+            !get::<PluginsConfig>(&cfg, "plugins").is_enabled("demo"),
+            "config-level disabled must gate the discovered plugin"
         );
-        assert!(!get::<Vec<ExternalPluginConfig>>(&cfg, "external_plugins")[0].trusted);
     }
 }
 

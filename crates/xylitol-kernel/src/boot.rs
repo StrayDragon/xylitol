@@ -133,6 +133,27 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
         .map_err(|e| kernel_failed(format!("loader reconcile: {e}")))?;
 
     wait_active(&ctx, &loader).await?;
+    let external_mcp = ctx
+        .get::<crate::external_plugin::ExternalMcpRegistry>()
+        .map(|registry| registry.servers())
+        .unwrap_or_default();
+    if !external_mcp.is_empty() {
+        let servers = serde_json::to_value(&external_mcp).unwrap_or(serde_json::Value::Null);
+        let patch = Patch {
+            id: Some("mcp".into()),
+            insert: None,
+            name: None,
+            overrides: serde_json::json!({ "config": { "servers": servers } })
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+        };
+        loader
+            .reconcile(vec![Layer::new("external-mcp", vec![patch])], None)
+            .await
+            .map_err(|e| kernel_failed(format!("external mcp reconcile: {e}")))?;
+        wait_active(&ctx, &loader).await?;
+    }
     if let Some(config) = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>() {
         let external_keys = config
             .external_config_keys
@@ -143,6 +164,14 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
             .app
             .validate_unknown_keys(&external_keys, &crate::config_sections::all())
             .map_err(|error| kernel_failed(error.to_string()))?;
+        if config.app.xylitol.unknown_keys
+            == xylitol_official_plugin_config::types::UnknownKeyPolicy::Warn
+            && let Some(message) = config
+                .app
+                .unknown_keys_warning(&external_keys, &crate::config_sections::all())
+        {
+            log::warn!(target: "xylitol::config", "{message}");
+        }
     }
     Ok((ctx, loader))
 }
@@ -219,9 +248,40 @@ fn default_rows(
     serde_json::from_value(serde_json::json!([{ "insert": insert }])).unwrap_or_default()
 }
 
+struct ExternalPluginFactory {
+    name: String,
+    bin_dir: std::path::PathBuf,
+}
+
+impl rutis::host::PluginFactory<serde_json::Value> for ExternalPluginFactory {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn build(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Result<Box<dyn rutis::host::DynPlugin>, rutis::Error> {
+        Ok(Box::new(ExternalPlugin::discovered_at(
+            &self.name,
+            &self.bin_dir,
+        )))
+    }
+}
+
 fn register_external_builtins(builtins: &mut Builtins, specs: &[ExternalPluginConfig]) {
+    let Some(bin_dir) = plugin_bin_dir() else {
+        return;
+    };
     for spec in specs {
-        builtins.register(spec.name.clone(), ExternalPlugin::new);
+        builtins.register_raw(
+            spec.name.clone(),
+            ExternalPluginFactory {
+                name: spec.name.clone(),
+                bin_dir: bin_dir.clone(),
+            },
+            None,
+        );
     }
 }
 
@@ -238,44 +298,71 @@ fn external_rows(specs: &[ExternalPluginConfig]) -> Vec<serde_json::Value> {
         .collect()
 }
 
-fn external_plugin_specs(ctx: &Ctx) -> Vec<ExternalPluginConfig> {
-    let Some(config) = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>() else {
+fn plugins_setting(ctx: &Ctx) -> xylitol_official_plugin_config::types::PluginsConfig {
+    ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>()
+        .map(|config| {
+            xylitol_official_plugin_config::types::PluginsConfig::try_from_sections(
+                &config.app.sections,
+            )
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+        })
+        .unwrap_or_default()
+}
+
+fn discovered_plugin_specs(
+    settings: &xylitol_official_plugin_config::types::PluginsConfig,
+) -> Vec<ExternalPluginConfig> {
+    let Some(plugins_dir) = plugin_bin_dir() else {
         return Vec::new();
     };
-    let mut seen = std::collections::HashSet::new();
     let mut specs = Vec::new();
-    let specs_config =
-        xylitol_official_plugin_config::sections::ExternalPluginsSection::try_from_sections(
-            &config.app.sections,
-        )
-        .unwrap_or_default()
-        .unwrap_or_default();
-    for spec in &specs_config.0 {
-        if !spec.trusted {
-            log::warn!(
-                "external plugin `{}`: not trusted (`trusted: true` required); skipped",
-                spec.name
-            );
+    let Ok(entries) = std::fs::read_dir(&plugins_dir) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<std::path::PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| path.is_file())
+        .collect();
+    paths.sort();
+    for path in paths {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if is_reserved_plugin_name(name) {
+            log::warn!("external plugin `{name}`: name collides with a built-in plugin; skipped");
             continue;
         }
-        if spec.name.trim().is_empty() || spec.command.trim().is_empty() {
-            log::warn!("external plugin: name and command are required; skipped");
+        if !settings.is_enabled(name) {
+            log::info!("external plugin `{name}`: disabled by config; skipped");
             continue;
         }
-        if is_reserved_plugin_name(&spec.name) {
-            log::warn!(
-                "external plugin `{}`: name collides with a built-in plugin; skipped",
-                spec.name
-            );
-            continue;
-        }
-        if !seen.insert(spec.name.clone()) {
-            log::warn!("external plugin `{}`: duplicate name; skipped", spec.name);
-            continue;
-        }
-        specs.push(spec.clone());
+        specs.push(ExternalPluginConfig {
+            name: name.to_string(),
+            enabled: true,
+            disabled: false,
+        });
     }
     specs
+}
+
+fn plugin_bin_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("XYLITOL_PLUGINS_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| {
+                std::path::PathBuf::from(home)
+                    .join(".xylitol")
+                    .join("plugins")
+                    .join("bin")
+            })
+        })
+}
+
+fn external_plugin_specs(ctx: &Ctx) -> Vec<ExternalPluginConfig> {
+    let settings = plugins_setting(ctx);
+    discovered_plugin_specs(&settings)
 }
 
 fn base_rows(
@@ -532,7 +619,7 @@ mod tests {
     use super::*;
 
     fn external_fixture() -> &'static str {
-        r#"
+        r#"#!/usr/bin/env python3
 import json, sys
 for line in sys.stdin:
     line = line.strip()
@@ -564,6 +651,7 @@ for line in sys.stdin:
             unsafe {
                 std::env::set_var("XYLITOL_CONFIG_DIR", parent.join(".config").join("xylitol"));
                 std::env::set_var("HOME", parent);
+                std::env::set_var("XYLITOL_PLUGINS_DIR", parent.join("plugins").join("bin"));
             }
         }
         BootOptions {
@@ -580,31 +668,51 @@ for line in sys.stdin:
 
     fn write_external_config(
         dir: &tempfile::TempDir,
-        trusted: bool,
+        enabled: bool,
         name: &str,
     ) -> (std::path::PathBuf, std::path::PathBuf) {
         let script = dir.path().join("external_fixture.py");
         std::fs::write(&script, external_fixture()).expect("fixture");
+        let bin_dir = dir.path().join("plugins").join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("plugins/bin");
+        let installed = bin_dir.join(name);
+        std::fs::copy(&script, &installed).expect("install fixture");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&installed).expect("stat").permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&installed, perms).expect("chmod");
+        }
+        let plugins_yaml = if enabled {
+            format!("plugins:\n  enabled: [\"{name}\"]\n")
+        } else {
+            "plugins:\n  enabled: [\"other\"]\n".to_string()
+        };
         let config_path = dir.path().join("config.yaml");
         let config = format!(
-            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\nexternal_plugins:\n  - name: \"{name}\"\n    command: \"python3\"\n    args: [\"-u\", \"{}\"]\n    trusted: {trusted}\n    timeout_ms: 5000\n",
-            script.to_string_lossy()
+            "models:\n  default_model: q\n  entries:\n    q:\n      provider: openai\n      model: m\n{plugins_yaml}"
         );
         std::fs::write(&config_path, config).expect("config");
-        (config_path, script)
+        (config_path, installed)
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn boot_ctx_registers_trusted_external_tools() {
+    #[serial_test::serial(env_global)]
+    async fn boot_ctx_registers_enabled_external_plugin_commands() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (config_path, _script) = write_external_config(&dir, true, "fixture");
+        let (config_path, _installed) = write_external_config(&dir, true, "fixture");
         let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
         let registries = ctx
             .get::<xylitol_plugin_sdk::HostRegistries>()
             .expect("registries");
         assert!(
-            registries.tools.get("fixture__echo").is_some(),
-            "trusted external plugin tool must be registered"
+            registries.plugin_commands.get("plugin:fixture").is_some(),
+            "an enabled discovered plugin must contribute its commands"
+        );
+        assert!(
+            registries.tools.get("fixture__echo").is_none(),
+            "a plugin declaring only commands and mcp must not bridge private tools"
         );
         let _ = ctx.shutdown().await;
     }
@@ -630,9 +738,10 @@ for line in sys.stdin:
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial(env_global)]
     async fn boot_ctx_registers_external_plugin_commands() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (config_path, _script) = write_external_config(&dir, true, "fixture");
+        let (config_path, _installed) = write_external_config(&dir, true, "fixture");
         let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
         let registries = ctx
             .get::<xylitol_plugin_sdk::HostRegistries>()
@@ -644,6 +753,14 @@ for line in sys.stdin:
         assert_eq!(command.description(), "Fixture status");
         let text = command.invoke("refresh").await.expect("invoke");
         assert_eq!(text, "fixture:refresh");
+        let servers = ctx
+            .get::<crate::external_plugin::ExternalMcpRegistry>()
+            .expect("external mcp registry")
+            .servers();
+        assert!(
+            servers.iter().all(|server| server.name != "fixture"),
+            "the fixture declares no mcp, so no server may be registered: {servers:?}"
+        );
         let _ = ctx.shutdown().await;
     }
 
@@ -871,30 +988,35 @@ for line in sys.stdin:
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn boot_ctx_skips_untrusted_external_plugins() {
+    #[serial_test::serial(env_global)]
+    async fn boot_ctx_skips_plugins_outside_the_enabled_set() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (config_path, _script) = write_external_config(&dir, false, "fixture");
+        let (config_path, _installed) = write_external_config(&dir, false, "fixture");
         let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
         let registries = ctx
             .get::<xylitol_plugin_sdk::HostRegistries>()
             .expect("registries");
         assert!(
-            registries.tools.get("fixture__echo").is_none(),
-            "untrusted external plugin must not be assembled"
+            registries.plugin_commands.get("plugin:fixture").is_none(),
+            "a plugin outside the enabled set must not be assembled"
         );
         let _ = ctx.shutdown().await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial(env_global)]
     async fn boot_ctx_skips_external_plugin_with_reserved_name() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (config_path, _script) = write_external_config(&dir, true, "tools-builtin");
+        let (config_path, _installed) = write_external_config(&dir, true, "tools-builtin");
         let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
         let registries = ctx
             .get::<xylitol_plugin_sdk::HostRegistries>()
             .expect("registries");
         assert!(
-            registries.tools.get("tools-builtin__echo").is_none(),
+            registries
+                .plugin_commands
+                .get("plugin:tools-builtin")
+                .is_none(),
             "reserved external plugin name must not be registered"
         );
         let _ = ctx.shutdown().await;
@@ -1063,41 +1185,59 @@ for line in sys.stdin:
         assert!(message.contains("never-ready"), "{message}");
     }
 
+    static LOG_RECORDS: std::sync::Mutex<Vec<(log::Level, String, String)>> =
+        std::sync::Mutex::new(Vec::new());
+
+    struct LogCapture;
+
+    impl log::Log for LogCapture {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            true
+        }
+
+        fn log(&self, record: &log::Record<'_>) {
+            LOG_RECORDS.lock().expect("records").push((
+                record.level(),
+                record.target().to_string(),
+                record.args().to_string(),
+            ));
+        }
+
+        fn flush(&self) {}
+    }
+
+    static LOG_CAPTURE: LogCapture = LogCapture;
+
+    fn install_capture_logger() -> bool {
+        static INSTALLED: std::sync::Once = std::sync::Once::new();
+        static OURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        INSTALLED.call_once(|| {
+            if log::set_logger(&LOG_CAPTURE).is_ok() {
+                OURS.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        });
+        log::set_max_level(log::LevelFilter::Trace);
+        OURS.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     #[test]
     #[serial_test::serial(log_global)]
     fn rutis_error_sink_routes_to_the_log_facade() {
-        use std::sync::Mutex;
-
-        static RECORDS: Mutex<Vec<(log::Level, String, String)>> = Mutex::new(Vec::new());
-
-        struct Capture;
-
-        impl log::Log for Capture {
-            fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-                true
-            }
-
-            fn log(&self, record: &log::Record<'_>) {
-                RECORDS.lock().expect("records").push((
-                    record.level(),
-                    record.target().to_string(),
-                    record.args().to_string(),
-                ));
-            }
-
-            fn flush(&self) {}
+        if !install_capture_logger() {
+            eprintln!(
+                "skipping: another logger claimed the process before this test; \
+                 the log-facade contract is covered by the standalone run"
+            );
+            return;
         }
-
-        let _ = log::set_boxed_logger(Box::new(Capture));
-        log::set_max_level(log::LevelFilter::Trace);
-        RECORDS.lock().expect("records").clear();
+        LOG_RECORDS.lock().expect("records").clear();
 
         let sink = rutis_error_sink();
         sink(Arc::new(ErrorKind::NotServedByName {
             service: "loader".into(),
         }));
         {
-            let records = RECORDS.lock().expect("records");
+            let records = LOG_RECORDS.lock().expect("records");
             assert!(
                 !records
                     .iter()
@@ -1114,10 +1254,10 @@ for line in sys.stdin:
             );
         }
 
-        RECORDS.lock().expect("records").clear();
+        LOG_RECORDS.lock().expect("records").clear();
         sink(Arc::new(ErrorKind::PluginFailed("boom".into())));
 
-        let records = RECORDS.lock().expect("records");
+        let records = LOG_RECORDS.lock().expect("records");
         assert!(
             records.iter().any(|(level, target, message)| {
                 *level == log::Level::Error

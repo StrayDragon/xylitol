@@ -12,6 +12,7 @@ pub(crate) mod json_rpc;
 
 pub use http_ws::HttpWsClient;
 pub use in_process::{InProcessClient, InProcessHost};
+pub use json_rpc::check_describe_for_test;
 
 pub type MuxStream =
     Pin<Box<dyn Stream<Item = Result<Notification, HostClientError>> + Send + 'static>>;

@@ -679,9 +679,15 @@ where
         .unary("queue_stats", serde_json::json!({}))
         .await
         .expect("queue_stats unary");
+    let items = queued
+        .get("items")
+        .and_then(Value::as_array)
+        .expect("queue_stats must answer an items-only list");
+    assert_eq!(items.len(), 1, "the idle steer must be visible as one item");
     assert_eq!(
-        queued.get("follow_up_count").and_then(Value::as_u64),
-        Some(1)
+        items[0].get("kind").and_then(Value::as_str),
+        Some("follow_up"),
+        "the queued item must carry its kind on the wire"
     );
     dispatch(
         &mut driver,
@@ -1243,16 +1249,21 @@ async fn attach_mux_survives_after_idle_and_receives_later_events() {
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
     let slot = host.slot("mux-sess").await;
     slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate {
-        steer_count: 1,
-        follow_up_count: 0,
+        items: vec![xylitol_plugin_sdk::session::QueueItem {
+            id: "qs0".into(),
+            kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+            preview: "s0".into(),
+        }],
     })
     .await;
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
     let first = driver.drain_idle_events();
     assert!(
-        first
-            .iter()
-            .any(|e| matches!(e, XyEvent::QueueUpdate { steer_count: 1, .. })),
+        first.iter().any(|e| matches!(
+            e,
+            XyEvent::QueueUpdate { items }
+                if items.iter().any(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::Steer)
+        )),
         "first downlink event missing: {first:?}"
     );
     slot.append_and_push(&xylitol_plugin_sdk::XyEvent::AgentEnd {
@@ -1263,8 +1274,11 @@ async fn attach_mux_survives_after_idle_and_receives_later_events() {
     tokio::time::sleep(std::time::Duration::from_millis(40)).await;
     let _ = driver.drain_idle_events();
     slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate {
-        steer_count: 0,
-        follow_up_count: 1,
+        items: vec![xylitol_plugin_sdk::session::QueueItem {
+            id: "qf0".into(),
+            kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+            preview: "f0".into(),
+        }],
     })
     .await;
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
@@ -1272,10 +1286,8 @@ async fn attach_mux_survives_after_idle_and_receives_later_events() {
     assert!(
         later.iter().any(|e| matches!(
             e,
-            XyEvent::QueueUpdate {
-                follow_up_count: 1,
-                ..
-            }
+            XyEvent::QueueUpdate { items }
+                if items.iter().any(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp)
         )),
         "mux MUST still deliver after AgentEnd: {later:?}"
     );
@@ -1294,8 +1306,11 @@ fn cold_replay_tape_drops_agent_keeps_queue() {
     ));
     assert!(!XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
         &XyEvent::QueueUpdate {
-            steer_count: 1,
-            follow_up_count: 0,
+            items: vec![xylitol_plugin_sdk::session::QueueItem {
+                id: "qs0".into(),
+                kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                preview: "s0".into()
+            }]
         }
     ));
     assert!(!XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
@@ -1331,8 +1346,18 @@ async fn cold_subscribe_drops_replay_tape_and_stays_live() {
     );
     let slot = host.slot("s-cold").await;
     slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate {
-        steer_count: 0,
-        follow_up_count: 2,
+        items: vec![
+            xylitol_plugin_sdk::session::QueueItem {
+                id: "qf0".into(),
+                kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                preview: "f0".into(),
+            },
+            xylitol_plugin_sdk::session::QueueItem {
+                id: "qf1".into(),
+                kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                preview: "f1".into(),
+            },
+        ],
     })
     .await;
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
@@ -1340,10 +1365,8 @@ async fn cold_subscribe_drops_replay_tape_and_stays_live() {
     assert!(
         live.iter().any(|e| matches!(
             e,
-            XyEvent::QueueUpdate {
-                follow_up_count: 2,
-                ..
-            }
+            XyEvent::QueueUpdate { items }
+                if items.iter().filter(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp).count() == 2
         )),
         "stream MUST stay live after the recovery window: {live:?}"
     );
@@ -1375,11 +1398,8 @@ async fn switch_session_resubscribes_cold_and_drops_new_session_tape() {
     driver.attach_session().await.expect("attach");
     {
         let slot = host.slot("s-other").await;
-        slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 0,
-        })
-        .await;
+        slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate { items: vec![] })
+            .await;
     }
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
     let _ = driver.drain_idle_events();

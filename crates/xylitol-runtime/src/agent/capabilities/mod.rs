@@ -13,7 +13,9 @@ mod tools_ops;
 
 pub use self::hook_bus::HookBlockedError;
 pub(crate) use self::hook_bus::{cancel_hook, observe_hook, observe_hook_sync};
-pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats};
+pub use self::queue::{
+    AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats, QueuedItem, RevokeOutcome,
+};
 pub use self::stats::SessionStats;
 pub use self::stats::{ContextUsage, get_context_usage};
 pub use self::tools_ops::ToolsWriteOutcome;
@@ -230,36 +232,49 @@ impl AgentCapabilities {
         self.queues.clone()
     }
 
-    pub fn steer(&self, message: impl Into<String>) {
-        self.steer_parts(vec![xylitol_plugin_sdk::message::AgentPart::text(message)]);
+    pub fn steer(&self, message: impl Into<String>) -> String {
+        self.steer_parts(vec![xylitol_plugin_sdk::message::AgentPart::text(message)])
     }
 
-    pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) {
+    pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) -> String {
         let msg = AgentMessage::user_parts(parts);
         let target = if (self.turn_in_flight)() {
             &self.queues.steer
         } else {
             &self.queues.follow_up
         };
-        target
+        let item = target
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .enqueue(msg);
         self.queues.notify_queue_update();
+        item.id
     }
 
-    pub fn follow_up(&self, message: impl Into<String>) {
-        self.follow_up_parts(vec![xylitol_plugin_sdk::message::AgentPart::text(message)]);
+    pub fn follow_up(&self, message: impl Into<String>) -> String {
+        self.follow_up_parts(vec![xylitol_plugin_sdk::message::AgentPart::text(message)])
     }
 
-    pub fn follow_up_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) {
+    pub fn follow_up_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) -> String {
         let msg = AgentMessage::user_parts(parts);
-        self.queues
+        let item = self
+            .queues
             .follow_up
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .enqueue(msg);
         self.queues.notify_queue_update();
+        item.id
+    }
+
+    pub fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        self.queues.items()
+    }
+
+    pub fn revoke_queue_item(&self, id: &str) -> crate::agent::capabilities::RevokeOutcome {
+        let outcome = self.queues.revoke(id);
+        self.queues.notify_queue_update();
+        outcome
     }
 
     pub fn clear_steer_queue(&self) {

@@ -142,7 +142,7 @@ where
         )
         .await;
         let stats = super::queue_stats(driver).await;
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+        session.set_queue_depth(stats.steer_count, stats.follow_up_count);
     }
     let _ = session.render_now();
     Ok(())

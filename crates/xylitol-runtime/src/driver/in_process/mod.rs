@@ -524,6 +524,26 @@ fn require_active_session(agent: &AgentRuntime) -> Result<&str, XyDriverError> {
 
 #[async_trait]
 impl XyDriver for XyInProcessDriver {
+    async fn steer(&mut self, message: &str) -> Result<String, XyDriverError> {
+        Ok(self.agent.steer(message))
+    }
+
+    async fn follow_up(&mut self, message: &str) -> Result<String, XyDriverError> {
+        Ok(self.agent.follow_up(message))
+    }
+
+    fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        self.agent.queue_items()
+    }
+
+    fn revoke_queue_item(&self, id: &str) -> xylitol_plugin_sdk::RevokeQueueItemOutcome {
+        let outcome = self.agent.revoke_queue_item(id);
+        xylitol_plugin_sdk::RevokeQueueItemOutcome {
+            revoked: outcome.revoked,
+            items: outcome.items,
+        }
+    }
+
     async fn run(&mut self, prompt: &str) -> EventStream {
         self.run_with_context(prompt, Vec::new()).await
     }
@@ -977,16 +997,6 @@ impl XyInProcessDriver {
         self.exporter
             .import_from_jsonl(self.store.as_ref(), path)
             .await
-    }
-
-    pub async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.agent.steer(message);
-        Ok(())
-    }
-
-    pub async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.agent.follow_up(message);
-        Ok(())
     }
 
     pub async fn clear_queue(

@@ -15,6 +15,28 @@ pub type BashRun =
 
 #[async_trait]
 pub trait XyDriver: Send {
+    async fn steer(&mut self, message: &str) -> Result<String, XyDriverError> {
+        let _ = message;
+        Err(XyDriverError::unsupported("steer"))
+    }
+
+    async fn follow_up(&mut self, message: &str) -> Result<String, XyDriverError> {
+        let _ = message;
+        Err(XyDriverError::unsupported("follow_up"))
+    }
+
+    fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        Vec::new()
+    }
+
+    fn revoke_queue_item(&self, id: &str) -> xylitol_plugin_sdk::RevokeQueueItemOutcome {
+        let _ = id;
+        xylitol_plugin_sdk::RevokeQueueItemOutcome {
+            revoked: false,
+            items: Vec::new(),
+        }
+    }
+
     async fn run(&mut self, prompt: &str) -> EventStream;
 
     async fn run_with_context(

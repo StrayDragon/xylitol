@@ -16,6 +16,26 @@ pub enum WireEventError {
     Unknown,
 }
 
+fn queue_item_to_wire(
+    item: &xylitol_plugin_sdk::session::QueueItem,
+) -> xylitol_protocol::QueueItem {
+    xylitol_protocol::QueueItem {
+        id: item.id.clone(),
+        kind: item.kind.as_str().to_string(),
+        preview: item.preview.clone(),
+    }
+}
+
+fn queue_item_from_wire(
+    item: &xylitol_protocol::QueueItem,
+) -> xylitol_plugin_sdk::session::QueueItem {
+    xylitol_plugin_sdk::session::QueueItem {
+        id: item.id.clone(),
+        kind: xylitol_plugin_sdk::session::QueueItemKind::from_wire(&item.kind),
+        preview: item.preview.clone(),
+    }
+}
+
 pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
     match event {
         XyEvent::AgentStart { session_id, model } => Ok(Event::AgentStart {
@@ -105,12 +125,8 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
         XyEvent::ThinkingLevelChanged { level } => Ok(Event::ThinkingLevelChanged {
             level: level.clone(),
         }),
-        XyEvent::QueueUpdate {
-            steer_count,
-            follow_up_count,
-        } => Ok(Event::QueueUpdate {
-            steer_count: *steer_count,
-            follow_up_count: *follow_up_count,
+        XyEvent::QueueUpdate { items } => Ok(Event::QueueUpdate {
+            items: items.iter().map(queue_item_to_wire).collect(),
         }),
         XyEvent::TodoUpdated { list } => todo_updated_to_wire(list),
         XyEvent::WorkflowUpdated { workflow } => workflow_updated_to_wire(workflow),
@@ -242,12 +258,8 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
         Event::ThinkingLevelChanged { level } => Ok(XyEvent::ThinkingLevelChanged {
             level: level.clone(),
         }),
-        Event::QueueUpdate {
-            steer_count,
-            follow_up_count,
-        } => Ok(XyEvent::QueueUpdate {
-            steer_count: *steer_count,
-            follow_up_count: *follow_up_count,
+        Event::QueueUpdate { items } => Ok(XyEvent::QueueUpdate {
+            items: items.iter().map(queue_item_from_wire).collect(),
         }),
         Event::TodoUpdated { list } => todo_updated_from_wire(list),
         Event::WorkflowUpdated { workflow } => workflow_updated_from_wire(workflow),
@@ -438,8 +450,18 @@ mod tests {
                 level: "high".into(),
             },
             XyEvent::QueueUpdate {
-                steer_count: 1,
-                follow_up_count: 2,
+                items: vec![
+                    xylitol_plugin_sdk::session::QueueItem {
+                        id: "q1".into(),
+                        kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                        preview: "hi".into(),
+                    },
+                    xylitol_plugin_sdk::session::QueueItem {
+                        id: "q2".into(),
+                        kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                        preview: "yo".into(),
+                    },
+                ],
             },
             XyEvent::TodoUpdated { list: todo },
             XyEvent::WorkflowUpdated {

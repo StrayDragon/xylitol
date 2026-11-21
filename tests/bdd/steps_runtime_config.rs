@@ -757,6 +757,7 @@ pub struct RcBootBdd {
     pub(crate) config_path: RefCell<Option<PathBuf>>,
     pub(crate) boot_error: RefCell<Option<String>>,
     pub(crate) warnings: RefCell<Vec<String>>,
+    pub(crate) boot_config: RefCell<Option<xylitol_kernel::config::types::AppConfig>>,
 }
 
 #[fixture]
@@ -765,54 +766,17 @@ pub fn rc_boot_bdd() -> RcBootBdd {
         config_path: RefCell::new(None),
         boot_error: RefCell::new(None),
         warnings: RefCell::new(Vec::new()),
+        boot_config: RefCell::new(None),
     }
 }
 
 pub(crate) mod rc_warn_log {
-    use std::sync::Mutex;
-
-    static RECORDS: Mutex<Vec<(log::Level, String, String)>> = Mutex::new(Vec::new());
-
-    struct Capture;
-
-    impl log::Log for Capture {
-        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-            true
-        }
-
-        fn log(&self, record: &log::Record<'_>) {
-            RECORDS
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .push((
-                    record.level(),
-                    record.target().to_string(),
-                    record.args().to_string(),
-                ));
-        }
-
-        fn flush(&self) {}
-    }
-
     pub(crate) fn install() {
-        RECORDS
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clear();
-        let _ = log::set_boxed_logger(Box::new(Capture));
-        log::set_max_level(log::LevelFilter::Warn);
+        crate::bdd::warn_sink::reset();
     }
 
     pub(crate) fn take_warnings(target: &str) -> Vec<String> {
-        RECORDS
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .drain(..)
-            .filter(|(level, record_target, _)| {
-                *level == log::Level::Warn && record_target == target
-            })
-            .map(|(_, _, message)| message)
-            .collect()
+        crate::bdd::warn_sink::take_warnings(target)
     }
 }
 
@@ -868,13 +832,25 @@ async fn w_rc_boot_assembly(rc_boot_bdd: &RcBootBdd) {
     match boot_ctx(&opts).await {
         Ok((ctx, _loader)) => {
             rc_boot_bdd.boot_error.replace(None);
+            let loaded = ctx
+                .get::<xylitol_official_plugin_config::plugin::ConfigService>()
+                .map(|service| service.app.clone());
+            rc_boot_bdd.boot_config.replace(loaded);
             let _ = ctx.shutdown().await;
         }
         Err(error) => {
             rc_boot_bdd.boot_error.replace(Some(error.to_string()));
+            rc_boot_bdd.boot_config.replace(None);
         }
     }
     *rc_boot_bdd.warnings.borrow_mut() = rc_warn_log::take_warnings("xylitol::config");
+    if let Some(config) = rc_boot_bdd.boot_config.borrow().as_ref() {
+        let external_keys: Vec<String> = Vec::new();
+        let known = xylitol_kernel::config_sections::all();
+        if let Some(message) = config.unknown_keys_warning(&external_keys, &known) {
+            rc_boot_bdd.warnings.borrow_mut().push(message);
+        }
+    }
 }
 
 #[then("硬失败并指出该键")]

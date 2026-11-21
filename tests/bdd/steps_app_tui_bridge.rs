@@ -86,8 +86,11 @@ fn w_atb2_end_with_followup(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 1,
+            items: vec![xylitol_plugin_sdk::session::QueueItem {
+                id: "qf0".into(),
+                kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                preview: "f0".into(),
+            }],
         },
     );
     apply(
@@ -108,13 +111,7 @@ fn t_atb2_followup_pending(bridge_bdd: &BridgeBdd) {
 
 #[when("注入空队列的 AgentEnd")]
 fn w_atb2_end_idle(bridge_bdd: &BridgeBdd) {
-    apply(
-        bridge_bdd,
-        XyEvent::QueueUpdate {
-            steer_count: 0,
-            follow_up_count: 0,
-        },
-    );
+    apply(bridge_bdd, XyEvent::QueueUpdate { items: vec![] });
     apply(
         bridge_bdd,
         XyEvent::AgentEnd {
@@ -175,8 +172,23 @@ fn w_atb3_queue(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::QueueUpdate {
-            steer_count: 2,
-            follow_up_count: 1,
+            items: vec![
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qs0".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                    preview: "s0".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qs1".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                    preview: "s1".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "qf0".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "f0".into(),
+                },
+            ],
         },
     );
 }

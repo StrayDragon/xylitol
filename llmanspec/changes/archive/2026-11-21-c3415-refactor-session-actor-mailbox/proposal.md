@@ -1,7 +1,14 @@
 ---
-depends_on: ["c3410-update-actor-execution-contract", "c3412-refactor-driver-trait-surface"]
+depends_on:
+  [
+    "c3410-update-actor-execution-contract",
+    "c3412-refactor-driver-trait-surface"
+  ]
 needs_specs_change: false
 title: 会话槽升格 SessionActor：有界信箱与三通道路由落地
+branch: sdd/c3415-refactor-session-actor-mailbox
+base_branch: main
+base_sha: a4a988d6baf32dacdff7a8e6f28a35eca24a7ca5
 ---
 
 ## Why

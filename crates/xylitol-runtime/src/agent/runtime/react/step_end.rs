@@ -13,46 +13,50 @@ pub(crate) fn should_stop_after_step(hooks: &AgentHooks, ctx: &ShouldStopAfterSt
         .is_some_and(|hook| hook(ctx))
 }
 
-pub(crate) fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
-    crate::utils::lock_mutex(queue).drain()
+pub(crate) fn drain_queue(
+    queue: &Arc<Mutex<PendingMessageQueue>>,
+) -> Vec<crate::agent::capabilities::QueuedItem> {
+    crate::utils::lock_mutex(queue).drain_items()
 }
 
-pub(crate) fn pop_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Option<AgentMessage> {
-    crate::utils::lock_mutex(queue).pop_one()
+pub(crate) fn pop_queue(
+    queue: &Arc<Mutex<PendingMessageQueue>>,
+) -> Option<crate::agent::capabilities::QueuedItem> {
+    crate::utils::lock_mutex(queue).pop_item()
 }
 
 pub(crate) fn requeue_pending(
     steer_queue: &Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: &Arc<Mutex<PendingMessageQueue>>,
-    pending: Vec<AgentMessage>,
-) -> Option<(usize, usize)> {
+    pending: Vec<crate::agent::capabilities::QueuedItem>,
+) -> Option<Vec<xylitol_plugin_sdk::session::QueueItem>> {
     if pending.is_empty() {
         return None;
     }
     {
         let mut queue = crate::utils::lock_mutex(follow_up_queue);
-        for message in pending {
-            queue.enqueue(message);
+        for item in pending {
+            queue.enqueue(item.message);
         }
     }
-    Some(queue_counts(steer_queue, follow_up_queue))
+    Some(queue_items(steer_queue, follow_up_queue))
 }
 
-pub(crate) fn queue_counts(
+pub(crate) fn queue_items(
     steer: &Arc<Mutex<PendingMessageQueue>>,
     follow_up: &Arc<Mutex<PendingMessageQueue>>,
-) -> (usize, usize) {
-    let steer_count = crate::utils::lock_mutex(steer).len();
-    let follow_up_count = crate::utils::lock_mutex(follow_up).len();
-    (steer_count, follow_up_count)
+) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+    let mut items = crate::utils::lock_mutex(steer).items();
+    items.extend(crate::utils::lock_mutex(follow_up).items());
+    items
 }
 
 pub(crate) enum FinishTurnOutcome {
     ContinueOuterForCompaction,
     StopRun,
     Advanced {
-        pending: Vec<AgentMessage>,
-        queue_update: Option<(usize, usize)>,
+        pending: Vec<crate::agent::capabilities::QueuedItem>,
+        queue_update: Option<Vec<xylitol_plugin_sdk::session::QueueItem>>,
     },
 }
 
@@ -174,7 +178,7 @@ pub(crate) async fn close_iteration(
     let queue_update = if pending.is_empty() {
         None
     } else {
-        Some(queue_counts(steer_queue, follow_up_queue))
+        Some(queue_items(steer_queue, follow_up_queue))
     };
     FinishTurnResult {
         events,

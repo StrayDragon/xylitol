@@ -1852,8 +1852,15 @@ async fn w_queue_stats(server_test: &ServerTest) {
 fn t_queue_stats_shape(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow().clone().expect("body");
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert!(v["result"]["steer_count"].is_u64(), "{body}");
-    assert!(v["result"]["follow_up_count"].is_u64(), "{body}");
+    let items = v["result"]["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("queue_stats MUST be an items-only list: {body}"));
+    assert!(
+        items.iter().all(|i| i.get("id").is_some()
+            && i.get("kind").is_some()
+            && i.get("preview").is_some()),
+        "每项须含 id / kind / preview：{body}"
+    );
 }
 
 #[given("进程级 reload 正在进行（取消令牌已注册）")]
@@ -2074,10 +2081,11 @@ async fn t_idem_replay_once(server_test: &ServerTest) {
     )
     .await;
     let stats: serde_json::Value = serde_json::from_str(&stats).expect("queue_stats envelope");
-    let steer = stats["result"]["steer_count"].as_u64().unwrap_or_default();
-    let follow_up = stats["result"]["follow_up_count"]
-        .as_u64()
-        .unwrap_or_default();
+    let items = stats["result"]["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("queue_stats MUST expose items-only list: {stats}"));
+    let steer = items.iter().filter(|i| i["kind"] == "steer").count();
+    let follow_up = items.iter().filter(|i| i["kind"] == "follow_up").count();
     assert_eq!(
         steer + follow_up,
         1,
@@ -2731,12 +2739,11 @@ async fn w_rpc_steer(server_test: &ServerTest) {
 fn t_steer_enqueued(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow().clone().expect("body");
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-    let steer = v["result"]["steer_count"]
-        .as_u64()
-        .unwrap_or_else(|| panic!("c2826: queue_stats 缺 steer_count：{body}"));
-    let follow_up = v["result"]["follow_up_count"]
-        .as_u64()
-        .unwrap_or_else(|| panic!("c2826: queue_stats 缺 follow_up_count：{body}"));
+    let items = v["result"]["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("c2826: queue_stats 缺队列项列表 items：{body}"));
+    let steer = items.iter().filter(|i| i["kind"] == "steer").count();
+    let follow_up = items.iter().filter(|i| i["kind"] == "follow_up").count();
     assert_eq!(
         steer + follow_up,
         1,

@@ -4,11 +4,8 @@ use xylitol_plugin_sdk::CompactionOutcome;
 
 pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
-        XyEvent::QueueUpdate {
-            steer_count,
-            follow_up_count,
-        } => {
-            model.sync_queue(*steer_count, *follow_up_count);
+        XyEvent::QueueUpdate { items } => {
+            model.sync_queue(items);
             true
         }
         XyEvent::CompactionStart { .. } => {

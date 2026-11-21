@@ -831,8 +831,13 @@ impl<T: Terminal> HostSession<T> {
         self.stream_paint.paint_dirty = true;
     }
 
-    pub fn set_queue_badge(&mut self, steer_count: usize, follow_up_count: usize) {
-        self.ui_model.sync_queue(steer_count, follow_up_count);
+    pub fn set_queue_badge(&mut self, items: &[xylitol_plugin_sdk::session::QueueItem]) {
+        self.ui_model.sync_queue(items);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn set_queue_depth(&mut self, steer_count: usize, follow_up_count: usize) {
+        self.ui_model.sync_queue_depth(steer_count, follow_up_count);
         self.sync_ui_root_from_model();
     }
 

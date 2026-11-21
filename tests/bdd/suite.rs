@@ -1,5 +1,7 @@
 #[macro_use]
 mod helpers;
+mod warn_sink;
+
 mod bindings_agent_codemode;
 mod bindings_agent_hooks;
 mod bindings_agent_prompt_extra;

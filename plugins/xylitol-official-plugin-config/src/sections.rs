@@ -4,7 +4,7 @@ use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 
 use super::types::{
-    AgentsConfig, ExecutionConfig, ExternalPluginConfig, ModelsConfig, SecurityConfig, ServeConfig,
+    AgentsConfig, ExecutionConfig, ModelsConfig, PluginsConfig, SecurityConfig, ServeConfig,
     SessionConfig, SubagentConfig, ToolBatchConfig, TrustConfig, TuiConfig,
 };
 
@@ -24,7 +24,7 @@ static CORE_SECTIONS: LazyLock<Vec<ConfigSection>> = LazyLock::new(|| {
         TuiConfig::descriptor(),
         ToolBatchConfig::descriptor(),
         ToolsSection::descriptor(),
-        ExternalPluginsSection::descriptor(),
+        PluginsConfig::descriptor(),
         SubagentConfig::descriptor(),
         ServeConfig::descriptor(),
         TrustConfig::descriptor(),
@@ -132,20 +132,15 @@ impl SectionBinding for ToolsSection {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[serde(transparent)]
-#[schemars(transparent)]
-pub struct ExternalPluginsSection(pub Vec<ExternalPluginConfig>);
-
-impl SectionBinding for ExternalPluginsSection {
-    const KEY: &'static str = "external_plugins";
+impl SectionBinding for PluginsConfig {
+    const KEY: &'static str = "plugins";
 
     fn schema_value() -> serde_json::Value {
-        serde_json::to_value(schema_for!(ExternalPluginsSection)).expect("external_plugins schema")
+        serde_json::to_value(schema_for!(PluginsConfig)).expect("plugins schema")
     }
 
     fn default_value() -> serde_json::Value {
-        serde_json::json!([])
+        serde_json::to_value(PluginsConfig::default()).expect("plugins default")
     }
 }
 
@@ -199,7 +194,7 @@ mod section_decl_tests {
         assert_eq!(TuiConfig::KEY, "tui");
         assert_eq!(ToolBatchConfig::KEY, "tool_batch");
         assert_eq!(ToolsSection::KEY, "tools");
-        assert_eq!(ExternalPluginsSection::KEY, "external_plugins");
+        assert_eq!(PluginsConfig::KEY, "plugins");
         assert_eq!(SubagentConfig::KEY, "subagent");
         assert_eq!(ServeConfig::KEY, "serve");
         assert_eq!(TrustConfig::KEY, "trust");
@@ -215,7 +210,7 @@ mod section_decl_tests {
                 TuiConfig::KEY,
                 ToolBatchConfig::KEY,
                 ToolsSection::KEY,
-                ExternalPluginsSection::KEY,
+                PluginsConfig::KEY,
                 SubagentConfig::KEY,
                 ServeConfig::KEY,
                 TrustConfig::KEY,

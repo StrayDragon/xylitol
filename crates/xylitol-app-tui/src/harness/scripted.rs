@@ -40,8 +40,9 @@ pub struct ScriptedDriver {
     default_script: Vec<XyEvent>,
     bash_results: Mutex<VecDeque<XyBashResult>>,
     default_bash: XyBashResult,
-    steer_queued: usize,
-    follow_up_queued: usize,
+    steer_queued: Mutex<Vec<xylitol_plugin_sdk::session::QueueItem>>,
+    follow_up_queued: Mutex<Vec<xylitol_plugin_sdk::session::QueueItem>>,
+    next_queue_id: usize,
     pub(crate) model: ModelInfo,
     available_models: Vec<ModelInfo>,
     message_history_tree: Vec<SessionTreeNode>,
@@ -135,8 +136,9 @@ impl ScriptedDriver {
                 truncated: false,
                 full_output_path: None,
             },
-            steer_queued: 0,
-            follow_up_queued: 0,
+            steer_queued: Mutex::new(Vec::new()),
+            follow_up_queued: Mutex::new(Vec::new()),
+            next_queue_id: 1,
             model: ModelInfo {
                 id: "fake".into(),
                 display_name: "Fake".into(),
@@ -661,6 +663,14 @@ impl XyDriver for ScriptedDriver {
         self.aborted.store(true, Ordering::SeqCst);
     }
 
+    fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        ScriptedDriver::queue_items(self)
+    }
+
+    fn revoke_queue_item(&self, id: &str) -> xylitol_plugin_sdk::RevokeQueueItemOutcome {
+        self.revoke_queued_item(id)
+    }
+
     fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
         *self.bash_run_sink.lock().expect("bash_run_sink") = sink;
     }
@@ -980,12 +990,54 @@ impl ScriptedDriver {
     }
 
     pub fn queue_stats(&self) -> QueueStats {
-        if self.force_zero_queue_stats.load(Ordering::SeqCst) {
-            return QueueStats::default();
-        }
+        let items = self.queue_items();
         QueueStats {
-            steer_count: self.steer_queued,
-            follow_up_count: self.follow_up_queued,
+            steer_count: items
+                .iter()
+                .filter(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::Steer)
+                .count(),
+            follow_up_count: items
+                .iter()
+                .filter(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp)
+                .count(),
+        }
+    }
+
+    fn allocate_queue_id(&mut self) -> String {
+        let id = format!("q{}", self.next_queue_id);
+        self.next_queue_id += 1;
+        id
+    }
+
+    fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        if self.force_zero_queue_stats.load(Ordering::SeqCst) {
+            return Vec::new();
+        }
+        let mut items = self.steer_queued.lock().expect("steer_queued").clone();
+        items.extend(
+            self.follow_up_queued
+                .lock()
+                .expect("follow_up_queued")
+                .iter()
+                .cloned(),
+        );
+        items
+    }
+
+    fn revoke_queued_item(&self, id: &str) -> xylitol_plugin_sdk::RevokeQueueItemOutcome {
+        let before = self.queue_items().len();
+        self.steer_queued
+            .lock()
+            .expect("steer_queued")
+            .retain(|item| item.id != id);
+        self.follow_up_queued
+            .lock()
+            .expect("follow_up_queued")
+            .retain(|item| item.id != id);
+        let items = self.queue_items();
+        xylitol_plugin_sdk::RevokeQueueItemOutcome {
+            revoked: items.len() != before,
+            items,
         }
     }
 }
@@ -1267,13 +1319,7 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
                 crate::driver::XyDriver::loaded_resources_snapshot(self).await,
             )),
-            Command::GetQueueStats { .. } => {
-                let stats = self.queue_stats();
-                Ok(DispatchOutcome::QueueStats {
-                    steer_count: stats.steer_count,
-                    follow_up_count: stats.follow_up_count,
-                })
-            }
+            Command::GetQueueStats { .. } => Ok(DispatchOutcome::QueueItems(self.queue_items())),
             Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
                 crate::driver::XyDriver::get_commands(self),
             )),
@@ -1288,22 +1334,46 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                 crate::driver::XyDriver::clear_capabilities(self).map(DispatchOutcome::Capabilities)
             }
             Command::Steer { message, .. } => {
-                self.steer_calls.push(message);
-                self.steer_queued += 1;
-                let stats = self.queue_stats();
-                Ok(DispatchOutcome::QueueStats {
-                    steer_count: stats.steer_count,
-                    follow_up_count: stats.follow_up_count,
+                self.steer_calls.push(message.clone());
+                let id = self.allocate_queue_id();
+                self.steer_queued.lock().expect("steer_queued").push(
+                    xylitol_plugin_sdk::session::QueueItem {
+                        id: id.clone(),
+                        kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                        preview: xylitol_plugin_sdk::session::QueueItem::preview_of(&message),
+                    },
+                );
+                Ok(DispatchOutcome::QueueItemEnqueued {
+                    id,
+                    items: self.queue_items(),
                 })
             }
             Command::FollowUp { message, .. } => {
-                self.follow_up_calls.push(message);
-                self.follow_up_queued += 1;
-                let stats = self.queue_stats();
-                Ok(DispatchOutcome::QueueStats {
-                    steer_count: stats.steer_count,
-                    follow_up_count: stats.follow_up_count,
+                self.follow_up_calls.push(message.clone());
+                let id = self.allocate_queue_id();
+                self.follow_up_queued
+                    .lock()
+                    .expect("follow_up_queued")
+                    .push(xylitol_plugin_sdk::session::QueueItem {
+                        id: id.clone(),
+                        kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                        preview: xylitol_plugin_sdk::session::QueueItem::preview_of(&message),
+                    });
+                Ok(DispatchOutcome::QueueItemEnqueued {
+                    id,
+                    items: self.queue_items(),
                 })
+            }
+            Command::RevokeQueueItem { id } => {
+                let outcome = self.revoke_queued_item(&id);
+                let revoked = outcome.revoked;
+                if !revoked {
+                    return Err(crate::dispatch::DispatchRejection::NotFound {
+                        message: format!("queue item not found: {id}"),
+                        source_kind: Some("NotFound"),
+                    });
+                }
+                Ok(DispatchOutcome::RevokedQueueItem(outcome))
             }
             Command::ClearQueue {
                 clear_steer,
@@ -1312,16 +1382,15 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             } => {
                 self.clear_calls.push((clear_steer, clear_follow_up));
                 if clear_steer {
-                    self.steer_queued = 0;
+                    self.steer_queued.lock().expect("steer_queued").clear();
                 }
                 if clear_follow_up {
-                    self.follow_up_queued = 0;
+                    self.follow_up_queued
+                        .lock()
+                        .expect("follow_up_queued")
+                        .clear();
                 }
-                let stats = self.queue_stats();
-                Ok(DispatchOutcome::QueueStats {
-                    steer_count: stats.steer_count,
-                    follow_up_count: stats.follow_up_count,
-                })
+                Ok(DispatchOutcome::QueueItems(self.queue_items()))
             }
 
             Command::Prompt { .. }

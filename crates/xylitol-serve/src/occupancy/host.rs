@@ -2151,6 +2151,25 @@ async fn dispatch_writer_unary(
     {
         return defer_runtime_setting(slot, method, &payload).await;
     }
+    if slot.turn_inflight_active()
+        && matches!(
+            xylitol_protocol::registry::lookup(method).map(|row| row.exec),
+            Some(xylitol_protocol::registry::Exec::Inline)
+        )
+    {
+        let cmd = match parse_command(method, &payload) {
+            Ok(cmd) => cmd,
+            Err(e) => return RpcResult::error("invalid_input", e),
+        };
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match driver.execute_command(cmd).await {
+            Ok(value) => RpcResult::ok_value(value),
+            Err(e) => rpc_err(e),
+        };
+    }
     let (payload, staged_export, import_temp) = match stage_payload(method, payload) {
         Ok(staged) => staged,
         Err(err) => return *err,
@@ -2338,10 +2357,7 @@ async fn dispatch_readonly_unary(
                     "assistant_messages": 0,
                     "total_messages": 0,
                 })),
-                "queue_stats" => RpcResult::ok_value(json!({
-                    "steer_count": 0,
-                    "follow_up_count": 0,
-                })),
+                "queue_stats" => RpcResult::ok_value(json!({ "items": [] })),
                 _ => RpcResult::error("not_found", format!("session not found: {session_id}")),
             };
         }
@@ -2825,6 +2841,50 @@ mod tests {
         let expected = json!({"session_id": "s0", "seq": 1, "inflight": true});
         assert_eq!(subscribed.params, expected);
         assert_eq!(result, RpcResult::ok_value(expected));
+    }
+
+    fn queue_update_items(ids: &[&str]) -> XyEvent {
+        XyEvent::QueueUpdate {
+            items: ids
+                .iter()
+                .map(|id| xylitol_plugin_sdk::session::QueueItem {
+                    id: (*id).to_string(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: format!("p-{id}"),
+                })
+                .collect(),
+        }
+    }
+
+    #[tokio::test]
+    async fn midstream_subscribe_resync_carries_full_queue_items() {
+        let slot = slot();
+        slot.append_and_push(&queue_update_items(&["q1", "q2"]))
+            .await;
+        let (id, mut rx) = subscribe(&slot).await;
+        let result = slot.replay_or_resync(&[id], false, false, 0).await;
+        let replayed = rx.recv().await.expect("replayed queue update");
+        assert_eq!(replayed.method, SESSION_EVENT);
+        let event: xylitol_protocol::Event =
+            serde_json::from_value(replayed.params["event"].clone()).expect("wire event");
+        let xylitol_protocol::Event::QueueUpdate { items } = event else {
+            panic!("QueueUpdate must be a journal fact event: {event:?}");
+        };
+        assert_eq!(
+            items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+            vec!["q1", "q2"],
+            "resync must carry the complete queue item list"
+        );
+        assert!(
+            items.iter().all(|i| i.kind == "follow_up"),
+            "item kinds must survive the wire round trip: {items:?}"
+        );
+        let subscribed = rx.recv().await.expect("subscribed");
+        assert_eq!(subscribed.method, SESSION_SUBSCRIBED);
+        assert_eq!(
+            result,
+            RpcResult::ok_value(json!({"session_id": "s0", "seq": 1, "inflight": false}))
+        );
     }
 
     #[tokio::test]

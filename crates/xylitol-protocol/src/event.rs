@@ -18,6 +18,14 @@ pub enum AgentEndReason {
     StepLimit,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueItem {
+    pub id: String,
+    pub kind: String,
+    pub preview: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
@@ -116,8 +124,8 @@ pub enum Event {
         level: String,
     },
     QueueUpdate {
-        steer_count: usize,
-        follow_up_count: usize,
+        #[serde(default)]
+        items: Vec<QueueItem>,
     },
     TodoUpdated {
         list: TodoList,
@@ -257,8 +265,11 @@ mod tests {
                 level: "high".into(),
             },
             Event::QueueUpdate {
-                steer_count: 1,
-                follow_up_count: 2,
+                items: vec![QueueItem {
+                    id: "q1".into(),
+                    kind: "steer".into(),
+                    preview: "hi".into(),
+                }],
             },
             Event::TodoUpdated {
                 list: TodoList::default(),

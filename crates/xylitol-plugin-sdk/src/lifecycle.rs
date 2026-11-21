@@ -169,8 +169,7 @@ pub enum XyEvent {
     },
 
     QueueUpdate {
-        steer_count: usize,
-        follow_up_count: usize,
+        items: Vec<crate::session::QueueItem>,
     },
 
     TodoUpdated {
