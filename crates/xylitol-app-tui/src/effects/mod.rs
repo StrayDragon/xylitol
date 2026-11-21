@@ -268,7 +268,7 @@ pub async fn drain_pending<T: Terminal>(
     pending_ui::drain_pending_ui(session, driver).await;
     drain_footer_token_if_pending(session, driver).await;
 
-    if let Some(notice) = driver.take_mcp_gate_notice() {
+    if let Some(notice) = driver.take_mcp_gate_notice().await {
         session.push_scroll_notice(notice);
         session.refresh_loaded_resources(driver).await;
     }

@@ -191,7 +191,9 @@ async fn capability_overlay_ends_frozen_with_consistent_snapshot() {
         .expect("capability entries")
         .id
         .clone();
-    driver.set_capability(&id, false).expect("set capability");
+    XyDriver::set_capability(&mut driver, &id, false)
+        .await
+        .expect("set capability");
     assert!(driver.capability_pending());
 
     driver.apply_pending_capability_overlay();
@@ -288,10 +290,10 @@ async fn attach_ctx_services_binds_prepare_hub_and_loop_registry() {
     attach_ctx_services(&mut driver, &ctx);
 
     assert_eq!(
-        driver.take_mcp_gate_notice().as_deref(),
+        driver.take_mcp_gate_notice().await.as_deref(),
         Some("attach-ctx-hub-notice")
     );
-    assert_eq!(driver.take_mcp_gate_notice(), None);
+    assert_eq!(driver.take_mcp_gate_notice().await, None);
     assert_eq!(
         driver.agent.loop_middleware_ids(),
         vec!["attach-ctx-probe".to_string()]

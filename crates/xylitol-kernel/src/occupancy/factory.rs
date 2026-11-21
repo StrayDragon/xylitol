@@ -257,8 +257,8 @@ impl XyDriver for OccupancyDriver {
     async fn arm_tool_freeze_gate(&mut self) {
         XyDriver::arm_tool_freeze_gate(&mut self.inner).await
     }
-    fn take_mcp_gate_notice(&mut self) -> Option<String> {
-        XyDriver::take_mcp_gate_notice(&mut self.inner)
+    async fn take_mcp_gate_notice(&mut self) -> Option<String> {
+        XyDriver::take_mcp_gate_notice(&mut self.inner).await
     }
     async fn begin_session_prepare(&mut self) {
         XyDriver::begin_session_prepare(&mut self.inner).await

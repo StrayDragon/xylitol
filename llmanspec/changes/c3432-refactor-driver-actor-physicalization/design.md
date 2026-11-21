@@ -23,6 +23,8 @@ flowchart TD
 4. 消息面三分类：getter→快照；共享→直达；独占→命令。A0 首件活是把 64 处 self.agent. 调用分桶（预估独占桶 10-15 处）。
 5. 背压：事件通道有界（256），消费慢则 actor 暂停轮询；单通道保序。
 6. 重入禁令：actor 只 send oneshot 从不 await 回复；禁嵌套命令。reload 钩子（hook.reload(self, cancel)）是已知重入点，A2 专项审计。
+
+   > 实施期勘误（2026-11-21，见 c3433）：本点原与 `XyDriver` 的同步可变面（`set_capability` / `clear_capabilities` / `take_mcp_gate_notice`）直接冲突——runtime 独占于 actor 后，驱动的同步方法拿不到 runtime，而 `blocking_recv` 在 tokio 任务内会 panic。c3433 已把这三个方法 async 化，并删除 `XyInProcessDriver` 上与 trait 同名的固有同步版本（固有方法会遮蔽 trait 方法）。本 change 的 actor 接线须在 c3433 归档后进行。
 7. spawn：懒启动（首命令时 Handle::try_current），失败回落内联直通模式保无 runtime 单测；handle 全 drop → 邮箱关闭 → 取消收尾后退出（T6"全 drop 即自杀"）。
 8. occupancy 上收：serve 的 Arc&lt;Mutex&lt;Option&lt;Box&lt;OccupancyEngine&gt;&gt;&gt;&gt; 消失，handle 可 Clone；linger/eviction 重述为丢 handle + 等 actor 退出。
 

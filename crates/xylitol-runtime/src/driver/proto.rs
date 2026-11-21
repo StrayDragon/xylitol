@@ -156,7 +156,7 @@ pub trait XyDriver: Send {
         false
     }
 
-    fn set_capability(
+    async fn set_capability(
         &mut self,
         _id: &str,
         _enabled: bool,
@@ -164,7 +164,7 @@ pub trait XyDriver: Send {
         Err(XyDriverError::unsupported("set_capability"))
     }
 
-    fn clear_capabilities(
+    async fn clear_capabilities(
         &mut self,
     ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
         Err(XyDriverError::unsupported("clear_capabilities"))
@@ -194,7 +194,7 @@ pub trait XyDriver: Send {
 
     async fn arm_tool_freeze_gate(&mut self) {}
 
-    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+    async fn take_mcp_gate_notice(&mut self) -> Option<String> {
         None
     }
 

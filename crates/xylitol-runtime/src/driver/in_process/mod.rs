@@ -292,34 +292,6 @@ impl XyInProcessDriver {
         self.overlay_phase == OverlayPhase::Pending
     }
 
-    pub fn set_capability(
-        &mut self,
-        id: &str,
-        enabled: bool,
-    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
-        let snapshot = self.capability_snapshot();
-        if !snapshot.entries.iter().any(|entry| entry.id == id) {
-            return Err(XyDriverError::invalid_input(format!(
-                "unknown capability `{id}`"
-            )));
-        }
-        if enabled {
-            self.capability_disabled.remove(id);
-        } else {
-            self.capability_disabled.insert(id.to_string());
-        }
-        self.overlay_phase = OverlayPhase::Pending;
-        Ok(self.capability_snapshot())
-    }
-
-    pub fn clear_capabilities(
-        &mut self,
-    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
-        self.capability_disabled.clear();
-        self.overlay_phase = OverlayPhase::Pending;
-        Ok(self.capability_snapshot())
-    }
-
     pub fn install_base_tools(&mut self, tools: crate::agent::tools::ToolSet) {
         self.base_tools = Some(tools.clone());
         let filtered = crate::agent::tools::filter_tools_by_capability_overlay(
@@ -722,18 +694,32 @@ impl XyDriver for XyInProcessDriver {
         XyInProcessDriver::capability_pending(self)
     }
 
-    fn set_capability(
+    async fn set_capability(
         &mut self,
         id: &str,
         enabled: bool,
     ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
-        XyInProcessDriver::set_capability(self, id, enabled)
+        let snapshot = self.capability_snapshot();
+        if !snapshot.entries.iter().any(|entry| entry.id == id) {
+            return Err(XyDriverError::invalid_input(format!(
+                "unknown capability `{id}`"
+            )));
+        }
+        if enabled {
+            self.capability_disabled.remove(id);
+        } else {
+            self.capability_disabled.insert(id.to_string());
+        }
+        self.overlay_phase = OverlayPhase::Pending;
+        Ok(self.capability_snapshot())
     }
 
-    fn clear_capabilities(
+    async fn clear_capabilities(
         &mut self,
     ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
-        XyInProcessDriver::clear_capabilities(self)
+        self.capability_disabled.clear();
+        self.overlay_phase = OverlayPhase::Pending;
+        Ok(self.capability_snapshot())
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
@@ -799,7 +785,7 @@ impl XyDriver for XyInProcessDriver {
         self.agent.is_tools_frozen()
     }
 
-    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+    async fn take_mcp_gate_notice(&mut self) -> Option<String> {
         self.mcp_gate_notice
             .take()
             .or_else(|| self.prepare_hub.as_ref().and_then(|h| h.take_notice()))

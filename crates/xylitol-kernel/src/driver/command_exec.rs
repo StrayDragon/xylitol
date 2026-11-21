@@ -85,7 +85,7 @@ impl crate::dispatch::SessionCommandExecutor for CommandExecutorView<'_> {
             }
             cmd @ (Command::GetCapabilities { .. }
             | Command::SetCapability { .. }
-            | Command::ClearCapabilities { .. }) => exec_capability(driver, cmd),
+            | Command::ClearCapabilities { .. }) => exec_capability(driver, cmd).await,
             Command::Steer { message, .. } => exec_steer(driver, &message).await,
             Command::FollowUp { message, .. } => exec_follow_up(driver, &message).await,
             Command::ClearQueue {
@@ -137,7 +137,7 @@ async fn exec_plugin_command(
     })
 }
 
-fn exec_capability(
+async fn exec_capability(
     driver: &mut XyInProcessDriver,
     cmd: Command,
 ) -> Result<DispatchOutcome, XyDriverError> {
@@ -145,12 +145,12 @@ fn exec_capability(
         Command::GetCapabilities { .. } => Ok(DispatchOutcome::Capabilities(
             XyDriver::capability_snapshot(driver),
         )),
-        Command::SetCapability { id, enabled } => {
-            XyDriver::set_capability(driver, &id, enabled).map(DispatchOutcome::Capabilities)
-        }
-        Command::ClearCapabilities { .. } => {
-            XyDriver::clear_capabilities(driver).map(DispatchOutcome::Capabilities)
-        }
+        Command::SetCapability { id, enabled } => XyDriver::set_capability(driver, &id, enabled)
+            .await
+            .map(DispatchOutcome::Capabilities),
+        Command::ClearCapabilities { .. } => XyDriver::clear_capabilities(driver)
+            .await
+            .map(DispatchOutcome::Capabilities),
         other => Err(transport_variant_error(&other).into()),
     }
 }

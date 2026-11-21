@@ -1510,7 +1510,7 @@ where
             .unwrap_or_default()
     }
 
-    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+    async fn take_mcp_gate_notice(&mut self) -> Option<String> {
         self.gate_notice_consumed.store(true, Ordering::SeqCst);
         self.cached_gate_notice
             .lock()

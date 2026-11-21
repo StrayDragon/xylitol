@@ -77,8 +77,6 @@ impl<T: Terminal> HostSession<T> {
         false
     }
 
-    /// Idle-mode counterpart of the busy dequeue: queued strips survive the
-    /// turn, so Alt+Up must restore them into the editor after AgentEnd too.
     pub(super) fn try_idle_dequeue(&mut self, input: &InputEvent) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;

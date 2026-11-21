@@ -744,7 +744,7 @@ impl XyDriver for ScriptedDriver {
             .any(|entry| entry.pending())
     }
 
-    fn set_capability(
+    async fn set_capability(
         &mut self,
         id: &str,
         enabled: bool,
@@ -776,7 +776,7 @@ impl XyDriver for ScriptedDriver {
         Ok(snap)
     }
 
-    fn clear_capabilities(
+    async fn clear_capabilities(
         &mut self,
     ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
         self.clear_capabilities_calls.fetch_add(1, Ordering::SeqCst);
@@ -1328,11 +1328,12 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             )),
             Command::SetCapability { id, enabled } => {
                 crate::driver::XyDriver::set_capability(self, &id, enabled)
+                    .await
                     .map(DispatchOutcome::Capabilities)
             }
-            Command::ClearCapabilities { .. } => {
-                crate::driver::XyDriver::clear_capabilities(self).map(DispatchOutcome::Capabilities)
-            }
+            Command::ClearCapabilities { .. } => crate::driver::XyDriver::clear_capabilities(self)
+                .await
+                .map(DispatchOutcome::Capabilities),
             Command::Steer { message, .. } => {
                 self.steer_calls.push(message.clone());
                 let id = self.allocate_queue_id();

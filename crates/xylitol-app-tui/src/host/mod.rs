@@ -447,7 +447,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_pointer_hits();
     }
 
-    /// Screen row the queue strip hit region is registered at, if any.
     pub fn queue_strip_click_row(&self) -> Option<u16> {
         let cols = self.tui.terminal.columns() as usize;
         let term_rows = self.tui.terminal.rows() as usize;

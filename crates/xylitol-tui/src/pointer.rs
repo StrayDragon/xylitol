@@ -244,9 +244,6 @@ impl HitRegionList {
                         && screen_row_n < r.content_row.saturating_add(height)
                 }
                 HitSpace::Chrome => {
-                    // Chrome regions are registered by the app in screen rows and
-                    // may span transcript and dock areas (e.g. the queue strip
-                    // lives in the dock), so no in-transcript gate applies.
                     screen_row_n >= r.content_row
                         && screen_row_n < r.content_row.saturating_add(height)
                 }

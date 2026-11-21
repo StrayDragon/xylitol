@@ -1196,8 +1196,6 @@ impl UiRoot {
             return None;
         }
         if self.dock_start_frame_row == 0 {
-            // Sentinel: row already expressed in screen space (tests, or a
-            // dock-less frame where transcript ends at row 0).
             return Some(self.queue_strip_row);
         }
         let dock_offset = self

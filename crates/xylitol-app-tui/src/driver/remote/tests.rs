@@ -906,10 +906,10 @@ async fn session_resources_frame_populates_caches_and_gate_notice() {
         vec![("lab_probe".to_string(), String::new())]
     );
     assert_eq!(
-        driver.take_mcp_gate_notice(),
+        driver.take_mcp_gate_notice().await,
         Some("mcp gate held".to_string())
     );
-    assert_eq!(driver.take_mcp_gate_notice(), None);
+    assert_eq!(driver.take_mcp_gate_notice().await, None);
     assert!(driver.loaded_resources_cached().is_some());
 }
 

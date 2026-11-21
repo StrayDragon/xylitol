@@ -40,7 +40,10 @@ pub(crate) async fn w_cap_disable_next_turn(capability_bdd: &CapabilityBdd, id: 
         .borrow_mut()
         .take()
         .expect("capability driver mounted");
-    driver.set_capability(id, false).expect("set_capability");
+    driver
+        .set_capability(id, false)
+        .await
+        .expect("set_capability");
     assert!(
         driver.capability_pending(),
         "capability: 禁用后须处于待生效状态"
@@ -66,7 +69,7 @@ pub(crate) fn t_cap_next_turn_applied(capability_bdd: &CapabilityBdd, tool: Stri
 }
 
 #[given("会话 A 禁用能力 {id:string}")]
-pub(crate) fn g_cap_session_a_disabled(
+pub(crate) async fn g_cap_session_a_disabled(
     agent: &AgentState,
     capability_bdd: &CapabilityBdd,
     id: String,
@@ -74,7 +77,10 @@ pub(crate) fn g_cap_session_a_disabled(
     let id = id.trim_matches('"');
     let (runtime, store) = make_agent_with_store(agent);
     let mut driver = assemble_driver(runtime, store);
-    driver.set_capability(id, false).expect("set_capability");
+    driver
+        .set_capability(id, false)
+        .await
+        .expect("set_capability");
     assert!(driver.capability_pending());
     *capability_bdd.driver.borrow_mut() = Some(driver);
 }
