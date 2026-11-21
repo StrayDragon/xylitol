@@ -29,11 +29,6 @@ impl ProjectTrustPersistReport {
         "Project resources apply after /reload or restart (not auto-reloaded).";
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ClipboardCopyOutcome {
-    pub pending_osc52: Option<String>,
-}
-
 pub const MCP_PENDING_CUE: &str = "mcp pending (see /mcp)";
 
 pub use crate::agent::{QueueStats, SessionStats};

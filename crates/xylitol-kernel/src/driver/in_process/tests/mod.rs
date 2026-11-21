@@ -7,6 +7,7 @@ use xylitol_official_plugin_session::LogSessionStore;
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 use xylitol_runtime::XyDriver;
+use xylitol_runtime::XySessionOps;
 use xylitol_runtime::agent::AgentBuilder;
 use xylitol_runtime::agent::tools::ToolSet;
 

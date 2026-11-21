@@ -8,7 +8,7 @@ pub use xylitol_kernel::composition::{
 };
 pub use xylitol_kernel::driver::{
     CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, TurnRequest, XyDriver,
-    XyDriverError, XyInProcessDriver, assemble_driver,
+    XyDriverError, XyInProcessDriver, XySessionOps, assemble_driver,
 };
 
 pub fn with_loop_registry(

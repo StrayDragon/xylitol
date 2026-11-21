@@ -125,6 +125,7 @@ pub(crate) async fn run_wiring_operation(
     agent: &AgentState,
     op: &str,
 ) -> Result<(), XyDriverError> {
+    use xylitol::embed::XySessionOps;
     use xylitol::embed::assemble_driver;
     use xylitol_plugin_sdk::session::SessionTreeKind;
 

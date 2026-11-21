@@ -7,6 +7,7 @@ use xylitol_plugin_sdk::ask::AskUserGateway;
 use xylitol_protocol::Command;
 use xylitol_runtime::XyDriver;
 use xylitol_runtime::XyDriverError;
+use xylitol_runtime::XySessionOps;
 use xylitol_runtime::agent::RuntimeBaseline;
 use xylitol_runtime::driver::{
     CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode,
@@ -244,9 +245,6 @@ impl XyDriver for OccupancyDriver {
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
         XyDriver::dollar_skill_catalog(&self.inner)
     }
-    fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
-        XyDriver::session_store(&self.inner)
-    }
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
         XyDriver::loaded_resources_snapshot(&self.inner).await
     }
@@ -308,7 +306,7 @@ impl OccupancyEngine for OccupancyDriver {
     }
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
-        XyInProcessDriver::switch_session(&mut self.inner, session_id).await
+        XySessionOps::switch_session(&mut self.inner, session_id).await
     }
 
     async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {

@@ -9,13 +9,13 @@ pub use bang_exec::BangExecHandler;
 pub use error::XyDriverError;
 pub use in_process::{
     InProcessReloadHook, ReloadContext, ReloadParticipant, ReloadRegistry, XyInProcessDriver,
-    relay_bash_chunks, utf8_emit_len,
+    XySessionOps, relay_bash_chunks, utf8_emit_len,
 };
-pub use proto::{AttachObserve, BashRun, LinkHealth, XyDriver};
+pub use proto::{BashRun, XyDriver};
 pub use session_export::SessionExporter;
 pub use types::{
-    ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
-    MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot, ModelInfo, ProjectTrustMode,
-    ProjectTrustPersistReport, QueueStats, ReloadStepReport, RuntimeReloadReport, SessionListEntry,
-    SessionState, SessionStats, TurnRequest, XyEvent, estimate_from_session_entries,
+    CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot, MCP_PENDING_CUE,
+    McpServerPhase, McpServerSnapshot, ModelInfo, ProjectTrustMode, ProjectTrustPersistReport,
+    QueueStats, ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionState,
+    SessionStats, TurnRequest, XyEvent, estimate_from_session_entries,
 };

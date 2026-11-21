@@ -14,8 +14,8 @@ pub use agent::{
     max_steps_stop_hook,
 };
 pub use driver::{
-    AttachObserve, BangExecHandler, BashRun, InProcessReloadHook, LinkHealth, SessionExporter,
-    XyDriver, XyDriverError, XyInProcessDriver,
+    BangExecHandler, BashRun, InProcessReloadHook, SessionExporter, XyDriver, XyDriverError,
+    XyInProcessDriver, XySessionOps,
 };
 pub use permission::{
     AllowAllPermission, FilesystemRules, GlobPolicy, NetworkRules, PermissionRules, ProcessRules,

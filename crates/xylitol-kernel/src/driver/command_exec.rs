@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use super::XyDriver;
 use super::XyDriverError;
 use super::XyInProcessDriver;
+use super::XySessionOps;
 
 use crate::dispatch::{
     DispatchOutcome, DispatchRejection, transport_variant_error, validate_nonempty_thinking_level,
@@ -33,30 +34,38 @@ impl crate::dispatch::SessionCommandExecutor for CommandExecutorView<'_> {
                 ..
             } => exec_bash(driver, &command, exclude_from_context).await,
             Command::Compact { instructions, .. } => exec_compact(driver, instructions).await,
-            Command::GetSessionStats { .. } => exec_session_stats(driver).await,
+            Command::GetSessionStats { .. } => exec_session_stats(&*driver).await,
             Command::ExportHtml { output_path, .. } => exec_export_html(driver, output_path).await,
             Command::ExportJsonl { output_path, .. } => {
                 exec_export_jsonl(driver, output_path).await
             }
             Command::ImportJsonl { input_path, .. } => exec_import_jsonl(driver, &input_path).await,
             Command::SwitchSession { session_path, .. } => {
-                exec_switch_session(driver, &session_path).await
+                exec_switch_session(&mut *driver, &session_path).await
             }
             Command::Fork {
                 entry_id, position, ..
-            } => exec_fork(driver, &entry_id, position.as_deref()).await,
+            } => exec_fork(&mut *driver, &entry_id, position.as_deref()).await,
             Command::GetMessages {
                 limit,
                 before_entry_id,
-            } => exec_get_messages(driver, limit, before_entry_id.as_deref()).await,
-            Command::EstimateContext { .. } => exec_estimate_context(driver).await,
-            Command::SessionTree { kind, .. } => exec_session_tree(driver, kind).await,
+            } => {
+                exec_get_messages(
+                    &*driver,
+                    XyDriver::session_id(driver).unwrap_or_default(),
+                    limit,
+                    before_entry_id.as_deref(),
+                )
+                .await
+            }
+            Command::EstimateContext { .. } => exec_estimate_context(&*driver).await,
+            Command::SessionTree { kind, .. } => exec_session_tree(&*driver, kind).await,
             Command::TravelSessionTree { kind, entry_id, .. } => {
-                exec_travel_session_tree(driver, kind, &entry_id).await
+                exec_travel_session_tree(&*driver, kind, &entry_id).await
             }
             Command::AppendEntryLabel {
                 target_id, label, ..
-            } => exec_append_entry_label(driver, &target_id, label.as_deref()).await,
+            } => exec_append_entry_label(&mut *driver, &target_id, label.as_deref()).await,
             cmd @ (Command::ListSessions { .. }
             | Command::LoadSessionEntries { .. }
             | Command::NewSession { .. }
@@ -64,7 +73,7 @@ impl crate::dispatch::SessionCommandExecutor for CommandExecutorView<'_> {
             | Command::SetSessionName { .. }
             | Command::SetSessionNameFor { .. }
             | Command::GenerateSessionName { .. }
-            | Command::DeleteSession { .. }) => exec_session_meta(driver, cmd).await,
+            | Command::DeleteSession { .. }) => exec_session_meta(&mut *driver, cmd).await,
             Command::Reload { .. } => exec_reload(driver).await,
             Command::LoadedResources { .. } => exec_loaded_resources(driver).await,
             Command::GetQueueStats { .. } => Ok(queue_stats_outcome(driver)),
@@ -146,7 +155,7 @@ fn exec_capability(
 }
 
 async fn exec_session_meta(
-    driver: &mut XyInProcessDriver,
+    driver: &mut dyn XySessionOps,
     cmd: Command,
 ) -> Result<DispatchOutcome, XyDriverError> {
     match cmd {
@@ -208,7 +217,7 @@ async fn exec_compact(
     Ok(DispatchOutcome::Compacted(compacted))
 }
 
-async fn exec_session_stats(driver: &XyInProcessDriver) -> Result<DispatchOutcome, XyDriverError> {
+async fn exec_session_stats(driver: &dyn XySessionOps) -> Result<DispatchOutcome, XyDriverError> {
     let stats = driver.get_session_stats().await?;
     Ok(DispatchOutcome::SessionStats(session_stats_json(stats)))
 }
@@ -241,7 +250,7 @@ async fn exec_import_jsonl(
 }
 
 async fn exec_switch_session(
-    driver: &mut XyInProcessDriver,
+    driver: &mut dyn XySessionOps,
     session_path: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {
     let new_id = session_id_from_path(session_path);
@@ -250,7 +259,7 @@ async fn exec_switch_session(
 }
 
 async fn exec_fork(
-    driver: &mut XyInProcessDriver,
+    driver: &mut dyn XySessionOps,
     entry_id: &str,
     position: Option<&str>,
 ) -> Result<DispatchOutcome, XyDriverError> {
@@ -261,12 +270,12 @@ async fn exec_fork(
 }
 
 async fn exec_get_messages(
-    driver: &XyInProcessDriver,
+    driver: &dyn XySessionOps,
+    session_id: String,
     limit: Option<usize>,
     before_entry_id: Option<&str>,
 ) -> Result<DispatchOutcome, XyDriverError> {
     let (entries, has_more) = driver.get_messages_page(limit, before_entry_id).await?;
-    let session_id = XyDriver::session_id(driver).unwrap_or_default();
     Ok(DispatchOutcome::Messages {
         session_id,
         entries,
@@ -275,14 +284,14 @@ async fn exec_get_messages(
 }
 
 async fn exec_estimate_context(
-    driver: &XyInProcessDriver,
+    driver: &dyn XySessionOps,
 ) -> Result<DispatchOutcome, XyDriverError> {
-    let estimate = XyInProcessDriver::estimate_context_tokens(driver).await?;
+    let estimate = XySessionOps::estimate_context_tokens(driver).await?;
     Ok(DispatchOutcome::EstimateContext(estimate))
 }
 
 async fn exec_session_tree(
-    driver: &XyInProcessDriver,
+    driver: &dyn XySessionOps,
     kind: xylitol_protocol::SessionTreeKind,
 ) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::SessionTree(
@@ -291,7 +300,7 @@ async fn exec_session_tree(
 }
 
 async fn exec_travel_session_tree(
-    driver: &XyInProcessDriver,
+    driver: &dyn XySessionOps,
     kind: xylitol_protocol::SessionTreeKind,
     entry_id: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {
@@ -303,7 +312,7 @@ async fn exec_travel_session_tree(
 }
 
 async fn exec_append_entry_label(
-    driver: &mut XyInProcessDriver,
+    driver: &mut dyn XySessionOps,
     target_id: &str,
     label: Option<&str>,
 ) -> Result<DispatchOutcome, XyDriverError> {
@@ -311,12 +320,12 @@ async fn exec_append_entry_label(
     Ok(DispatchOutcome::Empty)
 }
 
-async fn exec_list_sessions(driver: &XyInProcessDriver) -> Result<DispatchOutcome, XyDriverError> {
+async fn exec_list_sessions(driver: &dyn XySessionOps) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::Sessions(driver.list_sessions().await?))
 }
 
 async fn exec_load_session_entries(
-    driver: &XyInProcessDriver,
+    driver: &dyn XySessionOps,
     session_id: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::SessionEntries(
@@ -324,14 +333,12 @@ async fn exec_load_session_entries(
     ))
 }
 
-async fn exec_new_session(
-    driver: &mut XyInProcessDriver,
-) -> Result<DispatchOutcome, XyDriverError> {
+async fn exec_new_session(driver: &mut dyn XySessionOps) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::NewSession(driver.new_session().await?))
 }
 
 async fn exec_get_session_name(
-    driver: &XyInProcessDriver,
+    driver: &dyn XySessionOps,
 ) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::SessionName(
         driver.get_session_name().await?,
@@ -339,7 +346,7 @@ async fn exec_get_session_name(
 }
 
 async fn exec_set_session_name(
-    driver: &mut XyInProcessDriver,
+    driver: &mut dyn XySessionOps,
     name: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::SessionName(Some(
@@ -348,7 +355,7 @@ async fn exec_set_session_name(
 }
 
 async fn exec_set_session_name_for(
-    driver: &mut XyInProcessDriver,
+    driver: &mut dyn XySessionOps,
     session_id: &str,
     name: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {
@@ -358,7 +365,7 @@ async fn exec_set_session_name_for(
 }
 
 async fn exec_generate_session_name(
-    driver: &mut XyInProcessDriver,
+    driver: &mut dyn XySessionOps,
     force: bool,
 ) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::SessionName(Some(
@@ -367,7 +374,7 @@ async fn exec_generate_session_name(
 }
 
 async fn exec_delete_session(
-    driver: &mut XyInProcessDriver,
+    driver: &mut dyn XySessionOps,
     session_id: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {
     driver.delete_session(session_id).await?;

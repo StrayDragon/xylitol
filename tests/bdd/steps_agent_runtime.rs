@@ -1499,7 +1499,7 @@ pub(crate) fn t_c2826_skills_reload_trust(agent: &AgentState) {
 
 #[when("经 Driver 启动会话并在首个 TextDelta 后 abort 并检查持久化条目")]
 pub(crate) async fn w_c2826_abort_persist(agent: &AgentState) {
-    use xylitol::embed::{XyDriver, assemble_driver};
+    use xylitol::embed::{XyDriver, XySessionOps, assemble_driver};
     xylitol_kernel::provider::factory::set_fake_slow_stream(40, 5);
     let (runtime, store) = make_agent_with_store(agent);
     let mut driver = assemble_driver(runtime, store.clone());

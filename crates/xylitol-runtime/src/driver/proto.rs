@@ -6,27 +6,12 @@ use serde_json::Value;
 
 use super::XyDriverError;
 use super::types::{
-    ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
-    ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport, SessionState, TurnRequest,
-    XyEvent,
+    CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode,
+    ProjectTrustPersistReport, RuntimeReloadReport, SessionState, TurnRequest,
 };
 
 pub type BashRun =
     Pin<Box<dyn Future<Output = Result<xylitol_plugin_sdk::XyBashResult, XyDriverError>> + Send>>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkHealth {
-    Up,
-    Down,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AttachObserve {
-    #[default]
-    Live,
-    Inflight,
-    Ended,
-}
 
 #[async_trait]
 pub trait XyDriver: Send {
@@ -108,30 +93,6 @@ pub trait XyDriver: Send {
         Err(XyDriverError::unsupported("bash_run"))
     }
 
-    async fn attach_session(&mut self) -> Result<(), XyDriverError> {
-        Ok(())
-    }
-
-    async fn refresh_surface_caches(&mut self) -> Result<(), XyDriverError> {
-        Ok(())
-    }
-
-    fn drain_idle_events(&mut self) -> Vec<XyEvent> {
-        Vec::new()
-    }
-
-    fn link_health(&self) -> LinkHealth {
-        LinkHealth::Up
-    }
-
-    fn attach_observe(&self) -> AttachObserve {
-        AttachObserve::Live
-    }
-
-    fn take_resync_rebuild(&mut self) -> bool {
-        false
-    }
-
     fn abort(&self);
 
     fn current_model(&self) -> Option<ModelInfo>;
@@ -195,10 +156,6 @@ pub trait XyDriver: Send {
         Vec::new()
     }
 
-    fn session_store(&self) -> Option<std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore>> {
-        None
-    }
-
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot;
 
     fn loaded_resources_cached(&self) -> Option<LoadedResourcesSnapshot> {
@@ -247,31 +204,11 @@ pub trait XyDriver: Send {
             "persist_project_trust not supported on this driver",
         ))
     }
-
-    async fn copy_text_to_clipboard(
-        &mut self,
-        _text: &str,
-    ) -> Result<ClipboardCopyOutcome, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "copy_text_to_clipboard not supported on this driver",
-        ))
-    }
-
-    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "stage_clipboard_image not supported on this driver",
-        ))
-    }
-
-    async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "read_clipboard_text not supported on this driver",
-        ))
-    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::driver::types::XyEvent;
     use futures::StreamExt;
 
     struct Stub;

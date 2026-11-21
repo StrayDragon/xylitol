@@ -2,6 +2,9 @@
 depends_on: []
 needs_specs_change: false
 title: XyDriver 表面收窄：把端能力、attach 语义与 store 泄出清出驱动端口
+branch: sdd/c3412-refactor-driver-trait-surface
+base_branch: main
+base_sha: 522c922f9d84c9009bc00e6f7639eb7ffc2cf142
 ---
 
 ## Why

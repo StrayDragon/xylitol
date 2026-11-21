@@ -28,6 +28,7 @@ mod session;
 
 pub use prepare::InProcessReloadHook;
 pub use reload::{ReloadContext, ReloadParticipant, ReloadRegistry};
+pub use session::XySessionOps;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum OverlayPhase {
@@ -690,7 +691,7 @@ impl XyDriver for XyInProcessDriver {
     async fn estimate_context_tokens(
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
-        XyInProcessDriver::estimate_context_tokens(self).await
+        XySessionOps::estimate_context_tokens(self).await
     }
 
     fn capability_snapshot(&self) -> xylitol_plugin_sdk::session::CapabilitySnapshot {
@@ -722,11 +723,7 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
-        XyInProcessDriver::leaf_entry_id(self)
-    }
-
-    fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
-        Some(self.store.clone())
+        XySessionOps::leaf_entry_id(self)
     }
 
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
