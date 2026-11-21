@@ -8,6 +8,7 @@ use xylitol_official_plugin_config::types::PermissionConfig;
 use xylitol_official_plugin_obs as timing;
 use xylitol_official_plugin_session::LogSessionStore;
 use xylitol_plugin_sdk::XySessionStore;
+use xylitol_plugin_sdk::config_section::SectionBinding;
 use xylitol_plugin_sdk::model::{XyModelMeta, default_input_modalities};
 use xylitol_runtime::agent::ModelRegistry;
 use xylitol_runtime::agent::model::resolver;
@@ -366,9 +367,11 @@ fn resolve_profile_assembly(
             let Some(cfg) = app_config else {
                 return Err(BootstrapError::AgentProfileNotFound(name.to_string()));
             };
-            let agents: xylitol_official_plugin_config::types::AgentsConfig = cfg
-                .section_or_default("agents")
-                .map_err(|e| BootstrapError::ConfigLoadFailed(e.to_string()))?;
+            let agents = xylitol_official_plugin_config::types::AgentsConfig::try_from_sections(
+                &cfg.sections,
+            )
+            .map_err(|e| BootstrapError::ConfigLoadFailed(e.to_string()))?
+            .unwrap_or_default();
             if !agents.profiles.contains_key(name) {
                 return Err(BootstrapError::AgentProfileNotFound(name.to_string()));
             }
@@ -409,8 +412,10 @@ pub(crate) fn build_model_registry(
     };
     let mut missing_key_providers = std::collections::BTreeSet::new();
     let models: xylitol_official_plugin_config::types::ModelsConfig =
-        match cfg.section_or_default("models") {
-            Ok(models) => models,
+        match xylitol_official_plugin_config::types::ModelsConfig::try_from_sections(&cfg.sections)
+        {
+            Ok(Some(models)) => models,
+            Ok(None) => Default::default(),
             Err(e) => {
                 warnings.push(BootstrapWarning::ModelEntrySkipped(format!("models: {e}")));
                 return model_registry;
@@ -511,8 +516,10 @@ fn build_permission_engine(
     app_config: Option<&xylitol_official_plugin_config::types::AppConfig>,
 ) -> Option<std::sync::Arc<dyn xylitol_plugin_sdk::XyPermission>> {
     app_config.and_then(|cfg| {
-        let security: Option<xylitol_official_plugin_config::types::SecurityConfig> =
-            cfg.section("security").ok().flatten();
+        let security =
+            xylitol_official_plugin_config::types::SecurityConfig::try_from_sections(&cfg.sections)
+                .ok()
+                .flatten();
         security.and_then(|sc| {
             sc.permission
                 .as_ref()
@@ -625,8 +632,8 @@ fn load_runtime_settings(
     let compaction = {
         let from_settings = settings_mgr.get_settings().compaction.as_ref();
         let from_config = app_config.and_then(|c| {
-            c.section::<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>(
-                "compaction",
+            xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig::try_from_sections(
+                &c.sections,
             )
             .ok()
             .flatten()
@@ -738,7 +745,7 @@ pub fn resolve_assembly_with(
     let trust_config = app_config
         .as_ref()
         .and_then(|c| {
-            c.section::<xylitol_official_plugin_config::types::TrustConfig>("trust")
+            xylitol_official_plugin_config::types::TrustConfig::try_from_sections(&c.sections)
                 .ok()
                 .flatten()
         })
@@ -789,15 +796,17 @@ pub fn resolve_assembly_with(
 
     let mcp_servers =
         crate::mcp_spec::McpServerSpec::from_infra_list(app_config.as_ref().and_then(|c| {
-            c.section::<Vec<xylitol_official_plugin_mcp::McpServerConfig>>("mcp_servers")
+            xylitol_official_plugin_mcp::McpServersSection::try_from_sections(&c.sections)
                 .ok()
                 .flatten()
+                .map(|servers| servers.0)
         }));
 
     let hooks_config = app_config
         .as_ref()
         .map(|c| {
-            c.section_or_default::<xylitol_official_plugin_hooks::HooksConfig>("hooks")
+            xylitol_official_plugin_hooks::HooksConfig::try_from_sections(&c.sections)
+                .unwrap_or_default()
                 .unwrap_or_default()
         })
         .unwrap_or_default();
@@ -805,8 +814,12 @@ pub fn resolve_assembly_with(
     let batch_mode = app_config
         .as_ref()
         .map(|c| {
-            let tool_batch: xylitol_official_plugin_config::types::ToolBatchConfig =
-                c.section_or_default("tool_batch").unwrap_or_default();
+            let tool_batch =
+                xylitol_official_plugin_config::types::ToolBatchConfig::try_from_sections(
+                    &c.sections,
+                )
+                .unwrap_or_default()
+                .unwrap_or_default();
             xylitol_plugin_sdk::XyBatchMode::from(tool_batch.mode)
         })
         .unwrap_or_default();
@@ -814,7 +827,7 @@ pub fn resolve_assembly_with(
     let max_steps_per_turn = app_config
         .as_ref()
         .and_then(|c| {
-            c.section::<xylitol_official_plugin_config::types::SessionConfig>("session")
+            xylitol_official_plugin_config::types::SessionConfig::try_from_sections(&c.sections)
                 .ok()
                 .flatten()
         })
@@ -823,7 +836,7 @@ pub fn resolve_assembly_with(
     let stage_name_config = app_config
         .as_ref()
         .and_then(|c| {
-            c.section::<xylitol_official_plugin_config::types::SessionConfig>("session")
+            xylitol_official_plugin_config::types::SessionConfig::try_from_sections(&c.sections)
                 .ok()
                 .flatten()
         })

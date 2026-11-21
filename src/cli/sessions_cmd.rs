@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::cli::args::SessionsAction;
 use xylitol_kernel::config::loader::load_app_config_detailed;
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 pub async fn run(action: SessionsAction) -> Result<(), String> {
     match action {
@@ -15,7 +16,7 @@ pub async fn run(action: SessionsAction) -> Result<(), String> {
                     let config: xylitol_official_plugin_session::plugin::SessionPluginConfig =
                         loaded
                             .config
-                            .section_or_default("session")
+                            .section_or_default(xylitol_kernel::config::types::SessionConfig::KEY)
                             .unwrap_or_default();
                     config.sessions_dir.map(PathBuf::from).unwrap_or_else(
                         xylitol_official_plugin_session::LogSessionStore::default_dir,

@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::cli::args::ConfigAction;
 use xylitol_kernel::config::loader::load_app_config_detailed;
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 pub fn run(action: ConfigAction) -> Result<(), String> {
     match action {
@@ -38,14 +39,16 @@ pub fn run(action: ConfigAction) -> Result<(), String> {
             )
             .map_err(|e| e.to_string())?;
             let unknown = loaded.config.unknown_keys.clone();
-            let codemode: xylitol_plugin_sdk::CodemodeConfig = loaded
-                .config
-                .section_or_default("codemode")
-                .unwrap_or_default();
-            let tools: Vec<String> = loaded
-                .config
-                .section_or_default("tools")
-                .unwrap_or_default();
+            let codemode =
+                xylitol_plugin_sdk::CodemodeConfig::try_from_sections(&loaded.config.sections)
+                    .unwrap_or_default()
+                    .unwrap_or_default();
+            let tools = xylitol_kernel::config::sections::ToolsSection::try_from_sections(
+                &loaded.config.sections,
+            )
+            .unwrap_or_default()
+            .unwrap_or_default()
+            .0;
             let mut warnings = Vec::new();
             if !codemode.enabled && xylitol_plugin_sdk::run_code_selected(&tools) {
                 warnings.push("codemode disabled; run_code selection ignored".to_string());

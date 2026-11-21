@@ -1,5 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
@@ -68,17 +69,21 @@ impl LoopPoliciesConfig {
     }
 }
 
-pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
-    xylitol_plugin_sdk::config_section::ConfigSection {
-        key: "loop_policies",
-        schema: || {
-            serde_json::to_value(schemars::schema_for!(LoopPoliciesConfig))
-                .expect("loop_policies schema")
-        },
-        default: || {
-            serde_json::to_value(LoopPoliciesConfig::default()).expect("loop_policies default")
-        },
+impl SectionBinding for LoopPoliciesConfig {
+    const KEY: &'static str = "loop_policies";
+
+    fn schema_value() -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(LoopPoliciesConfig))
+            .expect("loop_policies schema")
     }
+
+    fn default_value() -> serde_json::Value {
+        serde_json::to_value(LoopPoliciesConfig::default()).expect("loop_policies default")
+    }
+}
+
+pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
+    <LoopPoliciesConfig as SectionBinding>::descriptor()
 }
 
 #[cfg(test)]
@@ -87,8 +92,9 @@ mod section_decl_tests {
 
     #[test]
     fn loop_policies_section_declares_key_schema_default() {
+        assert_eq!(<LoopPoliciesConfig as SectionBinding>::KEY, "loop_policies");
         let section = config_section();
-        assert_eq!(section.key, "loop_policies");
+        assert_eq!(section.key, <LoopPoliciesConfig as SectionBinding>::KEY);
         assert!((section.schema)().is_object());
         assert_eq!(
             (section.default)(),

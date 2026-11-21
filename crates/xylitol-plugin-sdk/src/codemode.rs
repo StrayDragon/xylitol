@@ -123,6 +123,18 @@ impl Default for CodemodeConfig {
     }
 }
 
+impl crate::config_section::SectionBinding for CodemodeConfig {
+    const KEY: &'static str = "codemode";
+
+    fn schema_value() -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(Self)).expect("codemode schema")
+    }
+
+    fn default_value() -> serde_json::Value {
+        serde_json::to_value(Self::default()).expect("codemode default")
+    }
+}
+
 pub fn run_code_selected(tools: &[String]) -> bool {
     tools.iter().any(|entry| {
         let entry = entry.trim();

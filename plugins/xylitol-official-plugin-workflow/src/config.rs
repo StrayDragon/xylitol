@@ -1,5 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 pub const DEFAULT_MAX_REWORKFLOWS: u32 = 3;
 
@@ -29,14 +30,20 @@ impl WorkflowConfig {
     }
 }
 
-pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
-    xylitol_plugin_sdk::config_section::ConfigSection {
-        key: "workflow",
-        schema: || {
-            serde_json::to_value(schemars::schema_for!(WorkflowConfig)).expect("workflow schema")
-        },
-        default: || serde_json::to_value(WorkflowConfig::default()).expect("workflow default"),
+impl SectionBinding for WorkflowConfig {
+    const KEY: &'static str = "workflow";
+
+    fn schema_value() -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(WorkflowConfig)).expect("workflow schema")
     }
+
+    fn default_value() -> serde_json::Value {
+        serde_json::to_value(WorkflowConfig::default()).expect("workflow default")
+    }
+}
+
+pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
+    <WorkflowConfig as SectionBinding>::descriptor()
 }
 
 #[cfg(test)]
@@ -45,8 +52,9 @@ mod section_decl_tests {
 
     #[test]
     fn workflow_section_declares_key_schema_default() {
+        assert_eq!(<WorkflowConfig as SectionBinding>::KEY, "workflow");
         let section = config_section();
-        assert_eq!(section.key, "workflow");
+        assert_eq!(section.key, <WorkflowConfig as SectionBinding>::KEY);
         assert!((section.schema)().is_object());
         assert_eq!(
             (section.default)(),

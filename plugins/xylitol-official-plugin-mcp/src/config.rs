@@ -513,15 +513,25 @@ mod tests {
     }
 }
 
-pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
-    xylitol_plugin_sdk::config_section::ConfigSection {
-        key: "mcp_servers",
-        schema: || {
-            serde_json::to_value(schemars::schema_for!(Vec<McpServerConfig>))
-                .expect("mcp_servers schema")
-        },
-        default: || serde_json::Value::Null,
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(transparent)]
+#[schemars(transparent)]
+pub struct McpServersSection(pub Vec<McpServerConfig>);
+
+impl xylitol_plugin_sdk::config_section::SectionBinding for McpServersSection {
+    const KEY: &'static str = "mcp_servers";
+
+    fn schema_value() -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(McpServersSection)).expect("mcp_servers schema")
     }
+
+    fn default_value() -> serde_json::Value {
+        serde_json::Value::Null
+    }
+}
+
+pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
+    <McpServersSection as xylitol_plugin_sdk::config_section::SectionBinding>::descriptor()
 }
 
 #[cfg(test)]
@@ -530,6 +540,10 @@ mod section_decl_tests {
 
     #[test]
     fn mcp_servers_section_declares_key_and_null_default() {
+        assert_eq!(
+            <McpServersSection as xylitol_plugin_sdk::config_section::SectionBinding>::KEY,
+            "mcp_servers"
+        );
         let section = config_section();
         assert_eq!(section.key, "mcp_servers");
         assert!((section.schema)().is_object());

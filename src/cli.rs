@@ -26,6 +26,7 @@ use xylitol_kernel::driver::XyDriver;
 #[cfg(all(test, feature = "server"))]
 use xylitol_kernel::occupancy::subcommand::ServeAction;
 use xylitol_kernel::timing;
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let raw_args: Vec<String> = std::env::args().collect();
@@ -44,7 +45,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         &xylitol_kernel::config_sections::all(),
     )
     .map(|c| {
-        c.section_or_default::<xylitol_kernel::obs::config::OtelConfig>("otel")
+        xylitol_kernel::obs::config::OtelConfig::try_from_sections(&c.sections)
+            .unwrap_or_default()
             .unwrap_or_default()
     })
     .unwrap_or_default();
@@ -322,8 +324,9 @@ async fn run_product_tui_attached(
         &xylitol_kernel::config_sections::all(),
     ) {
         Ok(c) => {
-            let tui: xylitol_kernel::config::types::TuiConfig =
-                c.section_or_default("tui").unwrap_or_default();
+            let tui = xylitol_kernel::config::types::TuiConfig::try_from_sections(&c.sections)
+                .unwrap_or_default()
+                .unwrap_or_default();
             (
                 tui.editor_history_seed_sessions,
                 crate::cli::activity_fold_settings(tui.activity_fold),

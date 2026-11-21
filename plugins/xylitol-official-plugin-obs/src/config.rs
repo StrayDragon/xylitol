@@ -2,15 +2,22 @@ use std::collections::HashMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use xylitol_plugin_sdk::config_section::{ConfigSection, SectionBinding};
 
-use xylitol_plugin_sdk::config_section::ConfigSection;
+impl SectionBinding for OtelConfig {
+    const KEY: &'static str = "otel";
+
+    fn schema_value() -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(OtelConfig)).expect("otel schema")
+    }
+
+    fn default_value() -> serde_json::Value {
+        serde_json::to_value(OtelConfig::default()).expect("otel default")
+    }
+}
 
 pub fn config_section() -> ConfigSection {
-    ConfigSection {
-        key: "otel",
-        schema: || serde_json::to_value(schemars::schema_for!(OtelConfig)).expect("otel schema"),
-        default: || serde_json::to_value(OtelConfig::default()).expect("otel default"),
-    }
+    <OtelConfig as SectionBinding>::descriptor()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -93,8 +100,9 @@ mod section_decl_tests {
 
     #[test]
     fn otel_section_declares_key_schema_default() {
+        assert_eq!(<OtelConfig as SectionBinding>::KEY, "otel");
         let section = config_section();
-        assert_eq!(section.key, "otel");
+        assert_eq!(section.key, <OtelConfig as SectionBinding>::KEY);
         assert!((section.schema)().is_object());
         assert_eq!(
             (section.default)(),

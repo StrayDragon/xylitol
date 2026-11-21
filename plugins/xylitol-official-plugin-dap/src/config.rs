@@ -1,13 +1,20 @@
 use crate::DapPluginConfig;
+use xylitol_plugin_sdk::config_section::SectionBinding;
+
+impl SectionBinding for DapPluginConfig {
+    const KEY: &'static str = "dap";
+
+    fn schema_value() -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(DapPluginConfig)).expect("dap schema")
+    }
+
+    fn default_value() -> serde_json::Value {
+        serde_json::Value::Null
+    }
+}
 
 pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
-    xylitol_plugin_sdk::config_section::ConfigSection {
-        key: "dap",
-        schema: || {
-            serde_json::to_value(schemars::schema_for!(DapPluginConfig)).expect("dap schema")
-        },
-        default: || serde_json::Value::Null,
-    }
+    <DapPluginConfig as SectionBinding>::descriptor()
 }
 
 #[cfg(test)]
@@ -16,8 +23,9 @@ mod section_decl_tests {
 
     #[test]
     fn dap_section_declares_key_and_null_default() {
+        assert_eq!(<DapPluginConfig as SectionBinding>::KEY, "dap");
         let section = config_section();
-        assert_eq!(section.key, "dap");
+        assert_eq!(section.key, <DapPluginConfig as SectionBinding>::KEY);
         assert!((section.schema)().is_object());
         assert!((section.default)().is_null());
     }

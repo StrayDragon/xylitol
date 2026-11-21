@@ -1,5 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(default, deny_unknown_fields)]
@@ -104,17 +105,21 @@ pub enum DedupMode {
     SuppressIfUnchanged,
 }
 
-pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
-    xylitol_plugin_sdk::config_section::ConfigSection {
-        key: "context_inject",
-        schema: || {
-            serde_json::to_value(schemars::schema_for!(ContextInjectConfig))
-                .expect("context_inject schema")
-        },
-        default: || {
-            serde_json::to_value(ContextInjectConfig::default()).expect("context_inject default")
-        },
+impl SectionBinding for ContextInjectConfig {
+    const KEY: &'static str = "context_inject";
+
+    fn schema_value() -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(ContextInjectConfig))
+            .expect("context_inject schema")
     }
+
+    fn default_value() -> serde_json::Value {
+        serde_json::to_value(ContextInjectConfig::default()).expect("context_inject default")
+    }
+}
+
+pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
+    <ContextInjectConfig as SectionBinding>::descriptor()
 }
 
 #[cfg(test)]
@@ -123,8 +128,12 @@ mod section_decl_tests {
 
     #[test]
     fn context_inject_section_declares_key_schema_default() {
+        assert_eq!(
+            <ContextInjectConfig as SectionBinding>::KEY,
+            "context_inject"
+        );
         let section = config_section();
-        assert_eq!(section.key, "context_inject");
+        assert_eq!(section.key, <ContextInjectConfig as SectionBinding>::KEY);
         assert!((section.schema)().is_object());
         assert_eq!(
             (section.default)(),

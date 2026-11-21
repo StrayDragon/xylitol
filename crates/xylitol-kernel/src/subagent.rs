@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::{Value, json};
+use xylitol_plugin_sdk::config_section::SectionBinding;
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::{XyEvent, XyTool, XyToolCtx};
 
@@ -151,8 +152,11 @@ pub fn register_subagent_tool(ctx: &xylitol_plugin_sdk::rt::Ctx, opts: &BootOpti
     let Some(config) = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>() else {
         return;
     };
-    let subagent: Option<xylitol_official_plugin_config::types::SubagentConfig> =
-        config.app.section("subagent").ok().flatten();
+    let subagent = xylitol_official_plugin_config::types::SubagentConfig::try_from_sections(
+        &config.app.sections,
+    )
+    .ok()
+    .flatten();
     let Some(subagent) = subagent else {
         return;
     };

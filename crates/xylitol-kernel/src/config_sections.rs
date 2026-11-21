@@ -31,6 +31,7 @@ pub fn all() -> Vec<ConfigSection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xylitol_plugin_sdk::config_section::{SectionBinding, SectionBindingError};
 
     fn load_with_sections(yaml: &str) -> xylitol_official_plugin_config::types::AppConfig {
         let home = tempfile::tempdir().unwrap();
@@ -168,6 +169,46 @@ mod tests {
             serde_json::json!(false),
             "workflow plugin is opt-in"
         );
+    }
+
+    #[test]
+    fn key_drift_is_loud_missing_via_binding() {
+        let mut cfg = xylitol_official_plugin_config::types::AppConfig::default();
+        cfg.sections.insert(
+            "mcp".to_string(),
+            serde_json::json!([{ "name": "x", "command": "c" }]),
+        );
+        let old_read: Option<xylitol_official_plugin_mcp::McpServersSection> =
+            cfg.section("mcp_servers").expect("section lookup");
+        assert!(
+            old_read.is_none(),
+            "old key-addressed read silently misses the drifted `mcp` data"
+        );
+        let err =
+            <xylitol_official_plugin_mcp::McpServersSection as SectionBinding>::from_sections(
+                &cfg.sections,
+            )
+            .expect_err("binding read must be loud");
+        assert!(matches!(err, SectionBindingError::Missing("mcp_servers")));
+    }
+
+    #[test]
+    fn type_error_is_loud_parse_via_binding() {
+        let mut cfg = xylitol_official_plugin_config::types::AppConfig::default();
+        cfg.sections
+            .insert("todo".to_string(), serde_json::json!({ "enabled": "yes" }));
+        let old_read = cfg
+            .section_or_default::<xylitol_official_plugin_todo::TodoConfig>("todo")
+            .unwrap_or_default();
+        assert!(
+            old_read.enabled,
+            "old read path silently defaulted to default-on"
+        );
+        let err = <xylitol_official_plugin_todo::TodoConfig as SectionBinding>::from_sections(
+            &cfg.sections,
+        )
+        .expect_err("binding read must be loud");
+        assert!(matches!(err, SectionBindingError::Parse("todo", _)));
     }
 
     #[test]

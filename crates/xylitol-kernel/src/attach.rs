@@ -2,6 +2,7 @@ use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 use thiserror::Error;
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 pub const DEFAULT_ATTACH_URL: &str = "http://127.0.0.1:18790";
 
@@ -606,7 +607,8 @@ pub fn autostart_policy(
 ) -> (xylitol_serve::ServeLifecycle, Duration, Option<Duration>) {
     let serve = crate::config::loader::load_app_config(config_path, &crate::config_sections::all())
         .map(|cfg| {
-            cfg.section_or_default::<xylitol_official_plugin_config::types::ServeConfig>("serve")
+            xylitol_official_plugin_config::types::ServeConfig::try_from_sections(&cfg.sections)
+                .unwrap_or_default()
                 .unwrap_or_default()
         })
         .unwrap_or_default();

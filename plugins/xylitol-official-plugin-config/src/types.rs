@@ -4,6 +4,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::error::LoadError;
+use super::sections::ToolsSection;
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
@@ -350,6 +352,14 @@ fn compose_profile_prompt(profile: &AgentProfile, fallback: Option<&String>) -> 
 }
 
 impl AppConfig {
+    fn section_bound<T: SectionBinding>(&self) -> Result<Option<T>, LoadError> {
+        T::try_from_sections(&self.sections).map_err(|e| LoadError::validation(e.to_string()))
+    }
+
+    fn section_bound_or_default<T: SectionBinding + Default>(&self) -> Result<T, LoadError> {
+        Ok(self.section_bound::<T>()?.unwrap_or_default())
+    }
+
     pub fn section<T: serde::de::DeserializeOwned>(
         &self,
         key: &str,
@@ -411,7 +421,7 @@ impl AppConfig {
     }
 
     pub fn validate_thinking_levels(&self) -> Result<(), LoadError> {
-        let models: ModelsConfig = self.section_or_default("models")?;
+        let models = self.section_bound_or_default::<ModelsConfig>()?;
         for (alias, entry) in &models.entries {
             entry
                 .resolve_thinking_config()
@@ -421,7 +431,7 @@ impl AppConfig {
     }
 
     pub fn validate_session_max_steps_per_turn(&self) -> Result<(), LoadError> {
-        let session: Option<SessionConfig> = self.section("session")?;
+        let session = self.section_bound::<SessionConfig>()?;
         match session.as_ref().and_then(|s| s.max_steps_per_turn) {
             None => Ok(()),
             Some(0) => Err(LoadError::validation(
@@ -432,7 +442,7 @@ impl AppConfig {
     }
 
     pub fn validate_session_stage_name(&self) -> Result<(), LoadError> {
-        let Some(session) = self.section::<SessionConfig>("session")? else {
+        let Some(session) = self.section_bound::<SessionConfig>()? else {
             return Ok(());
         };
         let stage = &session.stage_name;
@@ -491,7 +501,7 @@ impl AppConfig {
     }
 
     pub fn validate_tools_selection(&self) -> Result<(), LoadError> {
-        let tools: Vec<String> = self.section_or_default("tools")?;
+        let tools = self.section_bound_or_default::<ToolsSection>()?.0;
         for (index, raw) in tools.iter().enumerate() {
             let entry = raw.trim();
             if entry.is_empty() {
@@ -523,7 +533,7 @@ impl AppConfig {
         &self,
         model_id: &str,
     ) -> Result<xylitol_plugin_sdk::model::XyModelConfig, LoadError> {
-        let models: ModelsConfig = self.section_or_default("models")?;
+        let models = self.section_bound_or_default::<ModelsConfig>()?;
         let entry = models.entries.get(model_id).ok_or_else(|| {
             LoadError::validation(format!(
                 "unknown model alias `{model_id}`: add it under models.entries in config.yaml"
@@ -536,7 +546,7 @@ impl AppConfig {
         &self,
         model_id: &str,
     ) -> Result<xylitol_plugin_sdk::model::XyModelMeta, LoadError> {
-        let models: ModelsConfig = self.section_or_default("models")?;
+        let models = self.section_bound_or_default::<ModelsConfig>()?;
         let entry = models.entries.get(model_id).ok_or_else(|| {
             LoadError::validation(format!(
                 "unknown model alias `{model_id}`: add it under models.entries in config.yaml"
@@ -549,9 +559,9 @@ impl AppConfig {
         &self,
         name: &str,
     ) -> Result<xylitol_plugin_sdk::model::ResolvedProfile, LoadError> {
-        let agents: AgentsConfig = self.section_or_default("agents")?;
-        let execution: ExecutionConfig = self.section_or_default("execution")?;
-        let models: ModelsConfig = self.section_or_default("models")?;
+        let agents = self.section_bound_or_default::<AgentsConfig>()?;
+        let execution = self.section_bound_or_default::<ExecutionConfig>()?;
+        let models = self.section_bound_or_default::<ModelsConfig>()?;
         let profile = agents.profiles.get(name);
 
         let (model_ref, system_prompt, tools) = match profile {
@@ -585,7 +595,7 @@ impl AppConfig {
     pub fn resolve_default_profile(
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ResolvedProfile, LoadError> {
-        let agents: AgentsConfig = self.section_or_default("agents")?;
+        let agents = self.section_bound_or_default::<AgentsConfig>()?;
         let name = if agents.default_profile.is_empty() {
             "default"
         } else {

@@ -6,7 +6,7 @@ use super::error::LoadError;
 use super::paths::ConfigPaths;
 use super::secret_env::SecretMap;
 use super::types::{AppConfig, ModelsConfig};
-use xylitol_plugin_sdk::config_section::ConfigSection;
+use xylitol_plugin_sdk::config_section::{ConfigSection, SectionBinding};
 
 #[derive(Debug, Clone)]
 pub struct LoadedAppConfig {
@@ -385,7 +385,7 @@ fn reject_legacy_provider_preset(merged: &Value) -> Result<(), LoadError> {
 }
 
 fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadError> {
-    let Some(raw) = config.sections.get("models").cloned() else {
+    let Some(raw) = config.sections.get(ModelsConfig::KEY).cloned() else {
         return Ok(());
     };
     let mut models: ModelsConfig = serde_json::from_value(raw)
@@ -407,7 +407,7 @@ fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadErr
         }
     }
     config.sections.insert(
-        "models".to_string(),
+        ModelsConfig::KEY.to_string(),
         serde_json::to_value(&models)
             .map_err(|e| LoadError::validation(format!("config section `models`: {e}")))?,
     );

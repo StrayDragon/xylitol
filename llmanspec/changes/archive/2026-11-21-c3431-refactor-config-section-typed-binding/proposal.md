@@ -2,6 +2,9 @@
 depends_on: []
 needs_specs_change: false
 title: config section 键与类型单源化：SectionBinding 关联常量收编双真值源
+branch: sdd/c3431-refactor-config-section-typed-binding
+base_branch: main
+base_sha: aff58d142737b9dd8b2f36aef346c31a57179fa3
 ---
 
 ## Why

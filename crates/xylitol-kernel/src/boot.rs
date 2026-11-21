@@ -3,6 +3,7 @@ use std::sync::Arc;
 use rutis::host::{CtxHost, ErrorKind, ErrorSink, FiberState};
 pub use rutis_loader::report::{Wait, WaitReason};
 use rutis_loader::{Builtins, Chain, Layer, Loader, LoaderOptions, LoaderPlugin, Patch};
+use xylitol_plugin_sdk::config_section::SectionBinding;
 use xylitol_plugin_sdk::rt::Ctx;
 
 use crate::admit::{Admit, is_reserved_plugin_name};
@@ -189,18 +190,23 @@ fn default_rows(
     let mcp_servers = config
         .as_ref()
         .and_then(|cfg| {
-            cfg.app
-                .section::<Vec<xylitol_official_plugin_mcp::McpServerConfig>>("mcp_servers")
+            xylitol_official_plugin_mcp::McpServersSection::try_from_sections(&cfg.app.sections)
                 .ok()
                 .flatten()
+                .map(|servers| servers.0)
         })
         .unwrap_or_default();
     let mut insert = base_rows(opts, mcp_servers);
-    let context_inject: xylitol_official_plugin_context_inject::config::ContextInjectConfig =
-        config
-            .as_ref()
-            .and_then(|cfg| cfg.app.section_or_default("context_inject").ok())
-            .unwrap_or_default();
+    let context_inject = config
+        .as_ref()
+        .and_then(|cfg| {
+            xylitol_official_plugin_context_inject::config::ContextInjectConfig::try_from_sections(
+                &cfg.app.sections,
+            )
+            .ok()
+            .flatten()
+        })
+        .unwrap_or_default();
     insert.push(serde_json::json!({
         "id": "context-inject",
         "name": "context-inject",
@@ -238,11 +244,13 @@ fn external_plugin_specs(ctx: &Ctx) -> Vec<ExternalPluginConfig> {
     };
     let mut seen = std::collections::HashSet::new();
     let mut specs = Vec::new();
-    let specs_config: Vec<xylitol_official_plugin_config::types::ExternalPluginConfig> = config
-        .app
-        .section_or_default("external_plugins")
+    let specs_config =
+        xylitol_official_plugin_config::sections::ExternalPluginsSection::try_from_sections(
+            &config.app.sections,
+        )
+        .unwrap_or_default()
         .unwrap_or_default();
-    for spec in &specs_config {
+    for spec in &specs_config.0 {
         if !spec.trusted {
             log::warn!(
                 "external plugin `{}`: not trusted (`trusted: true` required); skipped",
@@ -303,9 +311,11 @@ fn optional_plugin_rows(
         return Vec::new();
     };
     let mut rows = Vec::new();
-    let loop_policies: xylitol_official_plugin_loop_policies::LoopPoliciesConfig = config
-        .app
-        .section_or_default("loop_policies")
+    let loop_policies =
+        xylitol_official_plugin_loop_policies::LoopPoliciesConfig::try_from_sections(
+            &config.app.sections,
+        )
+        .unwrap_or_default()
         .unwrap_or_default();
     if loop_policies.is_active() {
         rows.push(serde_json::json!({
@@ -314,8 +324,9 @@ fn optional_plugin_rows(
             "config": loop_policies,
         }));
     }
-    let todo: xylitol_official_plugin_todo::TodoConfig =
-        config.app.section_or_default("todo").unwrap_or_default();
+    let todo = xylitol_official_plugin_todo::TodoConfig::try_from_sections(&config.app.sections)
+        .unwrap_or_default()
+        .unwrap_or_default();
     if todo.is_active() {
         rows.push(serde_json::json!({
             "id": "todo",
@@ -323,10 +334,10 @@ fn optional_plugin_rows(
             "config": todo,
         }));
     }
-    let workflow: xylitol_official_plugin_workflow::WorkflowConfig = config
-        .app
-        .section_or_default("workflow")
-        .unwrap_or_default();
+    let workflow =
+        xylitol_official_plugin_workflow::WorkflowConfig::try_from_sections(&config.app.sections)
+            .unwrap_or_default()
+            .unwrap_or_default();
     if workflow.is_active() {
         rows.push(serde_json::json!({
             "id": "workflow",
@@ -334,9 +345,8 @@ fn optional_plugin_rows(
             "config": workflow,
         }));
     }
-    let mut codemode: xylitol_plugin_sdk::CodemodeConfig = config
-        .app
-        .section_or_default("codemode")
+    let mut codemode = xylitol_plugin_sdk::CodemodeConfig::try_from_sections(&config.app.sections)
+        .unwrap_or_default()
         .unwrap_or_default();
     if loop_policies.tool_exposure.enabled {
         codemode.tool_exposure = Some(xylitol_plugin_sdk::CodemodeExposurePolicy {
@@ -361,8 +371,9 @@ fn lsp_dap_rows(
     config: &xylitol_official_plugin_config::plugin::ConfigService,
 ) -> Vec<serde_json::Value> {
     let mut rows = Vec::new();
-    let lsp: Option<xylitol_official_plugin_lsp::LspPluginConfig> =
-        config.app.section("lsp").ok().flatten();
+    let lsp = xylitol_official_plugin_lsp::LspPluginConfig::try_from_sections(&config.app.sections)
+        .ok()
+        .flatten();
     if let Some(lsp) = lsp.as_ref() {
         rows.push(serde_json::json!({
             "id": "lsp",
@@ -370,8 +381,9 @@ fn lsp_dap_rows(
             "config": lsp,
         }));
     }
-    let dap: Option<xylitol_official_plugin_dap::DapPluginConfig> =
-        config.app.section("dap").ok().flatten();
+    let dap = xylitol_official_plugin_dap::DapPluginConfig::try_from_sections(&config.app.sections)
+        .ok()
+        .flatten();
     if let Some(dap) = dap.as_ref() {
         rows.push(serde_json::json!({
             "id": "dap",

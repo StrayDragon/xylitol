@@ -1,5 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use xylitol_plugin_sdk::config_section::SectionBinding;
 
 pub const DEFAULT_TODO_REMINDER_STALE_AFTER: u32 = 3;
 
@@ -33,12 +34,20 @@ impl TodoConfig {
     }
 }
 
-pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
-    xylitol_plugin_sdk::config_section::ConfigSection {
-        key: "todo",
-        schema: || serde_json::to_value(schemars::schema_for!(TodoConfig)).expect("todo schema"),
-        default: || serde_json::to_value(TodoConfig::default()).expect("todo default"),
+impl SectionBinding for TodoConfig {
+    const KEY: &'static str = "todo";
+
+    fn schema_value() -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(TodoConfig)).expect("todo schema")
     }
+
+    fn default_value() -> serde_json::Value {
+        serde_json::to_value(TodoConfig::default()).expect("todo default")
+    }
+}
+
+pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
+    <TodoConfig as SectionBinding>::descriptor()
 }
 
 #[cfg(test)]
@@ -47,8 +56,9 @@ mod section_decl_tests {
 
     #[test]
     fn todo_section_declares_key_schema_default() {
+        assert_eq!(<TodoConfig as SectionBinding>::KEY, "todo");
         let section = config_section();
-        assert_eq!(section.key, "todo");
+        assert_eq!(section.key, <TodoConfig as SectionBinding>::KEY);
         assert!((section.schema)().is_object());
         assert_eq!(
             (section.default)(),

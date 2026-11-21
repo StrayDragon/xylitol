@@ -1,15 +1,8 @@
+use xylitol_plugin_sdk::CodemodeConfig;
+use xylitol_plugin_sdk::config_section::SectionBinding;
+
 pub fn config_section() -> xylitol_plugin_sdk::config_section::ConfigSection {
-    xylitol_plugin_sdk::config_section::ConfigSection {
-        key: "codemode",
-        schema: || {
-            serde_json::to_value(schemars::schema_for!(xylitol_plugin_sdk::CodemodeConfig))
-                .expect("codemode schema")
-        },
-        default: || {
-            serde_json::to_value(xylitol_plugin_sdk::CodemodeConfig::default())
-                .expect("codemode default")
-        },
-    }
+    <CodemodeConfig as SectionBinding>::descriptor()
 }
 
 #[cfg(test)]
@@ -18,13 +11,13 @@ mod section_decl_tests {
 
     #[test]
     fn codemode_section_declares_key_schema_default() {
+        assert_eq!(<CodemodeConfig as SectionBinding>::KEY, "codemode");
         let section = config_section();
-        assert_eq!(section.key, "codemode");
+        assert_eq!(section.key, <CodemodeConfig as SectionBinding>::KEY);
         assert!((section.schema)().is_object());
         assert_eq!(
             (section.default)(),
-            serde_json::to_value(xylitol_plugin_sdk::CodemodeConfig::default())
-                .expect("codemode default")
+            serde_json::to_value(CodemodeConfig::default()).expect("codemode default")
         );
     }
 }

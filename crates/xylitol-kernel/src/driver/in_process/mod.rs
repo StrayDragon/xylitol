@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::XySessionStore;
+use xylitol_plugin_sdk::config_section::SectionBinding;
 use xylitol_runtime::agent::AgentRuntime;
 use xylitol_runtime::agent::capabilities::ToolsWriteOutcome;
 use xylitol_runtime::{BangExecHandler, SessionExporter, XyInProcessDriver as RuntimeDriver};
@@ -61,19 +62,28 @@ impl Default for ToolFeatures {
 
 impl ToolFeatures {
     pub fn from_config(config: &xylitol_official_plugin_config::types::AppConfig) -> Self {
-        let todo: xylitol_official_plugin_todo::TodoConfig =
-            config.section_or_default("todo").unwrap_or_default();
-        let workflow: xylitol_official_plugin_workflow::WorkflowConfig =
-            config.section_or_default("workflow").unwrap_or_default();
-        let tool_selection: Vec<String> = config.section_or_default("tools").unwrap_or_default();
-        let codemode: xylitol_plugin_sdk::CodemodeConfig =
-            config.section_or_default("codemode").unwrap_or_default();
+        let todo = xylitol_official_plugin_todo::TodoConfig::try_from_sections(&config.sections)
+            .unwrap_or_default()
+            .unwrap_or_default();
+        let workflow =
+            xylitol_official_plugin_workflow::WorkflowConfig::try_from_sections(&config.sections)
+                .unwrap_or_default()
+                .unwrap_or_default();
+        let tool_selection =
+            xylitol_official_plugin_config::sections::ToolsSection::try_from_sections(
+                &config.sections,
+            )
+            .unwrap_or_default()
+            .unwrap_or_default();
+        let codemode = xylitol_plugin_sdk::CodemodeConfig::try_from_sections(&config.sections)
+            .unwrap_or_default()
+            .unwrap_or_default();
         Self {
             todo: todo.is_active(),
             workflow: workflow.is_active(),
             workflow_max_depth: workflow.max_depth,
             workflow_max_total_steps: workflow.max_total_steps,
-            tool_selection,
+            tool_selection: tool_selection.0,
             codemode_enabled: codemode.enabled,
         }
     }
