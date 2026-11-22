@@ -87,6 +87,7 @@ pub struct SharedRuntimeProbe {
     pub profile_mismatch_notice: Option<String>,
     pub prepare_hub: Option<Arc<dyn xylitol_plugin_sdk::SessionPrepareHub>>,
     pub prepare_acked: bool,
+    pub bootstrap_settled: bool,
     pub session_id: Option<String>,
     pub tools_frozen: bool,
     pub pending_workspaces: Option<Vec<String>>,
@@ -108,6 +109,7 @@ impl SharedSubsystems {
             profile_mismatch_notice: None,
             prepare_hub: None,
             prepare_acked: true,
+            bootstrap_settled: false,
             session_id: None,
             tools_frozen: false,
             pending_workspaces: None,
@@ -274,6 +276,14 @@ impl SharedSubsystems {
 
     pub fn prepare_acked(&self) -> bool {
         self.probe().prepare_acked
+    }
+
+    pub fn mark_bootstrap_settled(&self) {
+        self.probe().bootstrap_settled = true;
+    }
+
+    pub fn bootstrap_settled(&self) -> bool {
+        self.probe().bootstrap_settled
     }
 
     pub fn fire_prepare(&self, reason: xylitol_plugin_sdk::SessionPrepareReason) {

@@ -1500,7 +1500,18 @@ where
         self.cached_resources
             .lock()
             .map(|snap| snap.mcp_configured == 0 || snap.tools_table_frozen)
-            .unwrap_or(true)
+            .unwrap_or(false)
+    }
+
+    fn assembly_gate_open(&self) -> bool {
+        self.cached_resources
+            .lock()
+            .map(|snap| {
+                snap.mcp_configured > 0
+                    && snap.mcp_connected.is_empty()
+                    && !snap.mcp_bootstrap_complete
+            })
+            .unwrap_or(false)
     }
 
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {

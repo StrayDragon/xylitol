@@ -1287,6 +1287,9 @@ fn pty_product_fake_mcp_elicitation_accept() {
             30,
         )
         .expect("product TUI ready");
+    session
+        .wait_for("1 connected", Duration::from_secs(120), 100, 30)
+        .expect("fixture MCP connected before submit");
     session.send_keys("go\r").expect("submit prompt");
     session
         .wait_for("What is your name?", Duration::from_secs(30), 100, 30)
@@ -1297,16 +1300,12 @@ fn pty_product_fake_mcp_elicitation_accept() {
     std::thread::sleep(Duration::from_millis(100));
     session.send_keys("Ada").expect("type name");
     std::thread::sleep(Duration::from_millis(100));
-    session.send_keys("\r").expect("save name");
-    std::thread::sleep(Duration::from_millis(100));
-    session.send_keys("\r").expect("review");
+    session.send_keys("\r").expect("save name and open review");
     std::thread::sleep(Duration::from_millis(300));
     session
-        .wait_for("Review", Duration::from_secs(5), 100, 30)
-        .expect("review tab should render");
+        .wait_for("核对后提交", Duration::from_secs(10), 100, 30)
+        .expect("review page should render");
     session.send_keys("\r").expect("submit form");
-    std::thread::sleep(Duration::from_millis(300));
-    session.send_keys("\r").expect("submit form again");
     session
         .wait_for_raw("Tool execution complete", Duration::from_secs(60))
         .expect("tool should complete");

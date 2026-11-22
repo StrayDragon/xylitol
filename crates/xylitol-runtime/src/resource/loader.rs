@@ -37,9 +37,12 @@ impl DefaultResourceLoader {
     }
 
     pub fn default_agent_dir() -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".xylitol")
+        let home = std::env::var_os("HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| PathBuf::from("."));
+        home.join(".xylitol")
     }
 
     fn load_all(&mut self) {

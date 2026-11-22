@@ -113,6 +113,9 @@ pub struct HostSession<T: Terminal> {
     _keybindings_scope: Option<xylitol_tui::KeybindingsScope>,
     pointer_down_had_selection: bool,
     loaded_history: Option<crate::history_window::LoadedHistory>,
+    assembly_gate_latched: bool,
+    assembly_gate_since: Option<std::time::Instant>,
+    assembly_gate_waiting_mcp: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -262,6 +265,9 @@ impl<T: Terminal> HostSession<T> {
             _keybindings_scope: None,
             pointer_down_had_selection: false,
             loaded_history: None,
+            assembly_gate_latched: false,
+            assembly_gate_since: None,
+            assembly_gate_waiting_mcp: false,
         }
     }
 
@@ -706,6 +712,10 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_submit()
     }
 
+    pub fn pending_push_follow_up(&mut self, text: String) {
+        self.pending.push_follow_up(text);
+    }
+
     pub fn take_gated_submit(&mut self) -> Option<String> {
         self.pending.take_gated_submit()
     }
@@ -799,6 +809,38 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn has_gated_submit(&self) -> bool {
         self.pending.peek_gated_submit()
+    }
+
+    pub const ASSEMBLY_GATE_MAX_HOLD: std::time::Duration = std::time::Duration::from_secs(60);
+
+    pub fn latch_assembly_gate(&mut self) {
+        if self.assembly_gate_since.is_none() {
+            self.assembly_gate_since = Some(std::time::Instant::now());
+        }
+        self.assembly_gate_latched = true;
+    }
+
+    pub fn latch_assembly_gate_for_mcp(&mut self) {
+        self.assembly_gate_waiting_mcp = true;
+        self.latch_assembly_gate();
+    }
+
+    pub fn assembly_gate_waiting_mcp(&self) -> bool {
+        self.assembly_gate_waiting_mcp
+    }
+
+    pub fn assembly_gate_expired(&self) -> bool {
+        self.assembly_gate_since
+            .is_some_and(|since| since.elapsed() >= Self::ASSEMBLY_GATE_MAX_HOLD)
+    }
+
+    pub fn release_assembly_gate(&mut self) {
+        self.assembly_gate_latched = false;
+        self.assembly_gate_waiting_mcp = false;
+    }
+
+    pub fn assembly_gate_latched(&self) -> bool {
+        self.assembly_gate_latched
     }
 
     pub fn end_gated_assemble_idle(&mut self) {
@@ -1110,6 +1152,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn on_turn_started(&mut self, prompt: &str) {
+        self.release_assembly_gate();
         self.esc_window.borrow_mut().suppress_idle = false;
         self.stream_paint.suppress_xy_until_stream_end = false;
         self.busy.agent_run = true;

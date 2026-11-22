@@ -499,6 +499,7 @@ impl McpPrepareHub {
                 entry.tools = tools;
             }
         }
+        self.update_snapshot().await;
     }
 
     async fn refresh_dirty_entries(&self) {
@@ -827,6 +828,7 @@ impl McpPrepareHub {
                 (id.clone(), count)
             })
             .collect();
+        let complete = servers.is_empty() || all_servers_settled(&server_ids, &connected, &diags);
         SessionPrepareView {
             configured: servers.len(),
             degraded: false,
@@ -838,7 +840,7 @@ impl McpPrepareHub {
                 None
             },
             connecting: progress.connecting && !servers.is_empty(),
-            complete: servers.is_empty() || (!progress.connecting && !pool.is_empty()),
+            complete,
             server_ids,
             armed,
             server_details,
@@ -959,6 +961,20 @@ impl McpPrepareHub {
             manager.cancel_oauth(flow_id).await;
         }
     }
+}
+
+fn all_servers_settled(
+    servers: &[String],
+    connected: &[(String, usize)],
+    diags: &[String],
+) -> bool {
+    if servers.is_empty() {
+        return true;
+    }
+    servers.iter().all(|server| {
+        connected.iter().any(|(id, _)| id == server)
+            || diags.iter().any(|diag| diag.starts_with(server.as_str()))
+    })
 }
 
 #[async_trait]

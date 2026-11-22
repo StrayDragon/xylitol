@@ -393,6 +393,9 @@ async fn run_host_loop(
                         session.push_toast_notice(notice);
                     }
                     observe_prev = observe;
+                    if driver.assembly_gate_open() {
+                        session.latch_assembly_gate_for_mcp();
+                    }
                     if driver.poll_prepare_progress().await {
                         let t0 = std::time::Instant::now();
                         if let Some(snap) = driver.loaded_resources_cached() {
@@ -447,6 +450,9 @@ async fn run_host_loop(
                             } else if let Some(ev) =
                                 map_crossterm_item(item, session.tui.pointer_probe_armed())
                             {
+                                if driver.assembly_gate_open() {
+                                    session.latch_assembly_gate_for_mcp();
+                                }
                                 match ev {
                                     Ok(host_ev) => session.step(host_ev)?,
                                     Err(e) => {

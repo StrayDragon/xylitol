@@ -258,6 +258,10 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
         true
     }
 
+    fn assembly_gate_open(&self) -> bool {
+        false
+    }
+
     async fn arm_tool_freeze_gate(&mut self) {}
 
     async fn take_mcp_gate_notice(&mut self) -> Option<String> {

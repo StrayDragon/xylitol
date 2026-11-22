@@ -167,12 +167,17 @@ async fn drain_abort_and_lanes<T: Terminal>(
             msg.len()
         );
     }
+    let gate_holds = session.assembly_gate_latched() || driver.assembly_gate_open();
     let idle_no_turn = agent_stream.is_none()
         && !session.run_active()
         && !session.bash_active()
         && !aborted_now
         && !bang_cancelled
-        && !session.has_gated_submit();
+        && !session.has_gated_submit()
+        && !gate_holds;
+    if gate_holds {
+        session.latch_assembly_gate();
+    }
     if idle_no_turn && let Some(msg) = session.take_steer().or_else(|| session.take_follow_up()) {
         session.ui_model_mut().pop_follow_up_strip_matching(&msg);
         session.ui_model_mut().pop_steer_strip_matching(&msg);
@@ -228,8 +233,11 @@ pub async fn drain_pending<T: Terminal>(
     let converted_submit = drain_abort_and_lanes(session, driver, agent_stream).await;
     if session.take_dequeue_one() {
         log::info!(target: "xylitol::tui", "queue row recall (single)");
-        let stats = queue_stats(driver).await;
-        session.set_queue_depth(stats.steer_count, stats.follow_up_count);
+        let gate_holds = session.assembly_gate_latched() || driver.assembly_gate_open();
+        if !gate_holds {
+            let stats = queue_stats(driver).await;
+            session.set_queue_depth(stats.steer_count, stats.follow_up_count);
+        }
         let _ = session.render_now();
     }
     if session.take_dequeue() {
@@ -280,13 +288,11 @@ pub async fn drain_pending<T: Terminal>(
         session.refresh_loaded_resources(driver).await;
     }
 
-    if agent_stream.is_none()
-        && driver.is_tools_frozen()
-        && let Some((prompt, attachments)) = session.take_gated_submit_with_attachments()
-    {
-        session.refresh_loaded_resources(driver).await;
-        start_run_after_tool_gate(session, driver, agent_stream, prompt, attachments).await;
+    if driver.assembly_gate_open() {
+        session.latch_assembly_gate();
     }
+
+    release_gate_if_settled(session, driver, agent_stream).await;
 
     let next_submit = match converted_submit {
         Some(prompt) => Some((prompt, crate::mcp_attach::PendingMcpAttachments::default())),
@@ -295,29 +301,8 @@ pub async fn drain_pending<T: Terminal>(
     if agent_stream.is_none()
         && let Some((prompt, attachments)) = next_submit
     {
-        if !driver.is_tools_frozen() {
-            log::info!(
-                target: "xylitol::tui",
-                "tool freeze gate armed prompt_len={}",
-                prompt.len()
-            );
-            session.set_gated_submit(prompt.clone(), attachments);
-            session
-                .ui_model_mut()
-                .enqueue_follow_up_strip(prompt.clone());
-            session.ui_model_mut().set_busy_status("Assembling");
-            session.sync_ui_root_from_model();
-            if let Some(root) = session.ui_root() {
-                root.borrow_mut().refresh_mcp_short_cue();
-            }
-            let _ = session.render_now();
-            driver.arm_tool_freeze_gate().await;
-            session.refresh_loaded_resources(driver).await;
-            if driver.is_tools_frozen()
-                && let Some((prompt, attachments)) = session.take_gated_submit_with_attachments()
-            {
-                start_run_after_tool_gate(session, driver, agent_stream, prompt, attachments).await;
-            }
+        if gate_holds_submit(session, driver) {
+            hold_submit_for_gate(session, driver, prompt, attachments).await;
         } else {
             start_agent_run(session, driver, agent_stream, prompt, attachments).await;
         }
@@ -328,6 +313,86 @@ pub async fn drain_pending<T: Terminal>(
     session.sync_fold_hit_viewport();
 
     Ok(())
+}
+
+fn gate_holds_submit<T: Terminal>(session: &HostSession<T>, driver: &dyn XyDriver) -> bool {
+    if session.assembly_gate_expired() {
+        return false;
+    }
+    !driver.is_tools_frozen() || driver.assembly_gate_open() || session.assembly_gate_latched()
+}
+
+async fn hold_submit_for_gate<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    prompt: String,
+    attachments: crate::mcp_attach::PendingMcpAttachments,
+) {
+    if driver.assembly_gate_open() {
+        session.latch_assembly_gate_for_mcp();
+    } else {
+        session.latch_assembly_gate();
+    }
+    session.set_gated_submit(prompt.clone(), attachments);
+    session
+        .ui_model_mut()
+        .enqueue_follow_up_strip(prompt.clone());
+    session.ui_model_mut().set_busy_status("Assembling");
+    session.sync_ui_root_from_model();
+    if let Some(root) = session.ui_root() {
+        root.borrow_mut().refresh_mcp_short_cue();
+    }
+    let _ = session.render_now();
+    driver.arm_tool_freeze_gate().await;
+    session.refresh_loaded_resources(driver).await;
+}
+
+async fn release_gate_if_settled<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    agent_stream: &mut Option<EventStream>,
+) {
+    if agent_stream.is_some() || session.run_active() {
+        return;
+    }
+    if session.assembly_gate_waiting_mcp() && driver.assembly_gate_open() {
+        session.refresh_loaded_resources(driver).await;
+    }
+    let settled = session.assembly_gate_expired()
+        || (session.assembly_gate_waiting_mcp() && !driver.assembly_gate_open())
+        || (!session.assembly_gate_waiting_mcp() && driver.is_tools_frozen());
+
+    if !settled || !session.assembly_gate_latched() {
+        return;
+    }
+    session.release_assembly_gate();
+    if let Some((prompt, attachments)) = session.take_gated_submit_with_attachments() {
+        session.ui_model_mut().pop_follow_up_strip_matching(&prompt);
+        session.end_gated_assemble_idle();
+        start_run_after_tool_gate(session, driver, agent_stream, prompt, attachments).await;
+        return;
+    }
+
+    let Some((msg, _)) = session.ui_model_mut().take_queued_row_for_editor(0) else {
+        return;
+    };
+    session.ui_model_mut().pop_follow_up_strip_matching(&msg);
+    session.ui_model_mut().pop_steer_strip_matching(&msg);
+    session.end_gated_assemble_idle();
+    session.sync_ui_root_from_model();
+    log::info!(
+        target: "xylitol::tui",
+        "assembly gate released queued message prompt_len={}",
+        msg.len()
+    );
+    start_run_after_tool_gate(
+        session,
+        driver,
+        agent_stream,
+        msg,
+        crate::mcp_attach::PendingMcpAttachments::default(),
+    )
+    .await;
 }
 
 fn calibrate_queue_after_local_enqueue<T: Terminal>(

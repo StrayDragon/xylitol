@@ -910,6 +910,72 @@ async fn idle_alt_enter_queues_follow_up_not_submit() {
     assert!(root.borrow().editor_text().is_empty());
 }
 
+#[tokio::test]
+async fn assembly_gate_queues_every_submit() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.latch_assembly_gate();
+
+    for text in ["hi", "你是谁", "你有什么工具"] {
+        root.borrow_mut().set_editor_text(text);
+        session.step(HostEvent::Input(enter_event())).unwrap();
+    }
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec![
+            "hi".to_string(),
+            "你是谁".to_string(),
+            "你有什么工具".to_string()
+        ],
+        "every submit during the assembly gate must queue"
+    );
+    let frame = root.borrow_mut().render(80);
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Follow-up 1/3") && l.contains("hi"))
+    );
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Follow-up 2/3") && l.contains("你是谁"))
+    );
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Follow-up 3/3") && l.contains("你有什么工具"))
+    );
+}
+
+#[tokio::test]
+async fn gated_row_recall_keeps_other_rows() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.latch_assembly_gate();
+    for text in ["hi", "你是谁", "你有什么工具"] {
+        root.borrow_mut().set_editor_text(text);
+        session.step(HostEvent::Input(enter_event())).unwrap();
+    }
+    assert!(session.recall_queue_row(1));
+    assert_eq!(root.borrow().editor_text(), "你是谁");
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["hi".to_string(), "你有什么工具".to_string()],
+        "recalling one row must not clear the rest"
+    );
+}
+
+#[test]
+fn assembly_gate_expires_after_max_hold() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.latch_assembly_gate();
+    assert!(session.assembly_gate_latched());
+    assert!(!session.assembly_gate_expired());
+    session.release_assembly_gate();
+    assert!(!session.assembly_gate_latched());
+    assert!(!session.assembly_gate_expired());
+}
+
 #[test]
 fn harness_busy_esc_requests_abort_not_tree() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));

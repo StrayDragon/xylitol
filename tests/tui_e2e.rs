@@ -70,6 +70,83 @@ impl CapturedScreen {
     pub fn any_red(&self) -> bool {
         self.grid.iter().flatten().any(|c| c.fg_red)
     }
+
+    fn blank_row(&self) -> Vec<Cell> {
+        vec![Cell::default(); self.cols]
+    }
+
+    fn clear_all(&mut self) {
+        let blank = self.blank_row();
+        for row in self.grid.iter_mut() {
+            *row = blank.clone();
+        }
+    }
+
+    fn clear_from_cursor(&mut self) {
+        for col in self.cursor_col..self.cols {
+            self.grid[self.cursor_row][col] = Cell::default();
+        }
+        for row in (self.cursor_row + 1)..self.rows {
+            self.grid[row] = self.blank_row();
+        }
+    }
+
+    fn clear_to_cursor(&mut self) {
+        for row in 0..self.cursor_row {
+            self.grid[row] = self.blank_row();
+        }
+        for col in 0..=self.cursor_col.min(self.cols.saturating_sub(1)) {
+            self.grid[self.cursor_row][col] = Cell::default();
+        }
+    }
+
+    fn clear_row(&mut self) {
+        self.grid[self.cursor_row] = self.blank_row();
+    }
+
+    fn clear_row_from_cursor(&mut self) {
+        for col in self.cursor_col..self.cols {
+            self.grid[self.cursor_row][col] = Cell::default();
+        }
+    }
+
+    fn clear_row_to_cursor(&mut self) {
+        for col in 0..=self.cursor_col.min(self.cols.saturating_sub(1)) {
+            self.grid[self.cursor_row][col] = Cell::default();
+        }
+    }
+
+    fn scroll_up(&mut self, n: usize) {
+        for _ in 0..n {
+            self.grid.remove(0);
+            let blank = self.blank_row();
+            self.grid.push(blank);
+        }
+    }
+
+    fn scroll_down(&mut self, n: usize) {
+        for _ in 0..n {
+            self.grid.pop();
+            let blank = self.blank_row();
+            self.grid.insert(0, blank);
+        }
+    }
+
+    fn insert_lines(&mut self, n: usize) {
+        for _ in 0..n.min(self.rows) {
+            self.grid.pop();
+            let blank = self.blank_row();
+            self.grid.insert(self.cursor_row, blank);
+        }
+    }
+
+    fn delete_lines(&mut self, n: usize) {
+        for _ in 0..n.min(self.rows.saturating_sub(self.cursor_row)) {
+            self.grid.remove(self.cursor_row);
+            let blank = self.blank_row();
+            self.grid.push(blank);
+        }
+    }
 }
 
 struct Performer<'a> {
@@ -126,6 +203,46 @@ impl Perform for Performer<'_> {
                         _ => {}
                     }
                 }
+            }
+            'J' => match first_param(params, 0).unwrap_or(0) {
+                0 => self.screen.clear_from_cursor(),
+                1 => self.screen.clear_to_cursor(),
+                _ => self.screen.clear_all(),
+            },
+            'K' => match first_param(params, 0).unwrap_or(0) {
+                0 => self.screen.clear_row_from_cursor(),
+                1 => self.screen.clear_row_to_cursor(),
+                _ => self.screen.clear_row(),
+            },
+            'S' => self
+                .screen
+                .scroll_up(first_param(params, 0).unwrap_or(1) as usize),
+            'T' => self
+                .screen
+                .scroll_down(first_param(params, 0).unwrap_or(1) as usize),
+            'L' => self
+                .screen
+                .insert_lines(first_param(params, 0).unwrap_or(1) as usize),
+            'M' => self
+                .screen
+                .delete_lines(first_param(params, 0).unwrap_or(1) as usize),
+            'A' => {
+                let n = first_param(params, 0).unwrap_or(1) as usize;
+                self.screen.cursor_row = self.screen.cursor_row.saturating_sub(n);
+            }
+            'B' => {
+                let n = first_param(params, 0).unwrap_or(1) as usize;
+                self.screen.cursor_row =
+                    (self.screen.cursor_row + n).min(self.screen.rows.saturating_sub(1));
+            }
+            'C' => {
+                let n = first_param(params, 0).unwrap_or(1) as usize;
+                self.screen.cursor_col =
+                    (self.screen.cursor_col + n).min(self.screen.cols.saturating_sub(1));
+            }
+            'D' => {
+                let n = first_param(params, 0).unwrap_or(1) as usize;
+                self.screen.cursor_col = self.screen.cursor_col.saturating_sub(n);
             }
             _ => {}
         }

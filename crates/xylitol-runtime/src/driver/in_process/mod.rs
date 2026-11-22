@@ -88,6 +88,7 @@ pub struct XyInProcessDriver {
     session_profile: xylitol_plugin_sdk::session::SessionProfile,
     profile_mismatch_notice: Option<String>,
     prepare_acked: bool,
+    applied_mcp_tool_names: Vec<String>,
     tool_gate_poll_started: Option<std::time::Instant>,
     base_tools: Option<crate::agent::tools::ToolSet>,
     capability_disabled: BTreeSet<String>,
@@ -314,6 +315,7 @@ impl XyInProcessDriver {
             session_profile: xylitol_plugin_sdk::session::SessionProfile::default(),
             profile_mismatch_notice: None,
             prepare_acked: true,
+            applied_mcp_tool_names: Vec::new(),
             tool_gate_poll_started: None,
             base_tools: None,
             capability_disabled: BTreeSet::new(),
@@ -1054,9 +1056,21 @@ impl XyDriver for XyInProcessDriver {
         if !complete {
             return dirty;
         }
-        if self.try_apply_prepare_tools().await && !self.handle.shared().prepare_acked() {
-            self.prepare_acked = true;
-            self.handle.shared().set_prepare_acked(true);
+        let hub_tools: Vec<String> = self
+            .prepare_hub
+            .as_ref()
+            .map(|h| h.tools().iter().map(|t| t.name().to_string()).collect())
+            .unwrap_or_default();
+        let tools_changed = hub_tools != self.applied_mcp_tool_names;
+        if !tools_changed && self.handle.shared().prepare_acked() {
+            return dirty;
+        }
+        if self.try_apply_prepare_tools().await {
+            self.applied_mcp_tool_names = hub_tools;
+            if !self.handle.shared().prepare_acked() {
+                self.prepare_acked = true;
+                self.handle.shared().set_prepare_acked(true);
+            }
             return true;
         }
         dirty

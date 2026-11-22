@@ -208,8 +208,13 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.persist_client_history(&text);
-            self.ui_model.enqueue_steer_strip(text.clone());
-            self.pending.push_steer(text);
+            if self.assembly_gate_latched() || self.pending.peek_gated_submit() {
+                self.ui_model.enqueue_follow_up_strip(text.clone());
+                self.pending.push_follow_up(text);
+            } else {
+                self.ui_model.enqueue_steer_strip(text.clone());
+                self.pending.push_steer(text);
+            }
             self.sync_ui_root_from_model();
             return true;
         }
@@ -344,6 +349,12 @@ impl<T: Terminal> HostSession<T> {
         root.set_editor_text(String::new());
         drop(root);
         self.persist_client_history(&cleaned);
+        if self.assembly_gate_latched() {
+            self.ui_model.enqueue_follow_up_strip(cleaned.clone());
+            self.pending.push_follow_up(cleaned);
+            self.sync_ui_root_from_model();
+            return true;
+        }
         self.pending.submit = Some(crate::host::pending::PendingSubmit {
             prompt: cleaned,
             attachments: crate::mcp_attach::PendingMcpAttachments {

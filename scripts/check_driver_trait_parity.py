@@ -26,6 +26,7 @@ APP_TUI_PROTO = ROOT / "crates/xylitol-app-tui/src/driver/proto.rs"
 
 RUNTIME_ONLY = {"run_turn"}
 APP_TUI_ONLY = {
+    "assembly_gate_open",
     "attach_observe",
     "attach_session",
     "bind_debug_scene",

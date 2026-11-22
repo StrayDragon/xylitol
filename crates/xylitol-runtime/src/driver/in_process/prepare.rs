@@ -338,7 +338,11 @@ impl XyInProcessDriver {
         tool_names: Vec<String>,
         view: SessionPrepareView,
     ) -> LoadedResourcesSnapshot {
-        let settled = view.complete || (tools_table_frozen && self.mcp_gate_notice.is_some());
+        let settled_now = view.complete || (tools_table_frozen && self.prepare_acked);
+        if settled_now {
+            self.handle.shared().mark_bootstrap_settled();
+        }
+        let settled = self.handle.shared().bootstrap_settled();
         let mcp_servers = view
             .server_ids
             .iter()
