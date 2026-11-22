@@ -3487,7 +3487,7 @@ pub(crate) async fn w_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
     host_pump_bdd.ansi_frames.borrow_mut().push(frame);
 }
 
-#[then("队列条仅一条 Steering 行且含最新文本与计数")]
+#[then("队列条两条 Steering 行各含一条正文且带组内序号")]
 pub(crate) fn t_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
     let frames = host_pump_bdd.ansi_frames.borrow();
     let frame = frames.last().expect("queue frame");
@@ -3495,16 +3495,16 @@ pub(crate) fn t_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
         .lines()
         .filter(|line| line.contains("Steering"))
         .collect();
-    assert_eq!(steering.len(), 1, "c2999: 队列条每类至多一行：\n{frame}");
+    assert_eq!(steering.len(), 2, "c2999: 每条排队消息独占一行：\n{frame}");
     assert!(
-        steering[0].contains("steer-two"),
-        "c2999: 应显示最新排队正文：{}",
+        steering[0].contains("1/2") && steering[0].contains("steer-one"),
+        "c2999: 首行应含组内序号与首条正文：{}",
         steering[0]
     );
     assert!(
-        steering[0].contains("(2)"),
-        "c2999: 多条排队应显示计数：{}",
-        steering[0]
+        steering[1].contains("2/2") && steering[1].contains("steer-two"),
+        "c2999: 次行应含组内序号与次条正文：{}",
+        steering[1]
     );
 }
 

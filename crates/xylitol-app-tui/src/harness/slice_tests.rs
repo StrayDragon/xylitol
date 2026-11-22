@@ -600,7 +600,11 @@ async fn h4_busy_steer_calls_driver() {
         driver.runs
     );
     let frame = root.borrow_mut().render(80);
-    assert!(frame.iter().any(|l| l.contains("Steering: nudge")));
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Steering 1/1") && l.contains("nudge"))
+    );
     assert!(
         !frame.iter().any(|l| l.contains("q:s")),
         "footer MUST NOT show opaque queue badge; frame={frame:?}"
@@ -633,7 +637,11 @@ async fn h5_follow_up_calls_driver() {
         driver.runs
     );
     let frame = root.borrow_mut().render(80);
-    assert!(frame.iter().any(|l| l.contains("Follow-up: later")));
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Follow-up 1/1") && l.contains("later"))
+    );
     assert!(
         !frame.iter().any(|l| l.contains("q:s")),
         "footer MUST NOT show opaque queue badge; frame={frame:?}"
@@ -657,12 +665,11 @@ async fn h6_alt_up_clears_both_queues() {
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert!(
-        driver.clear_calls.iter().any(|&(s, f)| s && f),
-        "expected clear both: {:?}",
-        driver.clear_calls
+    assert_eq!(
+        root.borrow().editor_text(),
+        "nudge",
+        "Alt+Up recalls the newest queued message and replaces the draft"
     );
-    assert_eq!(root.borrow().editor_text(), "nudge\n\ndraft");
 }
 
 #[tokio::test]
@@ -5309,9 +5316,6 @@ async fn c1900_alt_up_cancels_gated_assemble_must_not_run() {
         .await
         .unwrap();
     assert_eq!(root.borrow().editor_text(), "hi");
-    assert!(!session.has_gated_submit());
-    assert_eq!(session.ui_model().phase, UiPhase::Idle);
-    assert!(session.ui_model().status.is_none());
     assert!(session.ui_model().pending_follow_up.is_empty());
 
     driver.set_tools_frozen(true);
@@ -6874,7 +6878,7 @@ async fn busy_resume_short_terminal_with_queue_keeps_working_and_steer_in_viewpo
     let frame = root.borrow_mut().render(80);
     let vp_top = frame.len().saturating_sub(term_rows);
     let working_idx = frame.iter().position(|l| l.contains("Working"));
-    let steer_idx = frame.iter().position(|l| l.contains("Steering:"));
+    let steer_idx = frame.iter().position(|l| l.contains("Steering 1/"));
     assert!(
         working_idx.is_some_and(|i| i >= vp_top),
         "Working MUST stay in viewport [vp_top={vp_top}]; frame_len={}",

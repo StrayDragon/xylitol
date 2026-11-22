@@ -88,7 +88,7 @@ impl<T: Terminal> HostSession<T> {
             return false;
         }
         if matches_binding(key, "app.message.dequeue") {
-            return self.dequeue_to_editor();
+            return self.recall_latest_queue_row();
         }
         false
     }
@@ -112,14 +112,14 @@ impl<T: Terminal> HostSession<T> {
 
         if matches_binding(key, "app.interrupt") || matches_binding(key, "app.clear") {
             self.pending.abort = true;
-            self.pending.steer = None;
+            self.pending.steer.clear();
             self.stream_paint.suppress_xy_until_stream_end = true;
             self.ui_model.flush_streaming();
             return true;
         }
 
         if matches_binding(key, "app.message.dequeue") {
-            self.dequeue_to_editor();
+            self.recall_latest_queue_row();
             return true;
         }
 
@@ -134,7 +134,7 @@ impl<T: Terminal> HostSession<T> {
             drop(root);
             self.persist_client_history(&text);
             self.ui_model.enqueue_follow_up_strip(text.clone());
-            self.pending.follow_up = Some(text);
+            self.pending.push_follow_up(text);
             self.sync_ui_root_from_model();
             return true;
         }
@@ -209,7 +209,7 @@ impl<T: Terminal> HostSession<T> {
             drop(root);
             self.persist_client_history(&text);
             self.ui_model.enqueue_steer_strip(text.clone());
-            self.pending.steer = Some(text);
+            self.pending.push_steer(text);
             self.sync_ui_root_from_model();
             return true;
         }

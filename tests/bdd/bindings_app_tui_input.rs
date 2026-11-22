@@ -23,7 +23,7 @@ async fn test_c2826_ati_queue_strip(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "多条排队压成每类一行"
+    name = "多条排队逐条铺开"
 )]
 async fn test_c2999_queue_compact(host_pump_bdd: HostPumpBdd) {}
 

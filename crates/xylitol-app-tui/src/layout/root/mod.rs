@@ -1097,6 +1097,7 @@ impl UiRoot {
     pub const SESSION_SIDEBAR_HIT_ID: HitId = 1 << 61 | 1;
     pub const SESSION_SIDEBAR_SEPARATOR_HIT_ID: HitId = 1 << 61 | 2;
     pub const QUEUE_STRIP_HIT_ID: HitId = 1 << 61 | 3;
+    pub const QUEUE_ROW_HIT_BASE: HitId = 1 << 60;
     pub const TODO_SUMMARY_HOVER_HIT_ID: HitId = 1 << 61 | 4;
 
     pub fn session_sidebar_reserved_cols(&self, width: usize) -> usize {
@@ -1187,6 +1188,7 @@ impl UiRoot {
         let mut hits = Vec::new();
 
         hits.extend(self.queue_strip_hit(width, transcript_rows));
+        hits.extend(self.queue_row_hits(width, transcript_rows));
         hits.extend(self.sidebar_hits(width, transcript_rows));
         hits
     }
@@ -1217,6 +1219,48 @@ impl UiRoot {
             .capturing()
             .space(HitSpace::Chrome),
         )
+    }
+
+    pub fn queue_row_hit_id(row: usize) -> HitId {
+        Self::QUEUE_ROW_HIT_BASE | row as HitId
+    }
+
+    pub fn queue_row_from_hit(id: HitId) -> Option<usize> {
+        if id & Self::QUEUE_ROW_HIT_BASE == Self::QUEUE_ROW_HIT_BASE && id & (1 << 61) == 0 {
+            Some((id & !Self::QUEUE_ROW_HIT_BASE) as usize)
+        } else {
+            None
+        }
+    }
+
+    fn queue_row_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
+        let Some(base) = self.queue_strip_screen_row(transcript_rows) else {
+            return Vec::new();
+        };
+        let count = self
+            .ui_model
+            .pending_steer
+            .len()
+            .saturating_add(self.ui_model.pending_follow_up.len());
+        let first = base.saturating_add(1);
+        (0..count)
+            .filter_map(|row| {
+                let screen_row = first.saturating_add(row);
+                if screen_row >= self.term_rows {
+                    return None;
+                }
+                Some(
+                    Hit::at_cell(
+                        Self::queue_row_hit_id(row),
+                        0,
+                        u16::try_from(screen_row).unwrap_or(u16::MAX),
+                    )
+                    .cols(0, width)
+                    .capturing()
+                    .space(HitSpace::Chrome),
+                )
+            })
+            .collect()
     }
 
     pub fn overlay_hover_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {

@@ -864,6 +864,10 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_dequeue()
     }
 
+    pub fn take_dequeue_one(&mut self) -> bool {
+        self.pending.take_dequeue_one()
+    }
+
     pub fn request_stage_name(&mut self) {
         self.stage_name.mark_requested();
     }
@@ -891,16 +895,54 @@ impl<T: Terminal> HostSession<T> {
             return false;
         };
         let mut root = root.borrow_mut();
-        let current = root.editor_text();
         let mut parts = queued;
-        if !current.trim().is_empty() {
-            parts.push(current);
+        if !root.editor_text().trim().is_empty() {
+            parts.push(root.editor_text());
         }
         root.set_editor_text(parts.join("\n\n"));
         drop(root);
-        self.pending.steer = None;
-        self.pending.follow_up = None;
+        self.pending.clear_lanes();
         self.pending.dequeue = true;
+        self.sync_ui_root_from_model();
+        true
+    }
+
+    pub fn recall_latest_queue_row(&mut self) -> bool {
+        let Some((text, is_follow_up)) = self.ui_model.take_last_queued_for_editor() else {
+            return false;
+        };
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        root.borrow_mut().set_editor_text(text.clone());
+        if is_follow_up {
+            self.pending.follow_up.retain(|t| t != &text);
+        } else {
+            self.pending.steer.retain(|t| t != &text);
+        }
+        if self.pending.peek_gated_submit() {
+            let _ = self.pending.take_gated_submit();
+            self.end_gated_assemble_idle();
+        }
+        self.pending.dequeue_one = true;
+        self.sync_ui_root_from_model();
+        true
+    }
+
+    pub fn recall_queue_row(&mut self, row: usize) -> bool {
+        let Some((text, is_follow_up)) = self.ui_model.take_queued_row_for_editor(row) else {
+            return false;
+        };
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        root.borrow_mut().set_editor_text(text.clone());
+        if is_follow_up {
+            self.pending.follow_up.retain(|t| t != &text);
+        } else {
+            self.pending.steer.retain(|t| t != &text);
+        }
+        self.pending.dequeue_one = true;
         self.sync_ui_root_from_model();
         true
     }
@@ -1303,6 +1345,12 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn dispatch_chrome_click(&mut self, id: xylitol_tui::HitId) {
+        if let Some(row) = crate::layout::UiRoot::queue_row_from_hit(id) {
+            if self.recall_queue_row(row) {
+                self.tui.request_render(false);
+            }
+            return;
+        }
         if id == crate::layout::UiRoot::QUEUE_STRIP_HIT_ID {
             if self.dequeue_to_editor() {
                 self.tui.request_render(false);

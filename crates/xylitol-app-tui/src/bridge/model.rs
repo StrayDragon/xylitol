@@ -321,6 +321,32 @@ impl UiModel {
         all
     }
 
+    pub fn take_last_queued_for_editor(&mut self) -> Option<(String, bool)> {
+        let taken = if let Some(text) = self.pending_follow_up.pop() {
+            Some((text, true))
+        } else {
+            self.pending_steer.pop().map(|text| (text, false))
+        };
+        self.queue.follow_up_count = self.pending_follow_up.len();
+        self.queue.steer_count = self.pending_steer.len();
+        taken
+    }
+
+    pub fn take_queued_row_for_editor(&mut self, row: usize) -> Option<(String, bool)> {
+        if row < self.pending_steer.len() {
+            let text = self.pending_steer.remove(row);
+            self.queue.steer_count = self.pending_steer.len();
+            return Some((text, false));
+        }
+        let index = row.checked_sub(self.pending_steer.len())?;
+        if index < self.pending_follow_up.len() {
+            let text = self.pending_follow_up.remove(index);
+            self.queue.follow_up_count = self.pending_follow_up.len();
+            return Some((text, true));
+        }
+        None
+    }
+
     pub fn begin_run(&mut self, user_text: &str) {
         let trimmed = user_text.trim();
         if !trimmed.is_empty() {

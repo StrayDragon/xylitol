@@ -12,11 +12,12 @@ pub struct PendingSubmit {
 pub struct PendingOps {
     pub submit: Option<PendingSubmit>,
     pub mcp_prompt_args_result: Option<(McpPromptTarget, String)>,
-    pub steer: Option<String>,
-    pub follow_up: Option<String>,
+    pub steer: Vec<String>,
+    pub follow_up: Vec<String>,
     pub abort: bool,
     pub bash_cancelled: bool,
     pub dequeue: bool,
+    pub dequeue_one: bool,
     pub slash: Option<PendingSlash>,
     pub bash: Option<PendingBash>,
     pub reload: bool,
@@ -67,11 +68,29 @@ impl PendingOps {
     pub fn peek_gated_submit(&self) -> bool {
         self.submit.as_ref().is_some_and(|entry| entry.gated)
     }
+    pub fn push_steer(&mut self, text: String) {
+        self.steer.push(text);
+    }
+    pub fn push_follow_up(&mut self, text: String) {
+        self.follow_up.push(text);
+    }
     pub fn take_steer(&mut self) -> Option<String> {
-        self.steer.take()
+        if self.steer.is_empty() {
+            None
+        } else {
+            Some(self.steer.remove(0))
+        }
     }
     pub fn take_follow_up(&mut self) -> Option<String> {
-        self.follow_up.take()
+        if self.follow_up.is_empty() {
+            None
+        } else {
+            Some(self.follow_up.remove(0))
+        }
+    }
+    pub fn clear_lanes(&mut self) {
+        self.steer.clear();
+        self.follow_up.clear();
     }
     pub fn take_abort(&mut self) -> bool {
         std::mem::take(&mut self.abort)
@@ -81,6 +100,9 @@ impl PendingOps {
     }
     pub fn take_dequeue(&mut self) -> bool {
         std::mem::take(&mut self.dequeue)
+    }
+    pub fn take_dequeue_one(&mut self) -> bool {
+        std::mem::take(&mut self.dequeue_one)
     }
     pub fn take_slash(&mut self) -> Option<PendingSlash> {
         self.slash.take()

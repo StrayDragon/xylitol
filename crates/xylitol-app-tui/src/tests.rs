@@ -735,13 +735,13 @@ fn harness_busy_enter_queues_steer() {
     );
     let frame = root.borrow_mut().render(80);
     assert!(
-        frame.iter().any(|l| l.contains("Steering: nudge")),
+        frame
+            .iter()
+            .any(|l| l.contains("Steering 1/1") && l.contains("nudge")),
         "missing Steering strip: {frame:?}"
     );
     assert!(
-        frame
-            .iter()
-            .any(|l| l.contains("click to edit all queued messages")),
+        frame.iter().any(|l| l.contains("click a row to recall it")),
         "missing dequeue hint: {frame:?}"
     );
     assert!(!root.borrow().tree_open());
@@ -784,7 +784,7 @@ fn harness_busy_alt_enter_queues_follow_up() {
     let frame = root.borrow_mut().render(80);
     let follow_idx = frame
         .iter()
-        .position(|l| l.contains("Follow-up: later"))
+        .position(|l| l.contains("Follow-up 1/1") && l.contains("later"))
         .unwrap_or_else(|| panic!("missing Follow-up strip: {frame:?}"));
     let status_idx = frame
         .iter()
@@ -811,9 +811,85 @@ fn harness_busy_alt_up_restores_queued_to_editor() {
     let _ = session.take_steer();
     root.borrow_mut().set_editor_text("draft");
     session.step(HostEvent::Input(alt_up_event())).unwrap();
-    assert!(session.take_dequeue());
+    assert!(session.take_dequeue_one());
     assert!(session.ui_model().pending_steer.is_empty());
-    assert_eq!(root.borrow().editor_text(), "nudge\n\ndraft");
+    assert_eq!(
+        root.borrow().editor_text(),
+        "nudge",
+        "Alt+Up recalls the newest queued message over the draft"
+    );
+}
+
+#[tokio::test]
+async fn busy_follow_ups_accumulate_and_recall_lifo() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_turn_started("hello");
+
+    for text in ["hi", "你是谁", "你有什么工具"] {
+        root.borrow_mut().set_editor_text(text);
+        session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    }
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec![
+            "hi".to_string(),
+            "你是谁".to_string(),
+            "你有什么工具".to_string()
+        ],
+        "every follow-up must accumulate, not overwrite"
+    );
+    let frame = root.borrow_mut().render(80);
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Follow-up 1/3") && l.contains("hi"))
+    );
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Follow-up 2/3") && l.contains("你是谁"))
+    );
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Follow-up 3/3") && l.contains("你有什么工具"))
+    );
+
+    root.borrow_mut().set_editor_text("draft");
+    session.step(HostEvent::Input(alt_up_event())).unwrap();
+    assert_eq!(
+        root.borrow().editor_text(),
+        "你有什么工具",
+        "Alt+Up recalls the newest queued message"
+    );
+    session.step(HostEvent::Input(alt_up_event())).unwrap();
+    assert_eq!(root.borrow().editor_text(), "你是谁");
+    session.step(HostEvent::Input(alt_up_event())).unwrap();
+    assert_eq!(root.borrow().editor_text(), "hi");
+    assert!(session.ui_model().pending_follow_up.is_empty());
+}
+
+#[tokio::test]
+async fn queue_row_click_recalls_that_row_only() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_turn_started("hello");
+    root.borrow_mut().set_editor_text("nudge");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    root.borrow_mut().set_editor_text("later");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    assert_eq!(session.ui_model().pending_steer.len(), 1);
+    assert_eq!(session.ui_model().pending_follow_up.len(), 1);
+
+    assert!(session.recall_queue_row(1));
+    assert_eq!(root.borrow().editor_text(), "later");
+    assert_eq!(
+        session.ui_model().pending_steer.len(),
+        1,
+        "steer row untouched"
+    );
+    assert!(session.ui_model().pending_follow_up.is_empty());
 }
 
 #[test]

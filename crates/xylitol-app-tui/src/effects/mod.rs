@@ -226,6 +226,12 @@ pub async fn drain_pending<T: Terminal>(
     session.sync_session_sidebar_reserve();
     drain_footer_token_if_pending(session, driver).await;
     let converted_submit = drain_abort_and_lanes(session, driver, agent_stream).await;
+    if session.take_dequeue_one() {
+        log::info!(target: "xylitol::tui", "queue row recall (single)");
+        let stats = queue_stats(driver).await;
+        session.set_queue_depth(stats.steer_count, stats.follow_up_count);
+        let _ = session.render_now();
+    }
     if session.take_dequeue() {
         log::info!(target: "xylitol::tui", "XyDriver::clear_queue (Alt+Up dequeue)");
         let _ = dispatch(
