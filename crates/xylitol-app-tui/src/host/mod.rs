@@ -116,6 +116,7 @@ pub struct HostSession<T: Terminal> {
     assembly_gate_latched: bool,
     assembly_gate_since: Option<std::time::Instant>,
     assembly_gate_waiting_mcp: bool,
+    released_gate_backlog: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -268,6 +269,7 @@ impl<T: Terminal> HostSession<T> {
             assembly_gate_latched: false,
             assembly_gate_since: None,
             assembly_gate_waiting_mcp: false,
+            released_gate_backlog: false,
         }
     }
 
@@ -829,6 +831,18 @@ impl<T: Terminal> HostSession<T> {
         self.assembly_gate_waiting_mcp
     }
 
+    pub fn note_released_gate_backlog(&mut self) {
+        self.released_gate_backlog = true;
+    }
+
+    pub fn has_released_gate_backlog(&self) -> bool {
+        self.released_gate_backlog && !self.pending.follow_up.is_empty()
+    }
+
+    pub fn clear_released_gate_backlog(&mut self) {
+        self.released_gate_backlog = false;
+    }
+
     pub fn assembly_gate_expired(&self) -> bool {
         self.assembly_gate_since
             .is_some_and(|since| since.elapsed() >= Self::ASSEMBLY_GATE_MAX_HOLD)
@@ -858,6 +872,10 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn take_follow_up(&mut self) -> Option<String> {
         self.pending.take_follow_up()
+    }
+
+    pub fn remove_follow_up_matching(&mut self, text: &str) -> bool {
+        self.pending.remove_follow_up_matching(text)
     }
 
     pub fn take_abort(&mut self) -> bool {

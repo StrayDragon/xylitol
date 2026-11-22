@@ -29,8 +29,13 @@ pub async fn drain_inline_pending<T: Terminal>(
     driver: &mut dyn XyDriver,
 ) {
     if session.take_pending_queue_refresh() {
-        let stats = queue_stats(driver).await;
-        session.set_queue_depth(stats.steer_count, stats.follow_up_count);
+        let gated = session.assembly_gate_latched() || driver.assembly_gate_open();
+        let local_rows = !session.ui_model().pending_steer.is_empty()
+            || !session.ui_model().pending_follow_up.is_empty();
+        if !gated || !local_rows {
+            let stats = queue_stats(driver).await;
+            session.set_queue_depth(stats.steer_count, stats.follow_up_count);
+        }
         let _ = session.render_now();
     }
     if let Some(slash) = session.take_slash() {
@@ -188,7 +193,10 @@ async fn drain_abort_and_lanes<T: Terminal>(
         );
         return Some(msg);
     }
-    if !idle_no_turn && let Some(msg) = session.take_steer() {
+    if !idle_no_turn
+        && !gate_holds
+        && let Some(msg) = session.take_steer()
+    {
         log::info!(target: "xylitol::tui", "Command::Steer prompt_len={}", msg.len());
         if let Err(e) = dispatch(
             driver,
@@ -204,7 +212,11 @@ async fn drain_abort_and_lanes<T: Terminal>(
         calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
         let _ = session.render_now();
     }
-    if !idle_no_turn && let Some(msg) = session.take_follow_up() {
+    if !idle_no_turn
+        && !gate_holds
+        && !session.has_released_gate_backlog()
+        && let Some(msg) = session.take_follow_up()
+    {
         log::info!(target: "xylitol::tui", "Command::FollowUp prompt_len={}", msg.len());
         if let Err(e) = dispatch(
             driver,
@@ -366,6 +378,7 @@ async fn release_gate_if_settled<T: Terminal>(
         return;
     }
     session.release_assembly_gate();
+    session.note_released_gate_backlog();
     if let Some((prompt, attachments)) = session.take_gated_submit_with_attachments() {
         session.ui_model_mut().pop_follow_up_strip_matching(&prompt);
         session.end_gated_assemble_idle();
@@ -376,6 +389,7 @@ async fn release_gate_if_settled<T: Terminal>(
     let Some((msg, _)) = session.ui_model_mut().take_queued_row_for_editor(0) else {
         return;
     };
+    session.remove_follow_up_matching(&msg);
     session.ui_model_mut().pop_follow_up_strip_matching(&msg);
     session.ui_model_mut().pop_steer_strip_matching(&msg);
     session.end_gated_assemble_idle();
@@ -399,6 +413,9 @@ fn calibrate_queue_after_local_enqueue<T: Terminal>(
     session: &mut HostSession<T>,
     stats: QueueStats,
 ) {
+    if session.assembly_gate_latched() {
+        return;
+    }
     let local_steer = session.ui_model().pending_steer.len();
     let local_follow = session.ui_model().pending_follow_up.len();
     if stats.steer_count == 0 && stats.follow_up_count == 0 && (local_steer > 0 || local_follow > 0)

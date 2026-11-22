@@ -88,6 +88,14 @@ impl PendingOps {
             Some(self.follow_up.remove(0))
         }
     }
+    pub fn remove_follow_up_matching(&mut self, text: &str) -> bool {
+        if let Some(pos) = self.follow_up.iter().position(|t| t == text) {
+            self.follow_up.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
     pub fn clear_lanes(&mut self) {
         self.steer.clear();
         self.follow_up.clear();
