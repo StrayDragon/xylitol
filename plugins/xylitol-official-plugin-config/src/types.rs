@@ -233,7 +233,7 @@ impl Default for TuiActivityFoldConfig {
             stream_collapse: ActivityFoldStreamCollapse::Envelope,
             auto_on_rebuild: true,
             auto_on_turn_end: true,
-            display_level: ActivityDisplayLevel::Summary,
+            display_level: ActivityDisplayLevel::Full,
             visible_items: None,
         }
     }
@@ -251,9 +251,9 @@ pub enum ActivityFoldStreamCollapse {
 #[serde(rename_all = "snake_case")]
 pub enum ActivityDisplayLevel {
     Quiet,
-    #[default]
     Summary,
     Recent,
+    #[default]
     Full,
 }
 
@@ -1161,7 +1161,7 @@ tui:
         assert!(get::<TuiConfig>(&cfg, "tui").activity_fold.auto_on_turn_end);
         assert_eq!(
             get::<TuiConfig>(&cfg, "tui").activity_fold.display_level,
-            ActivityDisplayLevel::Summary
+            ActivityDisplayLevel::Full
         );
         assert!(
             get::<TuiConfig>(&cfg, "tui")

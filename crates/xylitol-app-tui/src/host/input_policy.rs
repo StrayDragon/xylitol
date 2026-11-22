@@ -227,6 +227,24 @@ impl<T: Terminal> HostSession<T> {
         let InputEvent::Key(key) = input else {
             return false;
         };
+        if matches_binding(key, "app.message.followUp") {
+            let mut root = root.borrow_mut();
+            if root.slot().is_overlay() {
+                return false;
+            }
+            let text = root.editor_text();
+            if text.trim().is_empty() {
+                return false;
+            }
+            root.remember_editor_send(text.clone());
+            root.set_editor_text(String::new());
+            drop(root);
+            self.persist_client_history(&text);
+            self.ui_model.enqueue_follow_up_strip(text.clone());
+            self.pending.push_follow_up(text);
+            self.sync_ui_root_from_model();
+            return true;
+        }
         if !matches_binding(key, "tui.input.submit") {
             return false;
         }

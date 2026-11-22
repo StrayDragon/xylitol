@@ -892,6 +892,24 @@ async fn queue_row_click_recalls_that_row_only() {
     assert!(session.ui_model().pending_follow_up.is_empty());
 }
 
+#[tokio::test]
+async fn idle_alt_enter_queues_follow_up_not_submit() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("later");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    assert!(
+        session.take_follow_up().is_some(),
+        "idle Alt+Enter must queue a follow-up"
+    );
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["later".to_string()],
+        "the queued follow-up must show in the strip"
+    );
+    assert!(root.borrow().editor_text().is_empty());
+}
+
 #[test]
 fn harness_busy_esc_requests_abort_not_tree() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));

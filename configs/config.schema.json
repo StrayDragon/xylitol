@@ -974,7 +974,7 @@
         },
         "display_level": {
           "$ref": "#/$defs/tui_ActivityDisplayLevel",
-          "default": "summary"
+          "default": "full"
         },
         "enabled": {
           "default": true,
@@ -1640,7 +1640,7 @@
           "default": {
             "auto_on_rebuild": true,
             "auto_on_turn_end": true,
-            "display_level": "summary",
+            "display_level": "full",
             "enabled": true,
             "keep_recent_turns": 2,
             "stream_collapse": "envelope",
