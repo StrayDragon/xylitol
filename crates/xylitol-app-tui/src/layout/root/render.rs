@@ -506,10 +506,13 @@ impl Component for UiRoot {
             .saturating_add(self.last_editor_rows.max(1))
             .saturating_add(1)
             .saturating_add(self.hint_rows());
-        let max_help_rows = self
-            .term_rows
-            .saturating_sub(lines.len())
-            .saturating_sub(base_dock);
+        let max_help_rows = if self.help.is_open() {
+            self.term_rows.saturating_sub(base_dock).max(5)
+        } else {
+            self.term_rows
+                .saturating_sub(lines.len())
+                .saturating_sub(base_dock)
+        };
         let help = if self.help.is_open() {
             self.render_help_slot(term_cols, max_help_rows)
         } else {

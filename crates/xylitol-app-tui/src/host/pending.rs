@@ -21,6 +21,7 @@ pub struct PendingOps {
     pub bash: Option<PendingBash>,
     pub reload: bool,
     pub footer_token_refresh: bool,
+    pub queue_refresh: bool,
     pub paste_image: bool,
 }
 

@@ -28,6 +28,11 @@ pub async fn drain_inline_pending<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
 ) {
+    if session.take_pending_queue_refresh() {
+        let stats = queue_stats(driver).await;
+        session.set_queue_depth(stats.steer_count, stats.follow_up_count);
+        let _ = session.render_now();
+    }
     if let Some(slash) = session.take_slash() {
         if slash_allowances(&slash).exec == Exec::Inline {
             slash::handle_slash(session, driver, slash).await;
@@ -139,11 +144,7 @@ async fn drain_abort_and_lanes<T: Terminal>(
     if aborted_now {
         log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
-        let cancelled_gate = session.take_gated_submit().is_some();
-        if cancelled_gate {
-            let stats = queue_stats(driver).await;
-            session.set_queue_depth(stats.steer_count, stats.follow_up_count);
-        }
+        let _ = session.take_gated_submit();
         session.note_user_abort();
         let _ = dispatch(
             driver,

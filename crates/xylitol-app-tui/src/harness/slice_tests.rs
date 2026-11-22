@@ -522,6 +522,26 @@ async fn h2_stream_then_idle() {
 }
 
 #[tokio::test]
+async fn agent_end_requests_queue_refresh() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.on_turn_started("prompt");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            reason: None,
+            messages: Vec::new(),
+        })))
+        .unwrap();
+    assert!(
+        session.take_pending_queue_refresh(),
+        "AgentEnd must request a queue refresh so consumed follow-ups leave the strip"
+    );
+    assert!(
+        !session.take_pending_queue_refresh(),
+        "the flag must be consumed exactly once"
+    );
+}
+
+#[tokio::test]
 async fn h3_tool_entry_visible() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();

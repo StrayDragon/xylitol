@@ -2663,6 +2663,38 @@ mod tests {
     }
 
     #[test]
+    fn help_panel_renders_content_with_long_conversation() {
+        let mut root = UiRoot::new();
+        root.set_term_rows(30);
+        root.set_term_cols(100);
+        let mut model = UiModel::new();
+        model.begin_run("task");
+        for _ in 0..40 {
+            model.entries.push(crate::bridge::UiEntry::User {
+                text: "hello ".repeat(10),
+            });
+        }
+        root.apply_ui_model(&model);
+        let _ = root.render(100);
+        assert!(root.last_help_rows == 0, "help closed by default");
+
+        root.open_help();
+        let lines = root.render(100);
+        assert!(
+            root.last_help_rows >= 5,
+            "help panel must render rows even when scrollback fills the screen: {}",
+            root.last_help_rows
+        );
+        use xylitol_tui::utils::strip_ansi_codes;
+        assert!(
+            lines
+                .iter()
+                .any(|line| strip_ansi_codes(line).contains("快捷键")),
+            "help panel title must be painted"
+        );
+    }
+
+    #[test]
     fn input_marker_hit_covers_two_columns() {
         use xylitol_tui::utils::strip_ansi_codes;
         let mut root = UiRoot::new();

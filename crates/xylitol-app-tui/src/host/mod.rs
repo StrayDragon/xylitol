@@ -973,6 +973,14 @@ impl<T: Terminal> HostSession<T> {
         self.pending.footer_token_refresh = true;
     }
 
+    pub fn request_queue_refresh(&mut self) {
+        self.pending.queue_refresh = true;
+    }
+
+    pub fn take_pending_queue_refresh(&mut self) -> bool {
+        std::mem::take(&mut self.pending.queue_refresh)
+    }
+
     pub fn request_footer_token_refresh_throttled(&mut self) {
         const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(750);
         let now = std::time::Instant::now();
@@ -1560,6 +1568,7 @@ impl<T: Terminal> HostSession<T> {
             XyEvent::AgentEnd { reason, .. } => {
                 self.busy.agent_run = false;
                 self.recalc_busy();
+                self.pending.queue_refresh = true;
                 self.completed_turns = self.completed_turns.saturating_add(1);
                 let end = OffsetDateTime::now_utc();
                 if let (Some(start), Some(root)) =
