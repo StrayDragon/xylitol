@@ -983,7 +983,7 @@ pub struct SkillsReloadReport {
     pub count: usize,
 }
 
-pub fn reload_skills(
+pub async fn reload_skills(
     driver: &mut crate::driver::XyInProcessDriver,
     cwd: &std::path::Path,
     agent_dir: &std::path::Path,
@@ -1004,7 +1004,7 @@ pub fn reload_skills(
         count: names.len(),
         names,
     };
-    driver.apply_skills(skills);
+    driver.apply_skills(skills).await;
     report
 }
 
@@ -1015,7 +1015,7 @@ pub struct PromptContextReloadReport {
     pub append_count: usize,
 }
 
-pub fn reload_prompt_context(
+pub async fn reload_prompt_context(
     driver: &mut crate::driver::XyInProcessDriver,
     cwd: &std::path::Path,
     agent_dir: &std::path::Path,
@@ -1046,7 +1046,9 @@ pub fn reload_prompt_context(
         has_system_prompt: system_prompt.is_some(),
         append_count: append_system_prompt.len(),
     };
-    driver.apply_prompt_resources(context_files, system_prompt, append_system_prompt);
+    driver
+        .apply_prompt_resources(context_files, system_prompt, append_system_prompt)
+        .await;
     report
 }
 

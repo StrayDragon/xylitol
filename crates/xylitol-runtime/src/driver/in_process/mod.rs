@@ -122,11 +122,15 @@ impl XyInProcessDriver {
         phase: &str,
         context: serde_json::Value,
     ) -> Result<(), XyDriverError> {
-        self.state_mut()
-            .runtime()
-            .script_hook_cancel(event_type, phase, context)
-            .await
-            .map_err(XyDriverError::from)
+        self.ensure_actor_spawned();
+        self.handle
+            .request(|reply| actor::DriverCommand::ScriptHookCancel {
+                event_type: event_type.to_string(),
+                phase: phase.to_string(),
+                context,
+                reply,
+            })
+            .await?
     }
 
     pub(super) async fn dispatch_script_hook_observe(
@@ -135,18 +139,26 @@ impl XyInProcessDriver {
         phase: &str,
         context: serde_json::Value,
     ) {
-        self.state_mut()
-            .runtime()
-            .script_hook_observe(event_type, phase, context)
+        self.ensure_actor_spawned();
+        let _ = self
+            .handle
+            .request(|reply| actor::DriverCommand::ScriptHookObserve {
+                event_type: event_type.to_string(),
+                phase: phase.to_string(),
+                context,
+                reply,
+            })
             .await;
     }
 
     async fn ensure_runtime_session(&mut self, id: &str) -> Result<(), XyDriverError> {
-        self.state_mut()
-            .runtime()
-            .ensure_session(id, None)
-            .await
-            .map_err(XyDriverError::from)
+        self.ensure_actor_spawned();
+        self.handle
+            .request(|reply| actor::DriverCommand::EnsureSession {
+                session_id: id.to_string(),
+                reply,
+            })
+            .await?
     }
 
     fn snapshot(&self) -> actor::DriverSnapshot {
@@ -179,7 +191,7 @@ impl XyInProcessDriver {
         self.handle = handle;
     }
 
-    fn try_apply_prepare_tools(&mut self) -> bool {
+    async fn try_apply_prepare_tools(&mut self) -> bool {
         if self.actor.is_none()
             && let Some(slot) = self.slot.as_ref()
             && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
@@ -189,8 +201,27 @@ impl XyInProcessDriver {
         if self.actor.is_none() {
             return false;
         }
-        self.apply_prepare_tools();
+        self.apply_prepare_tools().await;
         true
+    }
+
+    pub fn handle(&self) -> &actor::DriverHandle {
+        &self.handle
+    }
+
+    pub fn try_set_tools_inline(
+        &mut self,
+        tools: crate::agent::tools::ToolSet,
+    ) -> Option<ToolsWriteOutcome> {
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        self.actor
+            .as_mut()
+            .map(|state| state.runtime_mut().set_tools(tools))
     }
 
     pub async fn bind_session(&mut self, session_id: String) -> Result<(), XyDriverError> {
@@ -201,16 +232,32 @@ impl XyInProcessDriver {
     }
 
     pub fn model_registry(&mut self) -> crate::agent::model::registry::ModelRegistry {
-        self.state_mut().runtime_mut().model_registry()
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        self.actor
+            .as_ref()
+            .map(|state| state.runtime().model_registry())
+            .unwrap_or_default()
     }
 
     pub fn replace_model_registry(
         &mut self,
         registry: crate::agent::model::registry::ModelRegistry,
     ) {
-        self.state_mut()
-            .runtime_mut()
-            .replace_model_registry(registry);
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        match self.actor.as_mut() {
+            Some(state) => state.runtime_mut().replace_model_registry(registry),
+            None => self.handle.shared().set_pending_model_registry(registry),
+        }
     }
 
     pub async fn join_actor(&mut self) {
@@ -400,20 +447,12 @@ impl XyInProcessDriver {
         self.handle.shared().cancel_token()
     }
 
-    pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) -> ToolsWriteOutcome {
-        if self.actor.is_none()
-            && let Some(slot) = self.slot.as_ref()
-            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
-        {
-            self.actor = Some(state);
-        }
-        match self.actor.as_mut() {
-            Some(state) => state.runtime_mut().set_tools(tools),
-            None => {
-                self.handle.shared().set_pending_tools(tools);
-                ToolsWriteOutcome::Applied
-            }
-        }
+    pub async fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) -> ToolsWriteOutcome {
+        self.ensure_actor_spawned();
+        self.handle
+            .request(|reply| actor::DriverCommand::SetTools { tools, reply })
+            .await
+            .unwrap_or(ToolsWriteOutcome::RejectedMidTurn)
     }
 
     pub fn set_base_tools(&mut self, tools: crate::agent::tools::ToolSet) {
@@ -449,17 +488,26 @@ impl XyInProcessDriver {
             tools,
             &self.capability_disabled,
         );
-        self.state_mut().runtime_mut().reopen_tools_for_regate();
-        self.state_mut().runtime_mut().freeze_tools(filtered);
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        match self.actor.as_mut() {
+            Some(state) => {
+                state.runtime_mut().reopen_tools_for_regate();
+                state.runtime_mut().freeze_tools(filtered);
+            }
+            None => {
+                self.handle.shared().set_pending_tools(filtered);
+            }
+        }
         self.capability_applied = self.capability_disabled.clone();
         self.overlay_phase = OverlayPhase::Idle;
-        debug_assert!(
-            self.snapshot().tools_frozen,
-            "install_base_tools must end Frozen"
-        );
     }
 
-    pub fn apply_pending_capability_overlay(&mut self) {
+    pub async fn apply_pending_capability_overlay(&mut self) {
         if !self.capability_pending() {
             return;
         }
@@ -468,28 +516,62 @@ impl XyInProcessDriver {
             base,
             &self.capability_disabled,
         );
-        self.state_mut().runtime_mut().reopen_tools_for_regate();
-        match self.state_mut().runtime_mut().set_tools(filtered.clone()) {
-            ToolsWriteOutcome::Applied => self.state_mut().runtime_mut().freeze_tools(filtered),
+        self.reopen_tools_for_regate().await;
+        let outcome = self.set_tools(filtered.clone()).await;
+        let to_freeze = match outcome {
+            ToolsWriteOutcome::Applied => filtered,
             ToolsWriteOutcome::RejectedMidTurn | ToolsWriteOutcome::RejectedFrozen => {
-                let current = self.state().runtime().clone_tools();
-                self.state_mut().runtime_mut().freeze_tools(current);
+                self.current_tools().await
             }
-        }
+        };
+        self.freeze_tools(to_freeze).await;
         self.capability_applied = self.capability_disabled.clone();
         self.overlay_phase = OverlayPhase::Idle;
-        debug_assert!(
-            self.snapshot().tools_frozen,
-            "capability overlay must end Frozen"
-        );
     }
 
-    pub fn freeze_tools(&mut self, tools: crate::agent::tools::ToolSet) {
-        self.state_mut().runtime_mut().freeze_tools(tools);
+    async fn current_tools(&mut self) -> crate::agent::tools::ToolSet {
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        self.actor
+            .as_ref()
+            .map(|state| state.runtime().clone_tools())
+            .unwrap_or_default()
     }
 
-    pub fn reopen_tools_for_regate(&mut self) {
-        self.state_mut().runtime_mut().reopen_tools_for_regate();
+    pub async fn freeze_tools(&mut self, tools: crate::agent::tools::ToolSet) {
+        self.ensure_actor_spawned();
+        let _ = self
+            .handle
+            .request(|reply| actor::DriverCommand::FreezeTools { tools, reply })
+            .await;
+    }
+
+    pub async fn begin_tool_gating(&mut self) {
+        self.ensure_actor_spawned();
+        let _ = self
+            .handle
+            .request(|reply| actor::DriverCommand::BeginToolGating { reply })
+            .await;
+    }
+
+    pub async fn clear_tool_freeze(&mut self) {
+        self.ensure_actor_spawned();
+        let _ = self
+            .handle
+            .request(|reply| actor::DriverCommand::ClearToolFreeze { reply })
+            .await;
+    }
+
+    pub async fn reopen_tools_for_regate(&mut self) {
+        self.ensure_actor_spawned();
+        let _ = self
+            .handle
+            .request(|reply| actor::DriverCommand::ReopenToolsForRegate { reply })
+            .await;
     }
 
     pub fn is_tools_frozen(&self) -> bool {
@@ -500,30 +582,48 @@ impl XyInProcessDriver {
         if self.snapshot().tools_frozen {
             return;
         }
-        debug_assert!(
-            self.state().runtime().tool_freeze_phase()
-                != crate::agent::tools::ToolFreezePhase::Gating,
-            "tool table left in Gating outside an assembly line"
-        );
-        self.state_mut().runtime_mut().begin_tool_gating();
+        self.ensure_runtime_reclaimed();
         let _ = self.join_session_prepare().await;
-        let tools = self.state().runtime().clone_tools();
-        self.state_mut().runtime_mut().freeze_tools(tools);
+        let tools = self.take_tool_snapshot().await;
+        self.ensure_runtime_reclaimed();
+        if let Some(state) = self.actor.as_mut() {
+            state.runtime_mut().reopen_tools_for_regate();
+            state.runtime_mut().freeze_tools(tools);
+            let frozen = state.runtime().is_tools_frozen();
+            self.handle.shared().set_tools_frozen(frozen);
+        }
         self.prepare_acked = true;
         self.handle.shared().set_prepare_acked(true);
     }
 
-    pub fn set_workspaces(&mut self, workspaces: Vec<String>) {
+    fn ensure_runtime_reclaimed(&mut self) {
         if self.actor.is_none()
             && let Some(slot) = self.slot.as_ref()
             && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
         {
             self.actor = Some(state);
         }
-        match self.actor.as_mut() {
-            Some(state) => state.runtime_mut().set_workspaces(workspaces),
-            None => self.handle.shared().set_pending_workspaces(workspaces),
+    }
+
+    async fn take_tool_snapshot(&mut self) -> crate::agent::tools::ToolSet {
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
         }
+        match self.actor.as_ref() {
+            Some(state) => state.runtime().clone_tools(),
+            None => crate::agent::tools::ToolSet::empty(),
+        }
+    }
+
+    pub async fn set_workspaces(&mut self, workspaces: Vec<String>) {
+        self.ensure_actor_spawned();
+        let _ = self
+            .handle
+            .request(|reply| actor::DriverCommand::SetWorkspaces { workspaces, reply })
+            .await;
     }
 
     pub fn persist_project_trust(
@@ -564,21 +664,30 @@ impl XyInProcessDriver {
         })
     }
 
-    pub fn apply_prompt_resources(
+    pub async fn apply_prompt_resources(
         &mut self,
         context_files: Vec<(String, String)>,
         system_prompt: Option<String>,
         append_system_prompt: Vec<String>,
     ) {
-        self.state_mut().runtime_mut().apply_prompt_resources(
-            context_files,
-            system_prompt,
-            append_system_prompt,
-        );
+        self.ensure_actor_spawned();
+        let _ = self
+            .handle
+            .request(|reply| actor::DriverCommand::ApplyPromptResources {
+                context_files,
+                system_prompt,
+                append_system_prompt,
+                reply,
+            })
+            .await;
     }
 
-    pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>) {
-        self.state_mut().runtime_mut().apply_skills(skills);
+    pub async fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>) {
+        self.ensure_actor_spawned();
+        let _ = self
+            .handle
+            .request(|reply| actor::DriverCommand::ApplySkills { skills, reply })
+            .await;
     }
 
     pub fn loaded_skill_names(&self) -> Vec<String> {
@@ -612,12 +721,29 @@ impl XyInProcessDriver {
     }
 
     pub fn builtins_for_reload(&mut self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
-        self.state_mut()
-            .runtime_mut()
-            .clone_tools()
-            .iter()
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        if let Some(state) = self.actor.as_ref() {
+            let tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> = state
+                .runtime()
+                .clone_tools()
+                .iter()
+                .filter(|t| !xylitol_plugin_sdk::is_mcp_tool_name(t.name()))
+                .cloned()
+                .collect();
+            self.handle.shared().set_builtin_tools(tools.clone());
+            return tools;
+        }
+        self.handle
+            .shared()
+            .builtin_tools()
+            .unwrap_or_default()
+            .into_iter()
             .filter(|t| !xylitol_plugin_sdk::is_mcp_tool_name(t.name()))
-            .cloned()
             .collect()
     }
 
@@ -629,11 +755,14 @@ impl XyInProcessDriver {
     }
 
     pub async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError> {
-        self.state_mut()
-            .runtime_mut()
-            .select_model_with_source(model_id, "restore")
+        self.ensure_actor_spawned();
+        self.handle
+            .request(|reply| actor::DriverCommand::SelectModel {
+                model_id: model_id.to_string(),
+                reply,
+            })
             .await
-            .map_err(XyDriverError::from)
+            .map(|_| ())
     }
 }
 
@@ -925,7 +1054,7 @@ impl XyDriver for XyInProcessDriver {
         if !complete {
             return dirty;
         }
-        if self.try_apply_prepare_tools() && !self.handle.shared().prepare_acked() {
+        if self.try_apply_prepare_tools().await && !self.handle.shared().prepare_acked() {
             self.prepare_acked = true;
             self.handle.shared().set_prepare_acked(true);
             return true;
@@ -941,7 +1070,7 @@ impl XyDriver for XyInProcessDriver {
         &mut self,
         cancel: &CancellationToken,
     ) -> Result<super::types::RuntimeReloadReport, XyDriverError> {
-        self.state_mut().runtime_mut().clear_tool_freeze();
+        self.clear_tool_freeze().await;
         self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Reload);
         if let Some(hook) = self.reload_hook.clone() {
             hook.reload(self, cancel).await
@@ -964,15 +1093,23 @@ impl XyDriver for XyInProcessDriver {
         if self.snapshot().tools_frozen {
             return;
         }
-        self.state_mut().runtime_mut().begin_tool_gating();
+        self.ensure_runtime_reclaimed();
+        if let Some(state) = self.actor.as_mut() {
+            state.runtime_mut().begin_tool_gating();
+        }
         let complete = self.prepare_hub.as_ref().is_none_or(|h| {
             let view = h.view();
             view.configured == 0 || view.complete
         });
         if complete {
-            self.apply_prepare_tools();
-            let tools = self.state().runtime().clone_tools();
-            self.state_mut().runtime_mut().freeze_tools(tools);
+            self.apply_prepare_tools().await;
+            let tools = self.current_tools().await;
+            self.ensure_runtime_reclaimed();
+            if let Some(state) = self.actor.as_mut() {
+                state.runtime_mut().freeze_tools(tools);
+                let frozen = state.runtime().is_tools_frozen();
+                self.handle.shared().set_tools_frozen(frozen);
+            }
             self.prepare_acked = true;
             self.handle.shared().set_prepare_acked(true);
         } else {
@@ -990,10 +1127,7 @@ impl XyDriver for XyInProcessDriver {
             exclude_from_context,
             self.snapshot().cwd.as_str(),
         );
-        self.state_mut()
-            .runtime()
-            .script_hook_cancel(ty, phase, ctx)
-            .await?;
+        self.dispatch_script_hook_cancel(ty, phase, ctx).await?;
 
         let bash_id = uuid::Uuid::new_v4().to_string();
         let run = self
@@ -1044,11 +1178,22 @@ impl XyDriver for XyInProcessDriver {
 
 impl XyInProcessDriver {
     async fn prepare_run(&mut self) {
-        self.apply_pending_capability_overlay();
+        self.apply_pending_capability_overlay().await;
         self.ensure_tool_table_frozen().await;
         if self.snapshot().session_id.as_deref().is_none() {
             let id = uuid::Uuid::new_v4().to_string();
-            if let Err(e) = bind_session_or_err(self.state_mut().runtime_mut(), id.clone()) {
+            if self.actor.is_none()
+                && let Some(slot) = self.slot.as_ref()
+                && let Some(state) =
+                    actor::ActorState::from_slot(slot, self.handle.shared().clone())
+            {
+                self.actor = Some(state);
+            }
+            let bound = match self.actor.as_mut() {
+                Some(state) => bind_session_or_err(state.runtime_mut(), id.clone()),
+                None => Err(XyDriverError::message("no runtime")),
+            };
+            if let Err(e) = bound {
                 e.log_failure("driver.run.bind_session");
             }
             self.bind_todo_session(Some(&id)).await;
@@ -1059,92 +1204,26 @@ impl XyInProcessDriver {
 
     pub async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         self.ensure_actor_spawned();
-        if self.handle.is_spawned() {
-            return self
-                .handle
-                .request(|reply| actor::DriverCommand::SelectModel {
-                    model_id: model_id.to_string(),
-                    reply,
-                })
-                .await?;
-        }
-        let registry = self.state().runtime().model_registry();
-        let found = registry
-            .list()
-            .iter()
-            .find(|m| m.id == model_id)
-            .map(|m| m.id.clone())
-            .or_else(|| {
-                let hits: Vec<_> = registry
-                    .list()
-                    .iter()
-                    .filter(|m| m.config.model == model_id)
-                    .collect();
-                match hits.as_slice() {
-                    [only] => Some(only.id.clone()),
-                    _ => None,
-                }
+        self.handle
+            .request(|reply| actor::DriverCommand::SelectModel {
+                model_id: model_id.to_string(),
+                reply,
             })
-            .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
-        self.state_mut()
-            .runtime_mut()
-            .select_model(&found)
-            .await
-            .map_err(XyDriverError::from)?;
-        Ok(self
-            .state_mut()
-            .runtime_mut()
-            .current_model()
-            .map(|m| ModelInfo::from(&m))
-            .unwrap_or_else(|| ModelInfo {
-                id: found.clone(),
-                display_name: found,
-                thinking: true,
-                thinking_levels: Vec::new(),
-                context_window: 0,
-            }))
+            .await?
     }
 
     pub async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
         self.ensure_actor_spawned();
-        if self.handle.is_spawned() {
-            return self
-                .handle
-                .request(|reply| actor::DriverCommand::CycleModel { reply })
-                .await?;
-        }
-        let list = self.state().runtime().model_registry().list().to_vec();
-        if list.is_empty() {
-            return Err(XyDriverError::not_found("no models available"));
-        }
-        let current_id = self.state().runtime().current_model().map(|m| m.id.clone());
-        let current_idx = current_id
-            .as_ref()
-            .and_then(|cur| list.iter().position(|m| m.id == *cur))
-            .unwrap_or(0);
-        let next_idx = (current_idx + 1) % list.len();
-        let next_id = list[next_idx].id.clone();
-        self.state_mut()
-            .runtime_mut()
-            .select_model_with_source(&next_id, "cycle")
-            .await
-            .map_err(XyDriverError::from)?;
-        Ok(ModelInfo::from(&list[next_idx]))
+        self.handle
+            .request(|reply| actor::DriverCommand::CycleModel { reply })
+            .await?
     }
 
     pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
         self.ensure_actor_spawned();
-        if self.handle.is_spawned() {
-            return self
-                .handle
-                .request(|reply| actor::DriverCommand::SetThinkingLevel { level, reply })
-                .await?;
-        }
-        self.state_mut()
-            .runtime_mut()
-            .set_thinking_level(level)
-            .await
-            .map_err(XyDriverError::from)
+        self.handle
+            .request(|reply| actor::DriverCommand::SetThinkingLevel { level, reply })
+            .await?
     }
 
     pub fn model_provider(&self, model_id: &str) -> Option<String> {
@@ -1157,21 +1236,12 @@ impl XyInProcessDriver {
 
     pub async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
         self.ensure_actor_spawned();
-        if self.handle.is_spawned() {
-            return self
-                .handle
-                .request(|reply| actor::DriverCommand::Compact {
-                    instructions,
-                    reply,
-                })
-                .await?;
-        }
-        self.state_mut()
-            .runtime_mut()
-            .force_compact(instructions)
-            .await
-            .map(|()| true)
-            .map_err(XyDriverError::from)
+        self.handle
+            .request(|reply| actor::DriverCommand::Compact {
+                instructions,
+                reply,
+            })
+            .await?
     }
 
     pub async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
@@ -1201,8 +1271,8 @@ impl XyInProcessDriver {
         clear_steer: bool,
         clear_follow_up: bool,
     ) -> Result<(), XyDriverError> {
-        self.state()
-            .runtime()
+        self.handle
+            .shared()
             .clear_queues(clear_steer, clear_follow_up);
         Ok(())
     }

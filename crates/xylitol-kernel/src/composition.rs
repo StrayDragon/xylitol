@@ -160,7 +160,7 @@ impl McpSession {
             return Ok(McpReloadOutcome::Cancelled);
         }
 
-        driver.reopen_tools_for_regate();
+        driver.reopen_tools_for_regate().await;
         let mut tools = ToolSet::from_iter(builtins.clone());
         let prev = self.manager.take();
         if let Some((manager, mcp_tools)) = discovered {
@@ -331,7 +331,7 @@ mod tests {
                 name: "mcp__demo__alpha",
             }) as Arc<dyn XyTool>],
         );
-        driver.freeze_tools(with_a);
+        driver.freeze_tools(with_a).await;
         assert!(driver.is_tools_frozen());
         assert!(
             driver
@@ -369,14 +369,14 @@ mod tests {
             "empty reload clears previous manager after install"
         );
 
-        driver.reopen_tools_for_regate();
+        driver.reopen_tools_for_regate().await;
         let with_b = ToolSet::rebuild_agent_tools(
             driver.builtins_for_reload(),
             vec![Arc::new(StubMcpTool {
                 name: "mcp__demo__beta",
             }) as Arc<dyn XyTool>],
         );
-        driver.freeze_tools(with_b);
+        driver.freeze_tools(with_b).await;
         let after_add = driver.tool_names_for_test();
         assert!(
             after_add.iter().any(|n| n == "mcp__demo__beta"),
@@ -390,17 +390,19 @@ mod tests {
         let n = after_add.len();
         let builtins = driver.builtins_for_reload();
         assert_eq!(
-            driver.set_tools(ToolSet::rebuild_agent_tools(
-                builtins,
-                vec![
-                    Arc::new(StubMcpTool {
-                        name: "mcp__demo__beta",
-                    }) as Arc<dyn XyTool>,
-                    Arc::new(StubMcpTool {
-                        name: "mcp__demo__gamma",
-                    }) as Arc<dyn XyTool>,
-                ],
-            )),
+            driver
+                .set_tools(ToolSet::rebuild_agent_tools(
+                    builtins,
+                    vec![
+                        Arc::new(StubMcpTool {
+                            name: "mcp__demo__beta",
+                        }) as Arc<dyn XyTool>,
+                        Arc::new(StubMcpTool {
+                            name: "mcp__demo__gamma",
+                        }) as Arc<dyn XyTool>,
+                    ],
+                ))
+                .await,
             ToolsWriteOutcome::RejectedFrozen
         );
         assert_eq!(
@@ -445,10 +447,12 @@ mod tests {
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
         let builtins = driver.builtins_for_reload();
-        driver.freeze_tools(ToolSet::rebuild_agent_tools(
-            builtins,
-            vec![Arc::new(StubMcpTool) as Arc<dyn XyTool>],
-        ));
+        driver
+            .freeze_tools(ToolSet::rebuild_agent_tools(
+                builtins,
+                vec![Arc::new(StubMcpTool) as Arc<dyn XyTool>],
+            ))
+            .await;
         let before = driver.tool_names_for_test();
 
         let mut mcp = McpSession::new();

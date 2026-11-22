@@ -100,11 +100,7 @@ impl XyTool for SubagentTool {
             &self.factory.tools,
         );
         debug_assert!(matches!(
-            runtime
-                .driver
-                .state_mut()
-                .runtime_mut()
-                .set_tools(read_only),
+            runtime.driver.set_tools(read_only).await,
             ToolsWriteOutcome::Applied
         ));
         let mut stream = runtime.driver.run(prompt).await;

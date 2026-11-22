@@ -88,8 +88,11 @@ pub struct SharedRuntimeProbe {
     pub prepare_hub: Option<Arc<dyn xylitol_plugin_sdk::SessionPrepareHub>>,
     pub prepare_acked: bool,
     pub session_id: Option<String>,
+    pub tools_frozen: bool,
     pub pending_workspaces: Option<Vec<String>>,
     pub pending_tools: Option<crate::agent::tools::ToolSet>,
+    pub builtin_tools: Option<Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>>,
+    pub pending_model_registry: Option<crate::agent::model::registry::ModelRegistry>,
     pub todo_gateway: Option<Arc<dyn xylitol_plugin_sdk::AgentTodoGateway>>,
     pub automation_gateway: Option<Arc<dyn xylitol_plugin_sdk::AutomationGateway>>,
     pub workflow_gateway: Option<Arc<dyn xylitol_plugin_sdk::WorkflowGateway>>,
@@ -106,8 +109,11 @@ impl SharedSubsystems {
             prepare_hub: None,
             prepare_acked: true,
             session_id: None,
+            tools_frozen: false,
             pending_workspaces: None,
             pending_tools: None,
+            builtin_tools: None,
+            pending_model_registry: None,
             todo_gateway: None,
             automation_gateway: None,
             workflow_gateway: None,
@@ -133,11 +139,33 @@ impl SharedSubsystems {
         }
     }
 
+    pub fn set_pending_model_registry(
+        &self,
+        registry: crate::agent::model::registry::ModelRegistry,
+    ) {
+        self.probe().pending_model_registry = Some(registry);
+    }
+
+    pub fn take_pending_model_registry(
+        &self,
+    ) -> Option<crate::agent::model::registry::ModelRegistry> {
+        self.probe().pending_model_registry.take()
+    }
+
+    pub fn set_builtin_tools(&self, tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>) {
+        self.probe().builtin_tools = Some(tools);
+    }
+
+    pub fn builtin_tools(&self) -> Option<Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>> {
+        self.probe().builtin_tools.clone()
+    }
+
     pub fn bind_runtime(&self, runtime: &AgentRuntime) {
         let mut probe = self.probe();
         probe.queues = Some(runtime.queues());
         probe.coordinator = Some(runtime.coordinator());
         probe.session_id = runtime.session_id().map(str::to_string);
+        probe.tools_frozen = runtime.is_tools_frozen();
     }
 
     fn probe(&self) -> std::sync::MutexGuard<'_, SharedRuntimeProbe> {
@@ -222,6 +250,14 @@ impl SharedSubsystems {
 
     pub fn take_pending_tools(&self) -> Option<crate::agent::tools::ToolSet> {
         self.probe().pending_tools.take()
+    }
+
+    pub fn set_tools_frozen(&self, frozen: bool) {
+        self.probe().tools_frozen = frozen;
+    }
+
+    pub fn tools_frozen(&self) -> bool {
+        self.probe().tools_frozen
     }
 
     pub fn set_session_id(&self, session_id: Option<String>) {
@@ -510,6 +546,60 @@ pub enum DriverCommand {
         instructions: Option<String>,
         reply: tokio::sync::oneshot::Sender<Result<bool, XyDriverError>>,
     },
+    SetTools {
+        tools: crate::agent::tools::ToolSet,
+        reply: tokio::sync::oneshot::Sender<crate::agent::capabilities::ToolsWriteOutcome>,
+    },
+    SetWorkspaces {
+        workspaces: Vec<String>,
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    FreezeTools {
+        tools: crate::agent::tools::ToolSet,
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    ReopenToolsForRegate {
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    BeginToolGating {
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    ClearToolFreeze {
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    ApplyPromptResources {
+        context_files: Vec<(String, String)>,
+        system_prompt: Option<String>,
+        append_system_prompt: Vec<String>,
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    ApplySkills {
+        skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>,
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    ReplaceModelRegistry {
+        registry: crate::agent::model::registry::ModelRegistry,
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    ScriptHookCancel {
+        event_type: String,
+        phase: String,
+        context: serde_json::Value,
+        reply: tokio::sync::oneshot::Sender<Result<(), XyDriverError>>,
+    },
+    ScriptHookObserve {
+        event_type: String,
+        phase: String,
+        context: serde_json::Value,
+        reply: tokio::sync::oneshot::Sender<()>,
+    },
+    EnsureSession {
+        session_id: String,
+        reply: tokio::sync::oneshot::Sender<Result<(), XyDriverError>>,
+    },
+    BuiltinsForReload {
+        reply: tokio::sync::oneshot::Sender<Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>>,
+    },
 }
 
 pub struct DriverHandle {
@@ -653,10 +743,19 @@ async fn run_actor(
         if let Some(tools) = state.shared.take_pending_tools() {
             let _ = state.runtime.set_tools(tools);
         }
+        if let Some(registry) = state.shared.take_pending_model_registry() {
+            state.runtime.replace_model_registry(registry);
+        }
         dispatch(&mut state, command).await;
         state
             .shared
+            .set_builtin_tools(state.runtime.clone_tools().iter().cloned().collect());
+        state
+            .shared
             .set_session_id(state.runtime.session_id().map(str::to_string));
+        state
+            .shared
+            .set_tools_frozen(state.runtime.is_tools_frozen());
         state.refresh_snapshot();
         let mut guard = snapshot.lock().unwrap_or_else(|e| e.into_inner());
         *guard = state.snapshot();
@@ -755,6 +854,99 @@ async fn dispatch(state: &mut ActorState, command: DriverCommand) {
                     .map(|()| true)
                     .map_err(XyDriverError::from),
             );
+        }
+        DriverCommand::SetTools { tools, reply: tx } => {
+            reply(tx, state.runtime.set_tools(tools));
+        }
+        DriverCommand::SetWorkspaces {
+            workspaces,
+            reply: tx,
+        } => {
+            state.runtime.set_workspaces(workspaces);
+            reply(tx, ());
+        }
+        DriverCommand::FreezeTools { tools, reply: tx } => {
+            state.runtime.freeze_tools(tools);
+            reply(tx, ());
+        }
+        DriverCommand::ReopenToolsForRegate { reply: tx } => {
+            state.runtime.reopen_tools_for_regate();
+            reply(tx, ());
+        }
+        DriverCommand::BeginToolGating { reply: tx } => {
+            state.runtime.begin_tool_gating();
+            reply(tx, ());
+        }
+        DriverCommand::ClearToolFreeze { reply: tx } => {
+            state.runtime.clear_tool_freeze();
+            reply(tx, ());
+        }
+        DriverCommand::ApplyPromptResources {
+            context_files,
+            system_prompt,
+            append_system_prompt,
+            reply: tx,
+        } => {
+            state.runtime.apply_prompt_resources(
+                context_files,
+                system_prompt,
+                append_system_prompt,
+            );
+            reply(tx, ());
+        }
+        DriverCommand::ApplySkills { skills, reply: tx } => {
+            state.runtime.apply_skills(skills);
+            reply(tx, ());
+        }
+        DriverCommand::ReplaceModelRegistry {
+            registry,
+            reply: tx,
+        } => {
+            state.runtime.replace_model_registry(registry);
+            reply(tx, ());
+        }
+        DriverCommand::ScriptHookCancel {
+            event_type,
+            phase,
+            context,
+            reply: tx,
+        } => {
+            reply(
+                tx,
+                state
+                    .runtime
+                    .script_hook_cancel(&event_type, &phase, context)
+                    .await
+                    .map_err(XyDriverError::from),
+            );
+        }
+        DriverCommand::ScriptHookObserve {
+            event_type,
+            phase,
+            context,
+            reply: tx,
+        } => {
+            state
+                .runtime
+                .script_hook_observe(&event_type, &phase, context)
+                .await;
+            reply(tx, ());
+        }
+        DriverCommand::EnsureSession {
+            session_id,
+            reply: tx,
+        } => {
+            reply(
+                tx,
+                state
+                    .runtime
+                    .ensure_session(&session_id, None)
+                    .await
+                    .map_err(XyDriverError::from),
+            );
+        }
+        DriverCommand::BuiltinsForReload { reply: tx } => {
+            reply(tx, state.runtime.clone_tools().iter().cloned().collect());
         }
     }
 }

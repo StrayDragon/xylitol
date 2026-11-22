@@ -1864,7 +1864,8 @@ pub(crate) async fn w_c2826_context_reload_trust(
         agent_dir.path(),
         true,
         None,
-    );
+    )
+    .await;
     let (mut untrusted_driver, _s2) = c2826_driver();
     let untrusted = xylitol_kernel::bootstrap::reload_prompt_context(
         &mut untrusted_driver,
@@ -1872,7 +1873,8 @@ pub(crate) async fn w_c2826_context_reload_trust(
         agent_dir.path(),
         false,
         None,
-    );
+    )
+    .await;
     let trusted_sp = trusted_driver.system_prompt_for_test().unwrap_or_default();
     let untrusted_sp = untrusted_driver
         .system_prompt_for_test()
@@ -1908,7 +1910,7 @@ pub(crate) fn t_c2826_context_reload_trust(agent: &AgentState) {
 }
 
 #[when("在项目目录写 skill 并分别以信任与未信任重载 skills")]
-pub(crate) fn w_c2826_skills_reload_trust(
+pub(crate) async fn w_c2826_skills_reload_trust(
     ws: &crate::bdd::fixtures::Workspace,
     agent: &AgentState,
 ) {
@@ -1931,14 +1933,16 @@ pub(crate) fn w_c2826_skills_reload_trust(
         std::path::Path::new(&project),
         agent_dir.path(),
         true,
-    );
+    )
+    .await;
     let (mut untrusted_driver, _s2) = c2826_driver();
     let untrusted = xylitol_kernel::bootstrap::reload_skills(
         &mut untrusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
         false,
-    );
+    )
+    .await;
     agent.last_result.replace(Some(Ok(format!(
         "trusted_names={:?} untrusted_names={:?} trusted_query={:?} untrusted_query={:?}",
         trusted.names,

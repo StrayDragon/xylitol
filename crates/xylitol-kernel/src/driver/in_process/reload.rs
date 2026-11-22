@@ -116,7 +116,8 @@ impl ReloadParticipant for SkillsParticipant {
         ctx: &ReloadContext,
     ) -> Result<String, String> {
         let skills =
-            crate::bootstrap::reload_skills(driver, &ctx.cwd, &ctx.agent_dir, ctx.project_trusted);
+            crate::bootstrap::reload_skills(driver, &ctx.cwd, &ctx.agent_dir, ctx.project_trusted)
+                .await;
         Ok(if skills.names.is_empty() {
             "0 skills".into()
         } else {
@@ -144,7 +145,8 @@ impl ReloadParticipant for ContextParticipant {
             &ctx.agent_dir,
             ctx.project_trusted,
             config_system_prompt(driver),
-        );
+        )
+        .await;
         Ok(format!(
             "{} context file(s), system={}, append={}",
             context.context_file_count, context.has_system_prompt, context.append_count

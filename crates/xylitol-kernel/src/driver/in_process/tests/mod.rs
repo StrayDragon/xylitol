@@ -196,7 +196,7 @@ async fn capability_overlay_ends_frozen_with_consistent_snapshot() {
         .expect("set capability");
     assert!(driver.capability_pending());
 
-    driver.apply_pending_capability_overlay();
+    driver.apply_pending_capability_overlay().await;
     assert!(!driver.capability_pending());
     assert!(driver.is_tools_frozen());
 

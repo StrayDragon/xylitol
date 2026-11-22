@@ -190,10 +190,10 @@ fn install_product_tool_set(
     driver.set_workflow_gateway(workflow.clone());
     let tools = compose_tools(features, context, todo, workflow, automation, ask);
     driver.set_base_tools(tools.clone());
-    debug_assert!(matches!(
-        driver.set_tools(tools),
-        ToolsWriteOutcome::Applied
-    ));
+    driver.set_base_tools(tools.clone());
+    if let Some(outcome) = driver.try_set_tools_inline(tools) {
+        debug_assert!(matches!(outcome, ToolsWriteOutcome::Applied));
+    }
 }
 
 fn static_tool_base(context: &DriverContext) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {

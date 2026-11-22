@@ -2,6 +2,9 @@
 title: 驱动运行时命令面收口
 depends_on: []
 needs_specs_change: false
+branch: sdd/c3435-refactor-driver-runtime-command-surface
+base_branch: main
+base_sha: 20a50ea72435dce9390f6190f86689aadfba7fb5
 ---
 
 ## Why

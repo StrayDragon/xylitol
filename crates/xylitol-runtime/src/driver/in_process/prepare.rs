@@ -29,17 +29,6 @@ pub trait InProcessReloadHook: Send + Sync {
     ) -> Result<RuntimeReloadReport, XyDriverError>;
 }
 
-fn session_workspaces(agent: &crate::agent::AgentRuntime) -> Vec<String> {
-    let mut workspaces = agent.workspaces().to_vec();
-    if workspaces.is_empty() {
-        let cwd = agent.cwd();
-        if !cwd.trim().is_empty() {
-            workspaces.push(cwd.to_string());
-        }
-    }
-    workspaces
-}
-
 impl XyInProcessDriver {
     pub fn attach_ctx(&mut self, ctx: Ctx) {
         self.ctx = Some(ctx);
@@ -198,7 +187,14 @@ impl XyInProcessDriver {
         let ev = SessionPrepare {
             session_id,
             reason: SessionPrepareReason::Generate,
-            workspaces: session_workspaces(self.state().runtime()),
+            workspaces: {
+                let snapshot = self.snapshot();
+                let mut workspaces = snapshot.workspaces.clone();
+                if workspaces.is_empty() && !snapshot.cwd.trim().is_empty() {
+                    workspaces.push(snapshot.cwd);
+                }
+                workspaces
+            },
         };
         let timeout = MCP_FIRST_TURN_GATE_TIMEOUT;
         let result = if let Some(ctx) = self.ctx.clone() {
@@ -214,7 +210,7 @@ impl XyInProcessDriver {
         } else {
             self.hub_wait(timeout).await
         };
-        self.finish_prepare(&result);
+        self.finish_prepare(&result).await;
         result
     }
 
@@ -236,13 +232,13 @@ impl XyInProcessDriver {
             self.mcp_gate_notice = Some(xylitol_plugin_sdk::SESSION_PREPARE_TIMEOUT_NOTICE.into());
         }
         let result = self.hub_snapshot_result();
-        self.settle_tool_gate(result);
+        self.settle_tool_gate(result).await;
         self.tool_gate_poll_started = None;
         self.snapshot().tools_frozen
     }
 
-    fn finish_prepare(&mut self, result: &SessionPrepareResult) {
-        self.apply_prepare_tools();
+    async fn finish_prepare(&mut self, result: &SessionPrepareResult) {
+        self.apply_prepare_tools().await;
         if !result.fingerprint.is_empty() {
             self.state_mut()
                 .runtime_mut()
@@ -250,10 +246,12 @@ impl XyInProcessDriver {
         }
     }
 
-    fn settle_tool_gate(&mut self, result: SessionPrepareResult) {
-        self.finish_prepare(&result);
+    async fn settle_tool_gate(&mut self, result: SessionPrepareResult) {
+        self.finish_prepare(&result).await;
         let tools = self.state().runtime().clone_tools();
         self.state_mut().runtime_mut().freeze_tools(tools);
+        let frozen = self.state().runtime().is_tools_frozen();
+        self.handle.shared().set_tools_frozen(frozen);
         self.prepare_acked = true;
         self.handle.shared().set_prepare_acked(true);
     }
@@ -272,7 +270,7 @@ impl XyInProcessDriver {
         }
     }
 
-    pub(super) fn apply_prepare_tools(&mut self) {
+    pub(super) async fn apply_prepare_tools(&mut self) {
         let Some(hub) = &self.prepare_hub else {
             return;
         };
@@ -295,7 +293,12 @@ impl XyInProcessDriver {
         self.base_tools = Some(set.clone());
         let filtered =
             crate::agent::tools::filter_tools_by_capability_overlay(set, &self.capability_disabled);
-        match self.set_tools(filtered) {
+        let applied = self
+            .actor
+            .as_mut()
+            .map(|state| state.runtime_mut().set_tools(filtered.clone()))
+            .unwrap_or(ToolsWriteOutcome::RejectedMidTurn);
+        match applied {
             ToolsWriteOutcome::Applied => {}
             ToolsWriteOutcome::RejectedMidTurn | ToolsWriteOutcome::RejectedFrozen => {
                 log::warn!(
@@ -310,8 +313,9 @@ impl XyInProcessDriver {
 
     pub(super) async fn prepare_loaded_resources(&self) -> LoadedResourcesSnapshot {
         let skill_names = self.loaded_skill_names();
-        let tools_table_frozen = self.snapshot().tools_frozen;
-        let tool_names = self.snapshot().tool_names;
+        let snapshot = self.snapshot();
+        let tools_table_frozen = snapshot.tools_frozen;
+        let tool_names = snapshot.tool_names;
         let view = match &self.prepare_hub {
             Some(hub) => hub.view(),
             None => {

@@ -349,8 +349,8 @@ impl OccupancyEngine for OccupancyDriver {
         self.inner.set_loop_middleware_scoped(registry, scope);
     }
 
-    fn set_workspaces(&mut self, workspaces: Vec<String>) {
-        self.inner.set_workspaces(workspaces);
+    async fn set_workspaces(&mut self, workspaces: Vec<String>) {
+        self.inner.set_workspaces(workspaces).await;
     }
 }
 

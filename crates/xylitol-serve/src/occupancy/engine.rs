@@ -33,7 +33,7 @@ pub trait OccupancyEngine: XyDriver {
         scope: xylitol_plugin_sdk::LoopScope,
     );
 
-    fn set_workspaces(&mut self, _workspaces: Vec<String>) {}
+    async fn set_workspaces(&mut self, _workspaces: Vec<String>) {}
 }
 
 #[derive(Clone)]

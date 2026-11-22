@@ -36,14 +36,15 @@ fn assembly_input(trust_override: Option<bool>) -> BootstrapInput {
     }
 }
 
-#[test]
-fn reload_prompt_context_trusted_injects_agents() {
+#[tokio::test]
+async fn reload_prompt_context_trusted_injects_agents() {
     let project = tempfile::tempdir().unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("AGENTS.md"), "TRUSTED_AGENTS_BODY").unwrap();
 
     let mut driver = make_driver();
-    let report = reload_prompt_context(&mut driver, project.path(), agent_dir.path(), true, None);
+    let report =
+        reload_prompt_context(&mut driver, project.path(), agent_dir.path(), true, None).await;
     assert!(report.context_file_count >= 1);
     let sp = driver.system_prompt_for_test().unwrap_or_default();
     assert!(
@@ -52,14 +53,14 @@ fn reload_prompt_context_trusted_injects_agents() {
     );
 }
 
-#[test]
-fn reload_prompt_context_untrusted_skips_project_agents() {
+#[tokio::test]
+async fn reload_prompt_context_untrusted_skips_project_agents() {
     let project = tempfile::tempdir().unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("AGENTS.md"), "SECRET_PROJECT_AGENTS").unwrap();
 
     let mut driver = make_driver();
-    let _ = reload_prompt_context(&mut driver, project.path(), agent_dir.path(), false, None);
+    let _ = reload_prompt_context(&mut driver, project.path(), agent_dir.path(), false, None).await;
     let sp = driver.system_prompt_for_test().unwrap_or_default();
     assert!(
         !sp.contains("SECRET_PROJECT_AGENTS"),
@@ -77,15 +78,15 @@ fn write_skill(dir: &std::path::Path, name: &str) {
     .unwrap();
 }
 
-#[test]
-fn reload_skills_trusted_injects_into_system_prompt() {
+#[tokio::test]
+async fn reload_skills_trusted_injects_into_system_prompt() {
     let project = tempfile::tempdir().unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     write_skill(project.path(), "reload-demo");
 
     let mut driver = make_driver();
     let before_len = driver.system_prompt_for_test().unwrap_or_default().len();
-    let report = reload_skills(&mut driver, project.path(), agent_dir.path(), true);
+    let report = reload_skills(&mut driver, project.path(), agent_dir.path(), true).await;
     assert!(report.names.iter().any(|n| n == "reload-demo"));
     let sp = driver.system_prompt_for_test().unwrap_or_default();
     assert!(sp.contains("reload-demo") || sp.contains("<available_skills>"));
@@ -98,14 +99,14 @@ fn reload_skills_trusted_injects_into_system_prompt() {
     );
 }
 
-#[test]
-fn reload_skills_untrusted_skips_project_skill() {
+#[tokio::test]
+async fn reload_skills_untrusted_skips_project_skill() {
     let project = tempfile::tempdir().unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     write_skill(project.path(), "secret-reload");
 
     let mut driver = make_driver();
-    let _ = reload_skills(&mut driver, project.path(), agent_dir.path(), false);
+    let _ = reload_skills(&mut driver, project.path(), agent_dir.path(), false).await;
     let sp = driver.system_prompt_for_test().unwrap_or_default();
     assert!(!sp.contains("secret-reload"));
     assert!(
@@ -370,8 +371,8 @@ fn build_agent_with_skills_injects_available_skills_section() {
     assert_eq!(agent.loaded_skill_names(), vec!["boot-skill".to_string()]);
 }
 
-#[test]
-fn untrusted_reload_still_loads_user_global_skills() {
+#[tokio::test]
+async fn untrusted_reload_still_loads_user_global_skills() {
     let project = tempfile::tempdir().unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     write_skill(project.path(), "project-only");
@@ -384,7 +385,7 @@ fn untrusted_reload_still_loads_user_global_skills() {
     .unwrap();
 
     let mut driver = make_driver();
-    let report = reload_skills(&mut driver, project.path(), agent_dir.path(), false);
+    let report = reload_skills(&mut driver, project.path(), agent_dir.path(), false).await;
     assert!(
         report.names.iter().any(|n| n == "user-global"),
         "untrusted must still load user skills; got {:?}",

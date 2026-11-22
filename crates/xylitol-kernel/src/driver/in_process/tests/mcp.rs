@@ -360,7 +360,7 @@ async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
     let n = names.len();
 
     assert_eq!(
-        driver.set_tools(ToolSet::empty()),
+        driver.set_tools(ToolSet::empty()).await,
         ToolsWriteOutcome::RejectedFrozen
     );
     assert_eq!(driver.tool_names_for_test().len(), n);
@@ -520,10 +520,12 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
     let mut driver = assemble_driver(agent, store_trait);
 
     let builtins = driver.builtins_for_reload();
-    driver.freeze_tools(ToolSet::rebuild_agent_tools(
-        builtins,
-        vec![Arc::new(StubMcpTool("mcp__demo__alpha")) as Arc<dyn XyTool>],
-    ));
+    driver
+        .freeze_tools(ToolSet::rebuild_agent_tools(
+            builtins,
+            vec![Arc::new(StubMcpTool("mcp__demo__alpha")) as Arc<dyn XyTool>],
+        ))
+        .await;
     let mut s1 = driver.run("ping1").await;
     while s1.next().await.is_some() {}
     let first = seen.lock().expect("seen")[0].clone();
@@ -534,9 +536,9 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
         "first provider tools MUST include alpha: {first:?}"
     );
 
-    driver.reopen_tools_for_regate();
+    driver.reopen_tools_for_regate().await;
     let builtins = driver.builtins_for_reload();
-    driver.freeze_tools(ToolSet::from_iter(builtins));
+    driver.freeze_tools(ToolSet::from_iter(builtins)).await;
     let mut s2 = driver.run("ping2").await;
     while s2.next().await.is_some() {}
     let second = seen.lock().expect("seen")[1].clone();
@@ -547,12 +549,14 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
         "after remove re-freeze, provider tools MUST NOT include alpha: {second:?}"
     );
 
-    driver.reopen_tools_for_regate();
+    driver.reopen_tools_for_regate().await;
     let builtins = driver.builtins_for_reload();
-    driver.freeze_tools(ToolSet::rebuild_agent_tools(
-        builtins,
-        vec![Arc::new(StubMcpTool("mcp__demo__beta")) as Arc<dyn XyTool>],
-    ));
+    driver
+        .freeze_tools(ToolSet::rebuild_agent_tools(
+            builtins,
+            vec![Arc::new(StubMcpTool("mcp__demo__beta")) as Arc<dyn XyTool>],
+        ))
+        .await;
     let mut s3 = driver.run("ping3").await;
     while s3.next().await.is_some() {}
     let third = seen.lock().expect("seen")[2].clone();

@@ -1414,14 +1414,18 @@ pub async fn materialize_writer_at(
 ) -> Result<(), XyDriverError> {
     let mut guard = slot.driver.lock().await;
     if let Some(driver) = guard.as_mut() {
-        driver.set_workspaces(vec![workspace.to_string_lossy().into_owned()]);
+        driver
+            .set_workspaces(vec![workspace.to_string_lossy().into_owned()])
+            .await;
         drop(guard);
         slot.ensure_mcp_resources_watch();
         start_automation_if_needed(host, slot).await;
         return Ok(());
     }
     let mut driver = host.factory.new_driver_at(workspace);
-    driver.set_workspaces(vec![workspace.to_string_lossy().into_owned()]);
+    driver
+        .set_workspaces(vec![workspace.to_string_lossy().into_owned()])
+        .await;
     if let Some(registry) = slot.loop_registry.clone() {
         driver.set_loop_middleware_scoped(Some(registry), xylitol_plugin_sdk::LoopScope::Session);
     }
