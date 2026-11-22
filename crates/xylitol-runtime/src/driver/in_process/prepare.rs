@@ -46,6 +46,7 @@ impl XyInProcessDriver {
     }
 
     pub fn set_prepare_hub(&mut self, hub: Arc<dyn SessionPrepareHub>) {
+        self.handle.shared().set_prepare_hub(Arc::clone(&hub));
         self.prepare_hub = Some(hub);
     }
 
@@ -76,6 +77,7 @@ impl XyInProcessDriver {
         agent_dir: std::path::PathBuf,
         _project_trusted: bool,
     ) {
+        self.handle.shared().set_reload_cwd(cwd.clone());
         self.reload_cwd = Some(cwd);
         self.reload_agent_dir = Some(agent_dir);
     }
@@ -109,11 +111,15 @@ impl XyInProcessDriver {
     }
 
     pub fn set_session_profile(&mut self, profile: xylitol_plugin_sdk::session::SessionProfile) {
+        self.handle.shared().set_session_profile(profile.clone());
         self.session_profile = profile;
     }
 
     pub fn take_profile_mismatch_notice(&mut self) -> Option<String> {
-        self.profile_mismatch_notice.take()
+        self.handle
+            .shared()
+            .take_profile_mismatch_notice()
+            .or_else(|| self.profile_mismatch_notice.take())
     }
 
     pub fn set_trust_audit_config(&mut self, config: crate::trust::TrustAuditConfig) {
@@ -146,6 +152,7 @@ impl XyInProcessDriver {
 
     pub fn fire_session_prepare(&mut self, reason: SessionPrepareReason) {
         self.prepare_acked = false;
+        self.handle.shared().set_prepare_acked(false);
         if reason != SessionPrepareReason::Generate
             && let Some(hub) = &self.prepare_hub
         {
@@ -157,7 +164,14 @@ impl XyInProcessDriver {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        let workspaces = session_workspaces(self.state().runtime());
+        let workspaces = {
+            let snapshot = self.snapshot();
+            let mut workspaces = snapshot.workspaces.clone();
+            if workspaces.is_empty() && !snapshot.cwd.trim().is_empty() {
+                workspaces.push(snapshot.cwd);
+            }
+            workspaces
+        };
         if let Some(ctx) = &self.ctx {
             let ev = SessionPrepare {
                 session_id,
@@ -241,6 +255,7 @@ impl XyInProcessDriver {
         let tools = self.state().runtime().clone_tools();
         self.state_mut().runtime_mut().freeze_tools(tools);
         self.prepare_acked = true;
+        self.handle.shared().set_prepare_acked(true);
     }
 
     async fn hub_wait(&self, timeout: Duration) -> SessionPrepareResult {
@@ -269,18 +284,18 @@ impl XyInProcessDriver {
             return;
         }
         let builtins: Vec<_> = self
-            .state_mut()
-            .runtime_mut()
-            .clone_tools()
-            .iter()
+            .base_tools
+            .as_ref()
+            .map(|set| set.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default()
+            .into_iter()
             .filter(|t| !is_mcp_tool_name(t.name()))
-            .cloned()
             .collect();
         let set = ToolSet::rebuild_agent_tools(builtins, mcp_tools);
         self.base_tools = Some(set.clone());
         let filtered =
             crate::agent::tools::filter_tools_by_capability_overlay(set, &self.capability_disabled);
-        match self.state_mut().runtime_mut().set_tools(filtered) {
+        match self.set_tools(filtered) {
             ToolsWriteOutcome::Applied => {}
             ToolsWriteOutcome::RejectedMidTurn | ToolsWriteOutcome::RejectedFrozen => {
                 log::warn!(

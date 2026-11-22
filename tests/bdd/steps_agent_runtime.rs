@@ -305,7 +305,7 @@ pub(crate) async fn ar_take_run_store(prompt: &str) {
 #[given("装配 agent 并入队两条 follow_up")]
 pub(crate) async fn _g_ar_revoke_two_followups(agent: &AgentState, ws: &Workspace) {
     set_fake_text("revoke ack");
-    let mut runner = ar_make_runner(agent, ws);
+    let runner = ar_make_runner(agent, ws);
     let first = runner.follow_up("追问一");
     runner.follow_up("追问二");
     AR_REVOKE_ID.with(|cell| *cell.borrow_mut() = Some(first));

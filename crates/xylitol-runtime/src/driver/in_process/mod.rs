@@ -107,8 +107,7 @@ impl XyInProcessDriver {
     pub fn state_mut(&mut self) -> &mut actor::ActorState {
         if self.actor.is_none()
             && let Some(slot) = self.slot.as_ref()
-            && let Some(state) =
-                actor::ActorState::from_slot(slot, Arc::new(self.slash_commands.clone()))
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
         {
             self.actor = Some(state);
         }
@@ -155,7 +154,13 @@ impl XyInProcessDriver {
             Some(state) => {
                 actor::DriverSnapshot::from_runtime(state.runtime(), state.capability.clone())
             }
-            None => self.handle.snapshot(),
+            None => {
+                let mut snapshot = self.handle.snapshot();
+                if let Some(session_id) = self.handle.shared().session_id() {
+                    snapshot.session_id = Some(session_id);
+                }
+                snapshot
+            }
         }
     }
 
@@ -166,11 +171,33 @@ impl XyInProcessDriver {
         let Some(state) = self.actor.take() else {
             return;
         };
+        let shared = state.shared.clone();
         let slot = actor::RuntimeSlot::new(state.into_runtime());
-        let (handle, task) = actor::DriverHandle::spawn_parked(&slot, Arc::new(Vec::new()));
+        let (handle, task) = actor::DriverHandle::spawn_parked(&slot, shared);
         self.slot = Some(slot);
         self.actor_task = Some(task);
         self.handle = handle;
+    }
+
+    fn try_apply_prepare_tools(&mut self) -> bool {
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        if self.actor.is_none() {
+            return false;
+        }
+        self.apply_prepare_tools();
+        true
+    }
+
+    pub async fn bind_session(&mut self, session_id: String) -> Result<(), XyDriverError> {
+        self.ensure_actor_spawned();
+        self.handle
+            .request(|reply| actor::DriverCommand::BindSession { session_id, reply })
+            .await?
     }
 
     pub fn model_registry(&mut self) -> crate::agent::model::registry::ModelRegistry {
@@ -260,14 +287,21 @@ impl XyInProcessDriver {
     }
 
     pub fn set_todo_gateway(&mut self, todo: Arc<dyn AgentTodoGateway>) {
+        self.handle.shared().set_todo_gateway(Arc::clone(&todo));
         self.todo_gateway = todo;
     }
 
     pub fn set_automation_gateway(&mut self, automation: Arc<dyn AutomationGateway>) {
+        self.handle
+            .shared()
+            .set_automation_gateway(Arc::clone(&automation));
         self.automation_gateway = Some(automation);
     }
 
     pub fn set_workflow_gateway(&mut self, workflow: Arc<dyn WorkflowGateway>) {
+        self.handle
+            .shared()
+            .set_workflow_gateway(Arc::clone(&workflow));
         self.workflow_gateway = Some(workflow);
     }
 
@@ -367,7 +401,19 @@ impl XyInProcessDriver {
     }
 
     pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) -> ToolsWriteOutcome {
-        self.state_mut().runtime_mut().set_tools(tools)
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        match self.actor.as_mut() {
+            Some(state) => state.runtime_mut().set_tools(tools),
+            None => {
+                self.handle.shared().set_pending_tools(tools);
+                ToolsWriteOutcome::Applied
+            }
+        }
     }
 
     pub fn set_base_tools(&mut self, tools: crate::agent::tools::ToolSet) {
@@ -464,10 +510,20 @@ impl XyInProcessDriver {
         let tools = self.state().runtime().clone_tools();
         self.state_mut().runtime_mut().freeze_tools(tools);
         self.prepare_acked = true;
+        self.handle.shared().set_prepare_acked(true);
     }
 
     pub fn set_workspaces(&mut self, workspaces: Vec<String>) {
-        self.state_mut().runtime_mut().set_workspaces(workspaces);
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) = actor::ActorState::from_slot(slot, self.handle.shared().clone())
+        {
+            self.actor = Some(state);
+        }
+        match self.actor.as_mut() {
+            Some(state) => state.runtime_mut().set_workspaces(workspaces),
+            None => self.handle.shared().set_pending_workspaces(workspaces),
+        }
     }
 
     pub fn persist_project_trust(
@@ -589,7 +645,7 @@ fn trust_mode_key(mode: ProjectTrustMode) -> &'static str {
     }
 }
 
-fn bind_session_or_err(
+pub(super) fn bind_session_or_err(
     agent: &mut AgentRuntime,
     session_id: impl Into<String>,
 ) -> Result<(), XyDriverError> {
@@ -856,7 +912,7 @@ impl XyDriver for XyInProcessDriver {
     fn mcp_blocks_agent(&self) -> bool {
         self.prepare_hub
             .as_ref()
-            .is_some_and(|h| h.view().configured > 0 && !self.prepare_acked)
+            .is_some_and(|h| h.view().configured > 0 && !self.handle.shared().prepare_acked())
     }
 
     async fn begin_session_prepare(&mut self) {
@@ -869,9 +925,9 @@ impl XyDriver for XyInProcessDriver {
         if !complete {
             return dirty;
         }
-        self.apply_prepare_tools();
-        if !self.prepare_acked {
+        if self.try_apply_prepare_tools() && !self.handle.shared().prepare_acked() {
             self.prepare_acked = true;
+            self.handle.shared().set_prepare_acked(true);
             return true;
         }
         dirty
@@ -918,6 +974,7 @@ impl XyDriver for XyInProcessDriver {
             let tools = self.state().runtime().clone_tools();
             self.state_mut().runtime_mut().freeze_tools(tools);
             self.prepare_acked = true;
+            self.handle.shared().set_prepare_acked(true);
         } else {
             self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
         }

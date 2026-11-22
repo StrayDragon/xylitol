@@ -14,7 +14,7 @@ use xylitol_runtime::{XyDriver, XyDriverError};
 pub trait OccupancyEngine: XyDriver {
     async fn join_actor(&mut self);
     fn install_ask_tool(&mut self, gateway: Arc<dyn AskUserGateway>);
-    fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError>;
+    async fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError>;
     async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError>;
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError>;
     async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError>;

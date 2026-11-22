@@ -1426,7 +1426,7 @@ pub async fn materialize_writer_at(
         driver.set_loop_middleware_scoped(Some(registry), xylitol_plugin_sdk::LoopScope::Session);
     }
     let _ = project_trusted_for(host, workspace);
-    driver.bind_session(&slot.session_id)?;
+    driver.bind_session(&slot.session_id).await?;
     let ask_gateway = Arc::new(SlotAskGateway { slot: slot.clone() });
     driver.install_ask_tool(ask_gateway.clone());
     xylitol_plugin_sdk::mcp::set_mcp_elicitation_gateway(ask_gateway);
@@ -3418,7 +3418,7 @@ mod tests {
         fn install_ask_tool(&mut self, _gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>) {
         }
 
-        fn bind_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
+        async fn bind_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
             if self.bind_fails {
                 Err(XyDriverError::unsupported("bind_session"))
             } else {

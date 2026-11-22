@@ -96,6 +96,24 @@ impl TurnRequest {
     }
 }
 
+pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
+
+#[derive(Debug, Clone)]
+pub struct DebugSceneLoad {
+    pub session_id: String,
+    pub entries: Vec<SessionEntry>,
+    pub note: String,
+    pub model: Option<ModelInfo>,
+}
+
+pub(crate) fn session_tree_kind_unimplemented(kind: SessionTreeKind) -> String {
+    let name = match kind {
+        SessionTreeKind::MessageHistory => "message_history",
+        SessionTreeKind::FileBrowser => "file_browser",
+    };
+    format!("session tree kind '{name}' is not implemented")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,22 +135,4 @@ mod tests {
         ]);
         assert_eq!(request.prompt_text(), "first\nsecond");
     }
-}
-
-pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
-
-#[derive(Debug, Clone)]
-pub struct DebugSceneLoad {
-    pub session_id: String,
-    pub entries: Vec<SessionEntry>,
-    pub note: String,
-    pub model: Option<ModelInfo>,
-}
-
-pub(crate) fn session_tree_kind_unimplemented(kind: SessionTreeKind) -> String {
-    let name = match kind {
-        SessionTreeKind::MessageHistory => "message_history",
-        SessionTreeKind::FileBrowser => "file_browser",
-    };
-    format!("session tree kind '{name}' is not implemented")
 }

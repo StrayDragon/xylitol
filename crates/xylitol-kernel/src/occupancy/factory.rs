@@ -299,12 +299,8 @@ impl OccupancyEngine for OccupancyDriver {
         );
     }
 
-    fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
-        self.inner
-            .state_mut()
-            .runtime_mut()
-            .bind_session(session_id.to_string())
-            .map_err(XyDriverError::from)
+    async fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
+        self.inner.bind_session(session_id.to_string()).await
     }
 
     async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError> {

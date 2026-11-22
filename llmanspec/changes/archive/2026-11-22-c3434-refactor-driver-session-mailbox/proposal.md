@@ -2,6 +2,9 @@
 title: 会话操作命令化与驱动 trait 一致性门禁
 depends_on: []
 needs_specs_change: false
+branch: sdd/c3434-refactor-driver-session-mailbox
+base_branch: main
+base_sha: a27221dad1c5f7ad533568f6192e0d55d3c37563
 ---
 
 ## Why

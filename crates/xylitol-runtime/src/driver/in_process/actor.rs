@@ -82,6 +82,17 @@ pub struct SharedSubsystems {
 pub struct SharedRuntimeProbe {
     pub queues: Option<Arc<crate::agent::capabilities::AsyncQueueRuntime>>,
     pub coordinator: Option<state::SharedTurnCoordinator>,
+    pub reload_cwd: Option<std::path::PathBuf>,
+    pub session_profile: xylitol_plugin_sdk::session::SessionProfile,
+    pub profile_mismatch_notice: Option<String>,
+    pub prepare_hub: Option<Arc<dyn xylitol_plugin_sdk::SessionPrepareHub>>,
+    pub prepare_acked: bool,
+    pub session_id: Option<String>,
+    pub pending_workspaces: Option<Vec<String>>,
+    pub pending_tools: Option<crate::agent::tools::ToolSet>,
+    pub todo_gateway: Option<Arc<dyn xylitol_plugin_sdk::AgentTodoGateway>>,
+    pub automation_gateway: Option<Arc<dyn xylitol_plugin_sdk::AutomationGateway>>,
+    pub workflow_gateway: Option<Arc<dyn xylitol_plugin_sdk::WorkflowGateway>>,
 }
 
 impl SharedSubsystems {
@@ -89,6 +100,17 @@ impl SharedSubsystems {
         let probe = SharedRuntimeProbe {
             queues: Some(runtime.queues()),
             coordinator: Some(runtime.coordinator()),
+            reload_cwd: None,
+            session_profile: xylitol_plugin_sdk::session::SessionProfile::default(),
+            profile_mismatch_notice: None,
+            prepare_hub: None,
+            prepare_acked: true,
+            session_id: None,
+            pending_workspaces: None,
+            pending_tools: None,
+            todo_gateway: None,
+            automation_gateway: None,
+            workflow_gateway: None,
         };
         Self {
             store: Some(runtime.session_store()),
@@ -111,8 +133,127 @@ impl SharedSubsystems {
         }
     }
 
+    pub fn bind_runtime(&self, runtime: &AgentRuntime) {
+        let mut probe = self.probe();
+        probe.queues = Some(runtime.queues());
+        probe.coordinator = Some(runtime.coordinator());
+        probe.session_id = runtime.session_id().map(str::to_string);
+    }
+
     fn probe(&self) -> std::sync::MutexGuard<'_, SharedRuntimeProbe> {
         self.runtime.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn set_reload_cwd(&self, cwd: std::path::PathBuf) {
+        self.probe().reload_cwd = Some(cwd);
+    }
+
+    pub fn reload_cwd(&self) -> Option<std::path::PathBuf> {
+        self.probe().reload_cwd.clone()
+    }
+
+    pub fn set_session_profile(&self, profile: xylitol_plugin_sdk::session::SessionProfile) {
+        self.probe().session_profile = profile;
+    }
+
+    pub fn session_profile(&self) -> xylitol_plugin_sdk::session::SessionProfile {
+        self.probe().session_profile.clone()
+    }
+
+    pub fn set_profile_mismatch_notice(&self, notice: Option<String>) {
+        self.probe().profile_mismatch_notice = notice;
+    }
+
+    pub fn take_profile_mismatch_notice(&self) -> Option<String> {
+        self.probe().profile_mismatch_notice.take()
+    }
+
+    pub fn set_prepare_hub(&self, hub: Arc<dyn xylitol_plugin_sdk::SessionPrepareHub>) {
+        self.probe().prepare_hub = Some(hub);
+    }
+
+    pub fn prepare_hub(&self) -> Option<Arc<dyn xylitol_plugin_sdk::SessionPrepareHub>> {
+        self.probe().prepare_hub.clone()
+    }
+
+    pub fn set_todo_gateway(&self, gateway: Arc<dyn xylitol_plugin_sdk::AgentTodoGateway>) {
+        self.probe().todo_gateway = Some(gateway);
+    }
+
+    pub fn set_automation_gateway(&self, gateway: Arc<dyn xylitol_plugin_sdk::AutomationGateway>) {
+        self.probe().automation_gateway = Some(gateway);
+    }
+
+    pub fn set_workflow_gateway(&self, gateway: Arc<dyn xylitol_plugin_sdk::WorkflowGateway>) {
+        self.probe().workflow_gateway = Some(gateway);
+    }
+
+    pub async fn bind_session_gateways(&self, session_id: Option<String>) {
+        let (todo, automation, workflow) = {
+            let probe = self.probe();
+            (
+                probe.todo_gateway.clone(),
+                probe.automation_gateway.clone(),
+                probe.workflow_gateway.clone(),
+            )
+        };
+        if let Some(todo) = todo {
+            todo.bind_session(session_id.clone()).await;
+        }
+        if let Some(automation) = automation {
+            automation.bind_session(session_id.clone()).await;
+        }
+        if let Some(workflow) = workflow {
+            workflow.bind_session(session_id).await;
+        }
+    }
+
+    pub fn set_pending_workspaces(&self, workspaces: Vec<String>) {
+        self.probe().pending_workspaces = Some(workspaces);
+    }
+
+    pub fn take_pending_workspaces(&self) -> Option<Vec<String>> {
+        self.probe().pending_workspaces.take()
+    }
+
+    pub fn set_pending_tools(&self, tools: crate::agent::tools::ToolSet) {
+        self.probe().pending_tools = Some(tools);
+    }
+
+    pub fn take_pending_tools(&self) -> Option<crate::agent::tools::ToolSet> {
+        self.probe().pending_tools.take()
+    }
+
+    pub fn set_session_id(&self, session_id: Option<String>) {
+        self.probe().session_id = session_id;
+    }
+
+    pub fn session_id(&self) -> Option<String> {
+        self.probe().session_id.clone()
+    }
+
+    pub fn set_prepare_acked(&self, acked: bool) {
+        self.probe().prepare_acked = acked;
+    }
+
+    pub fn prepare_acked(&self) -> bool {
+        self.probe().prepare_acked
+    }
+
+    pub fn fire_prepare(&self, reason: xylitol_plugin_sdk::SessionPrepareReason) {
+        let hub = self.probe().prepare_hub.clone();
+        if let Some(hub) = hub
+            && reason != xylitol_plugin_sdk::SessionPrepareReason::Generate
+        {
+            hub.cue_connecting();
+            hub.fire();
+        }
+    }
+
+    pub fn release_prepare_session(&self, session_id: &str) {
+        if let Some(hub) = self.probe().prepare_hub.clone() {
+            hub.release_session(session_id);
+        }
     }
 
     fn queues(&self) -> Option<Arc<AsyncQueueRuntime>> {
@@ -288,9 +429,9 @@ impl ActorState {
         }
     }
 
-    pub fn from_slot(slot: &Arc<RuntimeSlot>, commands: Arc<Vec<CommandInfo>>) -> Option<Self> {
+    pub fn from_slot(slot: &Arc<RuntimeSlot>, shared: SharedSubsystems) -> Option<Self> {
         let runtime = slot.take()?;
-        let shared = SharedSubsystems::from_runtime(&runtime, commands);
+        shared.bind_runtime(&runtime);
         let capability = CapabilityView::default();
         let snapshot = DriverSnapshot::from_runtime(&runtime, capability.clone());
         Some(Self {
@@ -340,6 +481,31 @@ pub enum DriverCommand {
         level: String,
         reply: tokio::sync::oneshot::Sender<Result<(), XyDriverError>>,
     },
+    BindSession {
+        session_id: String,
+        reply: tokio::sync::oneshot::Sender<Result<(), XyDriverError>>,
+    },
+    SwitchSession {
+        session_id: String,
+        reply: tokio::sync::oneshot::Sender<Result<String, XyDriverError>>,
+    },
+    NewSession {
+        reply: tokio::sync::oneshot::Sender<Result<String, XyDriverError>>,
+    },
+    ForkSession {
+        entry_id: String,
+        position: xylitol_plugin_sdk::session::ForkPosition,
+        reply: tokio::sync::oneshot::Sender<Result<String, XyDriverError>>,
+    },
+    SetSessionName {
+        name: String,
+        reply: tokio::sync::oneshot::Sender<Result<String, XyDriverError>>,
+    },
+    SetSessionNameFor {
+        session_id: String,
+        name: String,
+        reply: tokio::sync::oneshot::Sender<Result<String, XyDriverError>>,
+    },
     Compact {
         instructions: Option<String>,
         reply: tokio::sync::oneshot::Sender<Result<bool, XyDriverError>>,
@@ -382,22 +548,19 @@ impl DriverHandle {
 
     pub fn spawn_parked(
         slot: &Arc<RuntimeSlot>,
-        commands: Arc<Vec<CommandInfo>>,
+        shared: SharedSubsystems,
     ) -> (Self, tokio::task::JoinHandle<()>) {
-        let shared = slot
-            .take()
-            .map(|runtime| {
-                let shared = SharedSubsystems::from_runtime(&runtime, commands.clone());
-                slot.put(runtime);
-                shared
-            })
-            .unwrap_or_else(|| SharedSubsystems::empty(commands.clone()));
+        if let Some(runtime) = slot.take() {
+            shared.bind_runtime(&runtime);
+            slot.put(runtime);
+        }
         let snapshot = Arc::new(std::sync::Mutex::new(DriverSnapshot::default()));
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
         let slot_clone = Arc::clone(slot);
         let snapshot_clone = Arc::clone(&snapshot);
+        let shared_clone = shared.clone();
         let task = tokio::spawn(async move {
-            let Some(state) = ActorState::from_slot(&slot_clone, commands) else {
+            let Some(state) = ActorState::from_slot(&slot_clone, shared_clone) else {
                 return;
             };
             run_actor(state, rx, snapshot_clone, slot_clone).await;
@@ -475,16 +638,29 @@ async fn run_actor(
     snapshot: Arc<std::sync::Mutex<DriverSnapshot>>,
     slot: Arc<RuntimeSlot>,
 ) {
-    let mut state = Some(state);
+    let shared = state.shared.clone();
+    let mut active = Some(state);
     while let Some(command) = rx.recv().await {
-        let Some(mut active) = state.take() else {
+        let Some(mut state) = active
+            .take()
+            .or_else(|| ActorState::from_slot(&slot, shared.clone()))
+        else {
             break;
         };
-        dispatch(&mut active, command).await;
-        active.refresh_snapshot();
+        if let Some(workspaces) = state.shared.take_pending_workspaces() {
+            state.runtime.set_workspaces(workspaces);
+        }
+        if let Some(tools) = state.shared.take_pending_tools() {
+            let _ = state.runtime.set_tools(tools);
+        }
+        dispatch(&mut state, command).await;
+        state
+            .shared
+            .set_session_id(state.runtime.session_id().map(str::to_string));
+        state.refresh_snapshot();
         let mut guard = snapshot.lock().unwrap_or_else(|e| e.into_inner());
-        *guard = active.snapshot();
-        slot.put(active.into_runtime());
+        *guard = state.snapshot();
+        slot.put(state.into_runtime());
     }
 }
 
@@ -523,6 +699,47 @@ async fn dispatch(state: &mut ActorState, command: DriverCommand) {
                     .set_thinking_level(level)
                     .await
                     .map_err(XyDriverError::from),
+            );
+        }
+        DriverCommand::BindSession {
+            session_id,
+            reply: tx,
+        } => {
+            reply(
+                tx,
+                state
+                    .runtime
+                    .bind_session(session_id)
+                    .map_err(XyDriverError::from),
+            );
+        }
+        DriverCommand::SwitchSession {
+            session_id,
+            reply: tx,
+        } => {
+            reply(tx, actor_switch_session(state, &session_id).await);
+        }
+        DriverCommand::NewSession { reply: tx } => {
+            reply(tx, actor_new_session(state).await);
+        }
+        DriverCommand::ForkSession {
+            entry_id,
+            position,
+            reply: tx,
+        } => {
+            reply(tx, actor_fork_session(state, &entry_id, position).await);
+        }
+        DriverCommand::SetSessionName { name, reply: tx } => {
+            reply(tx, actor_set_session_name(state, &name).await);
+        }
+        DriverCommand::SetSessionNameFor {
+            session_id,
+            name,
+            reply: tx,
+        } => {
+            reply(
+                tx,
+                actor_set_session_name_for(state, &session_id, &name).await,
             );
         }
         DriverCommand::Compact {
@@ -579,6 +796,164 @@ async fn cycle_model(state: &mut ActorState) -> Result<ModelInfo, XyDriverError>
         .await
         .map_err(XyDriverError::from)?;
     Ok(ModelInfo::from(&list[next_idx]))
+}
+
+async fn actor_switch_session(
+    state: &mut ActorState,
+    session_id: &str,
+) -> Result<String, XyDriverError> {
+    let store = state.shared.store()?;
+    if !store.exists(session_id).await {
+        return Err(XyDriverError::not_found(session_id.to_string()));
+    }
+    let fallback_cwd = state.runtime.cwd().to_string();
+    store.load_validated(session_id, &fallback_cwd).await?;
+    let (ty, phase, ctx) =
+        crate::agent::runtime::script_hook_ctx::session_before_switch("resume", session_id);
+    state
+        .runtime
+        .script_hook_cancel(ty, phase, ctx)
+        .await
+        .map_err(XyDriverError::from)?;
+    let previous = state.runtime.session_id().map(str::to_string);
+    let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_shutdown_resume(
+        session_id,
+        previous.as_deref(),
+    );
+    state.runtime.script_hook_observe(ty, phase, ctx).await;
+    crate::driver::in_process::session::migrate_legacy_before_switch(store.as_ref(), session_id)
+        .await;
+    let context = store.build_session_context(session_id).await?;
+    crate::driver::in_process::bind_session_or_err(&mut state.runtime, session_id.to_string())?;
+    if let Some(previous) = previous {
+        state.shared.release_prepare_session(&previous);
+    }
+    let stored_profile = store.session_profile(session_id).await?;
+    let current_profile = state.shared.session_profile();
+    if stored_profile.fingerprint.is_some()
+        && stored_profile.fingerprint != current_profile.fingerprint
+    {
+        state.shared.set_profile_mismatch_notice(Some(format!(
+            "agent profile changed since session start: {} -> {}; resume continues without compaction",
+            stored_profile.name.as_deref().unwrap_or("unknown"),
+            current_profile.name.as_deref().unwrap_or("current")
+        )));
+    }
+    if stored_profile != current_profile {
+        store
+            .set_session_profile(session_id, current_profile)
+            .await?;
+    }
+    state.runtime.restore_thinking_level(context.thinking_level);
+    state.runtime.clear_tool_freeze();
+    state.runtime.emit_leaf_changed_settlement().await;
+    state
+        .shared
+        .bind_session_gateways(Some(session_id.to_string()))
+        .await;
+    state.shared.set_prepare_acked(false);
+    state
+        .shared
+        .fire_prepare(xylitol_plugin_sdk::SessionPrepareReason::Resume);
+    Ok(session_id.to_string())
+}
+
+async fn actor_new_session(state: &mut ActorState) -> Result<String, XyDriverError> {
+    let store = state.shared.store()?;
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let cwd = state
+        .shared
+        .reload_cwd()
+        .map(|path| path.to_string_lossy().into_owned());
+    let cwd = cwd.or_else(|| {
+        let agent_cwd = state.runtime.cwd().to_string();
+        (!agent_cwd.trim().is_empty()).then_some(agent_cwd)
+    });
+    store
+        .create(&session_id, cwd.as_deref(), None)
+        .await
+        .map_err(XyDriverError::from)?;
+    let profile = state.shared.session_profile();
+    if profile.name.is_some() || profile.fingerprint.is_some() {
+        store
+            .set_session_profile(&session_id, profile)
+            .await
+            .map_err(XyDriverError::from)?;
+    }
+    let previous = state.runtime.session_id().map(str::to_string);
+    crate::driver::in_process::bind_session_or_err(&mut state.runtime, session_id.clone())?;
+    if let Some(previous) = previous {
+        state.shared.release_prepare_session(&previous);
+    }
+    state.runtime.clear_tool_freeze();
+    state
+        .shared
+        .bind_session_gateways(Some(session_id.clone()))
+        .await;
+    state.shared.set_prepare_acked(false);
+    state
+        .shared
+        .fire_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
+    Ok(session_id)
+}
+
+async fn actor_fork_session(
+    state: &mut ActorState,
+    entry_id: &str,
+    position: xylitol_plugin_sdk::session::ForkPosition,
+) -> Result<String, XyDriverError> {
+    let previous = state.runtime.session_id().map(str::to_string);
+    let id = state
+        .runtime
+        .fork_session(entry_id, position)
+        .await
+        .map_err(XyDriverError::from)?;
+    if let Some(previous) = previous {
+        state.shared.release_prepare_session(&previous);
+    }
+    state.runtime.clear_tool_freeze();
+    state.shared.bind_session_gateways(Some(id.clone())).await;
+    state.shared.set_prepare_acked(false);
+    state
+        .shared
+        .fire_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
+    Ok(id)
+}
+
+async fn actor_set_session_name(
+    state: &mut ActorState,
+    name: &str,
+) -> Result<String, XyDriverError> {
+    let store = state.shared.store()?;
+    let session_id = state
+        .runtime
+        .session_id()
+        .map(str::to_string)
+        .ok_or_else(|| XyDriverError::message("no active session"))?;
+    let out = store
+        .set_session_name(&session_id, name)
+        .await
+        .map_err(XyDriverError::from)?;
+    state.runtime.set_session_name_fact(Some(out.clone()));
+    xylitol_plugin_sdk::set_obs_session_name(Some(out.as_str()));
+    Ok(out)
+}
+
+async fn actor_set_session_name_for(
+    state: &mut ActorState,
+    session_id: &str,
+    name: &str,
+) -> Result<String, XyDriverError> {
+    let store = state.shared.store()?;
+    let out = store
+        .set_session_name(session_id, name)
+        .await
+        .map_err(XyDriverError::from)?;
+    if state.runtime.session_id() == Some(session_id) {
+        state.runtime.set_session_name_fact(Some(out.clone()));
+        xylitol_plugin_sdk::set_obs_session_name(Some(out.as_str()));
+    }
+    Ok(out)
 }
 
 fn error_stream(error: XyDriverError) -> EventStream {
