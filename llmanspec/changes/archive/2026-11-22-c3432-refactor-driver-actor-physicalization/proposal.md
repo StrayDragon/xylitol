@@ -2,6 +2,9 @@
 depends_on: []
 needs_specs_change: false
 title: 驱动物理化：门面投影与 occupancy 上收（c3415 原 T5/T6 移入）
+branch: sdd/c3432-refactor-driver-actor-physicalization
+base_branch: main
+base_sha: 2b89aecab1e0ceedd3c6cffc497529f5da5c1d82
 ---
 
 ## Why

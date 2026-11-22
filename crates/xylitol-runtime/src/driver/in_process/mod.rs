@@ -22,6 +22,7 @@ use super::types::{
 pub(super) use super::{XyDriver, XyDriverError, types};
 use xylitol_plugin_sdk::message::AgentMessage;
 
+mod actor;
 mod prepare;
 mod reload;
 mod session;
@@ -61,7 +62,10 @@ impl AgentTodoGateway for NoopTodo {
 }
 
 pub struct XyInProcessDriver {
-    pub agent: AgentRuntime,
+    actor: Option<actor::ActorState>,
+    slot: Option<Arc<actor::RuntimeSlot>>,
+    actor_task: Option<tokio::task::JoinHandle<()>>,
+    handle: actor::DriverHandle,
     pub store: Arc<dyn XySessionStore>,
     bang: BangExecHandler,
     exporter: SessionExporter,
@@ -94,6 +98,104 @@ pub struct XyInProcessDriver {
 }
 
 impl XyInProcessDriver {
+    /// ~keep 跨 crate 接缝：kernel 的 subagent 与 occupancy 需要直读 runtime 状态。
+    pub fn state(&mut self) -> &actor::ActorState {
+        self.state_mut()
+    }
+
+    /// ~keep 跨 crate 接缝：kernel 的 subagent 需要独占写 runtime。
+    pub fn state_mut(&mut self) -> &mut actor::ActorState {
+        if self.actor.is_none()
+            && let Some(slot) = self.slot.as_ref()
+            && let Some(state) =
+                actor::ActorState::from_slot(slot, Arc::new(self.slash_commands.clone()))
+        {
+            self.actor = Some(state);
+        }
+        self.actor
+            .as_mut()
+            .expect("driver runtime unavailable: actor holds it")
+    }
+
+    pub(super) async fn dispatch_script_hook_cancel(
+        &mut self,
+        event_type: &str,
+        phase: &str,
+        context: serde_json::Value,
+    ) -> Result<(), XyDriverError> {
+        self.state_mut()
+            .runtime()
+            .script_hook_cancel(event_type, phase, context)
+            .await
+            .map_err(XyDriverError::from)
+    }
+
+    pub(super) async fn dispatch_script_hook_observe(
+        &mut self,
+        event_type: &str,
+        phase: &str,
+        context: serde_json::Value,
+    ) {
+        self.state_mut()
+            .runtime()
+            .script_hook_observe(event_type, phase, context)
+            .await;
+    }
+
+    async fn ensure_runtime_session(&mut self, id: &str) -> Result<(), XyDriverError> {
+        self.state_mut()
+            .runtime()
+            .ensure_session(id, None)
+            .await
+            .map_err(XyDriverError::from)
+    }
+
+    fn snapshot(&self) -> actor::DriverSnapshot {
+        match self.actor.as_ref() {
+            Some(state) => {
+                actor::DriverSnapshot::from_runtime(state.runtime(), state.capability.clone())
+            }
+            None => self.handle.snapshot(),
+        }
+    }
+
+    fn ensure_actor_spawned(&mut self) {
+        if self.handle.is_spawned() || self.actor.is_none() {
+            return;
+        }
+        let Some(state) = self.actor.take() else {
+            return;
+        };
+        let slot = actor::RuntimeSlot::new(state.into_runtime());
+        let (handle, task) = actor::DriverHandle::spawn_parked(&slot, Arc::new(Vec::new()));
+        self.slot = Some(slot);
+        self.actor_task = Some(task);
+        self.handle = handle;
+    }
+
+    pub fn model_registry(&mut self) -> crate::agent::model::registry::ModelRegistry {
+        self.state_mut().runtime_mut().model_registry()
+    }
+
+    pub fn replace_model_registry(
+        &mut self,
+        registry: crate::agent::model::registry::ModelRegistry,
+    ) {
+        self.state_mut()
+            .runtime_mut()
+            .replace_model_registry(registry);
+    }
+
+    pub async fn join_actor(&mut self) {
+        if let Some(task) = self.actor_task.take() {
+            let _ = task.await;
+        }
+    }
+
+    pub fn current_model_id(&self) -> Option<String> {
+        self.snapshot().current_model.map(|meta| meta.id)
+    }
+
     pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
         Self::with_surface_ops(
             agent,
@@ -109,8 +211,14 @@ impl XyInProcessDriver {
         bang: BangExecHandler,
         exporter: SessionExporter,
     ) -> Self {
+        let commands = Arc::new(Vec::new());
+        let state = actor::ActorState::new(agent, commands);
+        let handle = actor::DriverHandle::detached(&state);
         Self {
-            agent,
+            actor: Some(state),
+            slot: None,
+            actor_task: None,
+            handle,
             store,
             bang,
             exporter,
@@ -255,11 +363,11 @@ impl XyInProcessDriver {
     }
 
     pub fn cancel_token(&self) -> CancellationToken {
-        self.agent.cancel_token()
+        self.handle.shared().cancel_token()
     }
 
     pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) -> ToolsWriteOutcome {
-        self.agent.set_tools(tools)
+        self.state_mut().runtime_mut().set_tools(tools)
     }
 
     pub fn set_base_tools(&mut self, tools: crate::agent::tools::ToolSet) {
@@ -271,10 +379,7 @@ impl XyInProcessDriver {
     }
 
     pub fn capability_snapshot(&self) -> xylitol_plugin_sdk::session::CapabilitySnapshot {
-        let base = self
-            .base_tools
-            .clone()
-            .unwrap_or_else(|| self.agent.clone_tools());
+        let base = self.base_tools.clone().unwrap_or_default();
         crate::agent::tools::capability_snapshot(
             &base,
             &self.mcp_server_ids,
@@ -298,12 +403,12 @@ impl XyInProcessDriver {
             tools,
             &self.capability_disabled,
         );
-        self.agent.reopen_tools_for_regate();
-        self.agent.freeze_tools(filtered);
+        self.state_mut().runtime_mut().reopen_tools_for_regate();
+        self.state_mut().runtime_mut().freeze_tools(filtered);
         self.capability_applied = self.capability_disabled.clone();
         self.overlay_phase = OverlayPhase::Idle;
         debug_assert!(
-            self.agent.is_tools_frozen(),
+            self.snapshot().tools_frozen,
             "install_base_tools must end Frozen"
         );
     }
@@ -312,59 +417,57 @@ impl XyInProcessDriver {
         if !self.capability_pending() {
             return;
         }
-        let base = self
-            .base_tools
-            .clone()
-            .unwrap_or_else(|| self.agent.clone_tools());
+        let base = self.base_tools.clone().unwrap_or_default();
         let filtered = crate::agent::tools::filter_tools_by_capability_overlay(
             base,
             &self.capability_disabled,
         );
-        self.agent.reopen_tools_for_regate();
-        match self.agent.set_tools(filtered.clone()) {
-            ToolsWriteOutcome::Applied => self.agent.freeze_tools(filtered),
+        self.state_mut().runtime_mut().reopen_tools_for_regate();
+        match self.state_mut().runtime_mut().set_tools(filtered.clone()) {
+            ToolsWriteOutcome::Applied => self.state_mut().runtime_mut().freeze_tools(filtered),
             ToolsWriteOutcome::RejectedMidTurn | ToolsWriteOutcome::RejectedFrozen => {
-                let current = self.agent.clone_tools();
-                self.agent.freeze_tools(current);
+                let current = self.state().runtime().clone_tools();
+                self.state_mut().runtime_mut().freeze_tools(current);
             }
         }
         self.capability_applied = self.capability_disabled.clone();
         self.overlay_phase = OverlayPhase::Idle;
         debug_assert!(
-            self.agent.is_tools_frozen(),
+            self.snapshot().tools_frozen,
             "capability overlay must end Frozen"
         );
     }
 
     pub fn freeze_tools(&mut self, tools: crate::agent::tools::ToolSet) {
-        self.agent.freeze_tools(tools);
+        self.state_mut().runtime_mut().freeze_tools(tools);
     }
 
     pub fn reopen_tools_for_regate(&mut self) {
-        self.agent.reopen_tools_for_regate();
+        self.state_mut().runtime_mut().reopen_tools_for_regate();
     }
 
     pub fn is_tools_frozen(&self) -> bool {
-        self.agent.is_tools_frozen()
+        self.snapshot().tools_frozen
     }
 
     pub async fn ensure_tool_table_frozen(&mut self) {
-        if self.agent.is_tools_frozen() {
+        if self.snapshot().tools_frozen {
             return;
         }
         debug_assert!(
-            self.agent.tool_freeze_phase() != crate::agent::tools::ToolFreezePhase::Gating,
+            self.state().runtime().tool_freeze_phase()
+                != crate::agent::tools::ToolFreezePhase::Gating,
             "tool table left in Gating outside an assembly line"
         );
-        self.agent.begin_tool_gating();
+        self.state_mut().runtime_mut().begin_tool_gating();
         let _ = self.join_session_prepare().await;
-        let tools = self.agent.clone_tools();
-        self.agent.freeze_tools(tools);
+        let tools = self.state().runtime().clone_tools();
+        self.state_mut().runtime_mut().freeze_tools(tools);
         self.prepare_acked = true;
     }
 
     pub fn set_workspaces(&mut self, workspaces: Vec<String>) {
-        self.agent.set_workspaces(workspaces);
+        self.state_mut().runtime_mut().set_workspaces(workspaces);
     }
 
     pub fn persist_project_trust(
@@ -375,7 +478,7 @@ impl XyInProcessDriver {
             .reload_cwd
             .as_ref()
             .map(|p| p.display().to_string())
-            .unwrap_or_else(|| self.agent.cwd().to_string());
+            .unwrap_or_else(|| self.snapshot().cwd.as_str().to_string());
         let mgr = crate::trust::TrustManager::with_audit(
             self.reload_agent_dir
                 .clone()
@@ -411,34 +514,37 @@ impl XyInProcessDriver {
         system_prompt: Option<String>,
         append_system_prompt: Vec<String>,
     ) {
-        self.agent
-            .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
+        self.state_mut().runtime_mut().apply_prompt_resources(
+            context_files,
+            system_prompt,
+            append_system_prompt,
+        );
     }
 
     pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>) {
-        self.agent.apply_skills(skills);
+        self.state_mut().runtime_mut().apply_skills(skills);
     }
 
     pub fn loaded_skill_names(&self) -> Vec<String> {
-        self.agent.loaded_skill_names()
+        self.snapshot().skill_names
     }
 
     pub fn loaded_skills(&self) -> Vec<xylitol_plugin_sdk::resource::SkillInfo> {
-        self.agent.loaded_skills()
+        Vec::new()
     }
 
     /// ~keep 测试接缝：仅供外部集成测试观测 agent 工作目录，非产品 API。
     /// ~keep 调用方：`xylitol-kernel` occupancy factory 转发与 `tests/occupancy/assembly_fixture_tests.rs`。
     /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。
     pub fn agent_cwd_for_test(&self) -> String {
-        self.agent.cwd().to_string()
+        self.snapshot().cwd.as_str().to_string()
     }
 
     fn skill_catalog_pairs(&self) -> Vec<(String, String)> {
-        self.agent
-            .loaded_skills()
-            .iter()
-            .map(|s| (s.name.clone(), s.description.clone().unwrap_or_default()))
+        self.snapshot()
+            .skill_names
+            .into_iter()
+            .map(|name| (name, String::new()))
             .collect()
     }
 
@@ -446,11 +552,12 @@ impl XyInProcessDriver {
     /// ~keep 调用方：`crates/xylitol-kernel/src/composition.rs`。
     /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。
     pub fn tool_names_for_test(&self) -> Vec<String> {
-        self.agent.tool_names()
+        self.snapshot().tool_names
     }
 
-    pub fn builtins_for_reload(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
-        self.agent
+    pub fn builtins_for_reload(&mut self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
+        self.state_mut()
+            .runtime_mut()
             .clone_tools()
             .iter()
             .filter(|t| !xylitol_plugin_sdk::is_mcp_tool_name(t.name()))
@@ -462,11 +569,12 @@ impl XyInProcessDriver {
     /// ~keep 调用方：`crates/xylitol-kernel/src/bootstrap_tests.rs`。
     /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。
     pub fn system_prompt_for_test(&self) -> Option<String> {
-        self.agent.system_prompt().map(String::from)
+        self.snapshot().system_prompt
     }
 
     pub async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError> {
-        self.agent
+        self.state_mut()
+            .runtime_mut()
             .select_model_with_source(model_id, "restore")
             .await
             .map_err(XyDriverError::from)
@@ -497,19 +605,19 @@ fn require_active_session(agent: &AgentRuntime) -> Result<&str, XyDriverError> {
 #[async_trait]
 impl XyDriver for XyInProcessDriver {
     async fn steer(&mut self, message: &str) -> Result<String, XyDriverError> {
-        Ok(self.agent.steer(message))
+        Ok(self.handle.shared().steer(message))
     }
 
     async fn follow_up(&mut self, message: &str) -> Result<String, XyDriverError> {
-        Ok(self.agent.follow_up(message))
+        Ok(self.handle.shared().follow_up(message))
     }
 
     fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
-        self.agent.queue_items()
+        self.handle.shared().queue_items()
     }
 
     fn revoke_queue_item(&self, id: &str) -> xylitol_plugin_sdk::RevokeQueueItemOutcome {
-        let outcome = self.agent.revoke_queue_item(id);
+        let outcome = self.handle.shared().revoke_queue_item(id);
         xylitol_plugin_sdk::RevokeQueueItemOutcome {
             revoked: outcome.revoked,
             items: outcome.items,
@@ -526,7 +634,7 @@ impl XyDriver for XyInProcessDriver {
         contexts: Vec<xylitol_plugin_sdk::mcp::McpResourceContext>,
     ) -> EventStream {
         self.prepare_run().await;
-        if let Some(sid) = self.agent.session_id() {
+        if let Some(sid) = self.snapshot().session_id.as_deref() {
             for context in contexts {
                 let entry = xylitol_plugin_sdk::session::SessionEntry::CustomMessage(
                     xylitol_plugin_sdk::session::CustomMessageEntry {
@@ -555,16 +663,26 @@ impl XyDriver for XyInProcessDriver {
                 }
             }
         }
-        let stream = self.agent.submit_root(prompt).await;
-        Box::pin(stream)
+        if !self.handle.shared().phase().is_idle() {
+            return Box::pin(crate::agent::runtime::XyEventStream::busy());
+        }
+        self.ensure_actor_spawned();
+        self.handle
+            .run(
+                vec![xylitol_plugin_sdk::message::AgentPart::text(prompt)],
+                Vec::new(),
+                None,
+            )
+            .await
     }
 
     async fn run_turn(&mut self, request: TurnRequest) -> Result<EventStream, XyDriverError> {
         self.prepare_run().await;
         let context = request.context.into_iter().map(AgentMessage::Llm).collect();
+        self.ensure_actor_spawned();
         let stream = self
-            .agent
-            .submit_turn(request.parts, context, request.system_prompt)
+            .handle
+            .run(request.parts, context, request.system_prompt)
             .await;
         Ok(Box::pin(stream))
     }
@@ -573,8 +691,8 @@ impl XyDriver for XyInProcessDriver {
         let Some(hub) = self.prepare_hub.as_ref() else {
             return Ok(xylitol_plugin_sdk::mcp::McpCatalog::default());
         };
-        let sid = self.agent.session_id().unwrap_or_default();
-        Ok(hub.mcp_catalog_for_session(sid).await)
+        let sid = self.snapshot().session_id.unwrap_or_default();
+        Ok(hub.mcp_catalog_for_session(&sid).await)
     }
 
     async fn mcp_resource_read(
@@ -585,8 +703,8 @@ impl XyDriver for XyInProcessDriver {
         let Some(hub) = self.prepare_hub.as_ref() else {
             return Err(XyDriverError::unsupported("mcp_resource_read"));
         };
-        let sid = self.agent.session_id().unwrap_or_default();
-        hub.mcp_resource_read(sid, server, uri)
+        let sid = self.snapshot().session_id.unwrap_or_default();
+        hub.mcp_resource_read(&sid, server, uri)
             .await
             .map_err(XyDriverError::from)
     }
@@ -600,8 +718,8 @@ impl XyDriver for XyInProcessDriver {
         let Some(hub) = self.prepare_hub.as_ref() else {
             return Err(XyDriverError::unsupported("mcp_prompt_get"));
         };
-        let sid = self.agent.session_id().unwrap_or_default();
-        hub.mcp_prompt_get(sid, server, name, arguments)
+        let sid = self.snapshot().session_id.unwrap_or_default();
+        hub.mcp_prompt_get(&sid, server, name, arguments)
             .await
             .map_err(XyDriverError::from)
     }
@@ -639,41 +757,36 @@ impl XyDriver for XyInProcessDriver {
 
     fn abort(&self) {
         self.bang.abort();
-        self.agent.abort();
+        self.handle.shared().abort();
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
-        self.agent.current_model().map(|m| ModelInfo::from(&m))
+        self.snapshot().current_model.as_ref().map(ModelInfo::from)
     }
 
     fn active_turn(&self) -> Option<(String, String, bool)> {
-        let binding = self.agent.inflight_turn_binding()?;
-        Some((
-            binding.display_name,
-            binding.thinking,
-            binding.omit_thinking,
-        ))
+        let binding = self.snapshot().active_turn?;
+        Some((binding.0, binding.1, binding.2))
     }
 
     fn has_active_turn(&self) -> bool {
-        self.agent.has_active_turn()
+        self.snapshot().has_active_turn
     }
 
     fn available_models(&self) -> Vec<ModelInfo> {
-        self.agent
-            .model_registry()
-            .list()
+        self.snapshot()
+            .model_list
             .iter()
             .map(ModelInfo::from)
             .collect()
     }
 
     fn thinking_level(&self) -> String {
-        self.agent.thinking_level()
+        self.snapshot().thinking_level
     }
 
     fn session_id(&self) -> Option<String> {
-        self.agent.session_id().map(String::from)
+        self.snapshot().session_id.as_deref().map(String::from)
     }
 
     fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
@@ -772,7 +885,7 @@ impl XyDriver for XyInProcessDriver {
         &mut self,
         cancel: &CancellationToken,
     ) -> Result<super::types::RuntimeReloadReport, XyDriverError> {
-        self.agent.clear_tool_freeze();
+        self.state_mut().runtime_mut().clear_tool_freeze();
         self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Reload);
         if let Some(hook) = self.reload_hook.clone() {
             hook.reload(self, cancel).await
@@ -782,7 +895,7 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn is_tools_frozen(&self) -> bool {
-        self.agent.is_tools_frozen()
+        self.snapshot().tools_frozen
     }
 
     async fn take_mcp_gate_notice(&mut self) -> Option<String> {
@@ -792,18 +905,18 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn arm_tool_freeze_gate(&mut self) {
-        if self.agent.is_tools_frozen() {
+        if self.snapshot().tools_frozen {
             return;
         }
-        self.agent.begin_tool_gating();
+        self.state_mut().runtime_mut().begin_tool_gating();
         let complete = self.prepare_hub.as_ref().is_none_or(|h| {
             let view = h.view();
             view.configured == 0 || view.complete
         });
         if complete {
             self.apply_prepare_tools();
-            let tools = self.agent.clone_tools();
-            self.agent.freeze_tools(tools);
+            let tools = self.state().runtime().clone_tools();
+            self.state_mut().runtime_mut().freeze_tools(tools);
             self.prepare_acked = true;
         } else {
             self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
@@ -818,9 +931,12 @@ impl XyDriver for XyInProcessDriver {
         let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
             command,
             exclude_from_context,
-            self.agent.cwd(),
+            self.snapshot().cwd.as_str(),
         );
-        self.agent.script_hook_cancel(ty, phase, ctx).await?;
+        self.state_mut()
+            .runtime()
+            .script_hook_cancel(ty, phase, ctx)
+            .await?;
 
         let bash_id = uuid::Uuid::new_v4().to_string();
         let run = self
@@ -837,8 +953,8 @@ impl XyDriver for XyInProcessDriver {
             run.map(|run| tokio::spawn(relay_bash_chunks(bash_id.clone(), chunk_rx, run.tx)));
         let store = self.store.clone();
         let bang = self.bang.clone();
-        let session_id = self.agent.session_id().map(str::to_string);
-        let cwd = self.agent.cwd().to_string();
+        let session_id = self.snapshot().session_id.as_deref().map(str::to_string);
+        let cwd = self.snapshot().cwd.as_str().to_string();
         let command = command.to_string();
 
         Ok(Box::pin(async move {
@@ -873,19 +989,29 @@ impl XyInProcessDriver {
     async fn prepare_run(&mut self) {
         self.apply_pending_capability_overlay();
         self.ensure_tool_table_frozen().await;
-        if self.agent.session_id().is_none() {
+        if self.snapshot().session_id.as_deref().is_none() {
             let id = uuid::Uuid::new_v4().to_string();
-            if let Err(e) = bind_session_or_err(&mut self.agent, id.clone()) {
+            if let Err(e) = bind_session_or_err(self.state_mut().runtime_mut(), id.clone()) {
                 e.log_failure("driver.run.bind_session");
             }
             self.bind_todo_session(Some(&id)).await;
-        } else if let Some(sid) = self.agent.session_id() {
-            self.bind_todo_session(Some(sid)).await;
+        } else if let Some(sid) = self.snapshot().session_id {
+            self.bind_todo_session(Some(&sid)).await;
         }
     }
 
     pub async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
-        let registry = self.agent.model_registry();
+        self.ensure_actor_spawned();
+        if self.handle.is_spawned() {
+            return self
+                .handle
+                .request(|reply| actor::DriverCommand::SelectModel {
+                    model_id: model_id.to_string(),
+                    reply,
+                })
+                .await?;
+        }
+        let registry = self.state().runtime().model_registry();
         let found = registry
             .list()
             .iter()
@@ -903,12 +1029,14 @@ impl XyInProcessDriver {
                 }
             })
             .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
-        self.agent
+        self.state_mut()
+            .runtime_mut()
             .select_model(&found)
             .await
             .map_err(XyDriverError::from)?;
         Ok(self
-            .agent
+            .state_mut()
+            .runtime_mut()
             .current_model()
             .map(|m| ModelInfo::from(&m))
             .unwrap_or_else(|| ModelInfo {
@@ -921,18 +1049,26 @@ impl XyInProcessDriver {
     }
 
     pub async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        let list = self.agent.model_registry().list().to_vec();
+        self.ensure_actor_spawned();
+        if self.handle.is_spawned() {
+            return self
+                .handle
+                .request(|reply| actor::DriverCommand::CycleModel { reply })
+                .await?;
+        }
+        let list = self.state().runtime().model_registry().list().to_vec();
         if list.is_empty() {
             return Err(XyDriverError::not_found("no models available"));
         }
-        let current_id = self.agent.current_model().map(|m| m.id.clone());
+        let current_id = self.state().runtime().current_model().map(|m| m.id.clone());
         let current_idx = current_id
             .as_ref()
             .and_then(|cur| list.iter().position(|m| m.id == *cur))
             .unwrap_or(0);
         let next_idx = (current_idx + 1) % list.len();
         let next_id = list[next_idx].id.clone();
-        self.agent
+        self.state_mut()
+            .runtime_mut()
             .select_model_with_source(&next_id, "cycle")
             .await
             .map_err(XyDriverError::from)?;
@@ -940,23 +1076,41 @@ impl XyInProcessDriver {
     }
 
     pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-        self.agent
+        self.ensure_actor_spawned();
+        if self.handle.is_spawned() {
+            return self
+                .handle
+                .request(|reply| actor::DriverCommand::SetThinkingLevel { level, reply })
+                .await?;
+        }
+        self.state_mut()
+            .runtime_mut()
             .set_thinking_level(level)
             .await
             .map_err(XyDriverError::from)
     }
 
     pub fn model_provider(&self, model_id: &str) -> Option<String> {
-        self.agent
-            .model_registry()
-            .list()
+        self.snapshot()
+            .model_list
             .iter()
             .find(|m| m.id == model_id)
             .map(|m| m.provider.clone())
     }
 
     pub async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
-        self.agent
+        self.ensure_actor_spawned();
+        if self.handle.is_spawned() {
+            return self
+                .handle
+                .request(|reply| actor::DriverCommand::Compact {
+                    instructions,
+                    reply,
+                })
+                .await?;
+        }
+        self.state_mut()
+            .runtime_mut()
             .force_compact(instructions)
             .await
             .map(|()| true)
@@ -964,7 +1118,7 @@ impl XyInProcessDriver {
     }
 
     pub async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let sid = require_active_session(&self.agent)?.to_string();
+        let sid = require_active_session(self.state().runtime())?.to_string();
         self.exporter
             .export_to_html(self.store.as_ref(), &sid, path)
             .await?;
@@ -972,7 +1126,7 @@ impl XyInProcessDriver {
     }
 
     pub async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let sid = require_active_session(&self.agent)?.to_string();
+        let sid = require_active_session(self.state().runtime())?.to_string();
         self.exporter
             .export_to_jsonl(self.store.as_ref(), &sid, path)
             .await?;
@@ -990,12 +1144,14 @@ impl XyInProcessDriver {
         clear_steer: bool,
         clear_follow_up: bool,
     ) -> Result<(), XyDriverError> {
-        self.agent.clear_queues(clear_steer, clear_follow_up);
+        self.state()
+            .runtime()
+            .clear_queues(clear_steer, clear_follow_up);
         Ok(())
     }
 
     pub fn queue_stats(&self) -> crate::agent::QueueStats {
-        self.agent.queue_stats()
+        self.handle.shared().queue_stats()
     }
 }
 

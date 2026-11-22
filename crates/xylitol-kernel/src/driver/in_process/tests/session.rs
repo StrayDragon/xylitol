@@ -78,7 +78,7 @@ async fn in_process_session_tree_ensures_missing_session() {
     .materialize_runtime();
     let orphan = uuid::Uuid::new_v4().to_string();
     agent.bind_session(orphan.clone()).expect("bind_session");
-    let driver = assemble_driver(agent, store);
+    let mut driver = assemble_driver(agent, store);
     let tree = driver
         .session_tree(SessionTreeKind::MessageHistory)
         .await
@@ -95,7 +95,7 @@ async fn in_process_session_tree_ensures_missing_session() {
 async fn in_process_session_tree_returns_parent_child() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
-    let (driver, _obs) = build_test_driver(store.clone()).await;
+    let (mut driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
 
     store
@@ -134,7 +134,7 @@ async fn in_process_session_tree_returns_parent_child() {
 async fn in_process_travel_user_sets_parent_leaf_and_editor_text() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
-    let (driver, _obs) = build_test_driver(store.clone()).await;
+    let (mut driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
 
     store
@@ -161,7 +161,7 @@ async fn in_process_travel_user_sets_parent_leaf_and_editor_text() {
 async fn in_process_travel_non_user_sets_leaf_without_editor_text() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
-    let (driver, _obs) = build_test_driver(store.clone()).await;
+    let (mut driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
 
     store
@@ -190,7 +190,7 @@ async fn in_process_travel_non_user_sets_leaf_without_editor_text() {
 async fn unsupported_tree_kind_returns_err_without_changing_leaf() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
-    let (driver, _obs) = build_test_driver(store.clone()).await;
+    let (mut driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
     XySessionStore::set_leaf(store.as_ref(), &sid, Some("keep"));
 
@@ -514,7 +514,7 @@ async fn reader_switch_session_never_touches_obs_slot() {
 async fn in_process_get_messages_returns_active_session_entries() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
-    let (driver, _obs) = build_test_driver(store.clone()).await;
+    let (mut driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
     store
         .append_with_id(&sid, &msg_entry("u1", None, "user", "hello"))

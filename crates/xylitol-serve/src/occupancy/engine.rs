@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
+use tokio::sync::{Mutex, MutexGuard};
 
 use xylitol_plugin_sdk::ask::AskUserGateway;
 use xylitol_protocol::Command;
@@ -11,6 +12,7 @@ use xylitol_runtime::{XyDriver, XyDriverError};
 
 #[async_trait]
 pub trait OccupancyEngine: XyDriver {
+    async fn join_actor(&mut self);
     fn install_ask_tool(&mut self, gateway: Arc<dyn AskUserGateway>);
     fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError>;
     async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError>;
@@ -32,6 +34,33 @@ pub trait OccupancyEngine: XyDriver {
     );
 
     fn set_workspaces(&mut self, _workspaces: Vec<String>) {}
+}
+
+#[derive(Clone)]
+pub struct SessionDriver {
+    cell: Arc<Mutex<Option<Box<dyn OccupancyEngine>>>>,
+}
+
+impl SessionDriver {
+    pub fn vacant() -> Self {
+        Self {
+            cell: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub async fn lock(&self) -> MutexGuard<'_, Option<Box<dyn OccupancyEngine>>> {
+        self.cell.lock().await
+    }
+
+    pub async fn release(&self) -> Option<Box<dyn OccupancyEngine>> {
+        self.cell.lock().await.take()
+    }
+
+    pub async fn release_and_join(&self) {
+        if let Some(mut engine) = self.release().await {
+            engine.join_actor().await;
+        }
+    }
 }
 
 pub trait OccupancyFactory: Send + Sync {

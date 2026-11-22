@@ -12,7 +12,7 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
-use crate::occupancy::engine::{OccupancyEngine, OccupancyFactory};
+use crate::occupancy::engine::{OccupancyEngine, OccupancyFactory, SessionDriver};
 use crate::occupancy::envelope;
 use crate::occupancy::idempotency::{Admission, IdempotencyLedger, conflict_result};
 use crate::occupancy::oauth::HostOAuthGateway;
@@ -125,7 +125,7 @@ pub struct ReloadBaseline {
 pub struct SessionSlot {
     pub session_id: String,
     pub journal: Mutex<EventJournal>,
-    pub driver: Arc<Mutex<Option<Box<dyn OccupancyEngine>>>>,
+    pub driver: SessionDriver,
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
     observing: Mutex<HashSet<u64>>,
     linger_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -248,7 +248,7 @@ impl HostState {
         }
         *slot.automation.lock().await = None;
         self.factory.release_session(&slot.session_id);
-        *slot.driver.lock().await = None;
+        slot.driver.release_and_join().await;
         self.sessions.write().await.remove(&slot.session_id);
     }
 
@@ -509,7 +509,7 @@ impl SessionSlot {
                 next_seq,
             )),
             session_id,
-            driver: Arc::new(Mutex::new(None)),
+            driver: SessionDriver::vacant(),
             subscribers: Mutex::new(HashMap::new()),
             observing: Mutex::new(HashSet::new()),
             linger_task: Mutex::new(None),
@@ -3414,6 +3414,7 @@ mod tests {
 
     #[async_trait]
     impl OccupancyEngine for ScriptedEngine {
+        async fn join_actor(&mut self) {}
         fn install_ask_tool(&mut self, _gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>) {
         }
 

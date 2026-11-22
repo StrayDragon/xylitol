@@ -330,6 +330,17 @@ impl TurnLease {
         }
     }
 
+    pub fn cancel(&mut self) {
+        if self.finished {
+            return;
+        }
+        if let Some(queues) = &self.queues {
+            crate::utils::lock_mutex(&queues.steer).clear();
+        }
+        self.coordinator.with_mut(|c| c.cancel_active());
+        self.finish();
+    }
+
     pub fn finish(&mut self) {
         if self.finished {
             return;
@@ -344,14 +355,15 @@ impl TurnLease {
 
 impl Drop for TurnLease {
     fn drop(&mut self) {
-        if !self.finished {
-            let phase_id = self.coordinator.with(|c| c.phase().active_turn_id());
-            if phase_id != Some(self.turn_id) {
-                self.finished = true;
-                return;
-            }
-            self.finish();
+        if self.finished {
+            return;
         }
+        let phase_id = self.coordinator.with(|c| c.phase().active_turn_id());
+        if phase_id != Some(self.turn_id) {
+            self.finished = true;
+            return;
+        }
+        self.cancel();
     }
 }
 

@@ -6,7 +6,7 @@ mod oauth;
 mod rpc_module;
 mod ws;
 
-pub use engine::{OccupancyEngine, OccupancyFactory};
+pub use engine::{OccupancyEngine, OccupancyFactory, SessionDriver};
 pub use envelope::{downlink_text, respond_to_body};
 pub use host::{
     HostState, ReloadBaseline, SessionSlot, handle_unary, materialize_writer,

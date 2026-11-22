@@ -52,9 +52,9 @@ mod tests {
             .register(std::sync::Arc::new(Marker))
             .expect("register marker");
 
-        let driver = with_loop_registry_for_test(registry.clone());
+        let mut driver = with_loop_registry_for_test(registry.clone());
         assert_eq!(
-            driver.agent.loop_middleware_ids(),
+            driver.state().runtime().loop_middleware_ids(),
             vec!["embed-marker".to_string()]
         );
     }

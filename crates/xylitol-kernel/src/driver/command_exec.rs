@@ -59,9 +59,9 @@ impl crate::dispatch::SessionCommandExecutor for CommandExecutorView<'_> {
                 .await
             }
             Command::EstimateContext { .. } => exec_estimate_context(&*driver).await,
-            Command::SessionTree { kind, .. } => exec_session_tree(&*driver, kind).await,
+            Command::SessionTree { kind, .. } => exec_session_tree(driver, kind).await,
             Command::TravelSessionTree { kind, entry_id, .. } => {
-                exec_travel_session_tree(&*driver, kind, &entry_id).await
+                exec_travel_session_tree(driver, kind, &entry_id).await
             }
             Command::AppendEntryLabel {
                 target_id, label, ..
@@ -292,7 +292,7 @@ async fn exec_estimate_context(
 }
 
 async fn exec_session_tree(
-    driver: &dyn XySessionOps,
+    driver: &mut dyn XySessionOps,
     kind: xylitol_protocol::SessionTreeKind,
 ) -> Result<DispatchOutcome, XyDriverError> {
     Ok(DispatchOutcome::SessionTree(
@@ -301,7 +301,7 @@ async fn exec_session_tree(
 }
 
 async fn exec_travel_session_tree(
-    driver: &dyn XySessionOps,
+    driver: &mut dyn XySessionOps,
     kind: xylitol_protocol::SessionTreeKind,
     entry_id: &str,
 ) -> Result<DispatchOutcome, XyDriverError> {

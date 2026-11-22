@@ -73,6 +73,77 @@ impl Stream for XyEventStream {
 
 impl Drop for XyEventStream {
     fn drop(&mut self) {
-        self.finish_lease();
+        if let Some(lease) = self.lease.as_mut() {
+            lease.cancel();
+        }
+    }
+}
+
+#[cfg(test)]
+mod drop_lease_tests {
+    use super::*;
+    use crate::agent::capabilities::{AsyncQueueRuntime, QueueMode};
+    use crate::agent::runtime::state::{SharedTurnCoordinator, TurnLease};
+
+    fn lease_with_queues() -> (
+        SharedTurnCoordinator,
+        std::sync::Arc<AsyncQueueRuntime>,
+        TurnLease,
+    ) {
+        let coordinator = SharedTurnCoordinator::new();
+        let queues = std::sync::Arc::new(AsyncQueueRuntime::new(QueueMode::All, QueueMode::All));
+        let turn_id = coordinator.with_mut(|c| c.try_begin_immediate().expect("idle").0);
+        let lease = TurnLease::new(coordinator.clone(), turn_id, Some(queues.clone()));
+        (coordinator, queues, lease)
+    }
+
+    #[test]
+    fn dropping_a_live_stream_cancels_the_turn() {
+        let (coordinator, _queues, lease) = lease_with_queues();
+        let stream = XyEventStream::with_lease(
+            Box::pin(async_stream::stream! {
+                futures::pending!();
+                yield XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
+                    "unreachable",
+                    "stream never yields",
+                ));
+            }),
+            lease,
+        );
+        assert!(coordinator.with(|c| c.has_work()));
+        drop(stream);
+        assert!(
+            !coordinator.with(|c| c.has_work()),
+            "mid-drop must cancel the in-flight turn"
+        );
+    }
+
+    #[test]
+    fn dropping_a_live_stream_clears_steer_but_keeps_follow_up() {
+        let (_coordinator, queues, lease) = lease_with_queues();
+        let stream = XyEventStream::with_lease(
+            Box::pin(async_stream::stream! {
+                futures::pending!();
+                yield XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
+                    "unreachable",
+                    "stream never yields",
+                ));
+            }),
+            lease,
+        );
+        crate::utils::lock_mutex(&queues.steer)
+            .enqueue(xylitol_plugin_sdk::message::AgentMessage::user("steer"));
+        crate::utils::lock_mutex(&queues.follow_up)
+            .enqueue(xylitol_plugin_sdk::message::AgentMessage::user("follow"));
+        drop(stream);
+        assert!(
+            crate::utils::lock_mutex(&queues.steer).is_empty(),
+            "steer queue must be cleared on mid-drop"
+        );
+        assert_eq!(
+            crate::utils::lock_mutex(&queues.follow_up).len(),
+            1,
+            "follow_up must survive mid-drop"
+        );
     }
 }

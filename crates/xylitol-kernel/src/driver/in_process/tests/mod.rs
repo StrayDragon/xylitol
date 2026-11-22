@@ -295,7 +295,7 @@ async fn attach_ctx_services_binds_prepare_hub_and_loop_registry() {
     );
     assert_eq!(driver.take_mcp_gate_notice().await, None);
     assert_eq!(
-        driver.agent.loop_middleware_ids(),
+        driver.state().runtime().loop_middleware_ids(),
         vec!["attach-ctx-probe".to_string()]
     );
 

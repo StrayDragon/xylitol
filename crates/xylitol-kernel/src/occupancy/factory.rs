@@ -148,7 +148,8 @@ impl OccupancyFactory for ProductOccupancyFactory {
         );
         attach_optional_context(&mut driver, self.ctx.as_ref(), &self.mcp_servers);
         driver
-            .agent
+            .state_mut()
+            .runtime_mut()
             .set_cwd(workspace.to_string_lossy().into_owned());
         Box::new(OccupancyDriver {
             inner: driver,
@@ -285,6 +286,10 @@ impl XyDriver for OccupancyDriver {
 
 #[async_trait]
 impl OccupancyEngine for OccupancyDriver {
+    async fn join_actor(&mut self) {
+        self.inner.join_actor().await;
+    }
+
     fn install_ask_tool(&mut self, gateway: Arc<dyn AskUserGateway>) {
         crate::driver::install_product_ask_tool(
             &mut self.inner,
@@ -296,7 +301,8 @@ impl OccupancyEngine for OccupancyDriver {
 
     fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
         self.inner
-            .agent
+            .state_mut()
+            .runtime_mut()
             .bind_session(session_id.to_string())
             .map_err(XyDriverError::from)
     }

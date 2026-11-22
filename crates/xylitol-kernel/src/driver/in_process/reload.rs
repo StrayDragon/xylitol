@@ -173,16 +173,12 @@ impl ReloadParticipant for ModelsParticipant {
         if registry.is_empty() {
             return Err("config has no models; kept previous registry".into());
         }
-        let previous = driver.agent.model_registry().len();
-        driver.agent.replace_model_registry(registry);
-        let current = driver
-            .agent
-            .current_model()
-            .map(|meta| meta.id.clone())
-            .unwrap_or_else(|| "none".into());
+        let previous = driver.model_registry().len();
+        driver.replace_model_registry(registry);
+        let current = driver.current_model_id().unwrap_or_else(|| "none".into());
         Ok(format!(
             "{} model(s) (was {}), current {current}",
-            driver.agent.model_registry().len(),
+            driver.model_registry().len(),
             previous
         ))
     }

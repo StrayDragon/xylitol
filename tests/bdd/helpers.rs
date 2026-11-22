@@ -135,7 +135,7 @@ pub(crate) async fn run_wiring_operation(
             let (mut runtime, store) = make_agent_with_store(agent);
             let orphan = uuid::Uuid::new_v4().to_string();
             bind_session_or_panic(&mut runtime, orphan);
-            let driver = assemble_driver(runtime, store);
+            let mut driver = assemble_driver(runtime, store);
             driver.session_tree(SessionTreeKind::MessageHistory).await?;
             Ok(())
         }
@@ -163,7 +163,7 @@ pub(crate) async fn run_wiring_operation(
             let (mut runtime, store) = make_agent_with_store(agent);
             let orphan = uuid::Uuid::new_v4().to_string();
             bind_session_or_panic(&mut runtime, orphan);
-            let driver = assemble_driver(runtime, store);
+            let mut driver = assemble_driver(runtime, store);
             driver
                 .session_tree(SessionTreeKind::MessageHistory)
                 .await

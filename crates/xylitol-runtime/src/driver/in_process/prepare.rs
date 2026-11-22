@@ -53,7 +53,7 @@ impl XyInProcessDriver {
         &mut self,
         registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
     ) {
-        self.agent.set_loop_middleware(registry);
+        self.state_mut().runtime_mut().set_loop_middleware(registry);
     }
 
     pub fn set_loop_middleware_scoped(
@@ -61,7 +61,9 @@ impl XyInProcessDriver {
         registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
         scope: xylitol_plugin_sdk::LoopScope,
     ) {
-        self.agent.set_loop_middleware_scoped(registry, scope);
+        self.state_mut()
+            .runtime_mut()
+            .set_loop_middleware_scoped(registry, scope);
     }
 
     pub fn set_reload_hook(&mut self, hook: Arc<dyn InProcessReloadHook>) {
@@ -149,8 +151,13 @@ impl XyInProcessDriver {
         {
             hub.cue_connecting();
         }
-        let session_id = self.agent.session_id().unwrap_or("").to_string();
-        let workspaces = session_workspaces(&self.agent);
+        let session_id = self
+            .snapshot()
+            .session_id
+            .as_deref()
+            .unwrap_or("")
+            .to_string();
+        let workspaces = session_workspaces(self.state().runtime());
         if let Some(ctx) = &self.ctx {
             let ev = SessionPrepare {
                 session_id,
@@ -168,11 +175,16 @@ impl XyInProcessDriver {
     }
 
     pub(super) async fn join_session_prepare(&mut self) -> SessionPrepareResult {
-        let session_id = self.agent.session_id().unwrap_or("").to_string();
+        let session_id = self
+            .snapshot()
+            .session_id
+            .as_deref()
+            .unwrap_or("")
+            .to_string();
         let ev = SessionPrepare {
             session_id,
             reason: SessionPrepareReason::Generate,
-            workspaces: session_workspaces(&self.agent),
+            workspaces: session_workspaces(self.state().runtime()),
         };
         let timeout = MCP_FIRST_TURN_GATE_TIMEOUT;
         let result = if let Some(ctx) = self.ctx.clone() {
@@ -193,11 +205,11 @@ impl XyInProcessDriver {
     }
 
     pub async fn poll_tool_gate(&mut self) -> bool {
-        if self.agent.is_tools_frozen() {
+        if self.snapshot().tools_frozen {
             self.tool_gate_poll_started = None;
             return true;
         }
-        self.agent.begin_tool_gating();
+        self.state_mut().runtime_mut().begin_tool_gating();
         let started = *self.tool_gate_poll_started.get_or_insert(Instant::now());
         let settled = self.prepare_hub.as_ref().is_none_or(|hub| {
             let view = hub.view();
@@ -212,21 +224,22 @@ impl XyInProcessDriver {
         let result = self.hub_snapshot_result();
         self.settle_tool_gate(result);
         self.tool_gate_poll_started = None;
-        self.agent.is_tools_frozen()
+        self.snapshot().tools_frozen
     }
 
     fn finish_prepare(&mut self, result: &SessionPrepareResult) {
         self.apply_prepare_tools();
         if !result.fingerprint.is_empty() {
-            self.agent
+            self.state_mut()
+                .runtime_mut()
                 .set_pending_prepare(xylitol_plugin_sdk::SessionPrepareSnapshot::from(result));
         }
     }
 
     fn settle_tool_gate(&mut self, result: SessionPrepareResult) {
         self.finish_prepare(&result);
-        let tools = self.agent.clone_tools();
-        self.agent.freeze_tools(tools);
+        let tools = self.state().runtime().clone_tools();
+        self.state_mut().runtime_mut().freeze_tools(tools);
         self.prepare_acked = true;
     }
 
@@ -252,11 +265,12 @@ impl XyInProcessDriver {
         if mcp_tools.is_empty() {
             return;
         }
-        if self.agent.is_tools_frozen() {
+        if self.snapshot().tools_frozen {
             return;
         }
         let builtins: Vec<_> = self
-            .agent
+            .state_mut()
+            .runtime_mut()
             .clone_tools()
             .iter()
             .filter(|t| !is_mcp_tool_name(t.name()))
@@ -266,7 +280,7 @@ impl XyInProcessDriver {
         self.base_tools = Some(set.clone());
         let filtered =
             crate::agent::tools::filter_tools_by_capability_overlay(set, &self.capability_disabled);
-        match self.agent.set_tools(filtered) {
+        match self.state_mut().runtime_mut().set_tools(filtered) {
             ToolsWriteOutcome::Applied => {}
             ToolsWriteOutcome::RejectedMidTurn | ToolsWriteOutcome::RejectedFrozen => {
                 log::warn!(
@@ -281,8 +295,8 @@ impl XyInProcessDriver {
 
     pub(super) async fn prepare_loaded_resources(&self) -> LoadedResourcesSnapshot {
         let skill_names = self.loaded_skill_names();
-        let tools_table_frozen = self.agent.is_tools_frozen();
-        let tool_names = self.agent.tool_names();
+        let tools_table_frozen = self.snapshot().tools_frozen;
+        let tool_names = self.snapshot().tool_names;
         let view = match &self.prepare_hub {
             Some(hub) => hub.view(),
             None => {
@@ -503,7 +517,7 @@ mod tool_gate_poll_tests {
             0,
             "passive poll MUST NOT call ensure/wait"
         );
-        assert!(!driver.agent.is_tools_frozen());
+        assert!(!driver.state().runtime().is_tools_frozen());
     }
 
     #[tokio::test]
@@ -513,7 +527,7 @@ mod tool_gate_poll_tests {
         assert!(!driver.poll_tool_gate().await);
         hub.set_complete(true);
         assert!(driver.poll_tool_gate().await);
-        assert!(driver.agent.is_tools_frozen());
+        assert!(driver.state().runtime().is_tools_frozen());
         assert_eq!(hub.drive_calls(), 0);
     }
 
@@ -524,7 +538,7 @@ mod tool_gate_poll_tests {
         assert!(!driver.poll_tool_gate().await);
         driver.tool_gate_poll_started = Some(Instant::now() - Duration::from_secs(16));
         assert!(driver.poll_tool_gate().await);
-        assert!(driver.agent.is_tools_frozen());
+        assert!(driver.state().runtime().is_tools_frozen());
         assert!(
             driver.mcp_gate_notice.is_some(),
             "gate deadline MUST surface the timeout notice once"

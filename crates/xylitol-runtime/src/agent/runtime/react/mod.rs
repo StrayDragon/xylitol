@@ -147,6 +147,14 @@ impl AgentRuntime {
         self.inner.queue_stats()
     }
 
+    pub fn queues(&self) -> Arc<crate::agent::capabilities::AsyncQueueRuntime> {
+        self.inner.queues()
+    }
+
+    pub fn coordinator(&self) -> SharedTurnCoordinator {
+        self.coordinator.clone()
+    }
+
     pub fn session_store(&self) -> Arc<dyn xylitol_plugin_sdk::XySessionStore> {
         self.inner.session_store()
     }

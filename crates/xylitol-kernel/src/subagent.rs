@@ -95,10 +95,16 @@ impl XyTool for SubagentTool {
             bootstrap_with(input, &*self.factory.get_env, self.factory.cwd.as_deref())
                 .map_err(|error| XyToolError::ExecutionFailed(anyhow::anyhow!(error.to_string())))?
                 .into_runtime();
-        let read_only =
-            read_only_tools(&runtime.driver.agent.tools_snapshot(), &self.factory.tools);
+        let read_only = read_only_tools(
+            &runtime.driver.state().runtime().tools_snapshot(),
+            &self.factory.tools,
+        );
         debug_assert!(matches!(
-            runtime.driver.agent.set_tools(read_only),
+            runtime
+                .driver
+                .state_mut()
+                .runtime_mut()
+                .set_tools(read_only),
             ToolsWriteOutcome::Applied
         ));
         let mut stream = runtime.driver.run(prompt).await;
