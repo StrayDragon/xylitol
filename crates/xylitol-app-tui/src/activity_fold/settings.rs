@@ -98,7 +98,7 @@ impl Default for ActivityFoldSettings {
             auto_on_rebuild: true,
             auto_on_turn_end: true,
             collapse_floor: SegmentLevel::L3,
-            display_level: DisplayLevel::Summary,
+            display_level: DisplayLevel::Full,
             visible_overrides: VisibleItemsOverrides::default(),
         }
     }
@@ -141,14 +141,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_is_summary() {
+    fn default_is_full() {
         let settings = ActivityFoldSettings::default();
-        assert_eq!(settings.display_level, DisplayLevel::Summary);
+        assert_eq!(settings.display_level, DisplayLevel::Full);
         let items = settings.visible_items();
         assert!(items.thinking);
         assert!(items.tool_header);
-        assert!(!items.tool_output);
-        assert!(!items.diff);
+        assert!(items.tool_output);
+        assert!(items.diff);
     }
 
     #[test]

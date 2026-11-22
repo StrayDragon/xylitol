@@ -292,7 +292,7 @@ mod tests {
         let palette = crate::layout::LayoutTheme::product_dark().palette();
         let row = chip_row_for("high");
         let dashes = first_sgr(&row);
-        let chip = rgb_after(&row, "[步骤显示级别: 摘要]");
+        let chip = rgb_after(&row, "[步骤显示级别: 完整]");
         assert_eq!(
             chip,
             (palette.muted.r, palette.muted.g, palette.muted.b),

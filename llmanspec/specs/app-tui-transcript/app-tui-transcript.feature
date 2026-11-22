@@ -235,7 +235,7 @@
       那么 仅该簇被定点展开且内层块行可见
   @req:r1356
   规则: activity-fold-auto-collapse
-    产品 须提供 ActivityFold 自动收纳：enabled 默认 true（关闭则全细账，块级折叠仍可用）；keep_recent_turns 默认 2（仅约束 auto_on_turn_end：最近 K 个已结束 Activity 轮信封默认展开，更旧信封默认折叠）；auto_on_rebuild 默认 true（travel/resume/fork 重建后对全部已结束 Activity 轮套折叠信封，不按 keep_recent_turns 留近窗）；auto_on_turn_end 默认 true（回合结束后对超窗已结束轮套折叠）。流式当前轮 不得被收成 Worked for 信封，须走 att33 live window。YAML 键与非法值见 runtime-config。近窗口内从未进入 ActivityFold 的细账 不得被当作 collapseNearest 目标。旧键 auto_l3_distant 不得再作为产品配置面。 另须提供 display_level 预设（默认 summary）：quiet 隐藏 thinking/工具头/输出/diff；summary 显示 thinking 头一行并附最新正文行，隐藏输出/diff；recent 保留最近 4 轮且 thinking 全文，工具输出收起；full 全展开。visible_items 可逐项覆盖 thinking/tool_header/tool_output/diff；显式旧字段仍生效。enabled=false 时 不得画信封头。
+    产品 须提供 ActivityFold 自动收纳：enabled 默认 true（关闭则全细账，块级折叠仍可用）；keep_recent_turns 默认 2（仅约束 auto_on_turn_end：最近 K 个已结束 Activity 轮信封默认展开，更旧信封默认折叠）；auto_on_rebuild 默认 true（travel/resume/fork 重建后对全部已结束 Activity 轮套折叠信封，不按 keep_recent_turns 留近窗）；auto_on_turn_end 默认 true（回合结束后对超窗已结束轮套折叠）。流式当前轮 不得被收成 Worked for 信封，须走 att33 live window。YAML 键与非法值见 runtime-config。近窗口内从未进入 ActivityFold 的细账 不得被当作 collapseNearest 目标。旧键 auto_l3_distant 不得再作为产品配置面。 另须提供 display_level 预设（默认 full）：quiet 隐藏 thinking/工具头/输出/diff；summary 显示 thinking 头一行并附最新正文行，隐藏输出/diff；recent 保留最近 4 轮且 thinking 全文，工具输出收起；full 全展开。visible_items 可逐项覆盖 thinking/tool_header/tool_output/diff；显式旧字段仍生效。enabled=false 时 不得画信封头。
 
     场景: 活动自动折叠窗口无头
       当 以场景构建器回放四轮活动并按回合结束收纳
