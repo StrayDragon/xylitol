@@ -2267,6 +2267,53 @@ mod tests {
     }
 
     #[test]
+    fn queue_hover_tints_only_the_pointed_row() {
+        let mut root = root_with_dock(3);
+        for text in ["steer-one", "steer-two"] {
+            root.ui_model.enqueue_steer_strip(text.into());
+        }
+        root.ui_model.enqueue_follow_up_strip("later".into());
+
+        let mut strip = root.render_queue_slot(120);
+        let hovers: Vec<Hit> = root
+            .overlay_hover_hits(120, 20)
+            .into_iter()
+            .filter(|hit| {
+                let id = (*hit).into_region().id;
+                id != UiRoot::QUEUE_STRIP_HIT_ID && id != UiRoot::TODO_SUMMARY_HOVER_HIT_ID
+            })
+            .collect();
+        let pointed = hovers[1].into_region();
+        let view = xylitol_tui::PointerView {
+            scroll_top: 0,
+            transcript_rows: 20,
+            overlay_capturing: false,
+        };
+        let mut regions = xylitol_tui::HitRegionList::new();
+        for hit in &hovers {
+            regions.mark(*hit);
+        }
+        xylitol_tui::apply_hover_tint(&mut [], &mut strip, view, &regions, pointed.id);
+
+        let bold_rows: Vec<usize> = strip
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.contains("[1m"))
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(
+            bold_rows.len(),
+            1,
+            "exactly one queue row may be tinted: {bold_rows:?}"
+        );
+        assert_eq!(
+            bold_rows[0],
+            pointed.content_row.saturating_sub(20),
+            "the tinted row is the one under the pointer"
+        );
+    }
+
+    #[test]
     fn todo_summary_hover_sits_below_the_queue_strip() {
         let root = root_with_dock(3);
         let todo = root
