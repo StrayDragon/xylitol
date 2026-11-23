@@ -41,15 +41,18 @@ setup:
 fmt:
     cargo fmt
 
-# Clippy with warnings denied (lib + bins, all features).
+# Clippy with warnings denied (lib + bins + tests, all features).
+# CARGO_BUILD_WARNINGS=deny matches CI: rustc warnings in test targets fail
+# the build there, so they must fail locally too.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 lint verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
+    export CARGO_BUILD_WARNINGS=deny
     case "{{verbosity}}" in
-      quiet)   cargo clippy -q --all-features --message-format=short -- -D warnings ;;
-      normal)  cargo clippy --all-features -- -D warnings ;;
-      verbose) cargo clippy -v --all-features -- -D warnings ;;
+      quiet)   cargo clippy -q --all-features --all-targets --message-format=short -- -D warnings ;;
+      normal)  cargo clippy --all-features --all-targets -- -D warnings ;;
+      verbose) cargo clippy -v --all-features --all-targets -- -D warnings ;;
     esac
 
 # Clippy on all targets — local / pre-PR.
@@ -60,6 +63,7 @@ lint verbosity=verbosity_default:
 lint-all verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
+    export CARGO_BUILD_WARNINGS=deny
     case "{{verbosity}}" in
       quiet)
         cargo clippy -q --all-features --all-targets --message-format=short -- -D warnings

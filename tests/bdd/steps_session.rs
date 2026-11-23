@@ -546,7 +546,7 @@ async fn _t_session_label_is(sess: &XySessionStore, expected: String) {
         })
         .and_then(|e| e.entry_id())
         .expect("no entries");
-    let label = store_label_of(&mgr, &sid, &last_id).await;
+    let label = store_label_of(&mgr, &sid, last_id).await;
     assert_eq!(label, Some(expected), "label mismatch");
 }
 
@@ -566,7 +566,7 @@ async fn _t_session_no_label(sess: &XySessionStore) {
         })
         .and_then(|e| e.entry_id())
         .expect("no entries");
-    let label = store_label_of(&mgr, &sid, &last_id).await;
+    let label = store_label_of(&mgr, &sid, last_id).await;
     assert!(label.is_none(), "expected no label, got {:?}", label);
 }
 
