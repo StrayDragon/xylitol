@@ -5551,6 +5551,45 @@ async fn gated_rows_survive_host_depth_calibration() {
 }
 
 #[tokio::test]
+async fn gated_rows_never_enter_the_host_queue() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.latch_assembly_gate_for_mcp();
+    for text in ["hi", "你好"] {
+        root.borrow_mut().set_editor_text(text);
+        session.step(HostEvent::Input(enter_event())).unwrap();
+    }
+    session.release_assembly_gate();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.runs, vec!["hi".to_string()]);
+    assert_eq!(
+        driver.queue_stats().follow_up_count,
+        0,
+        "a gated row must start its own turn, never ride the host follow-up queue"
+    );
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["你好".to_string()],
+        "the remaining gated row must stay on the strip"
+    );
+
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.runs,
+        vec!["hi".to_string(), "你好".to_string()],
+        "the second gated row must reach the transcript as its own turn"
+    );
+    assert!(session.ui_model().pending_follow_up.is_empty());
+}
+
+#[tokio::test]
 async fn c1215_mcp_select_list_nav_enter_closes() {
     use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
 

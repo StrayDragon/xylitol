@@ -860,6 +860,10 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_follow_up().map(|entry| entry.text)
     }
 
+    pub fn take_busy_follow_up(&mut self) -> Option<String> {
+        self.pending.take_busy_follow_up().map(|entry| entry.text)
+    }
+
     pub fn take_gated_follow_up(&mut self) -> Option<String> {
         self.pending.take_gated_follow_up().map(|entry| entry.text)
     }

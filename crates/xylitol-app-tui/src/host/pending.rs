@@ -118,6 +118,13 @@ impl PendingOps {
             Some(self.follow_up.remove(0))
         }
     }
+    pub fn take_busy_follow_up(&mut self) -> Option<LaneEntry> {
+        let pos = self
+            .follow_up
+            .iter()
+            .position(|entry| entry.origin == LaneOrigin::Busy)?;
+        Some(self.follow_up.remove(pos))
+    }
     pub fn take_gated_follow_up(&mut self) -> Option<LaneEntry> {
         let pos = self
             .follow_up
