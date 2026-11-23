@@ -13,7 +13,6 @@ pub struct InfraPluginBdd {
     pub tool_names: RefCell<Vec<String>>,
     pub mcp_servers: RefCell<Vec<xylitol_official_plugin_mcp::McpServerConfig>>,
     pub error: RefCell<Option<String>>,
-    pub call_result: RefCell<Option<String>>,
 }
 
 #[fixture]
@@ -24,7 +23,6 @@ pub fn infra_plugin_bdd() -> InfraPluginBdd {
         tool_names: RefCell::new(Vec::new()),
         mcp_servers: RefCell::new(Vec::new()),
         error: RefCell::new(None),
-        call_result: RefCell::new(None),
     }
 }
 

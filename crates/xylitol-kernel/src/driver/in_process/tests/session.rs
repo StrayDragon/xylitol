@@ -514,7 +514,7 @@ async fn reader_switch_session_never_touches_obs_slot() {
 async fn in_process_get_messages_returns_active_session_entries() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(LogSessionStore::new(dir.path().join("sessions")));
-    let (mut driver, _obs) = build_test_driver(store.clone()).await;
+    let (driver, _obs) = build_test_driver(store.clone()).await;
     let sid = driver.session_id().expect("session");
     store
         .append_with_id(&sid, &msg_entry("u1", None, "user", "hello"))

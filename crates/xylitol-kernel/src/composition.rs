@@ -506,7 +506,9 @@ mod tests {
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
         let builtins = driver.builtins_for_reload();
-        driver.freeze_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(builtins));
+        driver
+            .freeze_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(builtins))
+            .await;
         assert!(
             !driver
                 .tool_names_for_test()

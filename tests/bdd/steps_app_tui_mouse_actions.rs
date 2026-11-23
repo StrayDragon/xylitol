@@ -1,8 +1,7 @@
 use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_host::{
     HostPump, HostPumpBdd, c2826_slot, c2911_click, click_input_marker, editor_text, fresh_pump,
-    open_busy, open_tree_ready, pump_once, put_pump, render_frame, set_editor, stats, step_key,
-    take_pump,
+    open_busy, open_tree_ready, pump_once, put_pump, set_editor, stats, step_key, take_pump,
 };
 use crate::bdd::steps_app_tui_interaction::TuiInteraction;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
@@ -350,7 +349,6 @@ async fn g_mat34_busy_followup(host_pump_bdd: &HostPumpBdd) {
 
 #[when("左键单击队列条")]
 async fn w_mat34_click_queue_strip(host_pump_bdd: &HostPumpBdd) {
-    let frame = render_frame(host_pump_bdd, 100);
     let pump = take_pump(host_pump_bdd);
     let row = pump
         .session

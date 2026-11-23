@@ -345,7 +345,7 @@ pub(crate) async fn _t_ar_revoke_leaves_second() {
 #[given("装配 agent 并入队一条 follow_up 且该队列项已出队成为新 turn")]
 pub(crate) async fn _g_ar_revoke_dequeued(agent: &AgentState, ws: &Workspace) {
     set_fake_text("dequeued ack");
-    let mut runner = ar_make_runner(agent, ws);
+    let runner = ar_make_runner(agent, ws);
     let id = runner.follow_up("追问一");
     AR_REVOKE_ID.with(|cell| *cell.borrow_mut() = Some(id));
     ar_store_runner(runner);
@@ -371,7 +371,7 @@ pub(crate) fn _t_ar_revoke_not_found() {
 #[given("两个客户端并发撤销同一队列项")]
 pub(crate) async fn _g_ar_concurrent_revoke(agent: &AgentState, ws: &Workspace) {
     set_fake_text("concurrent revoke ack");
-    let mut runner = ar_make_runner(agent, ws);
+    let runner = ar_make_runner(agent, ws);
     let id = runner.follow_up("并发撤的追问");
     AR_REVOKE_ID.with(|cell| *cell.borrow_mut() = Some(id));
     ar_store_runner(runner);
