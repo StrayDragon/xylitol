@@ -208,11 +208,10 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.persist_client_history(&text);
+            self.ui_model.enqueue_steer_strip(text.clone());
             if self.assembly_gate_latched() || self.pending.peek_gated_submit() {
-                self.ui_model.enqueue_follow_up_strip(text.clone());
-                self.pending.push_follow_up(text);
+                self.pending.push_gated_steer(text);
             } else {
-                self.ui_model.enqueue_steer_strip(text.clone());
                 self.pending.push_steer(text);
             }
             self.sync_ui_root_from_model();
@@ -246,7 +245,11 @@ impl<T: Terminal> HostSession<T> {
             drop(root);
             self.persist_client_history(&text);
             self.ui_model.enqueue_follow_up_strip(text.clone());
-            self.pending.push_follow_up(text);
+            if self.assembly_gate_latched() || self.pending.peek_gated_submit() {
+                self.pending.push_gated_follow_up(text);
+            } else {
+                self.pending.push_follow_up(text);
+            }
             self.sync_ui_root_from_model();
             return true;
         }

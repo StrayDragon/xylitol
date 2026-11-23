@@ -98,6 +98,16 @@ impl PendingOps {
     pub fn push_steer(&mut self, text: String) {
         self.steer.push(LaneEntry::busy(text));
     }
+    pub fn push_gated_steer(&mut self, text: String) {
+        self.steer.push(LaneEntry::gated(text));
+    }
+    pub fn take_gated_steer(&mut self) -> Option<LaneEntry> {
+        let pos = self
+            .steer
+            .iter()
+            .position(|entry| entry.origin == LaneOrigin::Gated)?;
+        Some(self.steer.remove(pos))
+    }
     pub fn push_follow_up(&mut self, text: String) {
         self.follow_up.push(LaneEntry::busy(text));
     }

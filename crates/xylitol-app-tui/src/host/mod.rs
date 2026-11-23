@@ -872,6 +872,14 @@ impl<T: Terminal> HostSession<T> {
         self.pending.push_gated_follow_up(text);
     }
 
+    pub fn push_gated_steer(&mut self, text: String) {
+        self.pending.push_gated_steer(text);
+    }
+
+    pub fn take_gated_steer(&mut self) -> Option<String> {
+        self.pending.take_gated_steer().map(|entry| entry.text)
+    }
+
     pub fn remove_follow_up_matching(&mut self, text: &str) -> bool {
         self.pending.remove_follow_up_matching(text)
     }

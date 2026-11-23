@@ -181,7 +181,6 @@ async fn drain_abort_and_lanes<T: Terminal>(
     if idle_no_turn
         && let Some(msg) = session
             .take_gated_follow_up()
-            .or_else(|| session.take_steer())
             .or_else(|| session.take_busy_follow_up())
     {
         session.ui_model_mut().pop_follow_up_strip_matching(&msg);
@@ -193,9 +192,14 @@ async fn drain_abort_and_lanes<T: Terminal>(
         );
         return Some(msg);
     }
-    if !idle_no_turn
-        && !gate_holds
-        && let Some(msg) = session.take_steer()
+    if !gate_holds
+        && let Some(msg) = session.take_gated_steer().or_else(|| {
+            if idle_no_turn {
+                None
+            } else {
+                session.take_steer()
+            }
+        })
     {
         log::info!(target: "xylitol::tui", "Command::Steer prompt_len={}", msg.len());
         if let Err(e) = dispatch(

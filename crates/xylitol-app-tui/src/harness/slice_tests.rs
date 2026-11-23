@@ -5590,6 +5590,35 @@ async fn gated_rows_never_enter_the_host_queue() {
 }
 
 #[tokio::test]
+async fn busy_steer_keeps_steering_group_while_gate_holds() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.on_turn_started("hi");
+    session.latch_assembly_gate_for_mcp();
+    root.borrow_mut().set_editor_text("你好");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    root.borrow_mut().set_editor_text("你是谁");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+
+    assert_eq!(
+        session.ui_model().pending_steer,
+        vec!["你好".to_string()],
+        "a busy plain Enter must stay in the steering group even while the gate holds"
+    );
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["你是谁".to_string()],
+        "a busy Alt+Enter must stay in the follow-up group"
+    );
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn c1215_mcp_select_list_nav_enter_closes() {
     use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
 
