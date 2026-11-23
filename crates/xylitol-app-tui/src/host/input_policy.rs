@@ -351,7 +351,7 @@ impl<T: Terminal> HostSession<T> {
         self.persist_client_history(&cleaned);
         if self.assembly_gate_latched() {
             self.ui_model.enqueue_follow_up_strip(cleaned.clone());
-            self.pending.push_follow_up(cleaned);
+            self.pending.push_gated_follow_up(cleaned);
             self.sync_ui_root_from_model();
             return true;
         }

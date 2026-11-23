@@ -116,7 +116,6 @@ pub struct HostSession<T: Terminal> {
     assembly_gate_latched: bool,
     assembly_gate_since: Option<std::time::Instant>,
     assembly_gate_waiting_mcp: bool,
-    released_gate_backlog: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -269,7 +268,6 @@ impl<T: Terminal> HostSession<T> {
             assembly_gate_latched: false,
             assembly_gate_since: None,
             assembly_gate_waiting_mcp: false,
-            released_gate_backlog: false,
         }
     }
 
@@ -831,18 +829,6 @@ impl<T: Terminal> HostSession<T> {
         self.assembly_gate_waiting_mcp
     }
 
-    pub fn note_released_gate_backlog(&mut self) {
-        self.released_gate_backlog = true;
-    }
-
-    pub fn has_released_gate_backlog(&self) -> bool {
-        self.released_gate_backlog && !self.pending.follow_up.is_empty()
-    }
-
-    pub fn clear_released_gate_backlog(&mut self) {
-        self.released_gate_backlog = false;
-    }
-
     pub fn assembly_gate_expired(&self) -> bool {
         self.assembly_gate_since
             .is_some_and(|since| since.elapsed() >= Self::ASSEMBLY_GATE_MAX_HOLD)
@@ -867,11 +853,19 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn take_steer(&mut self) -> Option<String> {
-        self.pending.take_steer()
+        self.pending.take_steer().map(|entry| entry.text)
     }
 
     pub fn take_follow_up(&mut self) -> Option<String> {
-        self.pending.take_follow_up()
+        self.pending.take_follow_up().map(|entry| entry.text)
+    }
+
+    pub fn take_gated_follow_up(&mut self) -> Option<String> {
+        self.pending.take_gated_follow_up().map(|entry| entry.text)
+    }
+
+    pub fn push_gated_follow_up(&mut self, text: String) {
+        self.pending.push_gated_follow_up(text);
     }
 
     pub fn remove_follow_up_matching(&mut self, text: &str) -> bool {
@@ -916,7 +910,9 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn set_queue_depth(&mut self, steer_count: usize, follow_up_count: usize) {
-        self.ui_model.sync_queue_depth(steer_count, follow_up_count);
+        let gated_follow = self.pending.gated_follow_up_count();
+        self.ui_model
+            .sync_queue_depth(steer_count, follow_up_count.saturating_add(gated_follow));
         self.sync_ui_root_from_model();
     }
 
@@ -976,9 +972,9 @@ impl<T: Terminal> HostSession<T> {
         };
         root.borrow_mut().set_editor_text(text.clone());
         if is_follow_up {
-            self.pending.follow_up.retain(|t| t != &text);
+            self.pending.follow_up.retain(|e| e.text != text);
         } else {
-            self.pending.steer.retain(|t| t != &text);
+            self.pending.steer.retain(|e| e.text != text);
         }
         if self.pending.peek_gated_submit() {
             let _ = self.pending.take_gated_submit();
@@ -998,9 +994,9 @@ impl<T: Terminal> HostSession<T> {
         };
         root.borrow_mut().set_editor_text(text.clone());
         if is_follow_up {
-            self.pending.follow_up.retain(|t| t != &text);
+            self.pending.follow_up.retain(|e| e.text != text);
         } else {
-            self.pending.steer.retain(|t| t != &text);
+            self.pending.steer.retain(|e| e.text != text);
         }
         self.pending.dequeue_one = true;
         self.sync_ui_root_from_model();

@@ -5438,6 +5438,119 @@ async fn c3345_gate_window_keeps_typing_then_runs_after_freeze() {
 }
 
 #[tokio::test]
+async fn gate_backlog_runs_one_turn_at_a_time_in_fifo_order() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.latch_assembly_gate_for_mcp();
+    for text in ["hi", "你是谁", "你有什么工具"] {
+        root.borrow_mut().set_editor_text(text);
+        session.step(HostEvent::Input(enter_event())).unwrap();
+    }
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec![
+            "hi".to_string(),
+            "你是谁".to_string(),
+            "你有什么工具".to_string()
+        ],
+        "every submit during the MCP gate must queue as a gated row"
+    );
+    assert!(driver.runs.is_empty(), "the gate must hold every run");
+
+    session.release_assembly_gate();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.runs, vec!["hi".to_string()]);
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["你是谁".to_string(), "你有什么工具".to_string()],
+        "the strip must drop the row that started its turn"
+    );
+
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.runs,
+        vec!["hi".to_string(), "你是谁".to_string()],
+        "the next gated row must start its own turn"
+    );
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["你有什么工具".to_string()]
+    );
+
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.runs,
+        vec![
+            "hi".to_string(),
+            "你是谁".to_string(),
+            "你有什么工具".to_string()
+        ]
+    );
+    assert!(session.ui_model().pending_follow_up.is_empty());
+}
+
+#[tokio::test]
+async fn busy_follow_up_after_gate_release_reaches_host_queue() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.latch_assembly_gate_for_mcp();
+    root.borrow_mut().set_editor_text("first");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    session.release_assembly_gate();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.runs, vec!["first".to_string()]);
+
+    session.on_turn_started("first");
+    root.borrow_mut().set_editor_text("nudge");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.queue_stats().follow_up_count,
+        1,
+        "a busy follow-up must reach the host queue, not wait for an idle turn"
+    );
+}
+
+#[tokio::test]
+async fn gated_rows_survive_host_depth_calibration() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.latch_assembly_gate_for_mcp();
+    for text in ["hi", "你是谁"] {
+        root.borrow_mut().set_editor_text(text);
+        session.step(HostEvent::Input(enter_event())).unwrap();
+    }
+    session.set_queue_depth(0, 0);
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["hi".to_string(), "你是谁".to_string()],
+        "host depth zero must not wipe rows that never reached the host"
+    );
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn c1215_mcp_select_list_nav_enter_closes() {
     use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
 

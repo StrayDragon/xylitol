@@ -8,12 +8,39 @@ pub struct PendingSubmit {
     pub gated: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaneOrigin {
+    Gated,
+    Busy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaneEntry {
+    pub text: String,
+    pub origin: LaneOrigin,
+}
+
+impl LaneEntry {
+    fn gated(text: String) -> Self {
+        Self {
+            text,
+            origin: LaneOrigin::Gated,
+        }
+    }
+    fn busy(text: String) -> Self {
+        Self {
+            text,
+            origin: LaneOrigin::Busy,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct PendingOps {
     pub submit: Option<PendingSubmit>,
     pub mcp_prompt_args_result: Option<(McpPromptTarget, String)>,
-    pub steer: Vec<String>,
-    pub follow_up: Vec<String>,
+    pub steer: Vec<LaneEntry>,
+    pub follow_up: Vec<LaneEntry>,
     pub abort: bool,
     pub bash_cancelled: bool,
     pub dequeue: bool,
@@ -69,27 +96,43 @@ impl PendingOps {
         self.submit.as_ref().is_some_and(|entry| entry.gated)
     }
     pub fn push_steer(&mut self, text: String) {
-        self.steer.push(text);
+        self.steer.push(LaneEntry::busy(text));
     }
     pub fn push_follow_up(&mut self, text: String) {
-        self.follow_up.push(text);
+        self.follow_up.push(LaneEntry::busy(text));
     }
-    pub fn take_steer(&mut self) -> Option<String> {
+    pub fn push_gated_follow_up(&mut self, text: String) {
+        self.follow_up.push(LaneEntry::gated(text));
+    }
+    pub fn take_steer(&mut self) -> Option<LaneEntry> {
         if self.steer.is_empty() {
             None
         } else {
             Some(self.steer.remove(0))
         }
     }
-    pub fn take_follow_up(&mut self) -> Option<String> {
+    pub fn take_follow_up(&mut self) -> Option<LaneEntry> {
         if self.follow_up.is_empty() {
             None
         } else {
             Some(self.follow_up.remove(0))
         }
     }
+    pub fn take_gated_follow_up(&mut self) -> Option<LaneEntry> {
+        let pos = self
+            .follow_up
+            .iter()
+            .position(|entry| entry.origin == LaneOrigin::Gated)?;
+        Some(self.follow_up.remove(pos))
+    }
+    pub fn gated_follow_up_count(&self) -> usize {
+        self.follow_up
+            .iter()
+            .filter(|entry| entry.origin == LaneOrigin::Gated)
+            .count()
+    }
     pub fn remove_follow_up_matching(&mut self, text: &str) -> bool {
-        if let Some(pos) = self.follow_up.iter().position(|t| t == text) {
+        if let Some(pos) = self.follow_up.iter().position(|e| e.text == text) {
             self.follow_up.remove(pos);
             true
         } else {
