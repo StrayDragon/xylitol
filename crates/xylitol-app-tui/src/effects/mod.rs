@@ -135,40 +135,42 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
     let _ = tx.send((job_id, label, heuristic));
 }
 
-async fn drain_abort_and_lanes<T: Terminal>(
+async fn drain_abort_and_outbox<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
-    agent_stream: &Option<EventStream>,
-) -> Option<String> {
-    let aborted_now = session.take_abort();
-    if aborted_now {
+) {
+    if session.take_abort() {
         log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
-        let gated_submit = session.take_gated_submit();
-        let dropped_follow = session.take_all_gated_follow_up();
-        let dropped_steer = session.take_all_gated_steer();
-        for msg in dropped_follow
-            .iter()
-            .chain(dropped_steer.iter())
-            .chain(gated_submit.iter())
-        {
-            session.ui_model_mut().pop_follow_up_strip_matching(msg);
-            session.ui_model_mut().pop_steer_strip_matching(msg);
+        let gate_was_latched = session.assembly_gate_latched();
+        if gate_was_latched {
+            let _ = session.take_all_follow_up();
+        }
+        if let Some(prompt) = session.take_gated_submit() {
+            session.ui_model_mut().pop_follow_up_strip_matching(&prompt);
         }
         let cleared_steer = session.ui_model_mut().clear_steer_strip();
+        let cleared_follow = if gate_was_latched {
+            session.ui_model_mut().queue_item_ids.clear();
+            session.ui_model_mut().clear_follow_up_strip()
+        } else {
+            let rows = session.ui_model().pending_follow_up.clone();
+            session
+                .ui_model_mut()
+                .queue_item_ids
+                .retain(|(text, _)| rows.contains(text));
+            0
+        };
         log::info!(
             target: "xylitol::tui",
-            "abort clears gated rows submit={} follow={} steer={} strip_rows={cleared_steer}",
-            gated_submit.is_some(),
-            dropped_follow.len(),
-            dropped_steer.len()
+            "abort clears rows gate_latched={gate_was_latched} steer={cleared_steer} follow={cleared_follow}"
         );
         session.note_user_abort();
         let _ = dispatch(
             driver,
             Command::ClearQueue {
                 clear_steer: true,
-                clear_follow_up: false,
+                clear_follow_up: gate_was_latched,
             },
         )
         .await;
@@ -176,9 +178,7 @@ async fn drain_abort_and_lanes<T: Terminal>(
         session.set_queue_depth(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
-    let bang_cancelled = session.take_bash_cancelled();
-
-    if bang_cancelled {
+    if session.take_bash_cancelled() {
         let dropped = session.take_all_steer();
         let cleared = session.ui_model_mut().clear_steer_strip();
         log::info!(
@@ -187,68 +187,63 @@ async fn drain_abort_and_lanes<T: Terminal>(
             dropped.len()
         );
     }
-    let gate_holds = session.assembly_gate_latched() || driver.assembly_gate_open();
-    let idle_no_turn = agent_stream.is_none()
-        && !session.run_active()
-        && !session.bash_active()
-        && !aborted_now
-        && !bang_cancelled
-        && !session.has_gated_submit()
-        && !gate_holds;
-    if gate_holds {
+    if let Some(id) = session.take_revoke_queue_item()
+        && let Err(e) = dispatch(driver, Command::RevokeQueueItem { id }).await
+    {
+        e.log_failure("tui.revoke_queue_item");
+        session.push_scroll_notice(format!("queue recall failed: {e}"));
+    }
+    if session.assembly_gate_latched() || driver.assembly_gate_open() {
         session.latch_assembly_gate();
     }
-    if idle_no_turn && let Some(msg) = session.take_follow_up() {
-        session.ui_model_mut().pop_follow_up_strip_matching(&msg);
-        session.ui_model_mut().pop_steer_strip_matching(&msg);
-        log::info!(
-            target: "xylitol::tui",
-            "idle queued lane → root submit prompt_len={}",
-            msg.len()
-        );
-        return Some(msg);
+    if session.has_pending_submit() {
+        return;
     }
-    let steer_ready = !idle_no_turn || session.steer_head_is_gated();
-    if !gate_holds
-        && steer_ready
-        && let Some(msg) = session.take_steer()
-    {
-        log::info!(target: "xylitol::tui", "Command::Steer prompt_len={}", msg.len());
-        if let Err(e) = dispatch(
-            driver,
+    let steers = session.take_all_steer();
+    flush_outbox(session, driver, steers, true).await;
+    let follow_ups = session.take_all_follow_up();
+    flush_outbox(session, driver, follow_ups, false).await;
+}
+
+async fn flush_outbox<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    messages: Vec<String>,
+    steer: bool,
+) {
+    for msg in messages {
+        let command = if steer {
             Command::Steer {
                 message: msg.clone(),
-            },
-        )
-        .await
-        {
-            e.log_failure("tui.steer");
-            session.push_scroll_notice(format!("steer failed: {e}"));
-        }
-        calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
-        let _ = session.render_now();
-    }
-    if !idle_no_turn
-        && !gate_holds
-        && !session.follow_up_head_is_gated()
-        && let Some(msg) = session.take_follow_up()
-    {
-        log::info!(target: "xylitol::tui", "Command::FollowUp prompt_len={}", msg.len());
-        if let Err(e) = dispatch(
-            driver,
+            }
+        } else {
             Command::FollowUp {
                 message: msg.clone(),
-            },
-        )
-        .await
-        {
-            e.log_failure("tui.follow_up");
-            session.push_scroll_notice(format!("follow-up failed: {e}"));
+            }
+        };
+        log::info!(
+            target: "xylitol::tui",
+            "{} prompt_len={}",
+            if steer { "Command::Steer" } else { "Command::FollowUp" },
+            msg.len()
+        );
+        match dispatch(driver, command).await {
+            Ok(DispatchOutcome::QueueItemEnqueued { id, items }) => {
+                session.ui_model_mut().note_queue_item_id(&msg, id);
+                if !items.is_empty() {
+                    session.set_queue_badge(&items);
+                }
+            }
+            Ok(_) => {}
+            Err(e) => {
+                e.log_failure("tui.queue_outbox");
+                session.push_scroll_notice(format!("queue send failed: {e}"));
+                session.ui_model_mut().pop_follow_up_strip_matching(&msg);
+                session.ui_model_mut().pop_steer_strip_matching(&msg);
+            }
         }
-        calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
-        let _ = session.render_now();
     }
-    None
+    let _ = session.render_now();
 }
 
 pub async fn drain_pending<T: Terminal>(
@@ -258,7 +253,7 @@ pub async fn drain_pending<T: Terminal>(
 ) -> Result<(), XyDriverError> {
     session.sync_session_sidebar_reserve();
     drain_footer_token_if_pending(session, driver).await;
-    let converted_submit = drain_abort_and_lanes(session, driver, agent_stream).await;
+    drain_abort_and_outbox(session, driver).await;
     if session.take_dequeue_one() {
         log::info!(target: "xylitol::tui", "queue row recall (single)");
         let stats = queue_stats(driver).await;
@@ -319,10 +314,7 @@ pub async fn drain_pending<T: Terminal>(
 
     release_gate_if_settled(session, driver, agent_stream).await;
 
-    let next_submit = match converted_submit {
-        Some(prompt) => Some((prompt, crate::mcp_attach::PendingMcpAttachments::default())),
-        None => session.take_submit_with_attachments(),
-    };
+    let next_submit = session.take_submit_with_attachments();
     if agent_stream.is_none()
         && let Some((prompt, attachments)) = next_submit
     {
@@ -361,7 +353,7 @@ async fn hold_submit_for_gate<T: Terminal>(
     session.set_gated_submit(prompt.clone(), attachments);
     session
         .ui_model_mut()
-        .enqueue_follow_up_strip(prompt.clone());
+        .enqueue_follow_up_strip_first(prompt.clone());
     session.ui_model_mut().set_busy_status("Assembling");
     session.sync_ui_root_from_model();
     if let Some(root) = session.ui_root() {
@@ -391,46 +383,18 @@ async fn release_gate_if_settled<T: Terminal>(
         return;
     }
     session.release_assembly_gate();
+    log::info!(
+        target: "xylitol::tui",
+        "assembly gate released gated_submit={}",
+        session.has_gated_submit()
+    );
     if let Some((prompt, attachments)) = session.take_gated_submit_with_attachments() {
         session.ui_model_mut().pop_follow_up_strip_matching(&prompt);
         session.end_gated_assemble_idle();
         start_run_after_tool_gate(session, driver, agent_stream, prompt, attachments).await;
         return;
     }
-
-    let Some(msg) = session.take_follow_up() else {
-        return;
-    };
-    session.ui_model_mut().pop_follow_up_strip_matching(&msg);
-    session.ui_model_mut().pop_steer_strip_matching(&msg);
     session.end_gated_assemble_idle();
-    session.sync_ui_root_from_model();
-    log::info!(
-        target: "xylitol::tui",
-        "assembly gate released queued message prompt_len={}",
-        msg.len()
-    );
-    start_run_after_tool_gate(
-        session,
-        driver,
-        agent_stream,
-        msg,
-        crate::mcp_attach::PendingMcpAttachments::default(),
-    )
-    .await;
-}
-
-fn calibrate_queue_after_local_enqueue<T: Terminal>(
-    session: &mut HostSession<T>,
-    stats: QueueStats,
-) {
-    let local_steer = session.ui_model().pending_steer.len();
-    let local_follow = session.ui_model().pending_follow_up.len();
-    if stats.steer_count == 0 && stats.follow_up_count == 0 && (local_steer > 0 || local_follow > 0)
-    {
-        return;
-    }
-    session.set_queue_depth(stats.steer_count, stats.follow_up_count);
 }
 
 async fn start_run_after_tool_gate<T: Terminal>(

@@ -25,6 +25,10 @@ pub trait XyDriver: Send {
         Err(XyDriverError::unsupported("follow_up"))
     }
 
+    async fn take_follow_up(&mut self) -> Option<String> {
+        None
+    }
+
     fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
         Vec::new()
     }

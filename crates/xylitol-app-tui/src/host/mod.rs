@@ -811,6 +811,10 @@ impl<T: Terminal> HostSession<T> {
         self.pending.peek_gated_submit()
     }
 
+    pub fn has_pending_submit(&self) -> bool {
+        self.pending.peek_submit()
+    }
+
     pub const ASSEMBLY_GATE_MAX_HOLD: std::time::Duration = std::time::Duration::from_secs(60);
 
     pub fn latch_assembly_gate(&mut self) {
@@ -852,48 +856,34 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    pub fn take_steer(&mut self) -> Option<String> {
-        self.pending.take_steer().map(|entry| entry.text)
-    }
-
-    pub fn take_follow_up(&mut self) -> Option<String> {
-        self.pending.take_follow_up().map(|entry| entry.text)
-    }
-
-    pub fn follow_up_head_is_gated(&self) -> bool {
-        self.pending
-            .peek_follow_up_origin()
-            .is_some_and(|origin| origin == crate::host::pending::LaneOrigin::Gated)
-    }
-
-    pub fn steer_head_is_gated(&self) -> bool {
-        self.pending
-            .peek_steer_origin()
-            .is_some_and(|origin| origin == crate::host::pending::LaneOrigin::Gated)
-    }
-
-    pub fn push_gated_follow_up(&mut self, text: String) {
-        self.pending.push_gated_follow_up(text);
-    }
-
-    pub fn push_gated_steer(&mut self, text: String) {
-        self.pending.push_gated_steer(text);
-    }
-
     pub fn take_all_steer(&mut self) -> Vec<String> {
         self.pending.take_all_steer()
     }
 
-    pub fn take_all_gated_follow_up(&mut self) -> Vec<String> {
-        self.pending.take_all_gated_follow_up()
+    pub fn take_all_follow_up(&mut self) -> Vec<String> {
+        self.pending.take_all_follow_up()
     }
 
-    pub fn take_all_gated_steer(&mut self) -> Vec<String> {
-        self.pending.take_all_gated_steer()
+    pub fn take_revoke_queue_item(&mut self) -> Option<String> {
+        self.pending.take_revoke_queue_item()
     }
 
-    pub fn remove_follow_up_matching(&mut self, text: &str) -> bool {
-        self.pending.remove_follow_up_matching(text)
+    #[cfg(test)]
+    pub(crate) fn take_steer(&mut self) -> Option<String> {
+        if self.pending.steer.is_empty() {
+            None
+        } else {
+            Some(self.pending.steer.remove(0))
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn take_follow_up(&mut self) -> Option<String> {
+        if self.pending.follow_up.is_empty() {
+            None
+        } else {
+            Some(self.pending.follow_up.remove(0))
+        }
     }
 
     pub fn take_abort(&mut self) -> bool {
@@ -934,11 +924,11 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn set_queue_depth(&mut self, steer_count: usize, follow_up_count: usize) {
-        let gated_follow = self.pending.gated_follow_up_count();
-        let gated_steer = self.pending.gated_steer_count();
+        let outbox_steer = self.pending.steer.len();
+        let outbox_follow = self.pending.follow_up.len();
         self.ui_model.sync_queue_depth(
-            steer_count.saturating_add(gated_steer),
-            follow_up_count.saturating_add(gated_follow),
+            steer_count.saturating_add(outbox_steer),
+            follow_up_count.saturating_add(outbox_follow),
         );
         self.sync_ui_root_from_model();
     }
@@ -998,11 +988,7 @@ impl<T: Terminal> HostSession<T> {
             return false;
         };
         root.borrow_mut().set_editor_text(text.clone());
-        if is_follow_up {
-            self.pending.follow_up.retain(|e| e.text != text);
-        } else {
-            self.pending.steer.retain(|e| e.text != text);
-        }
+        self.retract_queue_row(&text, is_follow_up);
         if self.pending.peek_gated_submit() {
             let _ = self.pending.take_gated_submit();
             self.end_gated_assemble_idle();
@@ -1020,14 +1006,21 @@ impl<T: Terminal> HostSession<T> {
             return false;
         };
         root.borrow_mut().set_editor_text(text.clone());
-        if is_follow_up {
-            self.pending.follow_up.retain(|e| e.text != text);
-        } else {
-            self.pending.steer.retain(|e| e.text != text);
-        }
+        self.retract_queue_row(&text, is_follow_up);
         self.pending.dequeue_one = true;
         self.sync_ui_root_from_model();
         true
+    }
+
+    fn retract_queue_row(&mut self, text: &str, is_follow_up: bool) {
+        if is_follow_up {
+            self.pending.forget_follow_up_matching(text);
+        } else {
+            self.pending.forget_steer_matching(text);
+        }
+        if let Some(id) = self.ui_model.take_queue_item_id(text) {
+            self.pending.revoke_queue_item = Some(id);
+        }
     }
 
     pub fn take_paste_image(&mut self) -> bool {
@@ -1673,10 +1666,23 @@ impl<T: Terminal> HostSession<T> {
 
     pub(crate) fn handle_xy(&mut self, xy: Box<XyEvent>) {
         if self.stream_paint.suppress_xy_until_stream_end {
-            self.tui.request_render(false);
-            return;
+            match xy.as_ref() {
+                XyEvent::AgentStart { .. } => {
+                    self.stream_paint.suppress_xy_until_stream_end = false;
+                }
+                XyEvent::AgentEnd { .. } => {
+                    self.stream_paint.suppress_xy_until_stream_end = false;
+                    self.tui.request_render(false);
+                    return;
+                }
+                _ => {
+                    self.tui.request_render(false);
+                    return;
+                }
+            }
         }
-        if !self.busy.agent_run && Self::is_agent_tape_event(xy.as_ref()) {
+        let host_started_turn = matches!(xy.as_ref(), XyEvent::AgentStart { .. });
+        if !self.busy.agent_run && !host_started_turn && Self::is_agent_tape_event(xy.as_ref()) {
             log::debug!(
                 target: "xylitol::tui",
                 "agent tape event dropped while idle"

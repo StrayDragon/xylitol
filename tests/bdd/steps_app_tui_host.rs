@@ -4500,81 +4500,111 @@ pub(crate) fn t_c3400_width_ladder_ok(host_pump_bdd: &HostPumpBdd) {
     }
 }
 
-#[given("装配门禁期入队两条 follow-up t1 与 t2")]
-pub(crate) fn g_c3600_gate_two_follow_ups(host_pump_bdd: &HostPumpBdd) {
+#[given("装配门禁期先后提交根提交 t1 与 follow-up t2")]
+pub(crate) async fn g_c3600_gate_root_then_follow_up(host_pump_bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
-    pump.session.latch_assembly_gate_for_mcp();
+    pump.driver.set_tools_frozen(false);
+    pump.session.latch_assembly_gate();
     put_pump(host_pump_bdd, pump);
-    for text in ["t1", "t2"] {
-        set_editor(host_pump_bdd, text);
-        step_key(host_pump_bdd, enter_event());
-    }
+    set_editor(host_pump_bdd, "t1");
+    step_key(host_pump_bdd, enter_event());
+    drain(host_pump_bdd).await;
+    set_editor(host_pump_bdd, "t2");
+    step_key(host_pump_bdd, alt_enter_event());
+    drain(host_pump_bdd).await;
+    let pump = take_pump(host_pump_bdd);
+    let held = pump.session.has_gated_submit();
+    let sent = pump.driver.follow_up_calls.clone();
+    put_pump(host_pump_bdd, pump);
+    assert!(held, "c3600: the gate must hold the root submit");
+    assert!(
+        sent.is_empty(),
+        "c3600: rows behind the held root must not be sent ahead of it: {sent:?}"
+    );
 }
 
-#[when("门禁释放后入队一条 steer t3 与一条 follow-up t4 并推进主机泵")]
-pub(crate) async fn w_c3600_gate_queue_fifo(host_pump_bdd: &HostPumpBdd) {
+#[when("门禁释放后忙碌插队 steer t3 与 follow-up t4 并推进主机泵")]
+pub(crate) async fn w_c3600_gate_release_then_busy_queue(host_pump_bdd: &HostPumpBdd) {
     {
-        let mut pump = take_pump(host_pump_bdd);
-        pump.session.release_assembly_gate();
+        let pump = take_pump(host_pump_bdd);
+        pump.driver.set_tools_frozen(true);
         put_pump(host_pump_bdd, pump);
     }
     drain(host_pump_bdd).await;
-    {
-        let mut pump = take_pump(host_pump_bdd);
-        assert_eq!(
-            pump.driver.runs,
-            vec!["t1".to_string()],
-            "c3600: the gate-released head must start its own turn"
-        );
-        pump.session.on_turn_started("t1");
-        put_pump(host_pump_bdd, pump);
-    }
+    drain(host_pump_bdd).await;
     set_editor(host_pump_bdd, "t3");
     step_key(host_pump_bdd, enter_event());
     set_editor(host_pump_bdd, "t4");
     step_key(host_pump_bdd, alt_enter_event());
     drain(host_pump_bdd).await;
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session.on_run_stream_closed();
+    pump.driver.queue_host_turn(&["t2", "t4"]);
+    xylitol_app_tui::harness::pump_idle_downlink(&mut pump.session, &mut pump.driver)
+        .await
+        .expect("idle downlink");
+    put_pump(host_pump_bdd, pump);
 }
 
-#[then("steer t3 立即上行且队列头部保持 t2")]
-pub(crate) fn t_c3600_steer_first(host_pump_bdd: &HostPumpBdd) {
-    let pump = take_pump(host_pump_bdd);
-    let steers = pump.driver.steer_calls.clone();
-    let follow_ups = pump.driver.follow_up_calls.clone();
-    let rows = pump.session.ui_model().pending_follow_up.clone();
-    put_pump(host_pump_bdd, pump);
+#[then("根提交 t1 先起轮且后续行按入队先后到达 Host 队列")]
+pub(crate) fn t_c3600_root_first_then_fifo(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
     assert_eq!(
-        steers,
-        vec!["t3".to_string()],
-        "c3600: the steer must uplink at once"
+        s.runs,
+        vec!["t1".to_string()],
+        "c3600: the held root runs first"
     );
     assert_eq!(
-        rows,
+        s.steers,
+        vec!["t3".to_string()],
+        "c3600: the steer uplinks at once"
+    );
+    assert_eq!(
+        s.follow_ups,
         vec!["t2".to_string(), "t4".to_string()],
-        "c3600: the strip must keep arrival order"
+        "c3600: follow-ups must reach the host queue in arrival order"
+    );
+}
+
+#[then("Host 串接的轮次全部进入 transcript 且队列条清空")]
+pub(crate) fn t_c3600_chain_visible(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let users: Vec<String> = pump
+        .session
+        .ui_model()
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::User { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    let replies: Vec<String> = pump
+        .session
+        .ui_model()
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::Assistant { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    let rows = pump.session.ui_model().pending_follow_up.clone();
+    let busy = pump.session.run_active();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(
+        users,
+        vec!["t1".to_string(), "t2".to_string(), "t4".to_string()],
+        "c3600: every host-chained turn must be visible"
+    );
+    assert_eq!(
+        replies,
+        vec!["reply t2".to_string(), "reply t4".to_string()],
+        "c3600: chained replies must be painted"
     );
     assert!(
-        follow_ups.is_empty(),
-        "c3600: a later follow-up MUST NOT overtake the waiting head: {follow_ups:?}"
+        rows.is_empty(),
+        "c3600: strip must retire injected rows: {rows:?}"
     );
-}
-
-#[then("t4 未上行且后续推进先上行 t2")]
-pub(crate) async fn t_c3600_head_turn_first(host_pump_bdd: &HostPumpBdd) {
-    {
-        let mut pump = take_pump(host_pump_bdd);
-        pump.session.on_run_stream_closed();
-        put_pump(host_pump_bdd, pump);
-    }
-    drain(host_pump_bdd).await;
-    let pump = take_pump(host_pump_bdd);
-    let runs = pump.driver.runs.clone();
-    let rows = pump.session.ui_model().pending_follow_up.clone();
-    put_pump(host_pump_bdd, pump);
-    assert_eq!(
-        runs,
-        vec!["t1".to_string(), "t2".to_string()],
-        "c3600: the waiting head must start the next turn"
-    );
-    assert_eq!(rows, vec!["t4".to_string()], "c3600: only t4 stays queued");
+    assert!(!busy, "c3600: the TUI must settle idle after the chain");
 }

@@ -767,6 +767,11 @@ async fn drain_pending_keeps_steer_strip_when_queue_stats_are_empty() {
         vec!["nudge".to_string()],
         "empty Remote-like queue_stats MUST NOT wipe local strip text"
     );
+    assert_eq!(
+        driver.steer_calls,
+        vec!["nudge".to_string()],
+        "the row must still reach the host steer queue"
+    );
 }
 
 #[tokio::test]
@@ -1215,17 +1220,18 @@ async fn bang_return_followup_root_runs() {
         .await
         .unwrap();
     assert_eq!(
-        driver.runs,
+        driver.follow_up_calls,
         vec!["hi".to_string()],
-        "idle follow-up must root-run after the bang returns"
+        "the follow-up must reach the host queue once the bang returns"
     );
     assert!(
-        driver.follow_up_calls.is_empty(),
-        "idle lane MUST NOT enter the driver follow-up queue"
+        driver.runs.is_empty(),
+        "the TUI must not root-run a queued row; the host owns the wake"
     );
-    assert!(
-        session.ui_model().pending_follow_up.is_empty(),
-        "strip clears when the converted run starts"
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["hi".to_string()],
+        "the strip keeps the row until the host injects it"
     );
 }
 
@@ -5438,17 +5444,21 @@ async fn c3345_gate_window_keeps_typing_then_runs_after_freeze() {
 }
 
 #[tokio::test]
-async fn gate_backlog_runs_one_turn_at_a_time_in_fifo_order() {
+async fn gate_rows_reach_the_host_queue_in_arrival_order() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();
     let mut driver = ScriptedDriver::new();
+    driver.set_tools_frozen(false);
     let mut stream = None;
 
-    session.latch_assembly_gate_for_mcp();
+    session.latch_assembly_gate();
     for text in ["hi", "你是谁", "你有什么工具"] {
         root.borrow_mut().set_editor_text(text);
         session.step(HostEvent::Input(enter_event())).unwrap();
     }
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
     assert_eq!(
         session.ui_model().pending_follow_up,
         vec![
@@ -5456,74 +5466,152 @@ async fn gate_backlog_runs_one_turn_at_a_time_in_fifo_order() {
             "你是谁".to_string(),
             "你有什么工具".to_string()
         ],
-        "every submit during the MCP gate must queue as a gated row"
+        "every submit during the MCP gate must queue as a strip row"
     );
+    assert_eq!(session.ui_model().status.as_deref(), Some("Assembling"));
     assert!(driver.runs.is_empty(), "the gate must hold every run");
+    assert!(
+        driver.follow_up_calls.is_empty(),
+        "rows behind the held root submit must not be sent ahead of it"
+    );
 
-    session.release_assembly_gate();
+    driver.set_tools_frozen(true);
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert_eq!(driver.runs, vec!["hi".to_string()]);
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
     assert_eq!(
-        session.ui_model().pending_follow_up,
+        driver.runs,
+        vec!["hi".to_string()],
+        "the held root submit runs first"
+    );
+    assert_eq!(
+        driver.follow_up_calls,
         vec!["你是谁".to_string(), "你有什么工具".to_string()],
-        "the strip must drop the row that started its turn"
+        "the remaining rows reach the host queue in arrival order"
     );
-
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert_eq!(
-        driver.runs,
-        vec!["hi".to_string(), "你是谁".to_string()],
-        "the next gated row must start its own turn"
-    );
-    assert_eq!(
-        session.ui_model().pending_follow_up,
-        vec!["你有什么工具".to_string()]
-    );
-
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert_eq!(
-        driver.runs,
-        vec![
-            "hi".to_string(),
-            "你是谁".to_string(),
-            "你有什么工具".to_string()
-        ]
-    );
-    assert!(session.ui_model().pending_follow_up.is_empty());
 }
-
 #[tokio::test]
-async fn busy_follow_up_after_gate_release_reaches_host_queue() {
+async fn tui_follows_host_chained_turns_after_its_own_stream_ends() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();
     let mut driver = ScriptedDriver::new();
+    driver.set_tools_frozen(false);
     let mut stream = None;
 
-    session.latch_assembly_gate_for_mcp();
-    root.borrow_mut().set_editor_text("first");
+    session.latch_assembly_gate();
+    root.borrow_mut().set_editor_text("t1");
     session.step(HostEvent::Input(enter_event())).unwrap();
-    session.release_assembly_gate();
-    pump_host_driver(&mut session, &mut driver, &mut stream)
+    root.borrow_mut().set_editor_text("t2");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    drain_pending(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert_eq!(driver.runs, vec!["first".to_string()]);
-
-    session.on_turn_started("first");
-    root.borrow_mut().set_editor_text("nudge");
-    session.step(HostEvent::Input(alt_enter_event())).unwrap();
-    pump_host_driver(&mut session, &mut driver, &mut stream)
+    assert!(session.has_gated_submit(), "the gate holds the root submit");
+    driver.set_tools_frozen(true);
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    drain_pending(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
     assert_eq!(
-        driver.queue_stats().follow_up_count,
-        1,
-        "a busy follow-up must reach the host queue, not wait for an idle turn"
+        driver.runs,
+        vec!["t1".to_string()],
+        "the held root submit runs"
+    );
+    assert_eq!(driver.follow_up_calls, vec!["t2".to_string()]);
+    assert!(
+        session.run_active(),
+        "t1 is in flight on the TUI's own stream"
+    );
+
+    root.borrow_mut().set_editor_text("t3");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    root.borrow_mut().set_editor_text("t4");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.steer_calls, vec!["t3".to_string()]);
+    assert_eq!(
+        driver.follow_up_calls,
+        vec!["t2".to_string(), "t4".to_string()],
+        "later rows must not overtake earlier ones"
+    );
+    session.on_run_stream_closed();
+    assert!(!session.run_active(), "the TUI's own stream has ended");
+
+    driver.queue_host_turn(&["t2", "t4"]);
+    pump_idle_downlink(&mut session, &mut driver).await.unwrap();
+
+    let users: Vec<String> = session
+        .ui_model()
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::User { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        users,
+        vec!["t1".to_string(), "t2".to_string(), "t4".to_string()],
+        "every host-chained turn must land in the transcript"
+    );
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::Assistant { text } if text == "reply t4")),
+        "the chained turn's reply must be painted: {:?}",
+        session.ui_model().entries
+    );
+    assert!(
+        session.ui_model().pending_follow_up.is_empty(),
+        "strip rows must retire as the host injects them: {:?}",
+        session.ui_model().pending_follow_up
+    );
+    assert!(
+        !session.run_active(),
+        "the TUI must settle idle after the chain"
+    );
+    assert_eq!(session.ui_model().phase, UiPhase::Idle);
+}
+#[tokio::test]
+async fn tui_keeps_following_the_chain_after_an_abort() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.on_turn_started("root");
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.abort_count(), 1);
+
+    driver.queue_host_turn(&["t4"]);
+    pump_idle_downlink(&mut session, &mut driver).await.unwrap();
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::User { text } if text == "t4")),
+        "abort suppression must lift on AgentEnd so the next host turn is visible: {:?}",
+        session.ui_model().entries
+    );
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::Assistant { text } if text == "reply t4")),
+        "the host continued after the cancelled turn; the TUI must show it"
     );
 }
 
@@ -5532,145 +5620,109 @@ async fn gated_rows_survive_host_depth_calibration() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();
     let mut driver = ScriptedDriver::new();
+    driver.force_zero_queue_stats.store(true, Ordering::SeqCst);
+    driver.set_tools_frozen(false);
     let mut stream = None;
 
-    session.latch_assembly_gate_for_mcp();
+    session.latch_assembly_gate();
     for text in ["hi", "你是谁"] {
         root.borrow_mut().set_editor_text(text);
         session.step(HostEvent::Input(enter_event())).unwrap();
     }
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
     session.set_queue_depth(0, 0);
     assert_eq!(
         session.ui_model().pending_follow_up,
         vec!["hi".to_string(), "你是谁".to_string()],
-        "host depth zero must not wipe rows that never reached the host"
+        "host depth zero must not wipe rows the host has not reported consumed"
     );
+    driver.set_tools_frozen(true);
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-}
-
-#[tokio::test]
-async fn gated_rows_never_enter_the_host_queue() {
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    let root = session.ui_root().expect("ui").clone();
-    let mut driver = ScriptedDriver::new();
-    let mut stream = None;
-
-    session.latch_assembly_gate_for_mcp();
-    for text in ["hi", "你好"] {
-        root.borrow_mut().set_editor_text(text);
-        session.step(HostEvent::Input(enter_event())).unwrap();
-    }
-    session.release_assembly_gate();
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
     assert_eq!(driver.runs, vec!["hi".to_string()]);
     assert_eq!(
-        driver.queue_stats().follow_up_count,
-        0,
-        "a gated row must start its own turn, never ride the host follow-up queue"
+        driver.follow_up_calls,
+        vec!["你是谁".to_string()],
+        "zero-depth hosts still receive every row"
     );
-    assert_eq!(
-        session.ui_model().pending_follow_up,
-        vec!["你好".to_string()],
-        "the remaining gated row must stay on the strip"
-    );
-
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert_eq!(
-        driver.runs,
-        vec!["hi".to_string(), "你好".to_string()],
-        "the second gated row must reach the transcript as its own turn"
-    );
-    assert!(session.ui_model().pending_follow_up.is_empty());
 }
-
 #[tokio::test]
-async fn gated_row_keeps_turn_order_against_later_busy_follow_up() {
+async fn recalling_a_dispatched_row_revokes_it_on_the_host() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();
     let mut driver = ScriptedDriver::new();
     let mut stream = None;
 
-    session.latch_assembly_gate_for_mcp();
-    root.borrow_mut().set_editor_text("t1");
-    session.step(HostEvent::Input(enter_event())).unwrap();
-    root.borrow_mut().set_editor_text("t2");
-    session.step(HostEvent::Input(alt_enter_event())).unwrap();
-
-    session.release_assembly_gate();
-    drain_pending(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert_eq!(driver.runs, vec!["t1".to_string()]);
-    assert!(stream.is_some(), "t1 must still be in flight");
-
-    root.borrow_mut().set_editor_text("t3");
-    session.step(HostEvent::Input(enter_event())).unwrap();
+    session.on_turn_started("root");
     root.borrow_mut().set_editor_text("t4");
     session.step(HostEvent::Input(alt_enter_event())).unwrap();
-    assert_eq!(
-        session.ui_model().pending_follow_up,
-        vec!["t2".to_string(), "t4".to_string()],
-        "the strip must keep arrival order across the gate release"
-    );
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.follow_up_calls, vec!["t4".to_string()]);
+    assert_eq!(driver.queue_stats().follow_up_count, 1);
 
+    session.step(HostEvent::Input(alt_up_event())).unwrap();
+    assert_eq!(root.borrow().editor_text(), "t4");
     drain_pending(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
     assert_eq!(
-        driver.steer_calls,
-        vec!["t3".to_string()],
-        "the steer must reach the host steer queue"
+        driver.queue_stats().follow_up_count,
+        0,
+        "a recalled row must leave the host queue, not run behind the user's back"
     );
-    assert!(
-        driver.follow_up_calls.is_empty(),
-        "a later follow-up must not overtake the row still waiting at the head"
-    );
+    assert!(session.ui_model().pending_follow_up.is_empty());
+}
+
+#[tokio::test]
+async fn abort_while_gate_holds_clears_follow_ups_too() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    driver.set_tools_frozen(false);
+    let mut stream = None;
+
+    session.latch_assembly_gate();
+    root.borrow_mut().set_editor_text("t1");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    root.borrow_mut().set_editor_text("t2");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert!(session.has_gated_submit(), "the gate holds the root submit");
     assert_eq!(
         session.ui_model().pending_follow_up,
-        vec!["t2".to_string(), "t4".to_string()],
-        "both rows must stay on the strip while the head waits for idle"
+        vec!["t1".to_string(), "t2".to_string()]
     );
-
+    session.step(HostEvent::Input(esc_event())).unwrap();
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert_eq!(driver.runs, vec!["t1".to_string()], "t1 stream drains here");
     assert!(
-        matches!(
-            session.ui_model().pending_follow_up.as_slice(),
-            [a, b] if a == "t2" && b == "t4"
-        ),
-        "the trailing follow-up must not jump ahead of the waiting head: {:?}",
-        session.ui_model().pending_follow_up
-    );
-
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert_eq!(
-        driver.runs,
-        vec!["t1".to_string(), "t2".to_string()],
-        "the gate-released row must run as its own turn"
-    );
-
-    pump_host_driver(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert_eq!(
-        driver.runs,
-        vec!["t1".to_string(), "t2".to_string(), "t4".to_string()],
-        "the trailing follow-up must run only after the head turn"
+        !session.has_gated_submit(),
+        "Esc drops the held root submit"
     );
     assert!(
-        session.ui_model().pending_follow_up.is_empty(),
-        "the strip must drain in arrival order"
+        driver.runs.is_empty() && driver.follow_up_calls.is_empty(),
+        "nothing queued behind the cancelled gate may reach the host"
     );
+    assert_eq!(
+        driver.clear_calls,
+        vec![(true, true)],
+        "aborting the gate wait must also drop the rows queued behind it"
+    );
+    assert!(session.ui_model().pending_follow_up.is_empty());
 }
 
 #[tokio::test]

@@ -913,12 +913,18 @@ async fn idle_alt_enter_queues_follow_up_not_submit() {
 async fn assembly_gate_queues_every_submit() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
+    let mut driver = crate::harness::ScriptedDriver::new();
+    driver.set_tools_frozen(false);
     session.latch_assembly_gate();
 
     for text in ["hi", "你是谁", "你有什么工具"] {
         root.borrow_mut().set_editor_text(text);
         session.step(HostEvent::Input(enter_event())).unwrap();
     }
+    let mut stream = None;
+    crate::effects::drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
     assert_eq!(
         session.ui_model().pending_follow_up,
         vec![
@@ -949,11 +955,17 @@ async fn assembly_gate_queues_every_submit() {
 async fn gated_row_recall_keeps_other_rows() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
+    let mut driver = crate::harness::ScriptedDriver::new();
+    driver.set_tools_frozen(false);
     session.latch_assembly_gate();
     for text in ["hi", "你是谁", "你有什么工具"] {
         root.borrow_mut().set_editor_text(text);
         session.step(HostEvent::Input(enter_event())).unwrap();
     }
+    let mut stream = None;
+    crate::effects::drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
     assert!(session.recall_queue_row(1));
     assert_eq!(root.borrow().editor_text(), "你是谁");
     assert_eq!(

@@ -799,6 +799,10 @@ impl XyDriver for XyInProcessDriver {
         Ok(self.handle.shared().follow_up(message))
     }
 
+    async fn take_follow_up(&mut self) -> Option<String> {
+        self.handle.shared().take_follow_up()
+    }
+
     fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
         self.handle.shared().queue_items()
     }

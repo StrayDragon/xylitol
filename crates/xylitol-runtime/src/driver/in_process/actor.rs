@@ -346,6 +346,17 @@ impl SharedSubsystems {
             .unwrap_or_default()
     }
 
+    pub fn take_follow_up(&self) -> Option<String> {
+        let queues = self.queues()?;
+        let head = crate::utils::lock_mutex(&queues.follow_up)
+            .pop_item()
+            .map(|item| item.message.text().to_string());
+        if head.is_some() {
+            queues.notify_queue_update();
+        }
+        head
+    }
+
     pub fn revoke_queue_item(&self, id: &str) -> RevokeOutcome {
         let Some(queues) = self.queues() else {
             return RevokeOutcome {

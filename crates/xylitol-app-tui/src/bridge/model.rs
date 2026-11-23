@@ -218,6 +218,7 @@ pub struct UiModel {
     pub queue: QueueBadge,
     pub pending_steer: Vec<String>,
     pub pending_follow_up: Vec<String>,
+    pub queue_item_ids: Vec<(String, String)>,
     pub status: Option<String>,
     status_placeholder: bool,
     pub streaming_assistant: String,
@@ -246,6 +247,7 @@ impl UiModel {
             queue: QueueBadge::default(),
             pending_steer: Vec::new(),
             pending_follow_up: Vec::new(),
+            queue_item_ids: Vec::new(),
             status: None,
             status_placeholder: false,
             streaming_assistant: String::new(),
@@ -294,6 +296,26 @@ impl UiModel {
     pub fn enqueue_follow_up_strip(&mut self, text: String) {
         self.pending_follow_up.push(text);
         self.queue.follow_up_count = self.pending_follow_up.len();
+    }
+
+    pub fn enqueue_follow_up_strip_first(&mut self, text: String) {
+        self.pending_follow_up.insert(0, text);
+        self.queue.follow_up_count = self.pending_follow_up.len();
+    }
+
+    pub fn note_queue_item_id(&mut self, text: &str, id: String) {
+        self.queue_item_ids.push((text.to_string(), id));
+    }
+
+    pub fn take_queue_item_id(&mut self, text: &str) -> Option<String> {
+        let pos = self.queue_item_ids.iter().position(|(t, _)| t == text)?;
+        Some(self.queue_item_ids.remove(pos).1)
+    }
+
+    pub fn forget_queue_item_id(&mut self, text: &str) {
+        if let Some(pos) = self.queue_item_ids.iter().position(|(t, _)| t == text) {
+            self.queue_item_ids.remove(pos);
+        }
     }
 
     pub fn clear_follow_up_strip(&mut self) -> usize {

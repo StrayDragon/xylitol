@@ -46,6 +46,17 @@ pub async fn pump_host_driver<T: Terminal>(
     Ok(())
 }
 
+pub async fn pump_idle_downlink<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+) -> Result<(), XyDriverError> {
+    for ev in driver.drain_idle_events() {
+        session.step(HostEvent::Xy(Box::new(ev)))?;
+    }
+    let _ = session.render_now();
+    Ok(())
+}
+
 mod samples;
 pub use samples::{harness_sample_message_history_tree, harness_sample_session_messages};
 

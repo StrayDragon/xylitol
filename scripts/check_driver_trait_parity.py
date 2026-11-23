@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_PROTO = ROOT / "crates/xylitol-runtime/src/driver/proto.rs"
 APP_TUI_PROTO = ROOT / "crates/xylitol-app-tui/src/driver/proto.rs"
 
-RUNTIME_ONLY = {"run_turn"}
+RUNTIME_ONLY = {"run_turn", "take_follow_up"}
 APP_TUI_ONLY = {
     "assembly_gate_open",
     "attach_observe",

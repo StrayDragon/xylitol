@@ -1401,14 +1401,14 @@ fn project_trusted_for(host: &HostState, workspace: &Path) -> bool {
 
 #[allow(dead_code)]
 pub async fn materialize_writer(
-    host: &HostState,
+    host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,
 ) -> Result<(), XyDriverError> {
     materialize_writer_at(host, slot, &host.reload.cwd).await
 }
 
 pub async fn materialize_writer_at(
-    host: &HostState,
+    host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,
     workspace: &Path,
 ) -> Result<(), XyDriverError> {
@@ -1446,7 +1446,7 @@ pub async fn materialize_writer_at(
     Ok(())
 }
 
-async fn start_automation_if_needed(host: &HostState, slot: &Arc<SessionSlot>) {
+async fn start_automation_if_needed(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
     let mut task = slot.automation_task.lock().await;
     if task.is_some() {
         return;
@@ -1457,13 +1457,18 @@ async fn start_automation_if_needed(host: &HostState, slot: &Arc<SessionSlot>) {
     )));
     *slot.automation.lock().await = Some(engine.clone());
     let slot_for_task = slot.clone();
+    let host_for_task = host.clone();
     let handle = tokio::spawn(async move {
-        automation_loop(slot_for_task, engine).await;
+        automation_loop(host_for_task, slot_for_task, engine).await;
     });
     *task = Some(handle);
 }
 
-async fn automation_loop(slot: Arc<SessionSlot>, engine: Arc<Mutex<AutomationEngine>>) {
+async fn automation_loop(
+    host: Arc<HostState>,
+    slot: Arc<SessionSlot>,
+    engine: Arc<Mutex<AutomationEngine>>,
+) {
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     loop {
         interval.tick().await;
@@ -1488,13 +1493,43 @@ async fn automation_loop(slot: Arc<SessionSlot>, engine: Arc<Mutex<AutomationEng
                 trigger_id, prompt, ..
             } = action
             {
-                run_automation(&slot, &engine, &trigger_id, &prompt).await;
+                run_automation(&host, &slot, &engine, &trigger_id, &prompt).await;
             }
         }
     }
 }
 
+async fn start_queued_run(host: &Arc<HostState>, slot: &Arc<SessionSlot>) -> bool {
+    let Some(guard) = RunInflightGuard::try_acquire(slot) else {
+        return false;
+    };
+    let stream = {
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return false;
+        };
+        let Some(head) = driver.take_follow_up().await else {
+            return false;
+        };
+        driver.run_with_context(&head, Vec::new()).await
+    };
+    let slot_push = slot.clone();
+    let host_push = host.clone();
+    tokio::spawn(async move {
+        let mut stream = stream;
+        while let Some(event) = stream.next().await {
+            slot_push.append_and_push(&event).await;
+        }
+        drop(guard);
+        slot_push.flush_pending_runtime().await;
+        start_queued_run(&host_push, &slot_push).await;
+        on_prompt_finished(&host_push, &slot_push).await;
+    });
+    true
+}
+
 async fn run_automation(
+    host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,
     engine: &Arc<Mutex<AutomationEngine>>,
     trigger_id: &str,
@@ -1520,6 +1555,7 @@ async fn run_automation(
     }
     drop(guard);
     slot.flush_pending_runtime().await;
+    start_queued_run(host, slot).await;
     if let Err(error) = engine
         .lock()
         .await
@@ -1639,7 +1675,7 @@ fn occupancy_err(err: XySessionStoreError) -> RpcResult {
 }
 
 async fn ensure_write_occupancy(
-    host: &HostState,
+    host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,
     workspace: &Path,
 ) -> Result<(), Box<RpcResult>> {
@@ -1945,6 +1981,7 @@ async fn dispatch_session_unary(
             }
             drop(guard);
             slot_push.flush_pending_runtime().await;
+            start_queued_run(&host_push, &slot_push).await;
             on_prompt_finished(&host_push, &slot_push).await;
         });
         return RpcResult::ok_value(json!({ "session_id": session_id }));
@@ -1965,9 +2002,12 @@ async fn dispatch_session_unary(
         };
         if driver.is_tools_frozen() {
             let snapshot = driver.loaded_resources_snapshot().await;
+            drop(g);
+            start_queued_run(host, slot).await;
             return RpcResult::ok_value(serde_json::to_value(&snapshot).unwrap_or(Value::Null));
         }
         let slot_bg = slot.clone();
+        let host_bg = host.clone();
         tokio::spawn(async move {
             for _ in 0..ARM_GATE_POLL_MAX_TICKS {
                 tokio::time::sleep(ARM_GATE_POLL_TICK).await;
@@ -1986,6 +2026,7 @@ async fn dispatch_session_unary(
                         d.loaded_resources_snapshot().await
                     };
                     slot_bg.push_resources(snapshot).await;
+                    start_queued_run(&host_bg, &slot_bg).await;
                     return;
                 }
             }
@@ -2186,6 +2227,10 @@ async fn dispatch_writer_unary(
     let Some(driver) = g.as_mut() else {
         return RpcResult::error("unavailable", "no writer engine");
     };
+    let wakes_queued_run = matches!(
+        cmd,
+        xylitol_protocol::Command::Steer { .. } | xylitol_protocol::Command::FollowUp { .. }
+    );
     let bash_forwarder = start_bash_forwarder(slot, driver.as_mut(), method).await;
     let result = match driver.execute_command(cmd).await {
         Ok(mut value) => {
@@ -2203,6 +2248,17 @@ async fn dispatch_writer_unary(
     }
     if let Some(temp) = import_temp {
         let _ = std::fs::remove_file(temp);
+    }
+    if wakes_queued_run && result.ok {
+        let frozen = slot
+            .driver
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|driver| driver.is_tools_frozen());
+        if frozen {
+            start_queued_run(host, slot).await;
+        }
     }
     result
 }
@@ -2398,6 +2454,7 @@ async fn dispatch_readonly_unary(
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::VecDeque;
     use xylitol_plugin_sdk::BashChunk;
 
     fn test_slot(id: &str) -> Arc<SessionSlot> {
@@ -3283,6 +3340,8 @@ mod tests {
         runs: Arc<StdMutex<Vec<String>>>,
         selects: Arc<StdMutex<Vec<String>>>,
         thinking_sets: Arc<StdMutex<Vec<String>>>,
+        follow_ups: Arc<StdMutex<VecDeque<String>>>,
+        hold_runs: Option<Arc<tokio::sync::Notify>>,
         select_fails: bool,
         thinking_fails: bool,
         bind_fails: bool,
@@ -3297,10 +3356,31 @@ mod tests {
                 .lock()
                 .map(|mut runs| runs.push(prompt.to_string()))
                 .ok();
-            Box::pin(futures::stream::iter(vec![XyEvent::AgentEnd {
-                reason: None,
-                messages: Vec::new(),
-            }]))
+            let hold = self.hold_runs.clone();
+            Box::pin(futures::stream::once(async move {
+                if let Some(hold) = hold {
+                    hold.notified().await;
+                }
+                XyEvent::AgentEnd {
+                    reason: None,
+                    messages: Vec::new(),
+                }
+            }))
+        }
+
+        async fn follow_up(&mut self, message: &str) -> Result<String, XyDriverError> {
+            self.follow_ups
+                .lock()
+                .map(|mut queue| queue.push_back(message.to_string()))
+                .ok();
+            Ok(String::new())
+        }
+
+        async fn take_follow_up(&mut self) -> Option<String> {
+            self.follow_ups
+                .lock()
+                .ok()
+                .and_then(|mut queue| queue.pop_front())
         }
 
         fn abort(&self) {}
@@ -3473,8 +3553,14 @@ mod tests {
             true
         }
 
-        async fn execute_command(&mut self, _cmd: Command) -> Result<Value, XyDriverError> {
-            Ok(Value::Null)
+        async fn execute_command(&mut self, cmd: Command) -> Result<Value, XyDriverError> {
+            match cmd {
+                Command::FollowUp { message } => {
+                    let _ = XyDriver::follow_up(self, &message).await;
+                    Ok(Value::Null)
+                }
+                _ => Ok(Value::Null),
+            }
         }
 
         fn agent_cwd_for_test(&self) -> String {
@@ -3744,7 +3830,7 @@ mod tests {
         }));
         let (_id, _rx) = subscribe(&slot).await;
         let engine = Arc::new(Mutex::new(AutomationEngine::new(store, "s0")));
-        let task = tokio::spawn(automation_loop(slot.clone(), engine));
+        let task = tokio::spawn(automation_loop(gate_host(), slot.clone(), engine));
         for _ in 0..16 {
             if !runs.lock().map(|runs| runs.is_empty()).unwrap_or(true) {
                 break;
@@ -3791,6 +3877,108 @@ mod tests {
             tokio::time::advance(Duration::from_millis(5)).await;
         }
         panic!("prompt turn did not settle at {expected} run(s)");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn follow_up_while_idle_starts_its_own_turn_in_arrival_order() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        let follow_ups = Arc::new(StdMutex::new(VecDeque::new()));
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            runs: runs.clone(),
+            follow_ups: follow_ups.clone(),
+            ..Default::default()
+        }));
+        let (_id, _rx) = subscribe(&slot).await;
+        for (index, text) in ["t1", "t2", "t3"].into_iter().enumerate() {
+            let result = dispatch_session_unary(
+                &host,
+                &slot,
+                "s1",
+                xylitol_protocol::registry::METHOD_FOLLOW_UP,
+                json!({ "message": text }),
+                Path::new("."),
+                None,
+            )
+            .await;
+            assert!(result.ok, "follow_up {text} must be accepted");
+            wait_for_turn_settled(&slot, &runs, index + 1).await;
+        }
+        assert_eq!(
+            runs.lock().map(|r| r.clone()).unwrap_or_default(),
+            vec!["t1".to_string(), "t2".to_string(), "t3".to_string()],
+            "the host must run idle follow-ups itself, one turn each, FIFO"
+        );
+        assert!(
+            follow_ups.lock().map(|q| q.is_empty()).unwrap_or(false),
+            "no follow-up may be left behind"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn follow_up_enqueued_mid_run_is_picked_up_at_turn_teardown() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let runs = Arc::new(StdMutex::new(Vec::new()));
+        let follow_ups = Arc::new(StdMutex::new(VecDeque::new()));
+        let release = Arc::new(tokio::sync::Notify::new());
+        *slot.driver.lock().await = Some(Box::new(ScriptedEngine {
+            runs: runs.clone(),
+            follow_ups: follow_ups.clone(),
+            hold_runs: Some(release.clone()),
+            ..Default::default()
+        }));
+        let (_id, _rx) = subscribe(&slot).await;
+        let send = |host: Arc<HostState>, text: &'static str| {
+            let slot = slot.clone();
+            async move {
+                dispatch_session_unary(
+                    &host,
+                    &slot,
+                    "s1",
+                    xylitol_protocol::registry::METHOD_FOLLOW_UP,
+                    json!({ "message": text }),
+                    Path::new("."),
+                    None,
+                )
+                .await
+            }
+        };
+        send(host.clone(), "t1").await;
+        for _ in 0..128 {
+            if slot.turn_inflight_active() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(slot.turn_inflight_active(), "t1 must be in flight");
+        send(host.clone(), "t2").await;
+        assert_eq!(
+            runs.lock().map(|r| r.clone()).unwrap_or_default(),
+            vec!["t1".to_string()],
+            "a follow-up enqueued mid-run must wait for the turn boundary"
+        );
+        release.notify_one();
+        for _ in 0..128 {
+            if runs.lock().map(|r| r.len() >= 2).unwrap_or(false) {
+                break;
+            }
+            tokio::task::yield_now().await;
+            tokio::time::advance(Duration::from_millis(5)).await;
+        }
+        assert_eq!(
+            runs.lock().map(|r| r.clone()).unwrap_or_default(),
+            vec!["t1".to_string(), "t2".to_string()],
+            "the pump teardown must wake the queued follow-up"
+        );
+        release.notify_one();
+        wait_for_turn_settled(&slot, &runs, 2).await;
+        assert_eq!(
+            runs.lock().map(|r| r.clone()).unwrap_or_default(),
+            vec!["t1".to_string(), "t2".to_string()],
+            "the pump teardown must wake the queued follow-up"
+        );
     }
 
     #[tokio::test]
@@ -4398,7 +4586,7 @@ mod tests {
             Arc::new(LeafLoadFailStore),
             "s0",
         )));
-        let task = tokio::spawn(automation_loop(slot.clone(), engine));
+        let task = tokio::spawn(automation_loop(gate_host(), slot.clone(), engine));
         for _ in 0..8 {
             tokio::time::advance(Duration::from_millis(1100)).await;
             tokio::task::yield_now().await;

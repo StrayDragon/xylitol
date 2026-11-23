@@ -93,6 +93,7 @@ pub struct ScriptedDriver {
     arm_park: Option<tokio::sync::oneshot::Receiver<()>>,
     pub force_zero_queue_stats: AtomicBool,
     bash_run_sink: Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
+    idle_events: Mutex<Vec<XyEvent>>,
 }
 
 impl ScriptedDriver {
@@ -225,6 +226,33 @@ impl ScriptedDriver {
             arm_park: None,
             force_zero_queue_stats: AtomicBool::new(false),
             bash_run_sink: Mutex::new(None),
+            idle_events: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub fn push_idle_event(&self, event: XyEvent) {
+        self.idle_events.lock().expect("idle_events").push(event);
+    }
+
+    pub fn queue_host_turn(&self, texts: &[&str]) {
+        for text in texts {
+            self.push_idle_event(XyEvent::AgentStart {
+                session_id: "s".into(),
+                model: "fake".into(),
+            });
+            self.push_idle_event(XyEvent::MessageStart {
+                role: "user".into(),
+                message: Some(xylitol_plugin_sdk::message::AgentMessage::user(*text)),
+            });
+            self.push_idle_event(XyEvent::MessageEnd {
+                role: "user".into(),
+                message: None,
+            });
+            self.push_idle_event(XyEvent::TextDelta(format!("reply {text}")));
+            self.push_idle_event(XyEvent::AgentEnd {
+                reason: None,
+                messages: Vec::new(),
+            });
         }
     }
 
@@ -519,6 +547,10 @@ impl Default for ScriptedDriver {
 impl XyDriver for ScriptedDriver {
     fn attach_observe(&self) -> crate::driver::AttachObserve {
         *self.observe_state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn drain_idle_events(&mut self) -> Vec<XyEvent> {
+        std::mem::take(&mut *self.idle_events.lock().expect("idle_events"))
     }
 
     async fn run(&mut self, prompt: &str) -> EventStream {
