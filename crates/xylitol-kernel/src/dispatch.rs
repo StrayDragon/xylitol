@@ -146,6 +146,9 @@ mod tests {
         async fn run(&mut self, _prompt: &str) -> crate::driver::EventStream {
             unimplemented!()
         }
+        async fn run_queued(&mut self) -> crate::driver::EventStream {
+            Box::pin(futures::stream::empty())
+        }
         fn abort(&self) {}
         fn current_model(&self) -> Option<ModelInfo> {
             Some(ModelInfo {

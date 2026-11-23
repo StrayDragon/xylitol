@@ -799,8 +799,13 @@ impl XyDriver for XyInProcessDriver {
         Ok(self.handle.shared().follow_up(message))
     }
 
-    async fn take_follow_up(&mut self) -> Option<String> {
-        self.handle.shared().take_follow_up()
+    async fn run_queued(&mut self) -> EventStream {
+        self.prepare_run().await;
+        if !self.handle.shared().phase().is_idle() {
+            return Box::pin(crate::agent::runtime::XyEventStream::busy());
+        }
+        self.ensure_actor_spawned();
+        self.handle.run_queued().await
     }
 
     fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {

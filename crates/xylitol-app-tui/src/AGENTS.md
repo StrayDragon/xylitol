@@ -38,7 +38,7 @@
 | UiEntry：tool/bash/diff = status 左边轨 + gutter；user / assistant / thinking = flush | 给 user / assistant 加轨或洗底 |
 | steer / follow-up 走 `src/AGENTS.md` 的 `XyDriver` 队列边界 | 本端持有 ReAct 内部队列 |
 | 会话能力覆盖 `/capabilities` 走 `CapabilitiesSlot`；toggle 经共享 dispatch 提交 `SetCapability`，下一回合边界生效（`app-tui-commands`） | 端侧改全局配置 / 立即拆当前回合工具 |
-| 队列条每条排队消息独占一行：Steer-up 组在上、Follow-up 组在下，行首 muted 组标签（`Steer-up` / `Follow-up`），正文截断为单行（省略号），固定区高度随队列条数增长；队列真值源在 Host：排队消息下一拍全部交付 Host 队列，本端只保留扣住的首条门禁根提交；本端跟随 Host 事件带（idle 收到 AgentStart 也进入忙碌），不得本地起跑排队消息；点击某行只还原该条，Alt+Up 后进先出；鼠标悬停只高亮指针所在那一行（`app-tui-input`、`server-core` r3378 续跑队列自消费） | 隐藏排队行或按组折叠成一行；正文换行占多行；行首带组内序号或组深度计数；悬停高亮整条队列；footer/status 另加队列计数徽章 |
+| 队列条每条排队消息独占一行：Steering 组在上、Follow-up 组在下，行首 muted 组标签（`Steering` / `Follow-up`），正文截断为单行（省略号），固定区高度随队列条数增长；队列真值源在 Host：排队消息下一拍全部交付 Host 队列，本端只保留扣住的首条门禁根提交；本端跟随 Host 事件带（idle 收到 AgentStart 也进入忙碌），不得本地起跑排队消息；点击某行只还原该条，Alt+Up 后进先出；鼠标悬停只高亮指针所在那一行（`app-tui-input`、`server-core` r3378 续跑队列自消费） | 隐藏排队行或按组折叠成一行；正文换行占多行；行首带组内序号或组深度计数；悬停高亮整条队列；footer/status 另加队列计数徽章 |
 
 Esc 行为分场景收敛：
 

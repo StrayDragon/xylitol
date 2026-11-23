@@ -346,17 +346,6 @@ impl SharedSubsystems {
             .unwrap_or_default()
     }
 
-    pub fn take_follow_up(&self) -> Option<String> {
-        let queues = self.queues()?;
-        let head = crate::utils::lock_mutex(&queues.follow_up)
-            .pop_item()
-            .map(|item| item.message.text().to_string());
-        if head.is_some() {
-            queues.notify_queue_update();
-        }
-        head
-    }
-
     pub fn revoke_queue_item(&self, id: &str) -> RevokeOutcome {
         let Some(queues) = self.queues() else {
             return RevokeOutcome {
@@ -525,6 +514,9 @@ pub enum DriverCommand {
         parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
         context: Vec<xylitol_plugin_sdk::message::AgentMessage>,
         system_prompt: Option<String>,
+        reply: tokio::sync::oneshot::Sender<EventStream>,
+    },
+    RunQueued {
         reply: tokio::sync::oneshot::Sender<EventStream>,
     },
     SelectModel {
@@ -718,6 +710,15 @@ impl DriverHandle {
             .map_err(|_| XyDriverError::io("driver actor dropped reply".to_string()))
     }
 
+    pub async fn run_queued(&self) -> EventStream {
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        if let Err(error) = self.send(DriverCommand::RunQueued { reply }).await {
+            return error_stream(error);
+        }
+        rx.await
+            .unwrap_or_else(|_| error_stream(XyDriverError::io("driver actor dropped reply")))
+    }
+
     pub async fn run(
         &self,
         parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
@@ -800,6 +801,10 @@ async fn dispatch(state: &mut ActorState, command: DriverCommand) {
                 .runtime
                 .submit_turn(parts, context, system_prompt)
                 .await;
+            reply(tx, Box::pin(stream));
+        }
+        DriverCommand::RunQueued { reply: tx } => {
+            let stream = state.runtime.submit_queued().await;
             reply(tx, Box::pin(stream));
         }
         DriverCommand::SelectModel {

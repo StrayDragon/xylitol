@@ -603,7 +603,7 @@ async fn h4_busy_steer_calls_driver() {
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Steer-up") && l.contains("nudge"))
+            .any(|l| l.contains("Steering") && l.contains("nudge"))
     );
     assert!(
         !frame.iter().any(|l| l.contains("q:s")),
@@ -5653,6 +5653,68 @@ async fn gated_rows_survive_host_depth_calibration() {
     );
 }
 #[tokio::test]
+async fn host_woken_turn_head_lands_in_the_transcript() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.on_turn_started("root");
+    for text in ["t1", "t2", "t3", "t4"] {
+        root.borrow_mut().set_editor_text(text);
+        session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    }
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.follow_up_calls,
+        vec![
+            "t1".to_string(),
+            "t2".to_string(),
+            "t3".to_string(),
+            "t4".to_string()
+        ],
+        "follow-ups must reach the host queue in arrival order"
+    );
+    session.on_run_stream_closed();
+    assert!(!session.run_active(), "the TUI own stream has ended");
+
+    driver.queue_host_turn(&["t1", "t2", "t3", "t4"]);
+    pump_idle_downlink(&mut session, &mut driver).await.unwrap();
+
+    let users: Vec<String> = session
+        .ui_model()
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::User { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        users,
+        vec![
+            "root".to_string(),
+            "t1".to_string(),
+            "t2".to_string(),
+            "t3".to_string(),
+            "t4".to_string()
+        ],
+        "every host-woken turn, the head included, must land in the transcript: {:?}",
+        session.ui_model().entries
+    );
+    assert!(
+        session.ui_model().pending_follow_up.is_empty(),
+        "strip rows must retire as the host injects them: {:?}",
+        session.ui_model().pending_follow_up
+    );
+    assert!(
+        !session.is_busy(),
+        "the TUI must settle idle after the chain"
+    );
+}
+#[tokio::test]
 async fn recalling_a_dispatched_row_revokes_it_on_the_host() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();
@@ -7237,7 +7299,7 @@ async fn busy_resume_short_terminal_with_queue_keeps_working_and_steer_in_viewpo
     let frame = root.borrow_mut().render(80);
     let vp_top = frame.len().saturating_sub(term_rows);
     let working_idx = frame.iter().position(|l| l.contains("Working"));
-    let steer_idx = frame.iter().position(|l| l.contains("Steer-up"));
+    let steer_idx = frame.iter().position(|l| l.contains("Steering"));
     assert!(
         working_idx.is_some_and(|i| i >= vp_top),
         "Working MUST stay in viewport [vp_top={vp_top}]; frame_len={}",
@@ -7245,7 +7307,7 @@ async fn busy_resume_short_terminal_with_queue_keeps_working_and_steer_in_viewpo
     );
     assert!(
         steer_idx.is_some_and(|i| i >= vp_top),
-        "queue Steer-up line MUST stay in viewport when reserved (atc23); vp_top={vp_top} steer={steer_idx:?} frame_len={}",
+        "queue Steering line MUST stay in viewport when reserved (atc23); vp_top={vp_top} steer={steer_idx:?} frame_len={}",
         frame.len()
     );
 }

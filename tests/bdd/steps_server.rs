@@ -2027,6 +2027,10 @@ async fn post_unary_rpc_id(
 #[given("客户端以 id R 对某 session 经 POST /rpc 提交方法并得到结果")]
 async fn g_idem_first_steer(server_test: &ServerTest) {
     start_host(server_test).await;
+    // ~keep 测试夹具：Host 会自行起跑空闲 steer，标记在途让已受理项留在队列供幂等计数。
+    // ~keep 调用方：本文件 t_idem_replay_once 的「仅执行一次」断言。
+    let host = server_test.host.borrow().clone().expect("running host");
+    host.slot("idem-s1").await.mark_run_inflight_for_test(true);
     let body = post_unary_rpc_id(
         server_test.port.get(),
         "R",

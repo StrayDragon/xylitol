@@ -510,8 +510,10 @@ async fn minted_session_subscribe_does_not_require_cli_flag() {
     result.expect("subscribe must accept the minted session_id");
 }
 
-async fn exercise_session_and_host_capabilities<C>(mut driver: XyRemoteDriver<C>)
-where
+async fn exercise_session_and_host_capabilities<C>(
+    mut driver: XyRemoteDriver<C>,
+    host: &std::sync::Arc<xylitol_serve::HostState>,
+) where
     C: HostClient + Clone + 'static,
 {
     use xylitol_app_tui::dispatch::{DispatchOutcome, dispatch};
@@ -661,6 +663,12 @@ where
         driver.is_tools_frozen(),
         "arm_tool_freeze MUST freeze when no MCP is configured"
     );
+    // ~keep 测试夹具：Host 会自行起跑空闲 steer，此处标记在途只为让队列项可观测。
+    // ~keep 调用方：本文件线协议形状断言（queue_stats items 携带 kind）。
+    // ~keep 不得删：去掉后队列会被立即消费，形状断言失效。
+    host.slot(&session_id)
+        .await
+        .mark_run_inflight_for_test(true);
     dispatch(
         &mut driver,
         Command::Steer {
@@ -672,7 +680,7 @@ where
     assert_eq!(
         driver.queue_stats().follow_up_count,
         1,
-        "idle steer must land in the follow_up FIFO"
+        "steer without a runtime turn in flight must land in the follow_up FIFO"
     );
     assert_eq!(driver.queue_stats().steer_count, 0);
     let queued = driver
@@ -698,6 +706,9 @@ where
     )
     .await
     .expect("clear queue");
+    host.slot(&session_id)
+        .await
+        .mark_run_inflight_for_test(false);
     let report = driver
         .reload_runtime(&CancellationToken::new())
         .await
@@ -771,14 +782,14 @@ async fn session_and_host_capabilities_roundtrip_over_host() {
             registration_path: None,
             ..Default::default()
         },
-        host,
+        host.clone(),
     )
     .await
     .expect("bind");
-    exercise_session_and_host_capabilities(XyRemoteDriver::new(
-        format!("http://127.0.0.1:{port}"),
-        "remote-seed",
-    ))
+    exercise_session_and_host_capabilities(
+        XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "remote-seed"),
+        &host,
+    )
     .await;
     running.shutdown();
 }
@@ -786,9 +797,12 @@ async fn session_and_host_capabilities_roundtrip_over_host() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn session_and_host_capabilities_match_in_process_carrier() {
     let host = host_state_for_test().expect("host");
-    let client = in_process_client(host);
-    exercise_session_and_host_capabilities(XyRemoteDriver::with_host(client, "in-process-seed"))
-        .await;
+    let client = in_process_client(host.clone());
+    exercise_session_and_host_capabilities(
+        XyRemoteDriver::with_host(client, "in-process-seed"),
+        &host,
+    )
+    .await;
 }
 
 fn fixture_mcp(name: &str) -> xylitol_kernel::mcp_spec::McpServerSpec {

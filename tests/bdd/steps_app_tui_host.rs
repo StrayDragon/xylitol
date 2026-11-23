@@ -1929,7 +1929,7 @@ pub(crate) fn t_c2826_queue_strip_click(host_pump_bdd: &HostPumpBdd) {
     let after_text = frames[frames.len() - 1].replace("---AFTER---\n", "");
     drop(frames);
     assert!(
-        before.contains("steer-one") || before.contains("Steer-up"),
+        before.contains("steer-one") || before.contains("Steering"),
         "c2826: 队列条应含插队文本：{before}"
     );
     let footer = footer_line(&before);
@@ -3487,13 +3487,13 @@ pub(crate) async fn w_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
     host_pump_bdd.ansi_frames.borrow_mut().push(frame);
 }
 
-#[then("队列条两条 Steer-up 行各含一条正文且不带组内序号")]
+#[then("队列条两条 Steering 行各含一条正文且不带组内序号")]
 pub(crate) fn t_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
     let frames = host_pump_bdd.ansi_frames.borrow();
     let frame = frames.last().expect("queue frame");
     let steering: Vec<&str> = frame
         .lines()
-        .filter(|line| line.contains("Steer-up"))
+        .filter(|line| line.contains("Steering"))
         .collect();
     assert_eq!(steering.len(), 2, "c2999: 每条排队消息独占一行：\n{frame}");
     assert!(

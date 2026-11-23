@@ -675,7 +675,7 @@
 
   @req:r3378
   规则: 续跑队列由主机自消费
-    Host 须是 follow_up 队列的唯一消费者：会话空闲（无回合在途）时收到 steer 或 follow_up，须立即弹出队头并起一轮（工具表尚未冻结时须等冻结后再起）；回合收尾后队列仍非空须继续串接下一轮；客户端不得被要求再发根提交来推进队列。护栏：`xylitol-serve` 占用层单测 `follow_up_while_idle_starts_its_own_turn_in_arrival_order` 与 `follow_up_enqueued_mid_run_is_picked_up_at_turn_teardown`。
+    Host 须是 follow_up 队列的唯一消费者：会话空闲（无回合在途）时收到 steer 或 follow_up，须立即弹出队头并起一轮（工具表尚未冻结时须等冻结后再起，等待期间队列仍可被 ClearQueue 撤空）；回合收尾后队列仍非空须继续串接下一轮；客户端不得被要求再发根提交来推进队列。被唤醒的队头须经与回合边界串接相同的注入路径进入历史（发射 role=user 的 MessageStart / MessageEnd），不得当作没有用户消息事件的根提交。护栏：`xylitol-serve` 占用层单测 `follow_up_while_idle_starts_its_own_turn_in_arrival_order`、`follow_up_enqueued_mid_run_is_picked_up_at_turn_teardown`，`xylitol-kernel` 适配层单测 `occupancy_driver_run_queued_delegates_to_the_real_queue`。
 
   @req:r2895
   规则: 观景态订阅

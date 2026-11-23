@@ -255,8 +255,14 @@ impl XyDriver for OccupancyDriver {
     fn is_tools_frozen(&self) -> bool {
         XyDriver::is_tools_frozen(&self.inner)
     }
+    fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+        XyDriver::queue_items(&self.inner)
+    }
     async fn arm_tool_freeze_gate(&mut self) {
         XyDriver::arm_tool_freeze_gate(&mut self.inner).await
+    }
+    async fn run_queued(&mut self) -> EventStream {
+        XyDriver::run_queued(&mut self.inner).await
     }
     async fn take_mcp_gate_notice(&mut self) -> Option<String> {
         XyDriver::take_mcp_gate_notice(&mut self.inner).await

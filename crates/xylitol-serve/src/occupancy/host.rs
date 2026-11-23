@@ -135,6 +135,7 @@ pub struct SessionSlot {
     next_conn: AtomicU64,
     resync_offered: AtomicBool,
     turn_inflight: AtomicBool,
+    queued_wake_pending: AtomicBool,
     pending_runtime: PendingRuntimeSetting,
     pub latest_tape: std::sync::Mutex<Option<xylitol_plugin_sdk::message::AgentMessage>>,
     mcp_watch_started: AtomicBool,
@@ -519,6 +520,7 @@ impl SessionSlot {
             next_conn: AtomicU64::new(1),
             resync_offered: AtomicBool::new(false),
             turn_inflight: AtomicBool::new(false),
+            queued_wake_pending: AtomicBool::new(false),
             pending_runtime: PendingRuntimeSetting::new(),
             latest_tape: std::sync::Mutex::new(None),
             mcp_watch_started: AtomicBool::new(false),
@@ -1499,19 +1501,85 @@ async fn automation_loop(
     }
 }
 
+const QUEUED_WAKE_POLL_TICK: Duration = Duration::from_millis(50);
+const QUEUED_WAKE_POLL_MAX_TICKS: usize = 2400;
+
+fn schedule_queued_run(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
+    if slot.queued_wake_pending.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let host = host.clone();
+    let slot = slot.clone();
+    tokio::spawn(async move {
+        let frozen = wait_tools_frozen(&slot).await;
+        slot.queued_wake_pending.store(false, Ordering::SeqCst);
+        if frozen {
+            start_queued_run(&host, &slot).await;
+        }
+    });
+}
+
+async fn wait_tools_frozen(slot: &Arc<SessionSlot>) -> bool {
+    for _ in 0..QUEUED_WAKE_POLL_MAX_TICKS {
+        let (frozen, has_follow_up) = {
+            let mut g = slot.driver.lock().await;
+            let Some(driver) = g.as_mut() else {
+                return false;
+            };
+            if !driver.is_tools_frozen() {
+                let _ = driver.poll_tool_gate().await;
+            }
+            (
+                driver.is_tools_frozen(),
+                driver
+                    .queue_items()
+                    .iter()
+                    .any(|item| item.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp),
+            )
+        };
+        if frozen {
+            return true;
+        }
+        if !has_follow_up {
+            return false;
+        }
+        tokio::time::sleep(QUEUED_WAKE_POLL_TICK).await;
+    }
+    false
+}
+
 async fn start_queued_run(host: &Arc<HostState>, slot: &Arc<SessionSlot>) -> bool {
     let Some(guard) = RunInflightGuard::try_acquire(slot) else {
+        log::info!(
+            target: "xylitol::host",
+            "queued run skipped: turn in flight session={}",
+            slot.session_id
+        );
         return false;
     };
     let stream = {
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
+            log::info!(
+                target: "xylitol::host",
+                "queued run skipped: no writer engine session={}",
+                slot.session_id
+            );
             return false;
         };
-        let Some(head) = driver.take_follow_up().await else {
+        let has_head = driver
+            .queue_items()
+            .iter()
+            .any(|item| item.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp);
+        if !has_head {
             return false;
-        };
-        driver.run_with_context(&head, Vec::new()).await
+        }
+        log::info!(
+            target: "xylitol::host",
+            "queued run starting session={}",
+            slot.session_id
+        );
+        driver.run_queued().await
     };
     let slot_push = slot.clone();
     let host_push = host.clone();
@@ -1522,7 +1590,7 @@ async fn start_queued_run(host: &Arc<HostState>, slot: &Arc<SessionSlot>) -> boo
         }
         drop(guard);
         slot_push.flush_pending_runtime().await;
-        start_queued_run(&host_push, &slot_push).await;
+        schedule_queued_run(&host_push, &slot_push);
         on_prompt_finished(&host_push, &slot_push).await;
     });
     true
@@ -1555,7 +1623,7 @@ async fn run_automation(
     }
     drop(guard);
     slot.flush_pending_runtime().await;
-    start_queued_run(host, slot).await;
+    schedule_queued_run(host, slot);
     if let Err(error) = engine
         .lock()
         .await
@@ -2250,15 +2318,8 @@ async fn dispatch_writer_unary(
         let _ = std::fs::remove_file(temp);
     }
     if wakes_queued_run && result.ok {
-        let frozen = slot
-            .driver
-            .lock()
-            .await
-            .as_ref()
-            .is_some_and(|driver| driver.is_tools_frozen());
-        if frozen {
-            start_queued_run(host, slot).await;
-        }
+        log::debug!(target: "xylitol::host", "queue enqueue method={method}");
+        schedule_queued_run(host, slot);
     }
     result
 }
@@ -3376,11 +3437,32 @@ mod tests {
             Ok(String::new())
         }
 
-        async fn take_follow_up(&mut self) -> Option<String> {
-            self.follow_ups
+        async fn run_queued(&mut self) -> EventStream {
+            let Some(head) = self
+                .follow_ups
                 .lock()
                 .ok()
                 .and_then(|mut queue| queue.pop_front())
+            else {
+                return Box::pin(futures::stream::empty());
+            };
+            self.run(&head).await
+        }
+
+        fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
+            self.follow_ups
+                .lock()
+                .map(|queue| {
+                    queue
+                        .iter()
+                        .map(|preview| xylitol_plugin_sdk::session::QueueItem {
+                            id: String::new(),
+                            kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                            preview: preview.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
         }
 
         fn abort(&self) {}

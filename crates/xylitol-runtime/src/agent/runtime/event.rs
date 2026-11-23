@@ -26,6 +26,14 @@ impl XyEventStream {
         }
     }
 
+    pub(crate) fn empty() -> Self {
+        Self {
+            inner: Box::pin(futures::stream::empty()),
+            done: false,
+            lease: None,
+        }
+    }
+
     pub(crate) fn busy() -> Self {
         Self::error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
             crate::agent::runtime::state::RuntimeControlError::Busy.kind(),

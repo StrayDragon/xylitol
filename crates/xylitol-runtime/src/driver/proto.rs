@@ -25,9 +25,7 @@ pub trait XyDriver: Send {
         Err(XyDriverError::unsupported("follow_up"))
     }
 
-    async fn take_follow_up(&mut self) -> Option<String> {
-        None
-    }
+    async fn run_queued(&mut self) -> EventStream;
 
     fn queue_items(&self) -> Vec<xylitol_plugin_sdk::session::QueueItem> {
         Vec::new()
@@ -245,6 +243,10 @@ mod tests {
             Box::pin(futures::stream::iter(vec![XyEvent::TextDelta(
                 prompt.to_string(),
             )]))
+        }
+
+        async fn run_queued(&mut self) -> EventStream {
+            Box::pin(futures::stream::empty())
         }
 
         fn abort(&self) {}

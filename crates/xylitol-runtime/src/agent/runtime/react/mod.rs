@@ -517,6 +517,40 @@ impl AgentRuntime {
         }
     }
 
+    pub async fn submit_queued(&mut self) -> XyEventStream {
+        let Some(session_id) = self.inner.session_id().map(str::to_string) else {
+            return XyEventStream::error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
+                "NoSession",
+                "no session bound; call bind_session first",
+            ));
+        };
+        let admit = self.coordinator.with_mut(|c| {
+            if c.phase().is_idle() {
+                let (turn_id, cancel) = c.try_begin_immediate().expect("idle begin");
+                return Some((turn_id, cancel));
+            }
+            None
+        });
+        let Some((turn_id, cancel)) = admit else {
+            return XyEventStream::busy();
+        };
+        let queues = self.inner.queues();
+        let head = pop_queue(&queues.follow_up);
+        if head.is_some() {
+            queues.notify_queue_update();
+        }
+        let Some(head) = head else {
+            self.coordinator.with_mut(|c| {
+                let _ = c.finish_turn(turn_id);
+            });
+            return XyEventStream::empty();
+        };
+        let mut frozen = self.freeze_root_config(Vec::new(), None);
+        frozen.queued_head = Some(head);
+        self.start_root_stream(session_id, turn_id, cancel, frozen, None)
+            .await
+    }
+
     fn freeze_root_config(
         &self,
         user_parts: Vec<AgentPart>,
@@ -537,6 +571,7 @@ impl AgentRuntime {
             workspaces: self.inner.workspaces().to_vec(),
             pending_prepare: self.pending_prepare.lock().ok().and_then(|g| g.clone()),
             loop_chain: self.inner.loop_chain(),
+            queued_head: None,
         }
     }
 
@@ -664,6 +699,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         workspaces,
         pending_prepare,
         loop_chain,
+        queued_head,
     } = frozen;
 
     type PermissionCheck = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
@@ -739,6 +775,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         obs_session_name,
         pending_prepare,
         loop_chain,
+        queued_head,
     }));
 
     combine_run_streams(react, side_rx, queue_rx)
@@ -843,6 +880,7 @@ struct ReActConfig {
     obs_session_name: Option<String>,
     pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
     loop_chain: LoopChain,
+    queued_head: Option<crate::agent::capabilities::QueuedItem>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -944,6 +982,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         obs_session_name,
         pending_prepare,
         loop_chain,
+        queued_head,
     } = cfg;
     let mut fixed_context = crate::agent::compaction::FixedRequestContext {
         system_prompt: system_prompt.clone(),
@@ -1000,10 +1039,16 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             run_turn_injection(&loop_chain, &submission_ctx, &mut history).await;
         }
 
-        history.push(AgentMessage::user_parts(user_parts.clone()));
-        persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
-
-        let mut pending: Vec<crate::agent::capabilities::QueuedItem> = drain_queue(&steer_queue);
+        let mut pending: Vec<crate::agent::capabilities::QueuedItem> = match queued_head {
+            Some(head) => vec![head],
+            None => {
+                history.push(AgentMessage::user_parts(user_parts.clone()));
+                persist_agent_message(&store, &session_id, history.last().expect("user message"))
+                    .await;
+                Vec::new()
+            }
+        };
+        pending.extend(drain_queue(&steer_queue));
         let mut turn: usize = 0;
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
         let mut overflow_recovery_attempted = false;

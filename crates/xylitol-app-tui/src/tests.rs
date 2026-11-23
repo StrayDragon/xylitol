@@ -737,8 +737,8 @@ fn harness_busy_enter_queues_steer() {
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Steer-up") && l.contains("nudge")),
-        "missing Steer-up strip: {frame:?}"
+            .any(|l| l.contains("Steering") && l.contains("nudge")),
+        "missing Steering strip: {frame:?}"
     );
     assert!(
         frame.iter().any(|l| l.contains("click a row to recall it")),

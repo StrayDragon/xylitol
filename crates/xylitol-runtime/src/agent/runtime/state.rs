@@ -71,6 +71,7 @@ pub struct FrozenRootConfig {
     pub workspaces: Vec<String>,
     pub pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
     pub loop_chain: xylitol_plugin_sdk::LoopChain,
+    pub queued_head: Option<crate::agent::capabilities::QueuedItem>,
 }
 
 struct ActiveTurnSlot {
