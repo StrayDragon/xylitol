@@ -263,8 +263,11 @@ impl ApplicationOwnedRuntime {
                 content,
             );
         }
-        while visible.len() < transcript_h {
-            visible.push(String::new());
+        if visible.len() < transcript_h {
+            let pad = transcript_h - visible.len();
+            let mut padded = vec![String::new(); pad];
+            padded.append(&mut visible);
+            visible = padded;
         }
         visible.truncate(transcript_h);
         visible.extend(dock_lines);
@@ -504,7 +507,8 @@ mod tests {
             "viewport growth that fits content must re-follow"
         );
         let paint = runtime.project_frame(&full, 30, 40);
-        assert_eq!(paint.first().map(String::as_str), Some("L0"));
+        assert_eq!(paint.first().map(String::as_str), Some(""));
+        assert_eq!(paint[10], "L0");
         assert_eq!(paint.last().map(String::as_str), Some("L19"));
     }
 
@@ -787,7 +791,13 @@ mod tests {
         runtime.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
         let short: Vec<String> = vec!["aa".into(), "bb".into(), "dock".into()];
         let painted = runtime.project_frame(&short, 8, 40);
-        assert_eq!(painted[0], "aa");
+        assert_eq!(
+            painted[0], "",
+            "content shorter than the viewport bottom-aligns"
+        );
+        assert_eq!(painted[5], "aa");
+        assert_eq!(painted[6], "bb");
+        assert_eq!(painted[7], "dock");
         let full: Vec<String> = (0..20).map(|i| format!("L{i:0>3}")).collect();
         let narrow = runtime.project_frame(&full, 8, 19);
         assert_eq!(narrow[0], "L012");
