@@ -145,6 +145,12 @@ async fn drain_abort_and_lanes<T: Terminal>(
         log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
         let _ = session.take_gated_submit();
+        let dropped_follow = session.take_all_gated_follow_up();
+        let dropped_steer = session.take_all_gated_steer();
+        for msg in dropped_follow.iter().chain(dropped_steer.iter()) {
+            session.ui_model_mut().pop_follow_up_strip_matching(msg);
+            session.ui_model_mut().pop_steer_strip_matching(msg);
+        }
         session.note_user_abort();
         let _ = dispatch(
             driver,
@@ -159,12 +165,16 @@ async fn drain_abort_and_lanes<T: Terminal>(
         let _ = session.render_now();
     }
     let bang_cancelled = session.take_bash_cancelled();
-    if bang_cancelled && let Some(msg) = session.take_steer() {
-        session.ui_model_mut().pop_steer_strip_matching(&msg);
+
+    if bang_cancelled {
+        let dropped = session.take_all_steer();
+        for msg in &dropped {
+            session.ui_model_mut().pop_steer_strip_matching(msg);
+        }
         log::info!(
             target: "xylitol::tui",
-            "bang cancel drops local steer prompt_len={}",
-            msg.len()
+            "bang cancel drops local steer count={}",
+            dropped.len()
         );
     }
     let gate_holds = session.assembly_gate_latched() || driver.assembly_gate_open();

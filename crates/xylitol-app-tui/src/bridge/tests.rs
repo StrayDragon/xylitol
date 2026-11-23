@@ -444,7 +444,7 @@ fn queue_update_sets_badge() {
 }
 
 #[test]
-fn queue_update_trims_pending_strip_fifo() {
+fn queue_update_retires_only_delivered_rows() {
     let mut model = UiModel::new();
     model.enqueue_steer_strip("a".into());
     model.enqueue_steer_strip("b".into());
@@ -455,12 +455,19 @@ fn queue_update_trims_pending_strip_fifo() {
             items: vec![xylitol_plugin_sdk::session::QueueItem {
                 id: "qs0".into(),
                 kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
-                preview: "s0".into(),
+                preview: "b".into(),
             }],
         },
     );
-    assert_eq!(model.pending_steer, vec!["b".to_string()]);
-    assert!(model.pending_follow_up.is_empty());
+    assert_eq!(
+        model.pending_steer,
+        vec!["b".to_string()],
+        "a row the host no longer lists is retired, the live one stays"
+    );
+    assert!(
+        model.pending_follow_up.is_empty(),
+        "a follow-up the host no longer lists is retired"
+    );
 }
 
 #[test]

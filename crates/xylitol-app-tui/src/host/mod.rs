@@ -876,6 +876,18 @@ impl<T: Terminal> HostSession<T> {
         self.pending.push_gated_steer(text);
     }
 
+    pub fn take_all_steer(&mut self) -> Vec<String> {
+        self.pending.take_all_steer()
+    }
+
+    pub fn take_all_gated_follow_up(&mut self) -> Vec<String> {
+        self.pending.take_all_gated_follow_up()
+    }
+
+    pub fn take_all_gated_steer(&mut self) -> Vec<String> {
+        self.pending.take_all_gated_steer()
+    }
+
     pub fn take_gated_steer(&mut self) -> Option<String> {
         self.pending.take_gated_steer().map(|entry| entry.text)
     }
@@ -923,8 +935,11 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn set_queue_depth(&mut self, steer_count: usize, follow_up_count: usize) {
         let gated_follow = self.pending.gated_follow_up_count();
-        self.ui_model
-            .sync_queue_depth(steer_count, follow_up_count.saturating_add(gated_follow));
+        let gated_steer = self.pending.gated_steer_count();
+        self.ui_model.sync_queue_depth(
+            steer_count.saturating_add(gated_steer),
+            follow_up_count.saturating_add(gated_follow),
+        );
         self.sync_ui_root_from_model();
     }
 

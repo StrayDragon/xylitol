@@ -5619,6 +5619,48 @@ async fn busy_steer_keeps_steering_group_while_gate_holds() {
 }
 
 #[tokio::test]
+async fn busy_steer_does_not_displace_queued_follow_up() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.on_turn_started("hi");
+    root.borrow_mut().set_editor_text("你好");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.queue_stats().follow_up_count,
+        1,
+        "the busy follow-up must reach the host queue"
+    );
+
+    root.borrow_mut().set_editor_text("你是谁");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.queue_stats().steer_count,
+        1,
+        "the busy steer must reach the host steer queue"
+    );
+    assert_eq!(
+        driver.queue_stats().follow_up_count,
+        1,
+        "a steer must not displace the follow-up waiting in its own queue"
+    );
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["你好".to_string()],
+        "the strip must keep the follow-up row next to the steering row"
+    );
+    assert_eq!(session.ui_model().pending_steer, vec!["你是谁".to_string()]);
+}
+
+#[tokio::test]
 async fn c1215_mcp_select_list_nav_enter_closes() {
     use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
 

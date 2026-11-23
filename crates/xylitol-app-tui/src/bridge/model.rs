@@ -263,15 +263,22 @@ impl UiModel {
 
     pub fn sync_queue(&mut self, items: &[xylitol_plugin_sdk::session::QueueItem]) {
         use xylitol_plugin_sdk::session::QueueItemKind;
-        let steer = items
+        let steer: Vec<&str> = items
             .iter()
             .filter(|item| item.kind == QueueItemKind::Steer)
-            .count();
-        let follow_up = items
+            .map(|item| item.preview.as_str())
+            .collect();
+        let follow_up: Vec<&str> = items
             .iter()
             .filter(|item| item.kind == QueueItemKind::FollowUp)
-            .count();
-        self.sync_queue_depth(steer, follow_up);
+            .map(|item| item.preview.as_str())
+            .collect();
+        self.queue = QueueBadge {
+            steer_count: steer.len(),
+            follow_up_count: follow_up.len(),
+        };
+        Self::retire_delivered_rows(&mut self.pending_steer, &steer);
+        Self::retire_delivered_rows(&mut self.pending_follow_up, &follow_up);
     }
 
     pub fn sync_queue_depth(&mut self, steer_count: usize, follow_up_count: usize) {
@@ -287,6 +294,19 @@ impl UiModel {
             let drop_n = self.pending_follow_up.len() - follow_up_count;
             self.pending_follow_up.drain(..drop_n);
         }
+    }
+
+    fn retire_delivered_rows(rows: &mut Vec<String>, live: &[&str]) {
+        let mut remaining: Vec<&str> = live.to_vec();
+        rows.retain(|row| {
+            let preview = xylitol_plugin_sdk::session::QueueItem::preview_of(row);
+            if let Some(pos) = remaining.iter().position(|live| *live == preview) {
+                remaining.remove(pos);
+                true
+            } else {
+                false
+            }
+        });
     }
 
     pub fn enqueue_steer_strip(&mut self, text: String) {

@@ -142,6 +142,42 @@ impl PendingOps {
             .position(|entry| entry.origin == LaneOrigin::Gated)?;
         Some(self.follow_up.remove(pos))
     }
+    pub fn take_all_steer(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.steer)
+            .into_iter()
+            .map(|entry| entry.text)
+            .collect()
+    }
+    pub fn take_all_gated_follow_up(&mut self) -> Vec<String> {
+        let mut taken = Vec::new();
+        self.follow_up.retain(|entry| {
+            if entry.origin == LaneOrigin::Gated {
+                taken.push(entry.text.clone());
+                false
+            } else {
+                true
+            }
+        });
+        taken
+    }
+    pub fn take_all_gated_steer(&mut self) -> Vec<String> {
+        let mut taken = Vec::new();
+        self.steer.retain(|entry| {
+            if entry.origin == LaneOrigin::Gated {
+                taken.push(entry.text.clone());
+                false
+            } else {
+                true
+            }
+        });
+        taken
+    }
+    pub fn gated_steer_count(&self) -> usize {
+        self.steer
+            .iter()
+            .filter(|entry| entry.origin == LaneOrigin::Gated)
+            .count()
+    }
     pub fn gated_follow_up_count(&self) -> usize {
         self.follow_up
             .iter()
