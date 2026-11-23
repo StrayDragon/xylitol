@@ -5590,6 +5590,90 @@ async fn gated_rows_never_enter_the_host_queue() {
 }
 
 #[tokio::test]
+async fn gated_row_keeps_turn_order_against_later_busy_follow_up() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    session.latch_assembly_gate_for_mcp();
+    root.borrow_mut().set_editor_text("t1");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    root.borrow_mut().set_editor_text("t2");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+
+    session.release_assembly_gate();
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.runs, vec!["t1".to_string()]);
+    assert!(stream.is_some(), "t1 must still be in flight");
+
+    root.borrow_mut().set_editor_text("t3");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    root.borrow_mut().set_editor_text("t4");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["t2".to_string(), "t4".to_string()],
+        "the strip must keep arrival order across the gate release"
+    );
+
+    drain_pending(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.steer_calls,
+        vec!["t3".to_string()],
+        "the steer must reach the host steer queue"
+    );
+    assert!(
+        driver.follow_up_calls.is_empty(),
+        "a later follow-up must not overtake the row still waiting at the head"
+    );
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["t2".to_string(), "t4".to_string()],
+        "both rows must stay on the strip while the head waits for idle"
+    );
+
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.runs, vec!["t1".to_string()], "t1 stream drains here");
+    assert!(
+        matches!(
+            session.ui_model().pending_follow_up.as_slice(),
+            [a, b] if a == "t2" && b == "t4"
+        ),
+        "the trailing follow-up must not jump ahead of the waiting head: {:?}",
+        session.ui_model().pending_follow_up
+    );
+
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.runs,
+        vec!["t1".to_string(), "t2".to_string()],
+        "the gate-released row must run as its own turn"
+    );
+
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(
+        driver.runs,
+        vec!["t1".to_string(), "t2".to_string(), "t4".to_string()],
+        "the trailing follow-up must run only after the head turn"
+    );
+    assert!(
+        session.ui_model().pending_follow_up.is_empty(),
+        "the strip must drain in arrival order"
+    );
+}
+
+#[tokio::test]
 async fn busy_steer_keeps_steering_group_while_gate_holds() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();

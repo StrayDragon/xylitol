@@ -29,6 +29,12 @@ async fn test_c2999_queue_compact(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "门禁行不被后入队的插话超越"
+)]
+async fn test_c3600_queue_fifo(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
     name = "同一文本两次两用户冒泡"
 )]
 fn test_c2826_ati_same_text(fixed_zone_bdd: FixedZoneBdd) {}

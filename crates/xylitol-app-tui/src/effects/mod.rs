@@ -198,11 +198,7 @@ async fn drain_abort_and_lanes<T: Terminal>(
     if gate_holds {
         session.latch_assembly_gate();
     }
-    if idle_no_turn
-        && let Some(msg) = session
-            .take_gated_follow_up()
-            .or_else(|| session.take_busy_follow_up())
-    {
+    if idle_no_turn && let Some(msg) = session.take_follow_up() {
         session.ui_model_mut().pop_follow_up_strip_matching(&msg);
         session.ui_model_mut().pop_steer_strip_matching(&msg);
         log::info!(
@@ -212,14 +208,10 @@ async fn drain_abort_and_lanes<T: Terminal>(
         );
         return Some(msg);
     }
+    let steer_ready = !idle_no_turn || session.steer_head_is_gated();
     if !gate_holds
-        && let Some(msg) = session.take_gated_steer().or_else(|| {
-            if idle_no_turn {
-                None
-            } else {
-                session.take_steer()
-            }
-        })
+        && steer_ready
+        && let Some(msg) = session.take_steer()
     {
         log::info!(target: "xylitol::tui", "Command::Steer prompt_len={}", msg.len());
         if let Err(e) = dispatch(
@@ -238,7 +230,8 @@ async fn drain_abort_and_lanes<T: Terminal>(
     }
     if !idle_no_turn
         && !gate_holds
-        && let Some(msg) = session.take_busy_follow_up()
+        && !session.follow_up_head_is_gated()
+        && let Some(msg) = session.take_follow_up()
     {
         log::info!(target: "xylitol::tui", "Command::FollowUp prompt_len={}", msg.len());
         if let Err(e) = dispatch(
@@ -405,7 +398,7 @@ async fn release_gate_if_settled<T: Terminal>(
         return;
     }
 
-    let Some(msg) = session.take_gated_follow_up() else {
+    let Some(msg) = session.take_follow_up() else {
         return;
     };
     session.ui_model_mut().pop_follow_up_strip_matching(&msg);

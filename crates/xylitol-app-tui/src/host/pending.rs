@@ -101,13 +101,6 @@ impl PendingOps {
     pub fn push_gated_steer(&mut self, text: String) {
         self.steer.push(LaneEntry::gated(text));
     }
-    pub fn take_gated_steer(&mut self) -> Option<LaneEntry> {
-        let pos = self
-            .steer
-            .iter()
-            .position(|entry| entry.origin == LaneOrigin::Gated)?;
-        Some(self.steer.remove(pos))
-    }
     pub fn push_follow_up(&mut self, text: String) {
         self.follow_up.push(LaneEntry::busy(text));
     }
@@ -128,19 +121,11 @@ impl PendingOps {
             Some(self.follow_up.remove(0))
         }
     }
-    pub fn take_busy_follow_up(&mut self) -> Option<LaneEntry> {
-        let pos = self
-            .follow_up
-            .iter()
-            .position(|entry| entry.origin == LaneOrigin::Busy)?;
-        Some(self.follow_up.remove(pos))
+    pub fn peek_follow_up_origin(&self) -> Option<LaneOrigin> {
+        self.follow_up.first().map(|entry| entry.origin)
     }
-    pub fn take_gated_follow_up(&mut self) -> Option<LaneEntry> {
-        let pos = self
-            .follow_up
-            .iter()
-            .position(|entry| entry.origin == LaneOrigin::Gated)?;
-        Some(self.follow_up.remove(pos))
+    pub fn peek_steer_origin(&self) -> Option<LaneOrigin> {
+        self.steer.first().map(|entry| entry.origin)
     }
     pub fn take_all_steer(&mut self) -> Vec<String> {
         std::mem::take(&mut self.steer)

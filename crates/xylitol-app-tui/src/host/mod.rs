@@ -860,12 +860,16 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_follow_up().map(|entry| entry.text)
     }
 
-    pub fn take_busy_follow_up(&mut self) -> Option<String> {
-        self.pending.take_busy_follow_up().map(|entry| entry.text)
+    pub fn follow_up_head_is_gated(&self) -> bool {
+        self.pending
+            .peek_follow_up_origin()
+            .is_some_and(|origin| origin == crate::host::pending::LaneOrigin::Gated)
     }
 
-    pub fn take_gated_follow_up(&mut self) -> Option<String> {
-        self.pending.take_gated_follow_up().map(|entry| entry.text)
+    pub fn steer_head_is_gated(&self) -> bool {
+        self.pending
+            .peek_steer_origin()
+            .is_some_and(|origin| origin == crate::host::pending::LaneOrigin::Gated)
     }
 
     pub fn push_gated_follow_up(&mut self, text: String) {
@@ -886,10 +890,6 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn take_all_gated_steer(&mut self) -> Vec<String> {
         self.pending.take_all_gated_steer()
-    }
-
-    pub fn take_gated_steer(&mut self) -> Option<String> {
-        self.pending.take_gated_steer().map(|entry| entry.text)
     }
 
     pub fn remove_follow_up_matching(&mut self, text: &str) -> bool {

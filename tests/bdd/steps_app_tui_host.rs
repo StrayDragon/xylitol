@@ -4499,3 +4499,82 @@ pub(crate) fn t_c3400_width_ladder_ok(host_pump_bdd: &HostPumpBdd) {
         );
     }
 }
+
+#[given("装配门禁期入队两条 follow-up t1 与 t2")]
+pub(crate) fn g_c3600_gate_two_follow_ups(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = fresh_pump();
+    pump.session.latch_assembly_gate_for_mcp();
+    put_pump(host_pump_bdd, pump);
+    for text in ["t1", "t2"] {
+        set_editor(host_pump_bdd, text);
+        step_key(host_pump_bdd, enter_event());
+    }
+}
+
+#[when("门禁释放后入队一条 steer t3 与一条 follow-up t4 并推进主机泵")]
+pub(crate) async fn w_c3600_gate_queue_fifo(host_pump_bdd: &HostPumpBdd) {
+    {
+        let mut pump = take_pump(host_pump_bdd);
+        pump.session.release_assembly_gate();
+        put_pump(host_pump_bdd, pump);
+    }
+    drain(host_pump_bdd).await;
+    {
+        let mut pump = take_pump(host_pump_bdd);
+        assert_eq!(
+            pump.driver.runs,
+            vec!["t1".to_string()],
+            "c3600: the gate-released head must start its own turn"
+        );
+        pump.session.on_turn_started("t1");
+        put_pump(host_pump_bdd, pump);
+    }
+    set_editor(host_pump_bdd, "t3");
+    step_key(host_pump_bdd, enter_event());
+    set_editor(host_pump_bdd, "t4");
+    step_key(host_pump_bdd, alt_enter_event());
+    drain(host_pump_bdd).await;
+}
+
+#[then("steer t3 立即上行且队列头部保持 t2")]
+pub(crate) fn t_c3600_steer_first(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let steers = pump.driver.steer_calls.clone();
+    let follow_ups = pump.driver.follow_up_calls.clone();
+    let rows = pump.session.ui_model().pending_follow_up.clone();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(
+        steers,
+        vec!["t3".to_string()],
+        "c3600: the steer must uplink at once"
+    );
+    assert_eq!(
+        rows,
+        vec!["t2".to_string(), "t4".to_string()],
+        "c3600: the strip must keep arrival order"
+    );
+    assert!(
+        follow_ups.is_empty(),
+        "c3600: a later follow-up MUST NOT overtake the waiting head: {follow_ups:?}"
+    );
+}
+
+#[then("t4 未上行且后续推进先上行 t2")]
+pub(crate) async fn t_c3600_head_turn_first(host_pump_bdd: &HostPumpBdd) {
+    {
+        let mut pump = take_pump(host_pump_bdd);
+        pump.session.on_run_stream_closed();
+        put_pump(host_pump_bdd, pump);
+    }
+    drain(host_pump_bdd).await;
+    let pump = take_pump(host_pump_bdd);
+    let runs = pump.driver.runs.clone();
+    let rows = pump.session.ui_model().pending_follow_up.clone();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(
+        runs,
+        vec!["t1".to_string(), "t2".to_string()],
+        "c3600: the waiting head must start the next turn"
+    );
+    assert_eq!(rows, vec!["t4".to_string()], "c3600: only t4 stays queued");
+}
