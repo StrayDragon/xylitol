@@ -103,6 +103,9 @@ pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
     if same_trailing && !queued_inject {
         return;
     }
+    if model.pending_follow_up.iter().any(|row| row == &text) {
+        model.pop_follow_up_strip_matching(&text);
+    }
     model.entries.push(entry);
 }
 

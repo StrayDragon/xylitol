@@ -82,7 +82,7 @@
       并且 会话树未打开
   @req:r1285
   规则: product-queue-fixed-zone
-    产品 TUI 在 steer/follow-up 队列非空时 须在 scrollback 与 status 之间以 muted 色渲染逐条队列行及点击取回提示（不得写组合键名，见 app-tui-mouse-actions echo-without-key-names；实现为 queue strip）；steer 与 follow-up 须分组渲染，Steering 组在上、Follow-up 组在下；每条排队消息 须独占一行，行首以 muted 分隔符与 muted 标签 `N/M` 标识组内序号与组深度；每条正文 须截断为单行（超宽以省略号结尾），不得换行占用多行；固定区高度 须随队列条数增长，不得隐藏排队行。不得将排队内容写成 scrollback System [steer]/[follow-up] 墙；不得在 footer/status 另加队列计数徽章（如 `q:sN|fM`）。点击某一队列行 须只将该条正文还原进 editor（覆盖当前草稿）并移除该条；app.message.dequeue（默认 Alt+Up）须按后进先出逐条还原最近入队的一条并覆盖当前草稿。经 attach/Remote 时，入队后的 drain_pending 不得用空队列深度把已画条文案清掉；校准 须只按 Host 真实深度 FIFO 消退。
+    产品 TUI 在 steer/follow-up 队列非空时 须在 scrollback 与 status 之间以 muted 色渲染逐条队列行及点击取回提示（不得写组合键名，见 app-tui-mouse-actions echo-without-key-names；实现为 queue strip）；steer 与 follow-up 须分组渲染，Steer-up 组在上、Follow-up 组在下；每条排队消息 须独占一行，行首以 muted 分隔符与 muted 组标签（`Steer-up` / `Follow-up`）标识所属分组，不得带组内序号或组深度计数；每条正文 须截断为单行（超宽以省略号结尾），不得换行占用多行；固定区高度 须随队列条数增长，不得隐藏排队行。不得将排队内容写成 scrollback System [steer]/[follow-up] 墙；不得在 footer/status 另加队列计数徽章（如 `q:sN|fM`）。点击某一队列行 须只将该条正文还原进 editor（覆盖当前草稿）并移除该条；app.message.dequeue（默认 Alt+Up）须按后进先出逐条还原最近入队的一条并覆盖当前草稿。经 attach/Remote 时，入队后的 drain_pending 不得用空队列深度把已画条文案清掉；校准 须只按 Host 真实深度 FIFO 消退。
 
     场景: 队列条带渲染与点击恢复
       当 以主机泵忙碌插队后渲染队列条并点击队列条
@@ -90,7 +90,7 @@
 
     场景: 多条排队逐条铺开
       当 以主机泵忙碌连续插队两条 steer 后渲染队列条
-      那么 队列条两条 Steering 行各含一条正文且带组内序号
+      那么 队列条两条 Steer-up 行各含一条正文且不带组内序号
   @req:r1286
   规则: product-queue-uplink
     当 steer/follow-up 从队列注入 agent history 时，runtime 须发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge 须将其提交为 scrollback UiEntry::User（与 idle 提交同形）；queue strip 随 QueueUpdate 消退后用户文本 须仍留在 transcript；不得仅在 strip 闪现后丢失。即使用户连续两次提交相同正文（idle 后再 busy 插话，或两轮根提交），transcript 须出现两条用户气泡，不得因正文相同而吞掉第二次提问。

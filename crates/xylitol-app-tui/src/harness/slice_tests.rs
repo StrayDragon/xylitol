@@ -603,7 +603,7 @@ async fn h4_busy_steer_calls_driver() {
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Steering 1/1") && l.contains("nudge"))
+            .any(|l| l.contains("Steer-up") && l.contains("nudge"))
     );
     assert!(
         !frame.iter().any(|l| l.contains("q:s")),
@@ -640,7 +640,7 @@ async fn h5_follow_up_calls_driver() {
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Follow-up 1/1") && l.contains("later"))
+            .any(|l| l.contains("Follow-up") && l.contains("later"))
     );
     assert!(
         !frame.iter().any(|l| l.contains("q:s")),
@@ -7101,7 +7101,7 @@ async fn busy_resume_short_terminal_with_queue_keeps_working_and_steer_in_viewpo
     let frame = root.borrow_mut().render(80);
     let vp_top = frame.len().saturating_sub(term_rows);
     let working_idx = frame.iter().position(|l| l.contains("Working"));
-    let steer_idx = frame.iter().position(|l| l.contains("Steering 1/"));
+    let steer_idx = frame.iter().position(|l| l.contains("Steer-up"));
     assert!(
         working_idx.is_some_and(|i| i >= vp_top),
         "Working MUST stay in viewport [vp_top={vp_top}]; frame_len={}",
@@ -7109,7 +7109,7 @@ async fn busy_resume_short_terminal_with_queue_keeps_working_and_steer_in_viewpo
     );
     assert!(
         steer_idx.is_some_and(|i| i >= vp_top),
-        "queue Steering line MUST stay in viewport when reserved (atc23); vp_top={vp_top} steer={steer_idx:?} frame_len={}",
+        "queue Steer-up line MUST stay in viewport when reserved (atc23); vp_top={vp_top} steer={steer_idx:?} frame_len={}",
         frame.len()
     );
 }

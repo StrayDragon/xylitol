@@ -444,7 +444,7 @@ fn queue_update_sets_badge() {
 }
 
 #[test]
-fn queue_update_retires_only_delivered_rows() {
+fn queue_update_trims_steer_lane_but_keeps_follow_up_rows() {
     let mut model = UiModel::new();
     model.enqueue_steer_strip("a".into());
     model.enqueue_steer_strip("b".into());
@@ -462,11 +462,12 @@ fn queue_update_retires_only_delivered_rows() {
     assert_eq!(
         model.pending_steer,
         vec!["b".to_string()],
-        "a row the host no longer lists is retired, the live one stays"
+        "the steer lane trims to the host depth without dropping the live row"
     );
-    assert!(
-        model.pending_follow_up.is_empty(),
-        "a follow-up the host no longer lists is retired"
+    assert_eq!(
+        model.pending_follow_up,
+        vec!["c".to_string()],
+        "a follow-up row survives until its own turn commits to the transcript"
     );
 }
 

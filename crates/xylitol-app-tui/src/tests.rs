@@ -737,8 +737,8 @@ fn harness_busy_enter_queues_steer() {
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Steering 1/1") && l.contains("nudge")),
-        "missing Steering strip: {frame:?}"
+            .any(|l| l.contains("Steer-up") && l.contains("nudge")),
+        "missing Steer-up strip: {frame:?}"
     );
     assert!(
         frame.iter().any(|l| l.contains("click a row to recall it")),
@@ -784,7 +784,7 @@ fn harness_busy_alt_enter_queues_follow_up() {
     let frame = root.borrow_mut().render(80);
     let follow_idx = frame
         .iter()
-        .position(|l| l.contains("Follow-up 1/1") && l.contains("later"))
+        .position(|l| l.contains("Follow-up") && l.contains("later"))
         .unwrap_or_else(|| panic!("missing Follow-up strip: {frame:?}"));
     let status_idx = frame
         .iter()
@@ -840,20 +840,19 @@ async fn busy_follow_ups_accumulate_and_recall_lifo() {
         "every follow-up must accumulate, not overwrite"
     );
     let frame = root.borrow_mut().render(80);
+    let follow_rows: Vec<&String> = frame.iter().filter(|l| l.contains("Follow-up")).collect();
     assert!(
-        frame
-            .iter()
-            .any(|l| l.contains("Follow-up 1/3") && l.contains("hi"))
+        follow_rows.iter().any(|l| l.contains("hi")),
+        "queued row must show: {frame:?}"
+    );
+    assert!(
+        follow_rows.iter().any(|l| l.contains("你是谁")),
+        "queued row must show: {frame:?}"
     );
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Follow-up 2/3") && l.contains("你是谁"))
-    );
-    assert!(
-        frame
-            .iter()
-            .any(|l| l.contains("Follow-up 3/3") && l.contains("你有什么工具"))
+            .any(|l| l.contains("Follow-up") && l.contains("你有什么工具"))
     );
 
     root.borrow_mut().set_editor_text("draft");
@@ -930,20 +929,19 @@ async fn assembly_gate_queues_every_submit() {
         "every submit during the assembly gate must queue"
     );
     let frame = root.borrow_mut().render(80);
+    let follow_rows: Vec<&String> = frame.iter().filter(|l| l.contains("Follow-up")).collect();
     assert!(
-        frame
-            .iter()
-            .any(|l| l.contains("Follow-up 1/3") && l.contains("hi"))
+        follow_rows.iter().any(|l| l.contains("hi")),
+        "queued row must show: {frame:?}"
+    );
+    assert!(
+        follow_rows.iter().any(|l| l.contains("你是谁")),
+        "queued row must show: {frame:?}"
     );
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Follow-up 2/3") && l.contains("你是谁"))
-    );
-    assert!(
-        frame
-            .iter()
-            .any(|l| l.contains("Follow-up 3/3") && l.contains("你有什么工具"))
+            .any(|l| l.contains("Follow-up") && l.contains("你有什么工具"))
     );
 }
 

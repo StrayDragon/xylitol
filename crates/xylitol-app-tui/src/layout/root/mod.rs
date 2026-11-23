@@ -1264,7 +1264,8 @@ impl UiRoot {
     }
 
     pub fn overlay_hover_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
-        let mut hits = Vec::new();
+        let mut hits = self.queue_row_hover_hits(width, transcript_rows);
+
         if let Some(hit) = self.queue_strip_hover_hit(width, transcript_rows) {
             hits.push(hit);
         }
@@ -1272,6 +1273,21 @@ impl UiRoot {
             hits.push(hit);
         }
         hits
+    }
+
+    fn queue_row_hover_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
+        self.queue_row_hits(width, transcript_rows)
+            .into_iter()
+            .map(|hit| {
+                let region = hit.into_region();
+                Hit::at_screen(
+                    region.id,
+                    u16::try_from(region.col_start).unwrap_or(u16::MAX),
+                    u16::try_from(region.content_row).unwrap_or(u16::MAX),
+                )
+                .cols(region.col_start, region.col_end)
+            })
+            .collect()
     }
 
     fn queue_strip_hover_hit(&self, width: usize, transcript_rows: usize) -> Option<Hit> {
@@ -1282,8 +1298,7 @@ impl UiRoot {
                 0,
                 u16::try_from(screen_row).unwrap_or(u16::MAX),
             )
-            .cols(0, width)
-            .tall(self.last_queue_rows),
+            .cols(0, width),
         )
     }
 
@@ -2217,6 +2232,37 @@ mod tests {
                 "dock hover hits must map through the dock row space"
             );
             assert!(!region.capturing, "hover hits must not capture the pointer");
+        }
+    }
+
+    #[test]
+    fn queue_hover_registers_one_hit_per_row() {
+        let mut root = root_with_dock(3);
+        for text in ["steer-one", "steer-two"] {
+            root.ui_model.enqueue_steer_strip(text.into());
+        }
+        root.ui_model.enqueue_follow_up_strip("later".into());
+        let hovers: Vec<_> = root
+            .overlay_hover_hits(120, 20)
+            .into_iter()
+            .map(|hit| hit.into_region())
+            .filter(|region| {
+                region.id != UiRoot::QUEUE_STRIP_HIT_ID
+                    && region.id != UiRoot::TODO_SUMMARY_HOVER_HIT_ID
+            })
+            .collect();
+        assert_eq!(
+            hovers.len(),
+            3,
+            "each queued row needs its own hover hit: {hovers:?}"
+        );
+        let mut rows: Vec<usize> = hovers.iter().map(|region| region.content_row).collect();
+        rows.sort_unstable();
+        rows.dedup();
+        assert_eq!(rows.len(), 3, "hover hits must not collapse onto one row");
+        for region in &hovers {
+            assert_eq!(region.height, 1, "a row hover covers exactly one row");
+            assert!(UiRoot::queue_row_from_hit(region.id).is_some());
         }
     }
 

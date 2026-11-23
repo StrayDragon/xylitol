@@ -1929,7 +1929,7 @@ pub(crate) fn t_c2826_queue_strip_click(host_pump_bdd: &HostPumpBdd) {
     let after_text = frames[frames.len() - 1].replace("---AFTER---\n", "");
     drop(frames);
     assert!(
-        before.contains("steer-one") || before.contains("Steering"),
+        before.contains("steer-one") || before.contains("Steer-up"),
         "c2826: 队列条应含插队文本：{before}"
     );
     let footer = footer_line(&before);
@@ -3487,23 +3487,23 @@ pub(crate) async fn w_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
     host_pump_bdd.ansi_frames.borrow_mut().push(frame);
 }
 
-#[then("队列条两条 Steering 行各含一条正文且带组内序号")]
+#[then("队列条两条 Steer-up 行各含一条正文且不带组内序号")]
 pub(crate) fn t_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
     let frames = host_pump_bdd.ansi_frames.borrow();
     let frame = frames.last().expect("queue frame");
     let steering: Vec<&str> = frame
         .lines()
-        .filter(|line| line.contains("Steering"))
+        .filter(|line| line.contains("Steer-up"))
         .collect();
     assert_eq!(steering.len(), 2, "c2999: 每条排队消息独占一行：\n{frame}");
     assert!(
-        steering[0].contains("1/2") && steering[0].contains("steer-one"),
-        "c2999: 首行应含组内序号与首条正文：{}",
+        steering[0].contains("steer-one") && !steering[0].contains("1/2"),
+        "c2999: 首行应含组标签与首条正文且不带组内序号：{}",
         steering[0]
     );
     assert!(
-        steering[1].contains("2/2") && steering[1].contains("steer-two"),
-        "c2999: 次行应含组内序号与次条正文：{}",
+        steering[1].contains("steer-two") && !steering[1].contains("2/2"),
+        "c2999: 次行应含组标签与次条正文且不带组内序号：{}",
         steering[1]
     );
 }

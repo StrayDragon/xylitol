@@ -15,7 +15,7 @@ pub fn render_queue_strip(
     if width > 0 {
         lines.push(String::new());
     }
-    push_lane(&mut lines, theme, "Steering", pending_steer, width);
+    push_lane(&mut lines, theme, "Steer-up", pending_steer, width);
     push_lane(&mut lines, theme, "Follow-up", pending_follow_up, width);
     let hint = theme.paint_muted("↳ click a row to recall it · Alt+Up recalls all");
     lines.push(if width == 0 {
@@ -33,9 +33,8 @@ fn push_lane(
     messages: &[String],
     width: usize,
 ) {
-    let total = messages.len();
-    for (index, text) in messages.iter().enumerate() {
-        let head = format!(" ┆ {label} {}/{}  ", index + 1, total);
+    for text in messages.iter() {
+        let head = format!(" ┆ {label}  ");
         let body = truncate_to_width(
             text,
             width

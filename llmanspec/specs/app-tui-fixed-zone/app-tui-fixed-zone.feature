@@ -204,7 +204,7 @@
       那么 status 显示 Reloading 短词且不冒充 Working
   @req:r1231
   规则: fixed-zone-no-extra-undocumented
-    产品 TUI 固定区（footer / status / 队列条 / 通知条 / 待办栏等）可观察文案与徽章 须仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；不得另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（逐条队列行，带 muted `N/M` 组内序号，见 ati11），不得再在 footer/status 重复队列计数徽章。
+    产品 TUI 固定区（footer / status / 队列条 / 通知条 / 待办栏等）可观察文案与徽章 须仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；不得另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（逐条队列行，行首 muted 组标签 `Steer-up` / `Follow-up`，见 ati11），不得再在 footer/status 重复队列计数徽章。
 
     场景: 固定区槽顺序
       当 产品 TUI 同时存在非空待办栏、队列条与通知条

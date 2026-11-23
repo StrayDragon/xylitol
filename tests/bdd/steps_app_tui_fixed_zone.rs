@@ -74,7 +74,7 @@ fn then_dock_order_queue_todo_toast_status_editor(fixed_zone_bdd: &FixedZoneBdd)
             .find(needle)
             .unwrap_or_else(|| panic!("missing `{needle}` in:\n{plain}"))
     };
-    let queue_at = idx("Steering 1/1  steer-me-queue");
+    let queue_at = idx("Steer-up  steer-me-queue");
     let todo_at = idx("write todo-bar copy");
     let toast_at = idx("Error: boom-toast");
     let status_at = idx("Working");
@@ -95,7 +95,7 @@ fn then_empty_todo_bar_is_zero_rows(fixed_zone_bdd: &FixedZoneBdd) {
     model.todo = TodoList::default();
     let plain = paint_dock(model);
     assert!(
-        plain.contains("Steering 1/1") && plain.contains("steer-me-queue"),
+        plain.contains("Steer-up") && plain.contains("steer-me-queue"),
         "queue remains: {plain}"
     );
     assert!(

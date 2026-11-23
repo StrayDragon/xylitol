@@ -144,13 +144,25 @@ async fn drain_abort_and_lanes<T: Terminal>(
     if aborted_now {
         log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
-        let _ = session.take_gated_submit();
+        let gated_submit = session.take_gated_submit();
         let dropped_follow = session.take_all_gated_follow_up();
         let dropped_steer = session.take_all_gated_steer();
-        for msg in dropped_follow.iter().chain(dropped_steer.iter()) {
+        for msg in dropped_follow
+            .iter()
+            .chain(dropped_steer.iter())
+            .chain(gated_submit.iter())
+        {
             session.ui_model_mut().pop_follow_up_strip_matching(msg);
             session.ui_model_mut().pop_steer_strip_matching(msg);
         }
+        let cleared_steer = session.ui_model_mut().clear_steer_strip();
+        log::info!(
+            target: "xylitol::tui",
+            "abort clears gated rows submit={} follow={} steer={} strip_rows={cleared_steer}",
+            gated_submit.is_some(),
+            dropped_follow.len(),
+            dropped_steer.len()
+        );
         session.note_user_abort();
         let _ = dispatch(
             driver,
@@ -168,12 +180,10 @@ async fn drain_abort_and_lanes<T: Terminal>(
 
     if bang_cancelled {
         let dropped = session.take_all_steer();
-        for msg in &dropped {
-            session.ui_model_mut().pop_steer_strip_matching(msg);
-        }
+        let cleared = session.ui_model_mut().clear_steer_strip();
         log::info!(
             target: "xylitol::tui",
-            "bang cancel drops local steer count={}",
+            "bang cancel drops local steer queued={} rows={cleared}",
             dropped.len()
         );
     }

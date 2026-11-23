@@ -263,50 +263,27 @@ impl UiModel {
 
     pub fn sync_queue(&mut self, items: &[xylitol_plugin_sdk::session::QueueItem]) {
         use xylitol_plugin_sdk::session::QueueItemKind;
-        let steer: Vec<&str> = items
+        let steer = items
             .iter()
             .filter(|item| item.kind == QueueItemKind::Steer)
-            .map(|item| item.preview.as_str())
-            .collect();
-        let follow_up: Vec<&str> = items
+            .count();
+        let follow_up = items
             .iter()
             .filter(|item| item.kind == QueueItemKind::FollowUp)
-            .map(|item| item.preview.as_str())
-            .collect();
-        self.queue = QueueBadge {
-            steer_count: steer.len(),
-            follow_up_count: follow_up.len(),
-        };
-        Self::retire_delivered_rows(&mut self.pending_steer, &steer);
-        Self::retire_delivered_rows(&mut self.pending_follow_up, &follow_up);
+            .count();
+        self.sync_queue_depth(steer, follow_up);
     }
 
     pub fn sync_queue_depth(&mut self, steer_count: usize, follow_up_count: usize) {
+        let previous_steer = self.queue.steer_count;
         self.queue = QueueBadge {
             steer_count,
             follow_up_count,
         };
-        if self.pending_steer.len() > steer_count {
+        if previous_steer > steer_count && self.pending_steer.len() > steer_count {
             let drop_n = self.pending_steer.len() - steer_count;
             self.pending_steer.drain(..drop_n);
         }
-        if self.pending_follow_up.len() > follow_up_count {
-            let drop_n = self.pending_follow_up.len() - follow_up_count;
-            self.pending_follow_up.drain(..drop_n);
-        }
-    }
-
-    fn retire_delivered_rows(rows: &mut Vec<String>, live: &[&str]) {
-        let mut remaining: Vec<&str> = live.to_vec();
-        rows.retain(|row| {
-            let preview = xylitol_plugin_sdk::session::QueueItem::preview_of(row);
-            if let Some(pos) = remaining.iter().position(|live| *live == preview) {
-                remaining.remove(pos);
-                true
-            } else {
-                false
-            }
-        });
     }
 
     pub fn enqueue_steer_strip(&mut self, text: String) {
@@ -317,6 +294,20 @@ impl UiModel {
     pub fn enqueue_follow_up_strip(&mut self, text: String) {
         self.pending_follow_up.push(text);
         self.queue.follow_up_count = self.pending_follow_up.len();
+    }
+
+    pub fn clear_follow_up_strip(&mut self) -> usize {
+        let cleared = self.pending_follow_up.len();
+        self.pending_follow_up.clear();
+        self.queue.follow_up_count = 0;
+        cleared
+    }
+
+    pub fn clear_steer_strip(&mut self) -> usize {
+        let cleared = self.pending_steer.len();
+        self.pending_steer.clear();
+        self.queue.steer_count = 0;
+        cleared
     }
 
     pub fn pop_follow_up_strip_matching(&mut self, text: &str) {
