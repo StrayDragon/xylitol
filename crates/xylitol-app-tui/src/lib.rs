@@ -278,6 +278,7 @@ async fn run_host_loop(
     } else {
         seed_editor_history(&mut session, driver).await
     };
+    session.install_mcp_catalog_waker();
     session.refresh_loaded_resources(driver).await;
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.refresh_mcp_catalog(driver).await;
@@ -397,14 +398,12 @@ async fn run_host_loop(
                         session.latch_assembly_gate_for_mcp();
                     }
                     if driver.poll_prepare_progress().await {
-                        let t0 = std::time::Instant::now();
                         if let Some(snap) = driver.loaded_resources_cached() {
                             session.refresh_loaded_resources_from_snap(snap);
                         } else {
                             session.refresh_loaded_resources(driver).await;
                         }
                         session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
-                        session.refresh_mcp_catalog(driver).await;
                         session.set_plugin_commands(
                             driver
                                 .get_commands()
@@ -413,8 +412,11 @@ async fn run_host_loop(
                                 .collect(),
                         );
                         session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
-                        crate::lag::note("host_mcp_poll_refresh", t0);
                     }
+                    if session.take_mcp_catalog_request() {
+                        driver.request_mcp_catalog();
+                    }
+                    session.apply_ready_mcp_catalog(driver.mcp_catalog_state());
                     let t_tick = std::time::Instant::now();
                     session.step(HostEvent::Tick)?;
                     crate::lag::note("host_tick", t_tick);
@@ -558,6 +560,7 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
     let mut model_synced = false;
     for ev in driver.drain_idle_events() {
         model_synced |= matches!(ev, crate::driver::XyEvent::ModelSelect { .. });
+        session.set_host_chain_pending(driver.host_chain_pending());
         session.step(HostEvent::Xy(Box::new(ev)))?;
     }
     if model_synced {

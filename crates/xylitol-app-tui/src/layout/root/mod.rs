@@ -35,7 +35,7 @@ use xylitol_tui::{
 };
 
 use super::dollar_skill_source::DollarSkillSource;
-use super::mcp_source::{McpPickSink, McpResourceSource};
+use super::mcp_source::McpPickSink;
 use super::slash_catalog::slash_commands_for_editor;
 use crate::UiPhase;
 use crate::driver::{CAPABILITY_PENDING_CUE, MCP_PENDING_CUE};
@@ -184,7 +184,7 @@ pub struct UiRoot {
     last_todo_hits: Vec<TodoBarHit>,
     last_todo_plain: Vec<String>,
     mcp_tray: AttachmentTray,
-    mcp_catalog: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
+    mcp_catalog: super::mcp_source::McpCatalogLazy,
     mcp_pick_sink: McpPickSink,
     last_tray_rows: usize,
     tray_strip_row: usize,
@@ -335,7 +335,7 @@ impl UiRoot {
             last_todo_hits: Vec::new(),
             last_todo_plain: Vec::new(),
             mcp_tray: AttachmentTray::default(),
-            mcp_catalog: Vec::new(),
+            mcp_catalog: super::mcp_source::McpCatalogLazy::new(),
             mcp_pick_sink: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             last_tray_rows: 0,
             tray_strip_row: 0,
@@ -398,10 +398,8 @@ impl UiRoot {
                 )
                 .with_id("mcp-panel"),
             ),
-            Box::new(McpResourceSource::new(
-                self.mcp_catalog.clone(),
-                self.mcp_pick_sink.clone(),
-            )),
+            Box::new(self.mcp_catalog.source(self.mcp_pick_sink.clone()))
+                as Box<dyn CompletionSource>,
             Box::new({
                 let src = SlashCommandSource::new(slash_commands_for_editor(
                     self.designing,
@@ -447,20 +445,34 @@ impl UiRoot {
         self.install_completion_sources();
     }
 
+    pub fn mcp_catalog_status(&self) -> crate::driver::McpCatalogState {
+        self.mcp_catalog.status()
+    }
+
+    pub fn set_mcp_catalog_status(&mut self, status: crate::driver::McpCatalogState) {
+        self.mcp_catalog.set_status(status);
+        self.install_completion_sources();
+    }
+
+    pub fn set_mcp_catalog_waker(&mut self, waker: super::mcp_source::McpCatalogWaker) {
+        self.mcp_catalog.set_waker(waker);
+        self.install_completion_sources();
+    }
+
     pub fn set_mcp_catalog_entries(
         &mut self,
         entries: Vec<xylitol_plugin_sdk::mcp::McpCatalogEntry>,
     ) {
-        let changed = self.mcp_catalog.len() != entries.len()
-            || self
-                .mcp_catalog
+        let previous = self.mcp_catalog.entries();
+        let changed = previous.len() != entries.len()
+            || previous
                 .iter()
                 .zip(entries.iter())
                 .any(|(a, b)| a.server != b.server || a.uri != b.uri || a.name != b.name);
         if !changed {
             return;
         }
-        self.mcp_catalog = entries;
+        self.mcp_catalog.set_entries(entries);
         self.install_completion_sources();
     }
 

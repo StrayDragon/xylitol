@@ -170,20 +170,23 @@ pub(super) async fn open_mcp<T: Terminal>(
                 session.mount_mcp_panel(&snap);
             }
         }
-        McpPanel::Prompts | McpPanel::Resources => match driver.mcp_catalog().await {
-            Ok(catalog) => {
-                session.set_mcp_catalog_entries(catalog.resources.clone());
-                match panel {
+        McpPanel::Prompts | McpPanel::Resources => {
+            driver.request_mcp_catalog();
+            session.apply_ready_mcp_catalog(driver.mcp_catalog_state());
+            match driver.mcp_catalog_state() {
+                crate::driver::McpCatalogState::Ready(catalog) => match panel {
                     McpPanel::Prompts => session.mount_mcp_prompt_picker(catalog.prompts),
                     McpPanel::Resources => session.mount_mcp_resource_picker(catalog.resources),
                     McpPanel::Servers => {}
+                },
+                crate::driver::McpCatalogState::Failed(reason) => {
+                    session.push_scroll_notice(format!("/mcp failed: {reason}"));
+                }
+                _ => {
+                    session.push_scroll_notice("mcp catalog loading… reopen /mcp once it settles");
                 }
             }
-            Err(e) => {
-                e.log_failure("tui.mcp_catalog");
-                session.push_scroll_notice(format!("/mcp failed: {e}"));
-            }
-        },
+        }
     }
     let _ = session.render_now();
 }

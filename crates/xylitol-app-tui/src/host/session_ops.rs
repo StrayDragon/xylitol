@@ -114,13 +114,49 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_mcp_catalog_entries(entries);
     }
 
-    pub async fn refresh_mcp_catalog(&mut self, driver: &mut dyn crate::driver::XyDriver) {
-        match driver.mcp_catalog().await {
-            Ok(catalog) => {
-                self.set_mcp_catalog_entries(catalog.resources);
-            }
-            Err(e) => e.log_failure("tui.mcp_catalog.refresh"),
+    pub fn install_mcp_catalog_waker(&mut self) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let pending = self.pending_mcp_catalog.clone();
+        root.borrow_mut()
+            .set_mcp_catalog_waker(std::sync::Arc::new(move || {
+                pending.store(true, std::sync::atomic::Ordering::SeqCst);
+            }));
+    }
+
+    pub fn take_mcp_catalog_request(&mut self) -> bool {
+        self.pending_mcp_catalog
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn apply_ready_mcp_catalog(&mut self, state: crate::driver::McpCatalogState) {
+        let changed =
+            std::mem::discriminant(&state) != std::mem::discriminant(&self.mcp_catalog_applied);
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().set_mcp_catalog_status(state.clone());
         }
+        match &state {
+            crate::driver::McpCatalogState::Ready(catalog) => {
+                self.set_mcp_catalog_entries(catalog.resources.clone());
+            }
+            crate::driver::McpCatalogState::Failed(reason) => {
+                log::warn!(target: "xylitol::tui", "mcp catalog fetch failed: {reason}");
+                if changed {
+                    self.push_scroll_notice(format!("mcp catalog unavailable: {reason}"));
+                }
+            }
+            crate::driver::McpCatalogState::Missing | crate::driver::McpCatalogState::Loading => {}
+        }
+        self.mcp_catalog_applied = state;
+        if changed {
+            self.tui.request_render(false);
+        }
+    }
+
+    pub async fn refresh_mcp_catalog(&mut self, driver: &mut dyn crate::driver::XyDriver) {
+        driver.request_mcp_catalog();
+        self.apply_ready_mcp_catalog(driver.mcp_catalog_state());
     }
 
     pub fn mount_mcp_prompt_args(&mut self, target: crate::mcp_attach::McpPromptTarget) {

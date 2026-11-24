@@ -7,7 +7,7 @@ mod types;
 pub use crate::driver_error::XyDriverError;
 pub use proto::BashRun;
 pub use proto::{AttachObserve, LinkHealth, LinkPhase, XyDriver};
-pub use remote::{LinkTunings, XyRemoteDriver};
+pub use remote::{LinkTunings, McpCatalogState, XyRemoteDriver};
 #[allow(unused_imports)]
 pub use types::{
     CAPABILITY_PENDING_CUE, ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream,

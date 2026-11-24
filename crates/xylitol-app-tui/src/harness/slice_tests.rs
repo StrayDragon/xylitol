@@ -5653,6 +5653,68 @@ async fn gated_rows_survive_host_depth_calibration() {
     );
 }
 #[tokio::test]
+async fn chained_turn_keeps_the_session_busy_until_the_last_end() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+
+    session.on_turn_started("root");
+    session.set_host_chain_pending(true);
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            messages: Vec::new(),
+            reason: None,
+        })))
+        .unwrap();
+    assert_eq!(
+        session.ui_model().status.as_deref(),
+        Some("Working"),
+        "a chained AgentEnd must keep the session busy, not fall back to idle"
+    );
+
+    session.set_host_chain_pending(false);
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            messages: Vec::new(),
+            reason: None,
+        })))
+        .unwrap();
+    assert!(
+        !session.is_busy(),
+        "the last AgentEnd settles the session: {:?}",
+        session.ui_model().status
+    );
+}
+#[tokio::test]
+async fn mcp_at_token_lazily_loads_the_catalog_without_blocking() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+    let mut driver = ScriptedDriver::new();
+
+    session.install_mcp_catalog_waker();
+    assert_eq!(
+        driver.mcp_catalog_calls(),
+        0,
+        "startup must not fetch the catalog eagerly"
+    );
+
+    root.borrow_mut().set_editor_text("@mcp:");
+    session
+        .step(HostEvent::Input(key_event(
+            crossterm::event::KeyCode::Char('f'),
+            crossterm::event::KeyModifiers::NONE,
+        )))
+        .unwrap();
+    assert!(
+        session.take_mcp_catalog_request(),
+        "typing an @mcp: token must wake the lazy catalog fetch"
+    );
+    driver.request_mcp_catalog();
+    assert_eq!(
+        driver.mcp_catalog_calls(),
+        0,
+        "the request is async; no fetch happens on the main loop"
+    );
+}
+#[tokio::test]
 async fn host_woken_turn_head_lands_in_the_transcript() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();

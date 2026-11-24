@@ -3,6 +3,7 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 
+use super::McpCatalogState;
 use super::XyDriverError;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
@@ -160,6 +161,16 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
     fn drain_idle_events(&mut self) -> Vec<XyEvent> {
         Vec::new()
     }
+
+    fn host_chain_pending(&self) -> bool {
+        false
+    }
+
+    fn mcp_catalog_state(&self) -> McpCatalogState {
+        McpCatalogState::Missing
+    }
+
+    fn request_mcp_catalog(&self) {}
 
     fn link_health(&self) -> LinkHealth {
         LinkHealth::Up

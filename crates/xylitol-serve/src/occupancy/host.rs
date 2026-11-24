@@ -37,8 +37,8 @@ use xylitol_protocol::method::{
 use xylitol_protocol::registry::parse_command;
 use xylitol_protocol::registry::{
     METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GET_AVAILABLE_MODELS,
-    METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_MCP_CATALOG,
-    METHOD_MCP_OAUTH_CANCEL, METHOD_MCP_OAUTH_START, METHOD_MCP_OAUTH_STATUS,
+    METHOD_GET_STATE, METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES,
+    METHOD_MCP_CATALOG, METHOD_MCP_OAUTH_CANCEL, METHOD_MCP_OAUTH_START, METHOD_MCP_OAUTH_STATUS,
     METHOD_MCP_PROMPT_GET, METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST, METHOD_PROMPT,
     METHOD_RELOAD, METHOD_SESSION_DETACH, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
@@ -2135,11 +2135,11 @@ async fn dispatch_session_unary(
     }
 
     if method == METHOD_MCP_CATALOG {
-        let mut g = slot.driver.lock().await;
-        let Some(driver) = g.as_mut() else {
-            return RpcResult::error("unavailable", "no writer engine");
+        let mut reader = match materialize_reader(host, session_id).await {
+            Ok(driver) => driver,
+            Err(e) => return rpc_err(e),
         };
-        return match driver.mcp_catalog().await {
+        return match reader.mcp_catalog().await {
             Ok(catalog) => {
                 RpcResult::ok_value(serde_json::to_value(catalog).unwrap_or(Value::Null))
             }
@@ -2242,11 +2242,42 @@ async fn dispatch_session_unary(
         };
     }
 
-    if is_writer_method(method) {
-        return dispatch_writer_unary(host, slot, method, payload, workspace).await;
-    }
+    let result = if is_writer_method(method) {
+        dispatch_writer_unary(host, slot, method, payload, workspace).await
+    } else {
+        dispatch_readonly_unary(host, slot, session_id, method, payload, workspace).await
+    };
+    attach_inflight(method, slot, result).await
+}
 
-    dispatch_readonly_unary(host, slot, session_id, method, payload, workspace).await
+async fn attach_inflight(
+    method: &str,
+    slot: &Arc<SessionSlot>,
+    mut result: RpcResult,
+) -> RpcResult {
+    if method != METHOD_GET_STATE {
+        return result;
+    }
+    let queued = {
+        let mut g = slot.driver.lock().await;
+        g.as_mut().is_some_and(|d| {
+            d.queue_items()
+                .iter()
+                .any(|item| item.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp)
+        })
+    };
+    let inflight = Value::Bool(slot.turn_inflight_active() || queued);
+    match result.value.as_mut() {
+        Some(Value::Object(map)) => {
+            map.insert("inflight".into(), inflight);
+        }
+        Some(Value::Null) => {
+            result.value = Some(json!({ "inflight": inflight }));
+        }
+        None => result.value = Some(json!({ "inflight": inflight })),
+        Some(_) => {}
+    }
+    result
 }
 
 async fn dispatch_writer_unary(
@@ -3961,6 +3992,53 @@ mod tests {
         panic!("prompt turn did not settle at {expected} run(s)");
     }
 
+    #[tokio::test]
+    async fn get_state_reports_whether_a_turn_is_still_running() {
+        let host = gate_host();
+        let slot = host.slot("s1").await;
+        let state = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            xylitol_protocol::registry::METHOD_GET_STATE,
+            json!({}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert!(state.ok, "get_state must answer: {:?}", state.error);
+        assert_eq!(
+            state
+                .value
+                .as_ref()
+                .and_then(|v| v.get("inflight"))
+                .and_then(Value::as_bool),
+            Some(false),
+            "an idle host must report no turn in flight: {:?}",
+            state.value
+        );
+
+        slot.mark_run_inflight_for_test(true);
+        let busy = dispatch_session_unary(
+            &host,
+            &slot,
+            "s1",
+            xylitol_protocol::registry::METHOD_GET_STATE,
+            json!({}),
+            Path::new("."),
+            None,
+        )
+        .await;
+        assert_eq!(
+            busy.value
+                .as_ref()
+                .and_then(|v| v.get("inflight"))
+                .and_then(Value::as_bool),
+            Some(true),
+            "a running turn must be observable so clients can keep following: {:?}",
+            busy.value
+        );
+    }
     #[tokio::test(start_paused = true)]
     async fn follow_up_while_idle_starts_its_own_turn_in_arrival_order() {
         let host = gate_host();
@@ -4546,6 +4624,13 @@ mod tests {
                 None,
             )
             .await;
+            if method == METHOD_MCP_CATALOG {
+                assert!(
+                    result.ok,
+                    "mcp_catalog reads through a reader driver and needs no writer engine: {result:?}"
+                );
+                continue;
+            }
             assert_eq!(
                 result,
                 RpcResult::error("unavailable", "no writer engine"),
@@ -4587,6 +4672,13 @@ mod tests {
                 None,
             )
             .await;
+            if method == METHOD_MCP_CATALOG {
+                assert!(
+                    result.ok,
+                    "mcp_catalog goes through a reader driver, not the stubbed writer: {result:?}"
+                );
+                continue;
+            }
             assert!(
                 !result.ok,
                 "{method} must surface the driver error: {result:?}"

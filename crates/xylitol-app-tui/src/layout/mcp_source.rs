@@ -9,15 +9,70 @@ use crate::mcp_attach::AttachmentTray;
 
 pub type McpPickSink = Arc<Mutex<Vec<McpResourceRef>>>;
 
-pub struct McpResourceSource {
-    catalog: Vec<McpCatalogEntry>,
-    picks: McpPickSink,
+pub type McpCatalogWaker = Arc<dyn Fn() + Send + Sync>;
+
+pub type McpCatalogStatusSlot = Arc<Mutex<crate::driver::McpCatalogState>>;
+
+#[derive(Clone)]
+pub struct McpCatalogLazy {
+    entries: Arc<Mutex<Vec<McpCatalogEntry>>>,
+    status: McpCatalogStatusSlot,
+    waker: Arc<Mutex<Option<McpCatalogWaker>>>,
 }
 
-impl McpResourceSource {
-    pub fn new(catalog: Vec<McpCatalogEntry>, picks: McpPickSink) -> Self {
-        Self { catalog, picks }
+impl McpCatalogLazy {
+    pub fn new() -> Self {
+        Self {
+            entries: Arc::new(Mutex::new(Vec::new())),
+            status: Arc::new(Mutex::new(crate::driver::McpCatalogState::Missing)),
+            waker: Arc::new(Mutex::new(None)),
+        }
     }
+
+    pub fn entries(&self) -> Vec<McpCatalogEntry> {
+        self.entries.lock().map(|e| e.clone()).unwrap_or_default()
+    }
+
+    pub fn status(&self) -> crate::driver::McpCatalogState {
+        self.status
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or(crate::driver::McpCatalogState::Missing)
+    }
+
+    pub fn set_entries(&self, entries: Vec<McpCatalogEntry>) {
+        if let Ok(mut slot) = self.entries.lock() {
+            *slot = entries;
+        }
+    }
+
+    pub fn set_status(&self, status: crate::driver::McpCatalogState) {
+        if let Ok(mut slot) = self.status.lock() {
+            *slot = status;
+        }
+    }
+
+    pub fn set_waker(&self, waker: McpCatalogWaker) {
+        if let Ok(mut slot) = self.waker.lock() {
+            *slot = Some(waker);
+        }
+    }
+
+    pub fn source(&self, picks: McpPickSink) -> McpResourceSource {
+        McpResourceSource {
+            catalog: self.entries.clone(),
+            picks,
+            waker: self.waker.lock().ok().and_then(|w| w.clone()),
+            status: Some(self.status.clone()),
+        }
+    }
+}
+
+pub struct McpResourceSource {
+    catalog: Arc<Mutex<Vec<McpCatalogEntry>>>,
+    picks: McpPickSink,
+    waker: Option<McpCatalogWaker>,
+    status: Option<McpCatalogStatusSlot>,
 }
 
 fn extract_mcp_at_prefix(before_cursor: &str) -> Option<String> {
@@ -35,10 +90,12 @@ impl CompletionSource for McpResourceSource {
     }
 
     fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch> {
-        if self.catalog.is_empty() {
-            return None;
+        let prefix = extract_mcp_at_prefix(ctx.before_cursor())?;
+        let empty = self.catalog.lock().map(|c| c.is_empty()).unwrap_or(true);
+        if empty && let Some(waker) = &self.waker {
+            waker();
         }
-        extract_mcp_at_prefix(ctx.before_cursor()).map(|prefix| CompletionMatch { prefix })
+        Some(CompletionMatch { prefix })
     }
 
     fn should_dismiss(&self, ctx: &CompletionContext<'_>, _m: &CompletionMatch) -> bool {
@@ -51,8 +108,8 @@ impl CompletionSource for McpResourceSource {
         m: &CompletionMatch,
     ) -> Option<AutocompleteSuggestions> {
         let needle = m.prefix.trim_start_matches("@mcp:").to_ascii_lowercase();
-        let items: Vec<AutocompleteItem> = self
-            .catalog
+        let catalog = self.catalog.lock().map(|c| c.clone()).unwrap_or_default();
+        let items: Vec<AutocompleteItem> = catalog
             .iter()
             .filter(|e| e.uri.is_some())
             .filter(|e| {
@@ -76,13 +133,37 @@ impl CompletionSource for McpResourceSource {
             })
             .collect();
         if items.is_empty() {
-            None
-        } else {
-            Some(AutocompleteSuggestions {
-                items,
+            let state = self
+                .status
+                .as_ref()
+                .and_then(|s| s.lock().ok().map(|v| v.clone()));
+            let note = match state {
+                Some(crate::driver::McpCatalogState::Loading) => "loading mcp catalog…",
+                Some(crate::driver::McpCatalogState::Failed(reason)) => {
+                    return Some(AutocompleteSuggestions {
+                        items: vec![AutocompleteItem {
+                            value: String::new(),
+                            label: format!("mcp catalog unavailable: {reason}"),
+                            description: None,
+                        }],
+                        prefix: m.prefix.clone(),
+                    });
+                }
+                _ => return None,
+            };
+            return Some(AutocompleteSuggestions {
+                items: vec![AutocompleteItem {
+                    value: String::new(),
+                    label: note.to_string(),
+                    description: None,
+                }],
                 prefix: m.prefix.clone(),
-            })
+            });
         }
+        Some(AutocompleteSuggestions {
+            items,
+            prefix: m.prefix.clone(),
+        })
     }
 
     fn apply(
@@ -150,10 +231,9 @@ mod tests {
 
     #[test]
     fn probe_requires_mcp_token() {
-        let src = McpResourceSource::new(
-            vec![entry("fs", "file:///a", "notes")],
-            Arc::new(Mutex::new(Vec::new())),
-        );
+        let lazy = McpCatalogLazy::new();
+        lazy.set_entries(vec![entry("fs", "file:///a", "notes")]);
+        let src = lazy.source(Arc::new(Mutex::new(Vec::new())));
         let a = one_line("see @mcp:");
         assert!(src.probe(&ctx_of(&a, 9)).is_some());
         let b = one_line("see @src/ma");
@@ -165,16 +245,34 @@ mod tests {
     }
 
     #[test]
-    fn empty_catalog_never_probes() {
-        let src = McpResourceSource::new(Vec::new(), Arc::new(Mutex::new(Vec::new())));
+    fn empty_catalog_probes_and_wakes_the_loader() {
+        let woken = Arc::new(Mutex::new(0usize));
+        let flag = woken.clone();
+        let lazy = McpCatalogLazy::new();
+        lazy.set_waker(Arc::new(move || {
+            *flag.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+        }));
+        let src = lazy.source(Arc::new(Mutex::new(Vec::new())));
         let a = one_line("@mcp:");
-        assert!(src.probe(&ctx_of(&a, 5)).is_none());
+        assert!(
+            src.probe(&ctx_of(&a, 5)).is_some(),
+            "an empty catalog must still claim the token so the lazy fetch can start"
+        );
+        assert_eq!(
+            *woken.lock().unwrap_or_else(|e| e.into_inner()),
+            1,
+            "probing an empty catalog must wake the background fetch"
+        );
+        let b = one_line("no token");
+        assert!(src.probe(&ctx_of(&b, 8)).is_none());
     }
 
     #[test]
     fn apply_removes_prefix_and_queues_pick() {
         let picks: McpPickSink = Arc::new(Mutex::new(Vec::new()));
-        let src = McpResourceSource::new(vec![entry("fs", "file:///a", "notes")], picks.clone());
+        let lazy = McpCatalogLazy::new();
+        lazy.set_entries(vec![entry("fs", "file:///a", "notes")]);
+        let src = lazy.source(picks.clone());
         let item = AutocompleteItem {
             value: "fs\u{0}file:///a".into(),
             label: "fs/file:///a".into(),

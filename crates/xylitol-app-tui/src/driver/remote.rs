@@ -15,7 +15,9 @@ use crate::host_client::{HostClient, HttpWsClient};
 use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::model::THINKING_OFF;
 use xylitol_plugin_sdk::{BashOutcome, XyBashResult};
-use xylitol_protocol::registry::{METHOD_HOST_DESCRIBE, METHOD_SESSION_DETACH, METHOD_SUBSCRIBE};
+use xylitol_protocol::registry::{
+    METHOD_HOST_DESCRIBE, METHOD_MCP_CATALOG, METHOD_SESSION_DETACH, METHOD_SUBSCRIBE,
+};
 use xylitol_protocol::{Command, Notification};
 use xylitol_wire::{WireEventError, event_from_wire};
 
@@ -33,6 +35,42 @@ use super::types::{
 mod tests;
 
 pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
+
+#[derive(Clone, Debug)]
+pub enum McpCatalogState {
+    Missing,
+    Loading,
+    Ready(Box<xylitol_plugin_sdk::mcp::McpCatalog>),
+    Failed(String),
+}
+
+#[derive(Clone)]
+struct McpCatalogFetch {
+    state: Arc<std::sync::Mutex<McpCatalogState>>,
+    started: Arc<AtomicBool>,
+}
+
+impl McpCatalogFetch {
+    fn new() -> Self {
+        Self {
+            state: Arc::new(std::sync::Mutex::new(McpCatalogState::Missing)),
+            started: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn snapshot(&self) -> McpCatalogState {
+        self.state
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or(McpCatalogState::Missing)
+    }
+
+    fn store(&self, next: McpCatalogState) {
+        if let Ok(mut s) = self.state.lock() {
+            *s = next;
+        }
+    }
+}
 
 #[derive(Clone)]
 struct SharedDownlink {
@@ -86,17 +124,6 @@ impl SharedDownlink {
             .map(|mut q| q.drain(..).collect())
             .unwrap_or_default()
     }
-
-    fn push_front_batch(&self, rest: Vec<XyEvent>) {
-        if rest.is_empty() {
-            return;
-        }
-        if let Ok(mut q) = self.events.lock() {
-            for ev in rest.into_iter().rev() {
-                q.push_front(ev);
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +173,9 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     gate_notice_consumed: Arc<AtomicBool>,
     resources_dirty: Arc<AtomicBool>,
     freeze_arm_inflight: Arc<AtomicBool>,
+    chain_pending: Arc<AtomicBool>,
+    mcp_catalog_cache: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::mcp::McpCatalog>>>,
+    mcp_catalog_fetch: McpCatalogFetch,
     bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
 }
 
@@ -642,6 +672,9 @@ where
             gate_notice_consumed: Arc::new(AtomicBool::new(false)),
             resources_dirty: Arc::new(AtomicBool::new(false)),
             freeze_arm_inflight: Arc::new(AtomicBool::new(false)),
+            chain_pending: Arc::new(AtomicBool::new(false)),
+            mcp_catalog_cache: Arc::new(std::sync::Mutex::new(None)),
+            mcp_catalog_fetch: McpCatalogFetch::new(),
             bash_run_sink: Arc::new(std::sync::Mutex::new(None)),
         }
     }
@@ -1097,6 +1130,18 @@ where
         self.downlink.drain()
     }
 
+    fn host_chain_pending(&self) -> bool {
+        self.chain_pending.load(Ordering::SeqCst)
+    }
+
+    fn mcp_catalog_state(&self) -> McpCatalogState {
+        self.mcp_catalog_snapshot()
+    }
+
+    fn request_mcp_catalog(&self) {
+        self.start_mcp_catalog_fetch();
+    }
+
     fn link_health(&self) -> super::LinkHealth {
         let up = self.phase.lock().unwrap_or_else(|e| e.into_inner()).is_up();
         if up {
@@ -1136,9 +1181,14 @@ where
     }
 
     async fn mcp_catalog(&mut self) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
+        if let McpCatalogState::Ready(catalog) = self.mcp_catalog_snapshot() {
+            return Ok((*catalog).clone());
+        }
         let data = self.unary_cmd(Command::McpCatalog {}).await?;
-        serde_json::from_value(data)
-            .map_err(|e| XyDriverError::remote(format!("mcp_catalog decode: {e}")))
+        let catalog: xylitol_plugin_sdk::mcp::McpCatalog = serde_json::from_value(data)
+            .map_err(|e| XyDriverError::remote(format!("mcp_catalog decode: {e}")))?;
+        self.mcp_catalog_store(McpCatalogState::Ready(Box::new(catalog.clone())));
+        Ok(catalog)
     }
 
     async fn mcp_resource_read(
@@ -1230,6 +1280,7 @@ where
         let session_id = self.session_id.clone();
         let leaf_entry_id = self.leaf_entry_id.clone();
         let downlink = self.downlink.clone();
+        let chain_pending = self.chain_pending.clone();
         let client_cwd = self.client_cwd.clone();
         let model_id = self.current_model().map(|m| m.id);
         let thinking_level = self
@@ -1285,15 +1336,9 @@ where
                     }
                     continue;
                 }
-                let mut ended = false;
-                let mut rest = Vec::new();
+                let mut settle = false;
                 for ev in batch {
-                    if ended {
-                        rest.push(ev);
-                        continue;
-                    }
-                    let is_end = matches!(ev, XyEvent::AgentEnd { .. });
-                    if is_end
+                    if matches!(ev, XyEvent::AgentEnd { .. })
                         && let Ok(result) = host
                             .unary(
                                 "get_state",
@@ -1302,27 +1347,24 @@ where
                                 }),
                             )
                             .await
-                        && let Some(leaf) = result
-                            .value
-                            .as_ref()
-                            .and_then(|value| value.get("leaf_entry_id"))
-                            .and_then(Value::as_str)
-                        && let Ok(mut cached) = leaf_entry_id.lock()
+                        && let Some(value) = result.value.as_ref()
                     {
-                        *cached = Some(leaf.to_string());
+                        if let Some(leaf) = value.get("leaf_entry_id").and_then(Value::as_str)
+                            && let Ok(mut cached) = leaf_entry_id.lock()
+                        {
+                            *cached = Some(leaf.to_string());
+                        }
+                        let seen = value.get("inflight").and_then(Value::as_bool);
+                        settle = !seen.unwrap_or(false);
+                        chain_pending.store(!settle, Ordering::SeqCst);
                     }
                     yield ev;
-                    if is_end {
-                        ended = true;
-                    }
                 }
-                downlink.push_front_batch(rest);
-                if ended {
+                if settle {
                     break;
                 }
             }
         };
-
         Box::pin(stream)
     }
 
@@ -1788,6 +1830,61 @@ impl<C> XyRemoteDriver<C>
 where
     C: HostClient + Clone + 'static,
 {
+    fn mcp_catalog_snapshot(&self) -> McpCatalogState {
+        self.mcp_catalog_fetch.snapshot()
+    }
+
+    fn mcp_catalog_store(&self, next: McpCatalogState) {
+        let cached = match &next {
+            McpCatalogState::Ready(catalog) => Some((**catalog).clone()),
+            _ => None,
+        };
+        self.mcp_catalog_fetch.store(next);
+        if let Ok(mut cache) = self.mcp_catalog_cache.lock() {
+            *cache = cached;
+        }
+    }
+
+    fn start_mcp_catalog_fetch(&self) {
+        if self.mcp_catalog_fetch.started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        if matches!(
+            self.mcp_catalog_snapshot(),
+            McpCatalogState::Ready(_) | McpCatalogState::Loading
+        ) {
+            return;
+        }
+        self.mcp_catalog_store(McpCatalogState::Loading);
+        let host = self.host.clone();
+        let session_id = self.session_id.clone();
+        let fetch = self.mcp_catalog_fetch.clone();
+        let cached = self.mcp_catalog_cache.clone();
+        tokio::spawn(async move {
+            let payload = serde_json::json!({
+                "type": METHOD_MCP_CATALOG,
+                "session_id": session_id,
+            });
+            let next = match host.unary(METHOD_MCP_CATALOG, payload).await {
+                Ok(result) if result.ok => match result.value.and_then(|value| {
+                    serde_json::from_value::<xylitol_plugin_sdk::mcp::McpCatalog>(value).ok()
+                }) {
+                    Some(catalog) => McpCatalogState::Ready(Box::new(catalog)),
+                    None => McpCatalogState::Failed("mcp catalog decode failed".into()),
+                },
+                Ok(result) => {
+                    McpCatalogState::Failed(result.error.map(|e| e.details).unwrap_or_default())
+                }
+                Err(e) => McpCatalogState::Failed(e.to_string()),
+            };
+            if let McpCatalogState::Ready(catalog) = &next
+                && let Ok(mut cache) = cached.lock()
+            {
+                *cache = Some((**catalog).clone());
+            }
+            fetch.store(next);
+        });
+    }
     async fn exec_plugin_command(
         &mut self,
         plugin: String,

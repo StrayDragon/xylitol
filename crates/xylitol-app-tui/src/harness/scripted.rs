@@ -21,6 +21,8 @@ pub struct ScriptedDriver {
     pub run_with_context_calls:
         Mutex<Vec<(String, Vec<xylitol_plugin_sdk::mcp::McpResourceContext>)>>,
     pub mcp_catalog: Mutex<Option<xylitol_plugin_sdk::mcp::McpCatalog>>,
+    mcp_catalog_fetched: AtomicBool,
+    mcp_catalog_calls: AtomicUsize,
     pub mcp_resource_reads: Mutex<Vec<(String, String)>>,
     pub mcp_resource_contents: Mutex<Vec<xylitol_plugin_sdk::mcp::McpResourceContent>>,
     pub mcp_resource_failures: Mutex<Vec<(String, String)>>,
@@ -102,6 +104,8 @@ impl ScriptedDriver {
             runs: Vec::new(),
             run_with_context_calls: Mutex::new(Vec::new()),
             mcp_catalog: Mutex::new(None),
+            mcp_catalog_fetched: AtomicBool::new(false),
+            mcp_catalog_calls: AtomicUsize::new(0),
             mcp_resource_reads: Mutex::new(Vec::new()),
             mcp_resource_contents: Mutex::new(Vec::new()),
             mcp_resource_failures: Mutex::new(Vec::new()),
@@ -575,12 +579,31 @@ impl XyDriver for ScriptedDriver {
     }
 
     async fn mcp_catalog(&mut self) -> Result<xylitol_plugin_sdk::mcp::McpCatalog, XyDriverError> {
+        self.mcp_catalog_fetched.store(true, Ordering::SeqCst);
+        self.mcp_catalog_calls.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .mcp_catalog
             .lock()
             .expect("mcp_catalog")
             .clone()
             .unwrap_or_default())
+    }
+
+    fn mcp_catalog_state(&self) -> crate::driver::McpCatalogState {
+        if !self.mcp_catalog_fetched.load(Ordering::SeqCst) {
+            return crate::driver::McpCatalogState::Missing;
+        }
+        let catalog = self
+            .mcp_catalog
+            .lock()
+            .expect("mcp_catalog")
+            .clone()
+            .unwrap_or_default();
+        crate::driver::McpCatalogState::Ready(Box::new(catalog))
+    }
+
+    fn request_mcp_catalog(&self) {
+        self.mcp_catalog_fetched.store(true, Ordering::SeqCst);
     }
 
     async fn mcp_resource_read(
@@ -973,6 +996,10 @@ impl XyDriver for ScriptedDriver {
 }
 
 impl ScriptedDriver {
+    pub fn mcp_catalog_calls(&self) -> usize {
+        self.mcp_catalog_calls.load(Ordering::SeqCst)
+    }
+
     pub fn set_mcp_catalog_for_driver(&self, catalog: xylitol_plugin_sdk::mcp::McpCatalog) {
         *self.mcp_catalog.lock().expect("mcp_catalog") = Some(catalog);
     }

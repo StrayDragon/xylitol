@@ -89,6 +89,9 @@ pub struct HostSession<T: Terminal> {
     pending: PendingOps,
     stage_name: StageNameState,
     completed_turns: u64,
+    host_chain_pending: bool,
+    pending_mcp_catalog: Arc<AtomicBool>,
+    mcp_catalog_applied: crate::driver::McpCatalogState,
     agent_started_at: Option<OffsetDateTime>,
     stream_paint: StreamPaintState,
     busy: HostBusy,
@@ -241,6 +244,9 @@ impl<T: Terminal> HostSession<T> {
             pending: PendingOps::default(),
             stage_name: StageNameState::default(),
             completed_turns: 0,
+            host_chain_pending: false,
+            pending_mcp_catalog: Arc::new(AtomicBool::new(false)),
+            mcp_catalog_applied: crate::driver::McpCatalogState::Missing,
             agent_started_at: None,
             stream_paint: StreamPaintState::default(),
             busy: HostBusy::default(),
@@ -1692,8 +1698,14 @@ impl<T: Terminal> HostSession<T> {
         self.apply_xy_unfenced(xy);
     }
 
+    pub(crate) fn set_host_chain_pending(&mut self, pending: bool) {
+        self.host_chain_pending = pending;
+    }
+
     pub(crate) fn apply_xy_unfenced(&mut self, xy: Box<XyEvent>) {
         apply_xy_event(&mut self.ui_model, &xy);
+        let host_chains_on =
+            matches!(xy.as_ref(), XyEvent::AgentEnd { .. }) && self.host_chain_pending;
         let stream_delta = matches!(
             xy.as_ref(),
             XyEvent::TextDelta(_) | XyEvent::ThinkingDelta(_) | XyEvent::MessageUpdate { .. }
@@ -1704,8 +1716,11 @@ impl<T: Terminal> HostSession<T> {
                 self.agent_started_at = Some(OffsetDateTime::now_utc());
             }
             XyEvent::AgentEnd { reason, .. } => {
-                self.busy.agent_run = false;
+                self.busy.agent_run = host_chains_on;
                 self.recalc_busy();
+                if host_chains_on {
+                    self.ui_model.set_busy_status("Working");
+                }
                 self.pending.queue_refresh = true;
                 self.completed_turns = self.completed_turns.saturating_add(1);
                 let end = OffsetDateTime::now_utc();
