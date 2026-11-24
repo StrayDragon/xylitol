@@ -1,8 +1,9 @@
 ---
 name: "llman-sdd-specs-compact"
-description: "压缩去重 specs：合并冗余 requirement/scenario，规范行为不变。仅用户明确要求时手动运行。"
+description: "仅手动。用户明确要求压缩去重规格时使用。不改变规范行为。"
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
+disable-model-invocation: true
 ---
 
 # LLMAN SDD Specs Compact
@@ -18,11 +19,11 @@ metadata:
 
 ## Constraints
 - 未经明确替代不得删除规范性行为；宜保持 requirement 标题稳定；每个保留 requirement 至少一个有效 scenario。
-- **改 `llmanspec/specs/**` 须走 change**：先绑定分支（`change start` / `attach`），在绑定分支上编辑提交；**不得**在默认分支直接压缩改写。
+- **改 `llmanspec/specs/**` 须走 change**：先绑定分支（`change start`），在绑定分支上编辑提交；**不得**在默认分支直接压缩改写。
 
 ## Workflow
 1. 盘点 specs（`llman-sdd list --specs`）。
-2. 归档历史较大时先 freeze：预览 `llman-sdd archive freeze --dry-run`；执行 `llman-sdd archive freeze --before <YYYY-MM-DD> --keep-recent <N>`。
+2. 归档历史较大时先 freeze：预览 `llman-sdd freeze --dry-run`；执行 `llman-sdd freeze --before <YYYY-MM-DD> --keep-recent <N>`。
 3. 识别跨 capability 重叠（跨 specs 重复 req id：`llman-sdd project dedupe-req-ids --dry-run` 报告重映射计划）。
 4. 产出压缩计划（canonical requirements + keep/merge/remove 决策 + 迁移说明）。
 5. 执行并验证（`llman-sdd validate --specs --strict`）。
@@ -50,13 +51,13 @@ metadata:
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：
 - 规范样式只有一种：`@req:<id>` 挂在 `规则:` 块头标签,块内嵌套 `场景:`(假如/当/那么)是可执行示例——默认首选。
 - 仅当需求无法程序化表达或暂不转写时才保留无嵌套场景的 `规则:`(裸规则):描述自由文本,不强制情态词;validate 以聚合计数提示,review `pending` 信号计量,specs-compact 负责压降。
-- 历史标签 `@executable`/`@rule`/`@human`/`@manual` 不再使用、解析惰性;旧文件报结构问题时运行 `llman-sdd spec migrate-native` 迁移。
+- 历史标签 `@executable`/`@rule`/`@human`/`@manual` 不再使用、解析惰性;旧文件不再提供迁移命令,历史标签保持惰性。
 - 不在任何 `规则:` 内的顶层 `场景:` 是功能级示例:无规则句柄、不告警、不参与规则统计(Gherkin 原生语义)。
 
 分支护栏：
-- 先 `change start` / `attach` 绑定分支，再在绑定的非默认分支编辑 `.feature` 并 commit（提交 specs）。
+- 先 `change start` 绑定分支，再在绑定的非默认分支编辑 `.feature` 并 commit（提交 specs）。
 - 锁定规则（报告制）：改/删既有 `规则:` 块只出 WARNING，不阻断 validate / finalize / `change diff`；报告按 `@req:<id>` 指明被改规则。控制点：git 分支对比 + `llman-sdd review` / `change diff`。旧锁定确认元数据（frontmatter `rules_touched` / `agent_acked`、`@agent` tag、`--yes` 确认语义）已全部删除，无别名无兼容层。
-- `stage=full` 且 specs-landed 门通过（specsLanded ∨ `needs_specs_change: false`）即可进 apply；verify/finalize 须 `readyToImplement=true`（完成信号）。收口优先 `change finalize`。
+- `stage=full` 且 specs-landed 门通过（specsLanded ∨ `needs_specs_change: false`）即可进 apply；verify/finalize 须 `readyToImplement=true`（完成信号）。收口优先 `change archive`。
 
 ## Ethics Governance
 - `ethics.risk_level`：low——只读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时按正文执行。

@@ -13,6 +13,9 @@ remove_docs = true
 preserve_patterns = [
   "~keep",
   "LLMANSPEC",
+  # llman-sdd init --update regenerates this placeholder inside the managed block;
+  # stripping it only churns the next refresh.
+  "在此行下方添加你的规则",
   "NOTE:",
   "WORKAROUND",
 ]

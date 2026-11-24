@@ -41,7 +41,7 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 ## SDD validate 分层
 
 - `just qa` 的 `qa-spec-validate` 用 `llman-sdd validate --all`（非 strict）：硬错误失败；未勾 task / specs-not-landed 等 warning 只显示，不红 in-flight change。
-- `just sdd` 与 `llman-sdd change finalize` 仍 `--strict`：tasks-done / specs-landed 是收口完成信号。
+- `just sdd` 与 `llman-sdd change archive` 仍 `--strict`：tasks-done / specs-landed 是收口完成信号。
 
 ## 元门禁（为什么「检查必被接线」）
 

@@ -1,16 +1,3 @@
-<!-- LLMANSPEC:START -->
-
-# LLMAN 规范驱动开发
-
-本项目使用 llman SDD。阅读 `llmanspec/config.yaml` 了解 SDD 命令行为配置，以及 `llmanspec/AGENTS.md` 获取项目附加规则。
-
-## SDD 流水线
-
-使用 `/llman-sdd-explore` 开始，然后按照 pipeline：`/llman-sdd-propose` → `/llman-sdd-apply` → `/llman-sdd-verify` → `/llman-sdd-archive`。
-
-保留此托管块，便于 `llman-sdd init --update` 刷新。
-<!-- LLMANSPEC:END -->
-
 # 仓库级 Agent 指南
 
 XYlitol（命令 / crate：`xylitol`）是一个 coding agent 实现：Rust workspace，开发由 llman SDD 驱动。crate 图与依赖方向见 `src/AGENTS.md`；现行成员以根 `Cargo.toml` 为准。
@@ -139,6 +126,8 @@ Host 侧 crate 边界按替换、开关、生命周期划，不按 `app / agent 
 |---|---|---|
 | `xylitol-dev` | 团队开发规范总入口（门禁 / 测试分层 / 文档落点 / 提交协作 / 依赖候选 / 工具链 bump / TUI 验证 / 观测排障） | `.agents/skills/`（正文在 `references/`） |
 | `llman-sdd-*` | SDD 流程（含 `llman-sdd-quick` 快速路径） | `.agents/skills/` |
+
+SDD 流水线：`/llman-sdd-explore` → `/llman-sdd-propose` → `/llman-sdd-apply` → `/llman-sdd-verify` → `/llman-sdd-archive`；命令行为配置见 `llmanspec/config.yaml`，change/spec 规则见 `llmanspec/AGENTS.md`。
 | `l8ng-write-surface` / `l8ng-audit-dead-code` / `l8ng-write-tui` | 应用端 | `~/.config/llman/skills/`（不在本仓库，避免漂移） |
 | `l8ng-terminal-tui-differential-rendering` | TUI 参考 | 同上 |
 | `langfuse` | 外部锁定 | 经 `skills-lock.json` 管理 |

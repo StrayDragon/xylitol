@@ -5,6 +5,7 @@
 此文件由根目录的 `AGENTS.md` 托管块引用。可在此添加项目特定的规则、
 上下文或约定，以便 AI 代理遵守。
 
+<!-- 在此行下方添加你的规则 -->
 <!-- LLMANSPEC:END -->
 
 change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层、seam、Xy\*）真源在
@@ -62,10 +63,10 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
   - `@req:<id>` 挂 `规则:` 块头，是全局唯一需求句柄（validate 查重）。
   - 嵌套 `场景:`（假如/当/那么）是可执行示例，由 `tests/bdd` 的 `#[scenario]` 按精确名与步骤文本绑定。
   - 无嵌套场景即裸规则（review `pending` 计量）；只有无法程序化表达的需求才保留，理由记 proposal / design。
-  - 增删改既有 `规则:` 块走 WARNING 报告制，不阻断 validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
+  - 增删改既有 `规则:` 块走 WARNING 报告制，不阻断 validate / `change archive` / `change diff`；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
 - 情态动词词表（对齐 STC 简明技术中文词表强度词条）：约束 statement 用中文情态——要求 `必须`，否定 `不得` / `禁止`，推荐 `宜`；避免 `应` / `应当` / `应该` / `务必` / `一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
 - `背景:`（Background）必须紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
-- 在非默认 feature 分支直接编辑 live `.feature`，随后 `llman-sdd change attach`、`llman-sdd change finalize`（收口行为见「finalize 提交序」）。禁止 `solidify`、`change delta`、新建 `*.feature.delta.toon`。
+- 在非默认 feature 分支直接编辑 live `.feature`，随后 `llman-sdd change start`、`llman-sdd change archive`（收口行为见「archive 提交序」）。禁止 `solidify`、`change delta`、新建 `*.feature.delta.toon`。
 
 ## 版本化命名
 
@@ -82,33 +83,33 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## spec 维护（产品级同步，直接编辑）
 
-- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）：直接编辑 live `.feature` 并直接 commit，免 change 生命周期（无需 attach / finalize / archive）。
+- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）：直接编辑 live `.feature` 并直接 commit，免 change 生命周期（无需 `change start` / `change archive`）。
 - 新增/变更产品行为仍走标准 change 流程（propose、apply、verify、archive）。
 - 直接编辑仍必须过结构门禁：`llman-sdd validate <cap>`（或 `--all`，BDD-on 下含 runner check）与相关 BDD 测试绿。
 - 删除 req 时同步清理：`.feature` 的规则块与 `@req:` 验收场景、`tests/bdd` 的 scenario binding。
 
 ## change 操作门禁
 
-### finalize 提交序（必须知悉）
+### archive 提交序（必须知悉）
 
-闭环收口用 `finalize`：
+闭环收口用 `change archive`：
 
-1. 实现 live specs + 代码（工作区可脏）。
-2. `llman-sdd change finalize <id> [--no-check]`；finalize 自动完成：合并进基准分支（缺省 squash，目标分支单一收口 commit）、归档改名、单 git commit（`archive(sdd): <id>`，打包实现 diff + frontmatter + 改名）。`--no-commit` 跳过自动提交（CI / hook 场景）。
+1. 实现 live specs + 代码，并在绑定分支上提交（收口要求干净工作区，没有 `--force`）。
+2. `llman-sdd change archive <id> [--no-check]`；change archive 自动完成：合并进基准分支（缺省 squash，目标分支单一收口 commit）、归档改名、单 git commit（`archive(sdd): <id>`，打包实现 diff + frontmatter + 改名）。`--no-commit` 跳过自动提交（CI / hook 场景），`--dry-run` 只打印改名计划。
 
-- finalize 不要求干净树。
+- 不得把脏树留给 `change archive`：先提交，再收口。
 - 审计仍可用：`git diff base_sha..HEAD` + `branch`。
 - 合并目标：`--into` 优先于 `base_branch`，再默认分支；合并方式 `--method` 优先于 `sdd.merge_method`（缺省 squash）。
 - 合并目标已被其他 worktree 占用时：输出 WARNING + 手动命令指引，不回滚 rename。
 - 仅密封（merge + rename）不收实现时用 `llman-sdd change archive <id>`；保留 feature 多 commit 历史可 `--method ff` 或配置 `sdd.merge_method: ff`。
-- 结构门禁先跑：`llman-sdd validate <cap|change> --strict`（快，默认跳过 BDD 全量 harness）；再跑带 BDD 的全量 validate / finalize。
+- 结构门禁先跑：`llman-sdd validate <cap|change> --strict`（快，默认跳过 BDD 全量 harness）；再跑带 BDD 的全量 validate / `change archive`。
 
 ### 提交卫生
 
 1. Draft 可独提或一批提：可从 GitHub feature request 等意向一次 `change new` 多个草案并 `chore(sdd): draft <topic>` 入库，不要求与实现同提。
-2. 闭环收尾优先 `finalize`（单 `archive(sdd): <id>` auto commit），减少礼仪 commit。
+2. 闭环收尾优先 `change archive`（单 `archive(sdd): <id>` auto commit），减少礼仪 commit。
 3. 产品与流程分开：实现用 `feat` / `fix` / `refactor`；SDD 礼仪用 `chore(sdd):` / `docs(sdd):`。
-4. 触碰生产代码的 archive / finalize 必须附实跑证据：改动 `crates/`、`plugins/`、`src/`、`tests/` 非文档文件的 change，归档或闭环提交前必须实跑目标 crate 的 `cargo nextest`（全量 `just qa` 更佳），tasks 里勾选的「套件绿」不得替代实跑输出；测试同步拖欠会造成 main 红色窗口（先例：`c3347` 测试拖欠致 main 红，勘误见其归档提案）。
+4. 触碰生产代码的 archive 必须附实跑证据：改动 `crates/`、`plugins/`、`src/`、`tests/` 非文档文件的 change，归档或闭环提交前必须实跑目标 crate 的 `cargo nextest`（全量 `just qa` 更佳），tasks 里勾选的「套件绿」不得替代实跑输出；测试同步拖欠会造成 main 红色窗口（先例：`c3347` 测试拖欠致 main 红，勘误见其归档提案）。
 
 ### stage 四档
 
@@ -117,9 +118,9 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 | `draft` | 仅 proposal |
 | `designed` | proposal + design |
 | `planned` | proposal + design + tasks |
-| `full` | + attach 绑定 |
+| `full` | + 分支绑定（`change start`） |
 
-已有 `proposal+design+tasks` 仍停在 `planned` 时：通常是未 attach，执行 `llman-sdd change attach <id>`（不要新建 `changes/<id>/specs/`）；attach 后应为 `full`。
+已有 `proposal+design+tasks` 仍停在 `planned` 时：通常是分支未绑定，执行 `llman-sdd change start <id>`（默认分支上创建 `sdd/<id>`；其他本地分支则绑定当前检出；仅重绑用 `--force`）（不要新建 `changes/<id>/specs/`）；绑定后应为 `full`。
 
 ### depends_on
 

@@ -5,6 +5,8 @@
 target/
 lcov.info
 **/llmanspec/.context/
+# llman-sdd 本地版本戳（不随仓库分发）
+**/llmanspec/.sdd-state.json
 
 # 本地工具安装（cccc-rs 等经 .tools/）
 .tools/

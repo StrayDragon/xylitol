@@ -1,8 +1,8 @@
 ---
 name: "llman-sdd-arch-review"
-description: "架构审查：扫描薄模块（接口≈实现），给出加深候选，改善可测性与 AI 可导航性。"
+description: "用户要求架构审查时使用。扫描薄模块并给出加深候选。"
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 ---
 
 # LLMAN SDD Architecture Review
@@ -57,7 +57,7 @@ metadata:
 > 文中“规约”= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。
 
 ## Context
-- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准；读 spec 全文前先用 `llman-sdd context --task --paths` 定位。
+- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准；读 spec 全文前先 `llman-sdd list --specs`，再直读 `.feature`。
 
 ## Goal
 - 达成一个可验证结果；报告附结果路径与校验状态。

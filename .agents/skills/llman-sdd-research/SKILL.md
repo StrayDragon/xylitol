@@ -1,8 +1,8 @@
 ---
 name: "llman-sdd-research"
-description: "委托后台 agent 查一手资料（官方文档/API/源码），产出带引用的调研文档。"
+description: "用户要求查官方文档、API 或源码时使用。产出带引用的调研。不用于改仓库代码。"
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 ---
 
 # LLMAN SDD Research
@@ -13,7 +13,7 @@ metadata:
 
 1. 针对**一手资料**调研——官方文档、源码、spec、第一方 API，而非二手转述；每个论断追溯到拥有它的源头。
 2. 发现写入单个 Markdown 文件，每条论断标注来源。
-3. 存放（仓库另有约定时优先）：**默认** `llmanspec/changes/<current-change>/research/<topic>.md`（change 文档，**不是** specs）。跨 change 耐久底稿留在已归档 change 的 `research/` 或 `llmanspec/delayed-changes/<topic>/research/`。
+3. 存放（仓库另有约定时优先）：**默认** `llmanspec/changes/<current-change>/research/<topic>.md`（change 文档，**不是** specs）。仅当主题跨多个 change、归档后仍常引用时才写 `docs/research/`；**不得**把单 change 选型/易腐深挖塞进 `docs/research/`。
 4. **不得**本 skill 直接编辑 `llmanspec/specs/**`。调研表明行为合约（需求语义）必须改 → 宜转 `llman-sdd-propose`（绑定分支 → 提交 specs）。
 
 ## 步骤
@@ -34,7 +34,7 @@ metadata:
 > 文中“规约”= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。
 
 ## Context
-- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准；读 spec 全文前先用 `llman-sdd context --task --paths` 定位。
+- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准；读 spec 全文前先 `llman-sdd list --specs`，再直读 `.feature`。
 
 ## Goal
 - 达成一个可验证结果；报告附结果路径与校验状态。

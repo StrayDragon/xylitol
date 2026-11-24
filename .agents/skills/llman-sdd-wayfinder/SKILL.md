@@ -1,8 +1,8 @@
 ---
 name: "llman-sdd-wayfinder"
-description: "把超出单会话的大型模糊工作拆成决策地图，逐个解决直到路径清晰。仅手动触发。"
+description: "仅手动。用户要把超出单会话的模糊工作拆成决策地图时使用。"
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 disable-model-invocation: true
 ---
 
@@ -70,7 +70,7 @@ disable-model-invocation: true
 
 ### 推进地图
 1. 加载地图（低分辨率视图，不用读每个 ticket 全文）。
-2. 选 ticket（用户指定或取可着手项第一个），先绑定分支（`change start` 或已有分支 `change attach`）占住它。规划文档可短暂在默认分支；ticket 要改 specs 时须在绑定分支提交。
+2. 选 ticket（用户指定或取可着手项第一个），先绑定分支（`change start` 或已有分支 `change start`）占住它。规划文档可短暂在默认分支；ticket 要改 specs 时须在绑定分支提交。
 3. 解决它——按需深入（按 Notes 指名读 ticket 全文，调用 Notes 指定的 skill）；没把握时用逐问深挖。**不得**在未绑定时改 `llmanspec/specs/**`。
 4. 记录解决：答案写入该 ticket 的 proposal 并关闭它，在地图 Decisions-so-far 追加一行要点 + 指针。
 5. 新增 ticket（先建再接线）；答案让模糊点变清晰的，升级为 ticket 并移出尚未清晰区；答案揭示某 ticket 越过目的地的，归入范围外而非在路径上解决。
@@ -82,7 +82,7 @@ disable-model-invocation: true
 > 文中“规约”= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。
 
 ## Context
-- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准；读 spec 全文前先用 `llman-sdd context --task --paths` 定位。
+- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准；读 spec 全文前先 `llman-sdd list --specs`，再直读 `.feature`。
 
 ## Goal
 - 达成一个可验证结果；报告附结果路径与校验状态。

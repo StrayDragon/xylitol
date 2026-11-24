@@ -7,13 +7,13 @@ brief: "提交与 PR 卫生（Conventional Commits / archive(sdd) 收口 / 会�
 ## 提交卫生
 
 - **Conventional Commits**；开 PR 前 `just qa`。
-- 实现用 `feat` / `fix` / `refactor` / `perf` / `test` / `docs` / `build` / `ci` / `chore` / `style`；llman SDD 礼仪用 `chore(sdd):` / `docs(sdd):`；`change finalize` 收口用 `archive(sdd): <id>`；工具链升级用 `agentdev`（白名单见 `prek.toml`）。
+- 实现用 `feat` / `fix` / `refactor` / `perf` / `test` / `docs` / `build` / `ci` / `chore` / `style`；llman SDD 礼仪用 `chore(sdd):` / `docs(sdd):`；`change archive` 收口用 `archive(sdd): <id>`；工具链升级用 `agentdev`（白名单见 `prek.toml`）。
 - 单轨 feature-as-spec、capability 命名、spec 约束层级：`llmanspec/AGENTS.md`。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
 
 ## 提交内容
 
 - 实现计划变更后**同步** `llmanspec/`。
-- SDD 闭环收尾优先 `llman-sdd change finalize`（单 `archive(sdd): <id>` 自动提交，减礼仪 commit）；详见 `llmanspec/AGENTS.md`。
+- SDD 闭环收尾优先 `llman-sdd change archive`（单 `archive(sdd): <id>` 自动提交，减礼仪 commit）；详见 `llmanspec/AGENTS.md`。
 - 产品 vs 流程分开提交：产品实现用 `feat`/`fix`/`refactor`；SDD 流程用 `chore(sdd):` / `docs(sdd):`。
 
 ## AI 协作约定

@@ -550,16 +550,14 @@ qa verbosity=verbosity_default: \
         ;;
     esac
 
-# SDD contract sweep: index rebuild + strict validate (part of `just qa`) and the
-# review counters. `index rebuild` first — a stale index inflates warning counts.
+# SDD contract sweep: strict validate (part of `just qa`) + review counters.
 sdd:
-    llman-sdd index rebuild
     @llman-sdd validate --all --strict
     @llman-sdd review
 
 # Specs/change validate (wired into `just qa`; deterministic, no network).
 # qa is non-strict: hard errors fail; warnings (unchecked tasks, specs-not-landed)
-# stay visible without red-ing an in-flight change. `just sdd` / finalize keep strict.
+# stay visible without red-ing an in-flight change. `just sdd` / change archive keep strict.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa-spec-validate verbosity=verbosity_default:
     #!/usr/bin/env bash

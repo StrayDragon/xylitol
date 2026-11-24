@@ -1,13 +1,13 @@
 ---
 name: "llman-sdd-draft"
-description: "把 change 想法记成草案（仅 proposal.md，不问 id）。随手记 idea/未来需求；落实时走 propose。"
+description: "只把想法记成 proposal.md 时使用。不创建 tasks，不改规格。"
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 ---
 
 # LLMAN SDD 草案（Draft）
 
-把 change 想法记成**草案**（仅 `proposal.md` skeleton）——“先记下来”的轻量入口：不判断规模、不写 tasks、不改 specs、不 attach。落实时用 `llman-sdd-propose` 正式化。
+把 change 想法记成**草案**（仅 `proposal.md`）——“先记下来”的轻量入口：不判断规模、不写 tasks、不改 specs、不绑定分支。落实时用 `llman-sdd-propose` 正式化。
 
 ## Pipeline 位置
 
@@ -24,7 +24,7 @@ flowchart LR
 ## 硬约束
 
 - **不得 询问 change id**：由 `change new --from` 从描述推导并告知用户。
-- **不得 创建 tasks/design/specs/attach**：只建 `proposal.md` 草案；完整规划归 `llman-sdd-propose`。
+- **不得创建 tasks/design/specs/绑定**：只建 `proposal.md` 草案；完整规划归 `llman-sdd-propose`。
 - **不得 判断变更规模**：那是 propose 的职责。用户想开始实现 → 宜转 `llman-sdd-propose`。
 - **适用边界**：描述明显涉及行为合约（需求语义）变更或多文件改动时，宜转 `llman-sdd-propose`——但仍先建草案以免想法丢失。
 - **frontmatter 有固定 schema**：`proposal.md` 只接受 `llmanspec/AGENTS.md`“Change Proposal Frontmatter SSOT”的合法字段（`depends_on`、`title`、`blocks`、`branch`、`base_branch`、`base_sha`、`needs_specs_change` 等）；`title` 必须为非空的一句话概念式标题，不得复读 change id——缺失或为空串时 `llman-sdd validate` 报 ERROR；`status`/`priority`/`author` 等集外字段同样报 ERROR。生命周期阶段是推断量（用 `llman-sdd show`/`list` 查），不得写进 frontmatter。正文不得复读 frontmatter 字段（不得 `## Status` 段）；H1 宜保留人类可读标题（freeze 取 title 时 frontmatter 优先、H1 回退），不复读 change id。

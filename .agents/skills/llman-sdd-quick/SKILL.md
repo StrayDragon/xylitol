@@ -1,8 +1,8 @@
 ---
 name: "llman-sdd-quick"
-description: "快速路径：不改行为合约的小改动（重构/错字/性能）。要改行为合约（需求语义）就停，转 propose。"
+description: "不改行为合约的小改动时使用。要改需求语义就停，改走 propose。"
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
 ---
 
 # LLMAN SDD Quick Path
@@ -26,15 +26,14 @@ flowchart LR
 - 不跨 capability；不涉及迁移/兼容性；不是 SDD 元规范变更
 
 ## 步骤
-1. 用 `llman-sdd context --task "..." --paths "..."` 确认无匹配 `<paths>` 的 spec 变更。
-   - context 不可用(含 `quality: "unavailable"`)→ 先 `llman-sdd index check`:stale/缺失则 `llman-sdd index rebuild`(默认 pageindex,免模型)后重试;fresh 仍不可用(`LLMAN_SDD_INDEX_CHAT_MODEL` 未设)→ 改用 `llman-sdd list --specs` + 直读 `.feature`——勿循环 rebuild。
+1. 用 `llman-sdd list --specs` 列出规格，再直读相关 `.feature`，确认没有要改的行为合约。
 2. 直接改代码。
-3. 若要动 `llmanspec/specs/**`，STOP——除非已在绑定的非默认 change 分支上（迷你 change：`change start`/`attach` → 编辑 → commit）。不得在默认分支 commit specs，即使 typo 或仅收紧 scope 也不行。优先把 specs 维护路由到 `llman-sdd-propose`。
+3. 若要动 `llmanspec/specs/**`，STOP——除非已在绑定的非默认 change 分支上（迷你 change：`change start` → 编辑 → commit）。不得在默认分支 commit specs，即使 typo 或仅收紧 scope 也不行。优先把 specs 维护路由到 `llman-sdd-propose`。
 4. git commit（message 写明 why）。无需 change 目录，无需 archive。
 
 ## 边界处理
 - 修改中发现要改行为合约 → STOP，转 `llman-sdd-propose`。
-- 涉及多文件且 scope 不明 → 先用 `llman-sdd context` 确认。
+- 涉及多文件且 scope 不明 → 先用 `llman-sdd list --specs` 确认，再直读 `.feature`。
 
 > 命令细节用 `llman-sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
 > 文中“规约”= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。

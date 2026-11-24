@@ -21,7 +21,7 @@ brief: "文档落点与产品实现闭环（GitHub FR/roadmap 经 SDD 落 specs 
 ```mermaid
 flowchart TB
     fr["GitHub feature request（含 roadmap 索引）"] --> ch["llmanspec/changes/：提案 + specs（BDD）+ design/tasks"]
-    ch -->|"apply / verify / finalize"| sp["llmanspec/specs/：live 行为合约"]
+    ch -->|"apply / verify / archive"| sp["llmanspec/specs/：live 行为合约"]
     sp --> close["关闭对应 GitHub issue；roadmap 勾掉该切片"]
 ```
 

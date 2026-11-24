@@ -28,7 +28,7 @@ repo = "https://github.com/compilerla/conventional-pre-commit"
 rev = "v4.4.0"
 # Positional types REPLACE the hook's default whitelist (build/chore/ci/docs/
 # feat/fix/perf/refactor/revert/style/test). Two additions:
-# - `archive` — llman `change finalize` 的原生收口前缀（`archive(sdd): <id>`）；
+# - `archive` — llman `change archive` 的原生收口前缀（`archive(sdd): <id>`）；
 # - `agentdev` — 既有的工具链升级 type（llman/rust-toolchain bump）。
 hooks = [
   { id = "conventional-pre-commit", stages = ["commit-msg"], args = [
