@@ -1,0 +1,2 @@
+title: "Host workspace set binding from client"
+depends_on: [c3105-fix-harden-trust-store, c3206-refactor-session-graph]

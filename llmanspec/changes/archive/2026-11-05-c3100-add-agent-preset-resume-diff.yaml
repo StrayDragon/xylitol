@@ -1,0 +1,2 @@
+title: "Agent profile resume diff"
+depends_on: [c3060-add-mcp-tool-catalog, c3206-refactor-session-graph]

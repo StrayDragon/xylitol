@@ -1,0 +1,2 @@
+title: "在 TUI 呈现 run_code 运行结果"
+depends_on: [c3106-add-codemode-tool, c3222-add-structured-tool-result-details]

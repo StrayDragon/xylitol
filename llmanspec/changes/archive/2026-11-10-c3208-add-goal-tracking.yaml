@@ -1,0 +1,2 @@
+title: "Add goal tracking"
+depends_on: [c3206-refactor-session-graph, c3207-add-loop-scheduler]

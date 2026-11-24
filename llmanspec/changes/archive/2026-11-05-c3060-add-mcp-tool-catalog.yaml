@@ -1,0 +1,2 @@
+title: "MCP tool catalog per scope and agent profile"
+depends_on: [c3055-add-mcp-scope-pool, c3206-refactor-session-graph]

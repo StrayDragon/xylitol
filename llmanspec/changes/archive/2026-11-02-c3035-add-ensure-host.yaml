@@ -1,0 +1,2 @@
+title: "开箱确保本机 Host（探活即连，否则拉起，last-client 销毁）"
+depends_on: []

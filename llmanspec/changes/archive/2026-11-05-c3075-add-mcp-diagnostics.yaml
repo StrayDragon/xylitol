@@ -1,0 +1,2 @@
+title: "MCP diagnostics and capability probe"
+depends_on: [c3055-add-mcp-scope-pool, c3065-add-mcp-oauth-credentials]

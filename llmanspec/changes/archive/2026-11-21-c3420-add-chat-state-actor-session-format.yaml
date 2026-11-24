@@ -1,0 +1,2 @@
+title: "ChatStateActor 与会话格式重定版：持久化 Ack 与 append-only 一等条目"
+depends_on: [c3415-refactor-session-actor-mailbox]

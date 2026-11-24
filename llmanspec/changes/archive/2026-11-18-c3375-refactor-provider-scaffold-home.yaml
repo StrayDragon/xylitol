@@ -1,0 +1,2 @@
+title: "provider 脚手架归属决策（wayfinder:explore）"
+depends_on: [c3355-refactor-sdk-inclusion-boundary, c3360-refactor-provider-scaffold-deps]

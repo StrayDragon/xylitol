@@ -1,0 +1,2 @@
+title: "Add MCP OAuth authorization flow"
+depends_on: [c3065-add-mcp-oauth-credentials]

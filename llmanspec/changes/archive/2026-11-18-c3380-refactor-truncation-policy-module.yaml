@@ -1,0 +1,2 @@
+title: "截断策略厚模块形状与落点（wayfinder:explore）"
+depends_on: [c3355-refactor-sdk-inclusion-boundary, c3365-refactor-truncation-spec-contracts]

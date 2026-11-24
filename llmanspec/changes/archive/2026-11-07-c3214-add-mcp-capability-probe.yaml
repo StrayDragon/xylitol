@@ -1,0 +1,2 @@
+title: "Add MCP capability probe and reconnect count"
+depends_on: [c3075-add-mcp-diagnostics]

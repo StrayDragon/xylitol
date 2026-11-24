@@ -1,0 +1,2 @@
+title: "Command 到 Outcome 翻译合约归属（wayfinder:explore）"
+depends_on: [c3355-refactor-sdk-inclusion-boundary, c3370-refactor-dispatch-twins-shape]

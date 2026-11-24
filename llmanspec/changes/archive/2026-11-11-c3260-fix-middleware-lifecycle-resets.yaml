@@ -1,0 +1,2 @@
+title: "Fix loop middleware lifecycle resets and automation transitions"
+depends_on: [c3240-fix-react-loop-run-state, c3250-fix-server-slot-lifecycle]

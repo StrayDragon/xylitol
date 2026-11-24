@@ -1,0 +1,2 @@
+title: "MCP custom transport insertion point"
+depends_on: [c3085-add-mcp-transport-config]

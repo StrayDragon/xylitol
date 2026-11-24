@@ -1,0 +1,2 @@
+title: "重复收敛 wayfinder 地图：四个重复点的归属决策路径"
+depends_on: [c3355-refactor-sdk-inclusion-boundary, c3360-refactor-provider-scaffold-deps, c3365-refactor-truncation-spec-contracts, c3370-refactor-dispatch-twins-shape, c3375-refactor-provider-scaffold-home, c3380-refactor-truncation-policy-module, c3385-refactor-dispatch-contract-home, c3390-refactor-agent-lifecycle-component]

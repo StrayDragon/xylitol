@@ -1,0 +1,2 @@
+title: "MCP scope pool and connection lifecycle"
+depends_on: [c3050-add-host-workspace-binding, c3206-refactor-session-graph]
