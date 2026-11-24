@@ -5693,7 +5693,7 @@ async fn chained_turn_keeps_the_session_busy_until_the_last_end() {
 async fn mcp_at_token_lazily_loads_the_catalog_without_blocking() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("ui").clone();
-    let mut driver = ScriptedDriver::new();
+    let driver = ScriptedDriver::new();
 
     session.install_mcp_catalog_waker();
     assert_eq!(

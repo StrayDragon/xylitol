@@ -267,9 +267,9 @@ fn cpu_jiffies_self() -> Option<u64> {
     if rc != 0 {
         return None;
     }
-    let secs = i64::from(usage.ru_utime.tv_sec) + i64::from(usage.ru_stime.tv_sec);
-    let usecs = i64::from(usage.ru_utime.tv_usec) + i64::from(usage.ru_stime.tv_usec);
-    Some((secs.max(0) as u64).saturating_mul(1_000_000) + usecs.max(0) as u64)
+    let secs = u64::try_from(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec).unwrap_or(0);
+    let usecs = u64::try_from(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec).unwrap_or(0);
+    Some(secs.saturating_mul(1_000_000) + usecs)
 }
 
 #[cfg(not(unix))]

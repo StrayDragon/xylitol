@@ -85,6 +85,59 @@ impl McpReadyStateView for LoadedResourcesSnapshot {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct QueueStats {
+    pub steer_count: usize,
+    pub follow_up_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionStats {
+    pub session_id: String,
+    pub user_messages: usize,
+    pub assistant_messages: usize,
+    pub total_messages: usize,
+    pub thinking_level: String,
+    pub model: Option<(String, String)>,
+}
+
+pub use xylitol_plugin_sdk::SessionListEntry;
+
+pub fn estimate_from_session_entries(
+    entries: &[SessionEntry],
+    model_id: Option<String>,
+    _fixed_context: Option<xylitol_plugin_sdk::FixedRequestContext>,
+) -> xylitol_plugin_sdk::model::ContextTokenEstimate {
+    xylitol_plugin_sdk::estimate_from_session_entries(
+        entries,
+        &xylitol_plugin_sdk::EstimateOpts {
+            model_id,
+            ..Default::default()
+        },
+    )
+}
+
+pub use xylitol_plugin_sdk::lifecycle::XyEvent;
+
+pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
+
+#[derive(Debug, Clone)]
+pub struct DebugSceneLoad {
+    pub session_id: String,
+    pub entries: Vec<SessionEntry>,
+    pub note: String,
+    pub model: Option<ModelInfo>,
+}
+
+#[allow(dead_code)]
+pub(crate) fn session_tree_kind_unimplemented(kind: SessionTreeKind) -> String {
+    let name = match kind {
+        SessionTreeKind::MessageHistory => "message_history",
+        SessionTreeKind::FileBrowser => "file_browser",
+    };
+    format!("session tree kind '{name}' is not implemented")
+}
+
 #[cfg(test)]
 mod mcp_ready_state_tests {
     use super::*;
@@ -228,57 +281,4 @@ mod mcp_ready_state_tests {
         };
         assert_eq!(arming.snapshot().mcp_ready_state(), McpReadyState::Arming);
     }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct QueueStats {
-    pub steer_count: usize,
-    pub follow_up_count: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct SessionStats {
-    pub session_id: String,
-    pub user_messages: usize,
-    pub assistant_messages: usize,
-    pub total_messages: usize,
-    pub thinking_level: String,
-    pub model: Option<(String, String)>,
-}
-
-pub use xylitol_plugin_sdk::SessionListEntry;
-
-pub fn estimate_from_session_entries(
-    entries: &[SessionEntry],
-    model_id: Option<String>,
-    _fixed_context: Option<xylitol_plugin_sdk::FixedRequestContext>,
-) -> xylitol_plugin_sdk::model::ContextTokenEstimate {
-    xylitol_plugin_sdk::estimate_from_session_entries(
-        entries,
-        &xylitol_plugin_sdk::EstimateOpts {
-            model_id,
-            ..Default::default()
-        },
-    )
-}
-
-pub use xylitol_plugin_sdk::lifecycle::XyEvent;
-
-pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
-
-#[derive(Debug, Clone)]
-pub struct DebugSceneLoad {
-    pub session_id: String,
-    pub entries: Vec<SessionEntry>,
-    pub note: String,
-    pub model: Option<ModelInfo>,
-}
-
-#[allow(dead_code)]
-pub(crate) fn session_tree_kind_unimplemented(kind: SessionTreeKind) -> String {
-    let name = match kind {
-        SessionTreeKind::MessageHistory => "message_history",
-        SessionTreeKind::FileBrowser => "file_browser",
-    };
-    format!("session tree kind '{name}' is not implemented")
 }
