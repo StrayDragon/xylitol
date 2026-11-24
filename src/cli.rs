@@ -296,6 +296,11 @@ async fn run_product_tui_attached(
     }
     let attach_url =
         xylitol_kernel::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
+    xylitol_app_tui::terminal_guard::announce_startup(format!("attaching to {attach_url}"));
+    if let Err(reason) = probe_host_attach(&attach_url).await {
+        eprintln!("{reason}");
+        return Err(reason.into());
+    }
     let token = xylitol_kernel::attach::registration_token(&attach_url);
     let host = xylitol_app_tui::host_client::HttpWsClient::new(attach_url).with_token(token);
     let mut driver = xylitol_app_tui::XyRemoteDriver::with_host(
@@ -351,6 +356,45 @@ async fn run_product_tui_attached(
     .await;
     maybe_print_resume_hint_tui(&mut driver).await;
     tui_result.map_err(|e| e.into())
+}
+
+#[cfg(all(feature = "tui", feature = "server"))]
+async fn probe_host_attach(attach_url: &str) -> Result<(), String> {
+    use xylitol_app_tui::host_client::HostClient;
+    let probe = xylitol_app_tui::host_client::HttpWsClient::new(attach_url)
+        .with_token(xylitol_kernel::attach::registration_token(attach_url));
+    match probe
+        .unary(
+            xylitol_protocol::registry::METHOD_HOST_DESCRIBE,
+            serde_json::json!({}),
+        )
+        .await
+    {
+        Ok(result) if result.ok => {
+            let describe = result.value.unwrap_or(serde_json::Value::Null);
+            let host_protocol = describe
+                .get("protocol_version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let ours = xylitol_protocol::PROTOCOL_VERSION;
+            if !host_protocol.is_empty() && host_protocol != ours.to_string() {
+                return Err(format!(
+                    "host at {attach_url} speaks protocol {host_protocol}, this client expects {ours}; restart the host so both sides match"
+                ));
+            }
+            Ok(())
+        }
+        Ok(result) => Err(format!(
+            "host at {attach_url} refused host.describe: {}",
+            result
+                .error
+                .map(|e| e.details)
+                .unwrap_or_else(|| "unknown error".into())
+        )),
+        Err(e) => Err(format!(
+            "no reachable host at {attach_url}: {e}. A stale `xylitol serve` from another build can hold the port; stop it and retry, or pass --port to a free one."
+        )),
+    }
 }
 
 #[cfg(all(feature = "tui", feature = "server"))]

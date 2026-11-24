@@ -1502,10 +1502,16 @@ async fn automation_loop(
 }
 
 const QUEUED_WAKE_POLL_TICK: Duration = Duration::from_millis(50);
+const QUEUE_ENQUEUE_LOCK_WAIT: Duration = Duration::from_millis(50);
 const QUEUED_WAKE_POLL_MAX_TICKS: usize = 2400;
 
 fn schedule_queued_run(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
     if slot.queued_wake_pending.swap(true, Ordering::SeqCst) {
+        log::debug!(
+            target: "xylitol::host",
+            "queued wake already pending session={}",
+            slot.session_id
+        );
         return;
     }
     let host = host.clone();
@@ -1513,8 +1519,26 @@ fn schedule_queued_run(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
     tokio::spawn(async move {
         let frozen = wait_tools_frozen(&slot).await;
         slot.queued_wake_pending.store(false, Ordering::SeqCst);
-        if frozen {
-            start_queued_run(&host, &slot).await;
+        if frozen && !start_queued_run(&host, &slot).await {
+            let (has_follow_up, inflight) = {
+                let mut g = slot.driver.lock().await;
+                (
+                    g.as_mut().is_some_and(|d| {
+                        d.queue_items()
+                            .iter()
+                            .any(|i| i.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp)
+                    }),
+                    slot.turn_inflight_active(),
+                )
+            };
+            log::debug!(
+                target: "xylitol::host",
+                "queued wake deferred session={} inflight={inflight} head={has_follow_up}",
+                slot.session_id
+            );
+            if has_follow_up && inflight {
+                schedule_queued_run(&host, &slot);
+            }
         }
     });
 }
@@ -1522,13 +1546,33 @@ fn schedule_queued_run(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
 async fn wait_tools_frozen(slot: &Arc<SessionSlot>) -> bool {
     for _ in 0..QUEUED_WAKE_POLL_MAX_TICKS {
         let (frozen, has_follow_up) = {
+            let (frozen_now, has_follow_up) = {
+                let mut g = slot.driver.lock().await;
+                let Some(driver) = g.as_mut() else {
+                    return false;
+                };
+                (
+                    driver.is_tools_frozen(),
+                    driver.queue_items().iter().any(|item| {
+                        item.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp
+                    }),
+                )
+            };
+            if frozen_now {
+                return true;
+            }
+            if !has_follow_up {
+                return false;
+            }
+            if slot.turn_inflight_active() {
+                tokio::time::sleep(QUEUED_WAKE_POLL_TICK).await;
+                continue;
+            }
             let mut g = slot.driver.lock().await;
             let Some(driver) = g.as_mut() else {
                 return false;
             };
-            if !driver.is_tools_frozen() {
-                let _ = driver.poll_tool_gate().await;
-            }
+            let _ = driver.poll_tool_gate().await;
             (
                 driver.is_tools_frozen(),
                 driver
@@ -1576,8 +1620,9 @@ async fn start_queued_run(host: &Arc<HostState>, slot: &Arc<SessionSlot>) -> boo
         }
         log::info!(
             target: "xylitol::host",
-            "queued run starting session={}",
-            slot.session_id
+            "queued run starting session={} inflight={}",
+            slot.session_id,
+            slot.turn_inflight_active()
         );
         driver.run_queued().await
     };
@@ -2247,24 +2292,25 @@ async fn dispatch_session_unary(
     } else {
         dispatch_readonly_unary(host, slot, session_id, method, payload, workspace).await
     };
-    attach_inflight(method, slot, result).await
+    attach_inflight(host, method, slot, session_id, result).await
 }
 
 async fn attach_inflight(
+    host: &Arc<HostState>,
     method: &str,
     slot: &Arc<SessionSlot>,
+    session_id: &str,
     mut result: RpcResult,
 ) -> RpcResult {
     if method != METHOD_GET_STATE {
         return result;
     }
-    let queued = {
-        let mut g = slot.driver.lock().await;
-        g.as_mut().is_some_and(|d| {
-            d.queue_items()
-                .iter()
-                .any(|item| item.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp)
-        })
+    let queued = match materialize_reader(host, session_id).await {
+        Ok(reader) => reader
+            .queue_items()
+            .iter()
+            .any(|item| item.kind == xylitol_plugin_sdk::session::QueueItemKind::FollowUp),
+        Err(_) => false,
     };
     let inflight = Value::Bool(slot.turn_inflight_active() || queued);
     match result.value.as_mut() {
@@ -2322,14 +2368,37 @@ async fn dispatch_writer_unary(
         Ok(cmd) => cmd,
         Err(e) => return RpcResult::error("invalid_input", e),
     };
-    let mut g = slot.driver.lock().await;
-    let Some(driver) = g.as_mut() else {
-        return RpcResult::error("unavailable", "no writer engine");
-    };
     let wakes_queued_run = matches!(
         cmd,
         xylitol_protocol::Command::Steer { .. } | xylitol_protocol::Command::FollowUp { .. }
     );
+
+    let waited = if wakes_queued_run {
+        tokio::time::timeout(QUEUE_ENQUEUE_LOCK_WAIT, slot.driver.lock()).await
+    } else {
+        Ok(slot.driver.lock().await)
+    };
+    let mut g = match waited {
+        Ok(guard) => guard,
+        Err(_) => {
+            log::debug!(
+                target: "xylitol::host",
+                "queue enqueue deferred to a reader driver session={} method={method}",
+                slot.session_id
+            );
+            let mut reader = match materialize_reader(host, &slot.session_id).await {
+                Ok(driver) => driver,
+                Err(e) => return rpc_err(e),
+            };
+            return match reader.execute_command(cmd).await {
+                Ok(value) => RpcResult::ok_value(value),
+                Err(e) => rpc_err(e),
+            };
+        }
+    };
+    let Some(driver) = g.as_mut() else {
+        return RpcResult::error("unavailable", "no writer engine");
+    };
     let bash_forwarder = start_bash_forwarder(slot, driver.as_mut(), method).await;
     let result = match driver.execute_command(cmd).await {
         Ok(mut value) => {
@@ -3672,6 +3741,10 @@ mod tests {
                     let _ = XyDriver::follow_up(self, &message).await;
                     Ok(Value::Null)
                 }
+                Command::Steer { message } => {
+                    let _ = XyDriver::steer(self, &message).await;
+                    Ok(Value::Null)
+                }
                 _ => Ok(Value::Null),
             }
         }
@@ -4107,12 +4180,17 @@ mod tests {
         };
         send(host.clone(), "t1").await;
         for _ in 0..128 {
-            if slot.turn_inflight_active() {
+            if runs.lock().map(|r| !r.is_empty()).unwrap_or(false) {
                 break;
             }
             tokio::task::yield_now().await;
+            tokio::time::advance(Duration::from_millis(5)).await;
         }
-        assert!(slot.turn_inflight_active(), "t1 must be in flight");
+        assert_eq!(
+            runs.lock().map(|r| r.clone()).unwrap_or_default(),
+            vec!["t1".to_string()],
+            "the head follow-up must start its own turn"
+        );
         send(host.clone(), "t2").await;
         assert_eq!(
             runs.lock().map(|r| r.clone()).unwrap_or_default(),

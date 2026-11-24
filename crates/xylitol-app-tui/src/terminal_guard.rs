@@ -77,6 +77,14 @@ fn install_signal_handlers() {
     }
 }
 
+pub fn announce_startup(what: impl std::fmt::Display) {
+    use std::io::Write;
+    let line = format!("starting xylitol… {what}\r\n");
+    let mut out = std::io::stdout();
+    let _ = out.write_all(line.as_bytes());
+    let _ = out.flush();
+}
+
 pub struct TerminalGuard {
     terminal: Option<xylitol_tui::CrosstermTerminal>,
 }

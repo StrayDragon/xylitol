@@ -714,11 +714,13 @@ impl UiModel {
     }
 
     pub(crate) fn maybe_idle_after_agent_end(&mut self) {
-        if self.queue.follow_up_count == 0 {
+        if self.queue.steer_count > 0 {
+            self.set_busy_status("Delivering steering");
+        } else if self.queue.follow_up_count > 0 {
+            self.set_busy_status("Follow-up pending");
+        } else {
             self.phase = UiPhase::Idle;
             self.status = None;
-        } else {
-            self.set_busy_status("Follow-up pending");
         }
     }
 }
