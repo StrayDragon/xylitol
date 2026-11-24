@@ -1288,39 +1288,44 @@ where
             .ok()
             .map(|t| t.clone())
             .filter(|t| !t.is_empty());
+        let mut body = serde_json::json!({
+            "message": prompt,
+            "session_id": session_id,
+            "cwd": client_cwd,
+        });
+        if !contexts.is_empty() {
+            body["contexts"] = serde_json::to_value(&contexts).unwrap_or(serde_json::Value::Null);
+        }
+        if let Some(id) = model_id {
+            body["model_id"] = serde_json::Value::String(id);
+        }
+        if let Some(level) = thinking_level {
+            body["thinking_level"] = serde_json::Value::String(level);
+        }
+        match host.unary("prompt", body).await {
+            Err(e) => {
+                let err = format!("prompt failed: {e}");
+                let stream = async_stream::stream! {
+                    yield XyEvent::error_msg(err);
+                };
+                return Box::pin(stream);
+            }
+            Ok(result) if !result.ok => {
+                let details = result.error.map(|e| e.details).unwrap_or_default();
+                let err = if details.is_empty() {
+                    "prompt failed".to_string()
+                } else {
+                    format!("prompt failed: {details}")
+                };
+                let stream = async_stream::stream! {
+                    yield XyEvent::error_msg(err);
+                };
+                return Box::pin(stream);
+            }
+            Ok(_) => {}
+        }
 
         let stream = async_stream::stream! {
-            let mut body = serde_json::json!({
-                "message": prompt,
-                "session_id": session_id,
-                "cwd": client_cwd,
-            });
-            if !contexts.is_empty() {
-                body["contexts"] = serde_json::to_value(&contexts).unwrap_or(serde_json::Value::Null);
-            }
-            if let Some(id) = model_id {
-                body["model_id"] = serde_json::Value::String(id);
-            }
-            if let Some(level) = thinking_level {
-                body["thinking_level"] = serde_json::Value::String(level);
-            }
-            match host.unary("prompt", body).await {
-                Err(e) => {
-                    yield XyEvent::error_msg(format!("prompt failed: {e}"));
-                    return;
-                }
-                Ok(result) if !result.ok => {
-                    let details = result.error.map(|e| e.details).unwrap_or_default();
-                    yield XyEvent::error_msg(if details.is_empty() {
-                        "prompt failed".into()
-                    } else {
-                        format!("prompt failed: {details}")
-                    });
-                    return;
-                }
-                Ok(_) => {}
-            }
-
             loop {
                 let batch = downlink.drain();
                 if batch.is_empty() {
@@ -1567,6 +1572,46 @@ where
             .lock()
             .ok()
             .and_then(|mut notice| notice.take())
+    }
+
+    fn kick_generate_session_name(
+        &mut self,
+    ) -> Option<tokio::sync::oneshot::Receiver<Option<String>>> {
+        let Ok(value) = serde_json::to_value(Command::GenerateSessionName { force: false }) else {
+            return None;
+        };
+        let method = value
+            .get("type")
+            .and_then(Value::as_str)
+            .map(str::to_string)?;
+        let payload = self.with_session(value);
+        let host = self.host.clone();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let name = match host.unary(&method, payload).await {
+                Ok(result) => match result.into_std() {
+                    Ok(data) => data.get("name").and_then(Value::as_str).map(str::to_string),
+                    Err(error) => {
+                        log::warn!(
+                            target: "xylitol::tui",
+                            "stage name generation failed error={}: {}",
+                            error.code,
+                            error.details
+                        );
+                        None
+                    }
+                },
+                Err(error) => {
+                    log::warn!(
+                        target: "xylitol::tui",
+                        "stage name generation failed error={error}"
+                    );
+                    None
+                }
+            };
+            let _ = tx.send(name);
+        });
+        Some(rx)
     }
 
     async fn arm_tool_freeze_gate(&mut self) {

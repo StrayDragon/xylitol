@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use strum::IntoStaticStr;
 
 use crate::utils::ThoughtClock;
@@ -218,6 +220,7 @@ pub struct UiModel {
     pub queue: QueueBadge,
     pub pending_steer: Vec<String>,
     pub pending_follow_up: Vec<String>,
+    pub(crate) awaiting_user_bubble: VecDeque<String>,
     pub queue_item_ids: Vec<(String, String)>,
     pub status: Option<String>,
     status_placeholder: bool,
@@ -247,6 +250,7 @@ impl UiModel {
             queue: QueueBadge::default(),
             pending_steer: Vec::new(),
             pending_follow_up: Vec::new(),
+            awaiting_user_bubble: VecDeque::new(),
             queue_item_ids: Vec::new(),
             status: None,
             status_placeholder: false,
@@ -284,7 +288,16 @@ impl UiModel {
         };
         if previous_steer > steer_count && self.pending_steer.len() > steer_count {
             let drop_n = self.pending_steer.len() - steer_count;
-            self.pending_steer.drain(..drop_n);
+            let retired: Vec<String> = self.pending_steer.drain(..drop_n).collect();
+            let follow_room = follow_up_count.saturating_sub(self.pending_follow_up.len());
+            let mut retired = retired.into_iter();
+            for _ in 0..follow_room {
+                let Some(text) = retired.next() else {
+                    break;
+                };
+                self.pending_follow_up.push(text);
+            }
+            self.awaiting_user_bubble.extend(retired);
         }
     }
 
@@ -333,6 +346,7 @@ impl UiModel {
         let cleared = self.pending_follow_up.len();
         self.pending_follow_up.clear();
         self.queue.follow_up_count = 0;
+        self.awaiting_user_bubble.clear();
         cleared
     }
 
@@ -340,18 +354,19 @@ impl UiModel {
         let cleared = self.pending_steer.len();
         self.pending_steer.clear();
         self.queue.steer_count = 0;
+        self.awaiting_user_bubble.clear();
         cleared
     }
 
     pub fn pop_follow_up_strip_matching(&mut self, text: &str) {
-        if let Some(pos) = self.pending_follow_up.iter().rposition(|t| t == text) {
+        if let Some(pos) = self.pending_follow_up.iter().position(|t| t == text) {
             self.pending_follow_up.remove(pos);
             self.queue.follow_up_count = self.pending_follow_up.len();
         }
     }
 
     pub fn pop_steer_strip_matching(&mut self, text: &str) {
-        if let Some(pos) = self.pending_steer.iter().rposition(|t| t == text) {
+        if let Some(pos) = self.pending_steer.iter().position(|t| t == text) {
             self.pending_steer.remove(pos);
             self.queue.steer_count = self.pending_steer.len();
         }

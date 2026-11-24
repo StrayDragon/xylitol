@@ -82,7 +82,7 @@
       并且 会话树未打开
   @req:r1285
   规则: product-queue-fixed-zone
-    产品 TUI 在 steer/follow-up 队列非空时 须在 scrollback 与 status 之间以 muted 色渲染逐条队列行及点击取回提示（不得写组合键名，见 app-tui-mouse-actions echo-without-key-names；实现为 queue strip）；steer 与 follow-up 须分组渲染，Steering 组在上、Follow-up 组在下；每条排队消息 须独占一行，行首以 muted 分隔符与 muted 组标签（`Steering` / `Follow-up`）标识所属分组，不得带组内序号或组深度计数；每条正文 须截断为单行（超宽以省略号结尾），不得换行占用多行；行首分隔符须与末尾取回提示行左侧同位，组标签定宽补齐，使各行正文起点与提示行同属一个左侧对齐面；固定区高度 须随队列条数增长，不得隐藏排队行。不得将排队内容写成 scrollback System [steer]/[follow-up] 墙；不得在 footer/status 另加队列计数徽章（如 `q:sN|fM`）。点击某一队列行 须只将该条正文还原进 editor（覆盖当前草稿）并移除该条；app.message.dequeue（默认 Alt+Up）须按后进先出逐条还原最近入队的一条并覆盖当前草稿。排队消息（插话与续跑）须在下一拍内全部交付 Host 队列，产品端不得在本地持有待跑的排队消息；装配门禁期间只有首条根提交可被本地扣住（带附件、显示 Assembling、可 Esc / Alt+Up 取消），其后入队的行须排在它之后交付。产品 TUI 须跟随 Host 事件带：无论回合是否由本端发起，AgentStart 须进入忙碌、AgentEnd 须回到空闲，Host 串接的续跑轮次须进入 transcript 并消退对应队列行，Esc 抑制只覆盖被取消的那一轮。经 attach/Remote 时，入队后的 drain_pending 不得用空队列深度把已画条文案清掉；校准 须只按 Host 真实深度 FIFO 消退。
+    产品 TUI 在 steer/follow-up 队列非空时 须在 scrollback 与 status 之间以 muted 色渲染逐条队列行及点击取回提示（不得写组合键名，见 app-tui-mouse-actions echo-without-key-names；实现为 queue strip）；steer 与 follow-up 须分组渲染，Steering 组在上、Follow-up 组在下；每条排队消息 须独占一行，行首以 muted 分隔符与 muted 组标签（`Steering` / `Follow-up`）标识所属分组，不得带组内序号或组深度计数；每条正文 须截断为单行（超宽以省略号结尾），不得换行占用多行；行首分隔符须与末尾取回提示行左侧同位，组标签定宽补齐，使各行正文起点与提示行同属一个左侧对齐面；固定区高度 须随队列条数增长，不得隐藏排队行。不得将排队内容写成 scrollback System [steer]/[follow-up] 墙；不得在 footer/status 另加队列计数徽章（如 `q:sN|fM`）。点击某一队列行 须只将该条正文还原进 editor（覆盖当前草稿）并移除该条；app.message.dequeue（默认 Alt+Up）须按后进先出逐条还原最近入队的一条并覆盖当前草稿。排队消息（插话与续跑）须在下一拍内全部交付 Host 队列，产品端不得在本地持有待跑的排队消息；装配门禁期间插话须在下一拍作为 steer 交付、续跑须作为 follow-up 交付，产品端不得把首条纯文本提交扣在本地当根提交。队头一轮正文输出期间，尚未到 step 边界的插话行须留在 Steering 组，续跑行留在 Follow-up 组，不得把后续插话改画成 Follow-up。带 MCP 附件的提交仍可在门禁释放前本地扣住，释放后以带上下文的根提交起轮。中止与队列取回仍可取消尚未起轮的队列行。Host 深度校准按 FIFO 消退 steer 行时，被裁掉的正文须保留到随后的用户消息注入，注入时退役对应队列行并写入 transcript，不得因正文相同而吞掉第二次提问。产品 TUI 须跟随 Host 事件带：无论回合是否由本端发起，AgentStart 须进入忙碌、AgentEnd 须回到空闲，Host 串接的续跑轮次须进入 transcript 并消退对应队列行，Esc 抑制只覆盖被取消的那一轮。经 attach/Remote 时，入队后的 drain_pending 不得用空队列深度把已画条文案清掉；校准 须只按 Host 真实深度 FIFO 消退。
 
     场景: 队列条带渲染与点击恢复
       当 以主机泵忙碌插队后渲染队列条并点击队列条
@@ -92,10 +92,10 @@
       当 以主机泵忙碌连续插队两条 steer 后渲染队列条
       那么 队列条两条 Steering 行各含一条正文且不带组内序号
 
-    场景: 门禁行不被后入队的插话超越
-      假如 装配门禁期先后提交根提交 t1 与 follow-up t2
+    场景: 门禁期间入队不本地扣住
+      假如 装配门禁期先后插话 t1 并续跑 t2
       当 门禁释放后忙碌插队 steer t3 与 follow-up t4 并推进主机泵
-      那么 根提交 t1 先起轮且后续行按入队先后到达 Host 队列
+      那么 t1 以 steer 先交付且 t2 以 follow-up 随后交付
       并且 Host 串接的轮次全部进入 transcript 且队列条清空
   @req:r1286
   规则: product-queue-uplink

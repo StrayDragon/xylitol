@@ -35,6 +35,7 @@ APP_TUI_ONLY = {
     "drain_idle_events",
     "exposes_session_store",
     "host_chain_pending",
+    "kick_generate_session_name",
     "link_health",
     "mcp_catalog_state",
     "request_mcp_catalog",

@@ -133,13 +133,14 @@ impl<T: Terminal> HostSession<T> {
     pub fn apply_ready_mcp_catalog(&mut self, state: crate::driver::McpCatalogState) {
         let changed =
             std::mem::discriminant(&state) != std::mem::discriminant(&self.mcp_catalog_applied);
+        if let crate::driver::McpCatalogState::Ready(catalog) = &state {
+            self.set_mcp_catalog_entries(catalog.resources.clone());
+        }
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().set_mcp_catalog_status(state.clone());
         }
         match &state {
-            crate::driver::McpCatalogState::Ready(catalog) => {
-                self.set_mcp_catalog_entries(catalog.resources.clone());
-            }
+            crate::driver::McpCatalogState::Ready(_) => {}
             crate::driver::McpCatalogState::Failed(reason) => {
                 log::warn!(target: "xylitol::tui", "mcp catalog fetch failed: {reason}");
                 if changed {

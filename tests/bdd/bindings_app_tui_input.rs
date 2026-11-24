@@ -29,7 +29,7 @@ async fn test_c2999_queue_compact(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "门禁行不被后入队的插话超越"
+    name = "门禁期间入队不本地扣住"
 )]
 async fn test_c3600_queue_fifo(host_pump_bdd: HostPumpBdd) {}
 

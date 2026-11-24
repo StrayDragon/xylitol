@@ -16,6 +16,9 @@ pub(crate) use self::hook_bus::{cancel_hook, observe_hook, observe_hook_sync};
 pub use self::queue::{
     AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats, QueuedItem, RevokeOutcome,
 };
+pub use self::session_ops::{
+    StageNameCommit, StageNameModelJob, StageNamePrep, execute_stage_name_job,
+};
 pub use self::stats::SessionStats;
 pub use self::stats::{ContextUsage, get_context_usage};
 pub use self::tools_ops::ToolsWriteOutcome;
@@ -240,15 +243,7 @@ impl AgentCapabilities {
 
     pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) -> String {
         let msg = AgentMessage::user_parts(parts);
-        let target = if (self.turn_in_flight)() {
-            &self.queues.steer
-        } else {
-            &self.queues.follow_up
-        };
-        let item = target
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .enqueue(msg);
+        let item = self.queues.enqueue_steer(msg, (self.turn_in_flight)());
         self.queues.notify_queue_update();
         item.id
     }

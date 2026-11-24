@@ -5,7 +5,9 @@
 //! ~keep cargo nextest run --test tui_e2e --run-ignored all -E "test(lab_record_product_tui)" --no-capture
 //! ~keep ```
 //! ~keep 输出 `/tmp/xylitol_tui_recording/<timestamp>.jsonl`：每行一帧，含相对毫秒、屏幕文本与关键状态
-//! ~keep （是否有 spinner、队列行、用户条目数）。`XYLITOL_LAB_KEYS` 可覆盖按键脚本。
+//! ~keep （是否有 spinner、队列行、用户条目数）。同目录 `<timestamp>.timeline.txt` 只保留状态变化与
+//! ~keep 屏幕差异，供人读和检索。`XYLITOL_LAB_KEYS` 可覆盖按键脚本。
+//! ~keep `XYLITOL_LAB_POKE` 若设置，则在 4.5s 再送这段按键，用来确认主循环当时仍收键。
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -43,7 +45,14 @@ fn lab_record_product_tui() {
     let out_dir = std::path::PathBuf::from("/tmp/xylitol_tui_recording");
     std::fs::create_dir_all(&out_dir).expect("recording dir");
     let out_path = out_dir.join(format!("{stamp}.jsonl"));
+    let timeline_path = out_dir.join(format!("{stamp}.timeline.txt"));
     let mut out = std::fs::File::create(&out_path).expect("recording file");
+    let mut timeline = std::fs::File::create(&timeline_path).expect("timeline file");
+    writeln!(
+        timeline,
+        "# beats keep only frames whose spinner, queue, user rows, or screen text changed"
+    )
+    .expect("timeline header");
 
     let root = std::env::temp_dir().join(format!("xylitol_lab_rec_{stamp}"));
     let (project, config, home) = scratch_dirs(&root).expect("scratch dirs");
@@ -77,6 +86,13 @@ fn lab_record_product_tui() {
     let start = Instant::now();
     let mut next_frame = Duration::ZERO;
     let mut typed_at: Option<Duration> = None;
+    let poke = std::env::var("XYLITOL_LAB_POKE").unwrap_or_default();
+    let mut poked = poke.is_empty();
+    let mut prev_text = String::new();
+    let mut prev_sig: Option<(bool, usize, usize)> = None;
+    let mut spinner_on: Option<(u64, bool)> = None;
+    let mut seen_spinner = false;
+    let mut spinner_gaps: Vec<(u64, u64)> = Vec::new();
     while start.elapsed() < RECORD_FOR {
         session.drain(Duration::from_millis(20));
         let elapsed = start.elapsed();
@@ -84,19 +100,83 @@ fn lab_record_product_tui() {
             session.send_keys(&keys).expect("send keys");
             typed_at = Some(elapsed);
         }
+        if !poked && elapsed >= Duration::from_millis(4500) {
+            session.send_keys(&poke).expect("poke key");
+            poked = true;
+        }
         if elapsed >= next_frame {
             next_frame = elapsed + FRAME_INTERVAL;
             let screen = session.screen(120, 40);
             let text = screen.text();
+            let spinner = text.contains('⬢');
+            let queue_rows = text.matches("Follow-up").count() + text.matches("Steering").count();
+            let user_rows = text.matches('❯').count();
+            let ms = elapsed.as_millis() as u64;
             let frame = serde_json::json!({
-                "ms": elapsed.as_millis() as u64,
-                "spinner": text.contains('⬢'),
-                "queue_rows": text.matches("Follow-up").count() + text.matches("Steering").count(),
-                "user_rows": text.matches('❯').count(),
+                "ms": ms,
+                "spinner": spinner,
+                "queue_rows": queue_rows,
+                "user_rows": user_rows,
                 "text": text,
             });
             writeln!(out, "{frame}").expect("write frame");
+            if let Some((at, was_on)) = spinner_on {
+                if was_on && !spinner {
+                    spinner_on = Some((ms, false));
+                } else if !was_on && spinner {
+                    if seen_spinner {
+                        spinner_gaps.push((at, ms.saturating_sub(at)));
+                    }
+                    seen_spinner = true;
+                    spinner_on = Some((ms, true));
+                }
+            } else {
+                seen_spinner = spinner;
+                spinner_on = Some((ms, spinner));
+            }
+            let sig = (spinner, queue_rows, user_rows);
+            if prev_sig != Some(sig) || text != prev_text {
+                writeln!(
+                    timeline,
+                    "{ms}\tspinner={spinner}\tqueue={queue_rows}\tusers={user_rows}"
+                )
+                .expect("timeline beat");
+                write_screen_diff(&mut timeline, &prev_text, &text);
+                prev_sig = Some(sig);
+                prev_text = text;
+            }
         }
     }
+    writeln!(timeline, "# spinner gaps (off starts at ms, lasts ms)").expect("gap header");
+    for (at, held) in spinner_gaps {
+        writeln!(timeline, "gap\t{at}\t{held}").expect("gap row");
+    }
     println!("recording written to {}", out_path.display());
+    println!("timeline written to {}", timeline_path.display());
+}
+
+fn write_screen_diff(out: &mut std::fs::File, before: &str, after: &str) {
+    let before: Vec<&str> = before.lines().filter(|line| !line.is_empty()).collect();
+    let after: Vec<&str> = after.lines().filter(|line| !line.is_empty()).collect();
+    let mut shown = 0usize;
+    for line in &after {
+        if shown >= 8 {
+            break;
+        }
+        if !before.contains(line) {
+            let clip: String = line.chars().take(100).collect();
+            writeln!(out, "  + {clip}").expect("diff add");
+            shown += 1;
+        }
+    }
+    for line in &before {
+        if shown >= 12 {
+            break;
+        }
+        if !after.contains(line) {
+            let clip: String = line.chars().take(100).collect();
+            writeln!(out, "  - {clip}").expect("diff del");
+            shown += 1;
+        }
+    }
 }

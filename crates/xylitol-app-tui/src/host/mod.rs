@@ -88,6 +88,7 @@ pub struct HostSession<T: Terminal> {
     ui_model: UiModel,
     pending: PendingOps,
     stage_name: StageNameState,
+    stage_name_job: Option<tokio::sync::oneshot::Receiver<Option<String>>>,
     completed_turns: u64,
     host_chain_pending: bool,
     pending_mcp_catalog: Arc<AtomicBool>,
@@ -243,6 +244,7 @@ impl<T: Terminal> HostSession<T> {
             ui_model: UiModel::new(),
             pending: PendingOps::default(),
             stage_name: StageNameState::default(),
+            stage_name_job: None,
             completed_turns: 0,
             host_chain_pending: false,
             pending_mcp_catalog: Arc::new(AtomicBool::new(false)),
@@ -936,6 +938,15 @@ impl<T: Terminal> HostSession<T> {
     pub fn set_queue_depth(&mut self, steer_count: usize, follow_up_count: usize) {
         let outbox_steer = self.pending.steer.len();
         let outbox_follow = self.pending.follow_up.len();
+        if steer_count == 0
+            && follow_up_count == 0
+            && outbox_steer == 0
+            && outbox_follow == 0
+            && (!self.ui_model.pending_steer.is_empty()
+                || !self.ui_model.pending_follow_up.is_empty())
+        {
+            return;
+        }
         self.ui_model.sync_queue_depth(
             steer_count.saturating_add(outbox_steer),
             follow_up_count.saturating_add(outbox_follow),
@@ -957,6 +968,20 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn take_stage_name_request(&mut self) -> bool {
         self.stage_name.take_request_pending()
+    }
+
+    pub fn arm_stage_name_job(&mut self, rx: tokio::sync::oneshot::Receiver<Option<String>>) {
+        self.stage_name_job = Some(rx);
+    }
+
+    pub fn poll_stage_name(&mut self) -> Option<String> {
+        let ready = match self.stage_name_job.as_mut()?.try_recv() {
+            Ok(name) => Some(name),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => return None,
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed) => Some(None),
+        };
+        self.stage_name_job = None;
+        ready.flatten()
     }
 
     pub fn set_stage_name_policy(&mut self, policy: StageNamePolicy) {

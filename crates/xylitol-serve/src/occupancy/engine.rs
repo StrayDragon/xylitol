@@ -7,6 +7,7 @@ use tokio::sync::{Mutex, MutexGuard};
 
 use xylitol_plugin_sdk::ask::AskUserGateway;
 use xylitol_protocol::Command;
+use xylitol_runtime::agent::capabilities::{StageNameCommit, StageNamePrep};
 use xylitol_runtime::driver::ModelInfo;
 use xylitol_runtime::{XyDriver, XyDriverError};
 
@@ -23,6 +24,26 @@ pub trait OccupancyEngine: XyDriver {
     async fn ensure_tool_table_frozen(&mut self);
     async fn poll_tool_gate(&mut self) -> bool;
     async fn execute_command(&mut self, cmd: Command) -> Result<Value, XyDriverError>;
+
+    async fn prepare_stage_name(&mut self, force: bool) -> Result<StageNamePrep, XyDriverError> {
+        let value = self
+            .execute_command(Command::GenerateSessionName { force })
+            .await?;
+        let name = value
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        Ok(StageNamePrep::Ready(name))
+    }
+
+    async fn commit_stage_name(
+        &mut self,
+        commit: StageNameCommit,
+    ) -> Result<String, XyDriverError> {
+        let _ = commit;
+        Err(XyDriverError::unsupported("commit_stage_name"))
+    }
     /// ~keep 测试接缝：trait 层暴露 agent 工作目录，仅供集成测试观测，非产品 API。
     /// ~keep 调用方：`xylitol-kernel` occupancy factory 经此转发，最终由 `tests/occupancy/assembly_fixture_tests.rs` 断言。
     /// ~keep 不得挂 `#[cfg(test)]`：调用方跨 crate，cfg 只在被测 crate 自身测试编译时激活。

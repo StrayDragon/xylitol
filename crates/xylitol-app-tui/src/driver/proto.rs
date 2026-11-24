@@ -275,6 +275,12 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
 
     async fn arm_tool_freeze_gate(&mut self) {}
 
+    fn kick_generate_session_name(
+        &mut self,
+    ) -> Option<tokio::sync::oneshot::Receiver<Option<String>>> {
+        None
+    }
+
     async fn take_mcp_gate_notice(&mut self) -> Option<String> {
         None
     }

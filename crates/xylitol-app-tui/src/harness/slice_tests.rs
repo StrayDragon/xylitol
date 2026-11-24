@@ -5310,11 +5310,16 @@ async fn c1900_alt_up_cancels_gated_assemble_must_not_run() {
         .await
         .unwrap();
     assert!(driver.runs.is_empty(), "pre-freeze MUST NOT run yet");
-    assert!(session.has_gated_submit(), "Assembling holds gated submit");
-    assert_eq!(session.ui_model().status.as_deref(), Some("Assembling"));
     assert!(
-        !session.ui_model().pending_follow_up.is_empty(),
-        "gate MUST show Follow-up strip"
+        !session.has_gated_submit(),
+        "plain text must not be held as a root submit"
+    );
+    assert_eq!(driver.steer_calls, vec!["hi".to_string()]);
+    assert_eq!(session.ui_model().status.as_deref(), Some("Assembling"));
+    assert_eq!(
+        session.ui_model().pending_steer,
+        vec!["hi".to_string()],
+        "gate MUST show a Steering row"
     );
 
     session.step(HostEvent::Input(alt_up_event())).unwrap();
@@ -5348,7 +5353,8 @@ async fn c1900_esc_cancels_gated_assemble_must_not_run() {
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert!(session.has_gated_submit());
+    assert!(!session.has_gated_submit());
+    assert_eq!(driver.steer_calls, vec!["hi".to_string()]);
     assert_eq!(session.ui_model().status.as_deref(), Some("Assembling"));
 
     session.step(HostEvent::Input(esc_event())).unwrap();
@@ -5367,7 +5373,7 @@ async fn c1900_esc_cancels_gated_assemble_must_not_run() {
         session.ui_model().entries
     );
     assert!(
-        session.ui_model().pending_follow_up.is_empty(),
+        session.ui_model().pending_steer.is_empty(),
         "gate strip MUST clear with Esc"
     );
 
@@ -5396,14 +5402,18 @@ async fn c1900_gated_assemble_runs_after_freeze_when_not_cancelled() {
         .await
         .unwrap();
     assert!(driver.runs.is_empty());
-    assert!(session.has_gated_submit());
+    assert!(!session.has_gated_submit());
+    assert_eq!(driver.steer_calls, vec!["hi".to_string()]);
 
     driver.set_tools_frozen(true);
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert_eq!(driver.runs, vec!["hi".to_string()]);
-    assert!(!session.has_gated_submit());
+    assert!(
+        driver.runs.is_empty(),
+        "freeze must not start a local root run"
+    );
+    assert_eq!(driver.steer_calls, vec!["hi".to_string()]);
 }
 
 #[tokio::test]
@@ -5420,7 +5430,8 @@ async fn c3345_gate_window_keeps_typing_then_runs_after_freeze() {
         .await
         .unwrap();
     assert!(driver.runs.is_empty());
-    assert!(session.has_gated_submit());
+    assert!(!session.has_gated_submit());
+    assert_eq!(driver.steer_calls, vec!["hi".to_string()]);
 
     session.step(HostEvent::Input(char_event('x'))).unwrap();
     assert_eq!(
@@ -5433,14 +5444,14 @@ async fn c3345_gate_window_keeps_typing_then_runs_after_freeze() {
         .await
         .unwrap();
     assert!(driver.runs.is_empty());
-    assert!(session.has_gated_submit());
+    assert!(!session.has_gated_submit());
 
     driver.set_tools_frozen(true);
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert_eq!(driver.runs, vec!["hi".to_string()]);
-    assert!(!session.has_gated_submit());
+    assert!(driver.runs.is_empty());
+    assert_eq!(driver.steer_calls, vec!["hi".to_string()]);
 }
 
 #[tokio::test]
@@ -5460,20 +5471,29 @@ async fn gate_rows_reach_the_host_queue_in_arrival_order() {
         .await
         .unwrap();
     assert_eq!(
-        session.ui_model().pending_follow_up,
+        session.ui_model().pending_steer,
         vec![
             "hi".to_string(),
             "你是谁".to_string(),
             "你有什么工具".to_string()
         ],
-        "every submit during the MCP gate must queue as a strip row"
+        "every 插话 during the MCP gate must queue as a Steering row"
     );
     assert_eq!(session.ui_model().status.as_deref(), Some("Assembling"));
-    assert!(driver.runs.is_empty(), "the gate must hold every run");
     assert!(
-        driver.follow_up_calls.is_empty(),
-        "rows behind the held root submit must not be sent ahead of it"
+        driver.runs.is_empty(),
+        "the gate must not start a local root run"
     );
+    assert_eq!(
+        driver.steer_calls,
+        vec![
+            "hi".to_string(),
+            "你是谁".to_string(),
+            "你有什么工具".to_string()
+        ],
+        "each 插话 is delivered in arrival order"
+    );
+    assert!(driver.follow_up_calls.is_empty());
 
     driver.set_tools_frozen(true);
     pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -5482,16 +5502,11 @@ async fn gate_rows_reach_the_host_queue_in_arrival_order() {
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert_eq!(
-        driver.runs,
-        vec!["hi".to_string()],
-        "the held root submit runs first"
+    assert!(
+        driver.runs.is_empty(),
+        "freeze must not start a local root run"
     );
-    assert_eq!(
-        driver.follow_up_calls,
-        vec!["你是谁".to_string(), "你有什么工具".to_string()],
-        "the remaining rows reach the host queue in arrival order"
-    );
+    assert!(driver.follow_up_calls.is_empty());
 }
 #[tokio::test]
 async fn tui_follows_host_chained_turns_after_its_own_stream_ends() {
@@ -5509,24 +5524,15 @@ async fn tui_follows_host_chained_turns_after_its_own_stream_ends() {
     drain_pending(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert!(session.has_gated_submit(), "the gate holds the root submit");
-    driver.set_tools_frozen(true);
-    drain_pending(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    drain_pending(&mut session, &mut driver, &mut stream)
-        .await
-        .unwrap();
-    assert_eq!(
-        driver.runs,
-        vec!["t1".to_string()],
-        "the held root submit runs"
-    );
-    assert_eq!(driver.follow_up_calls, vec!["t2".to_string()]);
     assert!(
-        session.run_active(),
-        "t1 is in flight on the TUI's own stream"
+        !session.has_gated_submit(),
+        "plain text is delivered instead of held"
     );
+    assert_eq!(driver.steer_calls, vec!["t1".to_string()]);
+    assert_eq!(driver.follow_up_calls, vec!["t2".to_string()]);
+    session.on_turn_started("t1");
+    session.ui_model_mut().pop_steer_strip_matching("t1");
+    assert!(session.run_active(), "the host started t1");
 
     root.borrow_mut().set_editor_text("t3");
     session.step(HostEvent::Input(enter_event())).unwrap();
@@ -5535,7 +5541,7 @@ async fn tui_follows_host_chained_turns_after_its_own_stream_ends() {
     drain_pending(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert_eq!(driver.steer_calls, vec!["t3".to_string()]);
+    assert_eq!(driver.steer_calls, vec!["t1".to_string(), "t3".to_string()]);
     assert_eq!(
         driver.follow_up_calls,
         vec!["t2".to_string(), "t4".to_string()],
@@ -5634,7 +5640,7 @@ async fn gated_rows_survive_host_depth_calibration() {
         .unwrap();
     session.set_queue_depth(0, 0);
     assert_eq!(
-        session.ui_model().pending_follow_up,
+        session.ui_model().pending_steer,
         vec!["hi".to_string(), "你是谁".to_string()],
         "host depth zero must not wipe rows the host has not reported consumed"
     );
@@ -5645,11 +5651,11 @@ async fn gated_rows_survive_host_depth_calibration() {
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert_eq!(driver.runs, vec!["hi".to_string()]);
+    assert!(driver.runs.is_empty());
     assert_eq!(
-        driver.follow_up_calls,
-        vec!["你是谁".to_string()],
-        "zero-depth hosts still receive every row"
+        driver.steer_calls,
+        vec!["hi".to_string(), "你是谁".to_string()],
+        "zero-depth hosts still receive every 插话"
     );
 }
 #[tokio::test]
@@ -5712,6 +5718,35 @@ async fn mcp_at_token_lazily_loads_the_catalog_without_blocking() {
         driver.mcp_catalog_calls(),
         0,
         "the request is async; no fetch happens on the main loop"
+    );
+}
+
+#[tokio::test]
+async fn mcp_at_token_shows_rows_when_the_catalog_arrives() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("ui").clone();
+
+    session.apply_ready_mcp_catalog(crate::driver::McpCatalogState::Loading);
+    for ch in "@mcp:".chars() {
+        session.step(HostEvent::Input(char_key(ch))).unwrap();
+    }
+    assert!(
+        root.borrow().editor_autocomplete_open(),
+        "typing @mcp: while the catalog is loading must open the popup"
+    );
+
+    session.apply_ready_mcp_catalog(crate::driver::McpCatalogState::Ready(Box::new(
+        harness_catalog(),
+    )));
+    assert!(
+        root.borrow().editor_autocomplete_open(),
+        "an arriving catalog must keep the open @mcp: popup"
+    );
+    let frame = root.borrow_mut().render(80).join("\n");
+    let plain = xylitol_tui::utils::strip_ansi_codes(&frame);
+    assert!(
+        plain.contains("file:///notes"),
+        "resource rows must appear without another key: {plain}"
     );
 }
 #[tokio::test]
@@ -5824,23 +5859,21 @@ async fn abort_while_gate_holds_clears_follow_ups_too() {
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
-    assert!(session.has_gated_submit(), "the gate holds the root submit");
-    assert_eq!(
-        session.ui_model().pending_follow_up,
-        vec!["t1".to_string(), "t2".to_string()]
-    );
+    assert!(!session.has_gated_submit(), "plain text is not held");
+    assert_eq!(session.ui_model().pending_steer, vec!["t1".to_string()]);
+    assert_eq!(session.ui_model().pending_follow_up, vec!["t2".to_string()]);
     session.step(HostEvent::Input(esc_event())).unwrap();
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
         .unwrap();
+    assert!(!session.has_gated_submit());
     assert!(
-        !session.has_gated_submit(),
-        "Esc drops the held root submit"
+        driver.runs.is_empty(),
+        "cancel must not start a root run: {:?}",
+        driver.runs
     );
-    assert!(
-        driver.runs.is_empty() && driver.follow_up_calls.is_empty(),
-        "nothing queued behind the cancelled gate may reach the host"
-    );
+    assert_eq!(driver.steer_calls, vec!["t1".to_string()]);
+    assert_eq!(driver.follow_up_calls, vec!["t2".to_string()]);
     assert_eq!(
         driver.clear_calls,
         vec![(true, true)],

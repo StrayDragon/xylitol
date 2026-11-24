@@ -926,28 +926,28 @@ async fn assembly_gate_queues_every_submit() {
         .await
         .unwrap();
     assert_eq!(
-        session.ui_model().pending_follow_up,
+        session.ui_model().pending_steer,
         vec![
             "hi".to_string(),
             "你是谁".to_string(),
             "你有什么工具".to_string()
         ],
-        "every submit during the assembly gate must queue"
+        "every Enter during the assembly gate must queue as steering"
     );
     let frame = root.borrow_mut().render(80);
-    let follow_rows: Vec<&String> = frame.iter().filter(|l| l.contains("Follow-up")).collect();
+    let steer_rows: Vec<&String> = frame.iter().filter(|l| l.contains("Steering")).collect();
     assert!(
-        follow_rows.iter().any(|l| l.contains("hi")),
+        steer_rows.iter().any(|l| l.contains("hi")),
         "queued row must show: {frame:?}"
     );
     assert!(
-        follow_rows.iter().any(|l| l.contains("你是谁")),
+        steer_rows.iter().any(|l| l.contains("你是谁")),
         "queued row must show: {frame:?}"
     );
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Follow-up") && l.contains("你有什么工具"))
+            .any(|l| l.contains("Steering") && l.contains("你有什么工具"))
     );
 }
 
@@ -969,7 +969,7 @@ async fn gated_row_recall_keeps_other_rows() {
     assert!(session.recall_queue_row(1));
     assert_eq!(root.borrow().editor_text(), "你是谁");
     assert_eq!(
-        session.ui_model().pending_follow_up,
+        session.ui_model().pending_steer,
         vec!["hi".to_string(), "你有什么工具".to_string()],
         "recalling one row must not clear the rest"
     );

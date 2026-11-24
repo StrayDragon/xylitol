@@ -34,7 +34,9 @@ use super::state::{
     FrozenRootConfig, RuntimeControlError, SharedTurnCoordinator, TurnId, TurnLease,
 };
 use super::{AgentHooks, XyEvent, XyEventStream};
-use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
+use crate::agent::capabilities::{
+    AgentCapabilities, PendingMessageQueue, StageNameCommit, StageNamePrep,
+};
 use crate::agent::compaction::CompactionError;
 use crate::agent::goal::{GoalDecision, decide_active_goal};
 use crate::agent::prompt::{AgentStatusBar, expand_skills_in_agent_messages, project_outbound};
@@ -103,6 +105,20 @@ impl AgentRuntime {
         force: bool,
     ) -> Result<String, xylitol_plugin_sdk::error::XyError> {
         self.inner.generate_session_name(force).await
+    }
+
+    pub async fn prepare_stage_name(
+        &mut self,
+        force: bool,
+    ) -> Result<StageNamePrep, xylitol_plugin_sdk::error::XyError> {
+        self.inner.prepare_stage_name(force).await
+    }
+
+    pub async fn commit_prepared_stage_name(
+        &mut self,
+        commit: StageNameCommit,
+    ) -> Result<String, xylitol_plugin_sdk::error::XyError> {
+        self.inner.commit_prepared_stage_name(commit).await
     }
 
     pub fn session_id(&self) -> Option<&str> {
@@ -1045,10 +1061,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 history.push(AgentMessage::user_parts(user_parts.clone()));
                 persist_agent_message(&store, &session_id, history.last().expect("user message"))
                     .await;
-                Vec::new()
+                drain_queue(&steer_queue)
             }
         };
-        pending.extend(drain_queue(&steer_queue));
         let mut turn: usize = 0;
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
         let mut overflow_recovery_attempted = false;
@@ -2662,6 +2677,109 @@ mod loop_middleware_tests {
             delivered_user_texts,
             vec!["late steer"],
             "the settled steer must be delivered as a fresh user message in its own turn"
+        );
+    }
+
+    struct ParkFirstCall {
+        entered: Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+        release: Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for ParkFirstCall {
+        fn name(&self) -> &str {
+            "park-first-call"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            let sender = self.entered.lock().expect("entered").take();
+            let release = self.release.lock().expect("release").take();
+            if let Some(sender) = sender {
+                let _ = sender.send(());
+                if let Some(release) = release {
+                    let _ = release.await;
+                }
+            }
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(xylitol_plugin_sdk::model::XyChunk::TextDelta("done".into())),
+                Ok(xylitol_plugin_sdk::model::XyChunk::Done {
+                    finish_reason: xylitol_plugin_sdk::message::XyStopReason::Stop,
+                    usage: None,
+                }),
+            ])))
+        }
+    }
+
+    #[tokio::test]
+    async fn later_idle_steer_stays_steering_while_the_root_streams() {
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let entered = Arc::new(std::sync::Mutex::new(Some(entered_tx)));
+        let release = Arc::new(std::sync::Mutex::new(Some(release_rx)));
+        let mut base = baseline();
+        base.model_builder = Arc::new({
+            let entered = Arc::clone(&entered);
+            let release = Arc::clone(&release);
+            move |_| {
+                Arc::new(ParkFirstCall {
+                    entered: Arc::clone(&entered),
+                    release: Arc::clone(&release),
+                }) as Arc<dyn xylitol_plugin_sdk::XyModel>
+            }
+        });
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-steer-lane").expect("bind");
+        runtime.steer("t1");
+        runtime.steer("t2");
+        runtime.follow_up("t3");
+        runtime.follow_up("t4");
+        assert_eq!(runtime.queue_stats().steer_count, 1);
+        assert_eq!(runtime.queue_stats().follow_up_count, 3);
+        let steer_preview: Vec<String> = runtime
+            .queue_items()
+            .into_iter()
+            .filter(|item| item.kind == xylitol_plugin_sdk::session::QueueItemKind::Steer)
+            .map(|item| item.preview)
+            .collect();
+        assert_eq!(steer_preview, vec!["t2".to_string()]);
+
+        let mut stream = runtime.submit_queued().await;
+        let driver = tokio::spawn(async move {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+        entered_rx.await.expect("first model call");
+        assert_eq!(
+            runtime.queue_stats().steer_count,
+            1,
+            "t2 must stay a steer while t1's body is streaming"
+        );
+        let during: Vec<String> = runtime
+            .queue_items()
+            .into_iter()
+            .filter(|item| item.kind == xylitol_plugin_sdk::session::QueueItemKind::Steer)
+            .map(|item| item.preview)
+            .collect();
+        assert_eq!(during, vec!["t2".to_string()]);
+        let _ = release_tx.send(());
+        let events = driver.await.expect("queued run");
+        let starts = events
+            .iter()
+            .filter(|event| matches!(event, crate::agent::runtime::XyEvent::AgentStart { .. }))
+            .count();
+        assert_eq!(
+            starts, 3,
+            "t2 injects into t1's turn; t3 and t4 open the later turns: {events:?}"
         );
     }
 

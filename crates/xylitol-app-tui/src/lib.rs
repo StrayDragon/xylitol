@@ -310,6 +310,10 @@ async fn run_host_loop(
             let t_drain = std::time::Instant::now();
             drain_pending(&mut session, driver, &mut agent_stream).await?;
             crate::lag::note("host_drain_pending", t_drain);
+            if let Some(name) = session.poll_stage_name() {
+                session.set_stage_name(Some(name));
+                let _ = session.render_now();
+            }
             if editor_seed.is_none()
                 && let Some(job) = session.take_editor_history_seed_job()
             {

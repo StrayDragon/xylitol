@@ -1,10 +1,11 @@
 ---
 source: tests/agent_session_api_baseline.rs
-assertion_line: 98
 expression: "all_items.join(\"\\n\")"
 ---
+pub async fn commit_prepared_stage_name( &mut self, commit: StageNameCommit, ) -> Result<String, XyError>
 pub async fn emit_leaf_changed_settlement(&self)
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
+pub async fn execute_stage_name_job(job: StageNameModelJob) -> StageNameCommit
 pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError>
 pub async fn fork_session( &self, at_entry_id: &str, position: xylitol_plugin_sdk::session::ForkPosition, ) -> Result<String, XyError>
 pub async fn generate_session_name(&mut self, force: bool) -> Result<String, XyError>
@@ -13,6 +14,7 @@ pub async fn load_conversation_history( &self, session_id: &str, ) -> Result<Vec
 pub async fn load_conversation_history_from_store( store: &dyn XySessionStore, session_id: &str, ) -> Result<Vec<AgentMessage>, XyError>
 pub async fn maybe_auto_compact(&self) -> Result<bool, CompactionError>
 pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&xylitol_plugin_sdk::message::AgentMessage>, ) -> Result<bool, CompactionError>
+pub async fn prepare_stage_name(&mut self, force: bool) -> Result<StageNamePrep, XyError>
 pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
 pub async fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
 pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError>
@@ -94,6 +96,8 @@ pub fn workspaces(&self) -> &[String]
 pub id: String, pub message: AgentMessage, } impl QueuedItem
 pub model_id: String, pub display_name: String, pub thinking: String, pub omit_thinking: bool, } impl ActiveTurnBinding
 pub revoked: bool, pub items: Vec<QueueItem>, } pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
+pub sampler: Arc<crate::agent::sampler::SamplerActor>, pub model: Arc<dyn XyModel>, pub thinking_level: String, pub input: String, pub system_prompt: String, pub max_output_tokens: u32, pub timeout: Duration, pub obs_session: ObsSessionContext, pub session_id: String, pub fallback: String, pub max_title_bytes: usize, pub force: bool, pub prior: Option<String>, } pub struct StageNameCommit
+pub session_id: String, pub name: String, pub force: bool, pub prior: Option<String>, } pub enum StageNamePrep
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, next_id: Arc<AtomicU64>, event_tx: Arc<Mutex<Option<(TurnId, EventTx)>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } #[derive(Debug, Clone)] pub struct QueuedItem
@@ -106,10 +110,12 @@ pub struct PendingMessageQueue
 pub struct QueueStats
 pub struct RevokeOutcome
 pub struct SessionStats
+pub struct StageNameModelJob
 pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::should_compact
 pub use crate::agent::model::registry::ModelRegistry
 pub use self::hook_bus::HookBlockedError
 pub use self::queue::
+pub use self::session_ops::
 pub use self::stats::SessionStats
 pub use self::stats::{ContextUsage, get_context_usage}
 pub use self::tools_ops::ToolsWriteOutcome

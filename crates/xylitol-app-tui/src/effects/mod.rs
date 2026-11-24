@@ -211,6 +211,7 @@ async fn flush_outbox<T: Terminal>(
     messages: Vec<String>,
     steer: bool,
 ) {
+    let mut latest_items = None;
     for msg in messages {
         let command = if steer {
             Command::Steer {
@@ -231,7 +232,7 @@ async fn flush_outbox<T: Terminal>(
             Ok(DispatchOutcome::QueueItemEnqueued { id, items }) => {
                 session.ui_model_mut().note_queue_item_id(&msg, id);
                 if !items.is_empty() {
-                    session.set_queue_badge(&items);
+                    latest_items = Some(items);
                 }
             }
             Ok(_) => {}
@@ -242,6 +243,9 @@ async fn flush_outbox<T: Terminal>(
                 session.ui_model_mut().pop_steer_strip_matching(&msg);
             }
         }
+    }
+    if let Some(items) = latest_items {
+        session.set_queue_badge(&items);
     }
     let _ = session.render_now();
 }
@@ -285,16 +289,20 @@ pub async fn drain_pending<T: Terminal>(
     if session.take_stage_name_request() {
         let session_id = driver.session_id().unwrap_or_default();
         if !session_id.is_empty() {
-            match dispatch(driver, Command::GenerateSessionName { force: false }).await {
-                Ok(DispatchOutcome::SessionName(Some(name))) => {
-                    session.set_stage_name(Some(name));
-                }
-                Ok(_) => {}
-                Err(error) => {
-                    log::warn!(
-                        target: "xylitol::tui",
-                        "stage name generation failed session_id={session_id} error={error}"
-                    );
+            if let Some(rx) = driver.kick_generate_session_name() {
+                session.arm_stage_name_job(rx);
+            } else {
+                match dispatch(driver, Command::GenerateSessionName { force: false }).await {
+                    Ok(DispatchOutcome::SessionName(Some(name))) => {
+                        session.set_stage_name(Some(name));
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        log::warn!(
+                            target: "xylitol::tui",
+                            "stage name generation failed session_id={session_id} error={error}"
+                        );
+                    }
                 }
             }
         }
@@ -318,11 +326,31 @@ pub async fn drain_pending<T: Terminal>(
     if agent_stream.is_none()
         && let Some((prompt, attachments)) = next_submit
     {
-        if gate_holds_submit(session, driver) {
+        if gate_holds_submit(session, driver) && attachments.is_empty() {
+            session.latch_assembly_gate();
+            session.ui_model_mut().enqueue_steer_strip(prompt.clone());
+            session.ui_model_mut().set_busy_status("Assembling");
+            session.sync_ui_root_from_model();
+            flush_outbox(session, driver, vec![prompt], true).await;
+        } else if gate_holds_submit(session, driver) {
             hold_submit_for_gate(session, driver, prompt, attachments).await;
         } else {
             start_agent_run(session, driver, agent_stream, prompt, attachments).await;
         }
+    }
+
+    if session.assembly_gate_latched() && !driver.is_tools_frozen() {
+        driver.arm_tool_freeze_gate().await;
+    }
+
+    if !session.assembly_gate_latched()
+        && !session.run_active()
+        && session.ui_model().status.as_deref() == Some("Assembling")
+        && session.ui_model().pending_steer.is_empty()
+        && session.ui_model().pending_follow_up.is_empty()
+        && !session.has_gated_submit()
+    {
+        session.end_gated_assemble_idle();
     }
 
     session.sync_fixed_zone(driver);
@@ -394,7 +422,11 @@ async fn release_gate_if_settled<T: Terminal>(
         start_run_after_tool_gate(session, driver, agent_stream, prompt, attachments).await;
         return;
     }
-    session.end_gated_assemble_idle();
+    let queued = !session.ui_model().pending_steer.is_empty()
+        || !session.ui_model().pending_follow_up.is_empty();
+    if !queued {
+        session.end_gated_assemble_idle();
+    }
 }
 
 async fn start_run_after_tool_gate<T: Terminal>(

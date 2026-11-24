@@ -3,7 +3,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::agent::AgentRuntime;
-use crate::agent::capabilities::{AsyncQueueRuntime, QueueStats, RevokeOutcome};
+use crate::agent::capabilities::{
+    AsyncQueueRuntime, QueueStats, RevokeOutcome, StageNameCommit, StageNamePrep,
+};
 use crate::agent::runtime::state::RuntimePhase;
 use crate::agent::runtime::{XyEventStream, state};
 
@@ -314,15 +316,10 @@ impl SharedSubsystems {
         let turn_in_flight = coordinator
             .map(|coordinator| coordinator.with(|c| c.turn_in_flight()))
             .unwrap_or(false);
-        let target = if turn_in_flight {
-            &queues.steer
-        } else {
-            &queues.follow_up
-        };
-        let item = target
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .enqueue(xylitol_plugin_sdk::message::AgentMessage::user(message));
+        let item = queues.enqueue_steer(
+            xylitol_plugin_sdk::message::AgentMessage::user(message),
+            turn_in_flight,
+        );
         queues.notify_queue_update();
         item.id
     }
@@ -612,6 +609,14 @@ pub enum DriverCommand {
     },
     BuiltinsForReload {
         reply: tokio::sync::oneshot::Sender<Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>>,
+    },
+    PrepareStageName {
+        force: bool,
+        reply: tokio::sync::oneshot::Sender<Result<StageNamePrep, XyDriverError>>,
+    },
+    CommitStageName {
+        commit: StageNameCommit,
+        reply: tokio::sync::oneshot::Sender<Result<String, XyDriverError>>,
     },
 }
 
@@ -973,6 +978,26 @@ async fn dispatch(state: &mut ActorState, command: DriverCommand) {
         }
         DriverCommand::BuiltinsForReload { reply: tx } => {
             reply(tx, state.runtime.clone_tools().iter().cloned().collect());
+        }
+        DriverCommand::PrepareStageName { force, reply: tx } => {
+            reply(
+                tx,
+                state
+                    .runtime
+                    .prepare_stage_name(force)
+                    .await
+                    .map_err(XyDriverError::from),
+            );
+        }
+        DriverCommand::CommitStageName { commit, reply: tx } => {
+            reply(
+                tx,
+                state
+                    .runtime
+                    .commit_prepared_stage_name(commit)
+                    .await
+                    .map_err(XyDriverError::from),
+            );
         }
     }
 }

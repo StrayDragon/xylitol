@@ -12,7 +12,8 @@ use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::model::{THINKING_OFF, XyChunk};
 use xylitol_plugin_sdk::session::SessionEntry;
 use xylitol_plugin_sdk::{
-    XyGenerateOptions, XyLlmMessage, XySessionStore, fallback_stage_name, normalize_stage_name,
+    ObsSessionContext, XyGenerateOptions, XyLlmMessage, XyModel, XySessionStore,
+    fallback_stage_name, normalize_stage_name,
 };
 
 use super::{AgentCapabilities, SessionStats, observe_hook};
@@ -199,6 +200,16 @@ impl AgentCapabilities {
     }
 
     pub async fn generate_session_name(&mut self, force: bool) -> Result<String, XyError> {
+        match self.prepare_stage_name(force).await? {
+            StageNamePrep::Ready(name) => Ok(name),
+            StageNamePrep::Model(job) => {
+                let commit = execute_stage_name_job(*job).await;
+                self.commit_prepared_stage_name(commit).await
+            }
+        }
+    }
+
+    pub async fn prepare_stage_name(&mut self, force: bool) -> Result<StageNamePrep, XyError> {
         let sid = self
             .session_id()
             .ok_or(XyError::from(XySessionError::NoActiveSession))?
@@ -209,7 +220,7 @@ impl AgentCapabilities {
             .await
             .map_err(XyError::from)?;
         if !force && let Some(name) = existing.clone() {
-            return Ok(name);
+            return Ok(StageNamePrep::Ready(name));
         }
 
         let entries = self
@@ -228,47 +239,9 @@ impl AgentCapabilities {
         if !self.stage_name_config.enabled || user.is_empty() {
             let name = existing.unwrap_or(fallback);
             self.persist_stage_name(&sid, &name).await?;
-            return Ok(name);
+            return Ok(StageNamePrep::Ready(name));
         }
 
-        let generated = self.generate_stage_name_with_model(&user, &assistant).await;
-        let name = match generated {
-            Ok(raw) => {
-                let normalized = normalize_stage_name(&raw, self.stage_name_config.max_title_bytes);
-                if normalized.is_empty() {
-                    existing.unwrap_or(fallback)
-                } else {
-                    normalized
-                }
-            }
-            Err(error) => {
-                log::warn!(
-                    target: "xylitol::session",
-                    "stage name generation skipped session_id={sid} error={error}"
-                );
-                existing.unwrap_or(fallback)
-            }
-        };
-        self.persist_stage_name(&sid, &name).await?;
-        Ok(name)
-    }
-
-    async fn persist_stage_name(&mut self, session_id: &str, name: &str) -> Result<(), XyError> {
-        let stored = self
-            .store
-            .set_session_name(session_id, name)
-            .await
-            .map_err(XyError::from)?;
-        self.set_session_name_fact(Some(stored.clone()));
-        xylitol_plugin_sdk::set_obs_session_name(Some(stored.as_str()));
-        Ok(())
-    }
-
-    async fn generate_stage_name_with_model(
-        &self,
-        user: &str,
-        assistant: &str,
-    ) -> Result<String, XyError> {
         let (model, levels) = {
             let manager = self
                 .model_manager
@@ -284,33 +257,133 @@ impl AgentCapabilities {
                 .cloned()
                 .unwrap_or_else(|| THINKING_OFF.to_string())
         };
-        let input = stage_name_input_json(user, assistant, self.stage_name_config.max_input_bytes);
-        let options = XyGenerateOptions {
+        let input =
+            stage_name_input_json(&user, &assistant, self.stage_name_config.max_input_bytes);
+        Ok(StageNamePrep::Model(Box::new(StageNameModelJob {
+            sampler: Arc::clone(&self.sampler),
+            model,
             thinking_level,
-            max_output_tokens: Some(self.stage_name_config.max_output_tokens),
-            system_prompt: Some(stage_name_system_prompt().to_string()),
+            input,
+            system_prompt: stage_name_system_prompt().to_string(),
+            max_output_tokens: self.stage_name_config.max_output_tokens,
+            timeout: Duration::from_millis(self.stage_name_config.timeout_ms),
             obs_session: self.obs_session_snapshot(),
-            ..Default::default()
-        };
-        let handle = self
+            session_id: sid,
+            fallback,
+            max_title_bytes: self.stage_name_config.max_title_bytes,
+            force,
+            prior: existing,
+        })))
+    }
+
+    pub async fn commit_prepared_stage_name(
+        &mut self,
+        commit: StageNameCommit,
+    ) -> Result<String, XyError> {
+        if !commit.force
+            && let Some(current) = self.session_name.clone()
+            && commit.prior.as_ref() != Some(&current)
+        {
+            return Ok(current);
+        }
+        self.persist_stage_name(&commit.session_id, &commit.name)
+            .await?;
+        Ok(self.session_name.clone().unwrap_or(commit.name))
+    }
+
+    async fn persist_stage_name(&mut self, session_id: &str, name: &str) -> Result<(), XyError> {
+        let stored = self
+            .store
+            .set_session_name(session_id, name)
+            .await
+            .map_err(XyError::from)?;
+        self.set_session_name_fact(Some(stored.clone()));
+        xylitol_plugin_sdk::set_obs_session_name(Some(stored.as_str()));
+        Ok(())
+    }
+}
+
+pub struct StageNameModelJob {
+    pub sampler: Arc<crate::agent::sampler::SamplerActor>,
+    pub model: Arc<dyn XyModel>,
+    pub thinking_level: String,
+    pub input: String,
+    pub system_prompt: String,
+    pub max_output_tokens: u32,
+    pub timeout: Duration,
+    pub obs_session: ObsSessionContext,
+    pub session_id: String,
+    pub fallback: String,
+    pub max_title_bytes: usize,
+    pub force: bool,
+    pub prior: Option<String>,
+}
+
+pub struct StageNameCommit {
+    pub session_id: String,
+    pub name: String,
+    pub force: bool,
+    pub prior: Option<String>,
+}
+
+pub enum StageNamePrep {
+    Ready(String),
+    Model(Box<StageNameModelJob>),
+}
+
+pub async fn execute_stage_name_job(job: StageNameModelJob) -> StageNameCommit {
+    let session_id = job.session_id.clone();
+    let fallback = job.fallback.clone();
+    let prior = job.prior.clone();
+    let force = job.force;
+    let max_title_bytes = job.max_title_bytes;
+    let options = XyGenerateOptions {
+        thinking_level: job.thinking_level,
+        max_output_tokens: Some(job.max_output_tokens),
+        system_prompt: Some(job.system_prompt),
+        obs_session: job.obs_session,
+        ..Default::default()
+    };
+    let generated = async {
+        let handle = job
             .sampler
             .submit_stream(
                 crate::agent::sampler::SampleKind::StageName,
-                model,
-                vec![XyLlmMessage::user(input)],
+                job.model,
+                vec![XyLlmMessage::user(job.input)],
                 Vec::new(),
                 options,
                 None,
             )
             .await;
         let stream = handle.resolve().await?;
-        let generated = tokio::time::timeout(
-            Duration::from_millis(self.stage_name_config.timeout_ms),
-            collect_stage_name_text(stream),
-        )
-        .await
-        .map_err(|_| XyError::Config("stage name generation timed out".into()))??;
-        Ok(generated)
+        tokio::time::timeout(job.timeout, collect_stage_name_text(stream))
+            .await
+            .map_err(|_| XyError::Config("stage name generation timed out".into()))?
+    }
+    .await;
+    let name = match generated {
+        Ok(raw) => {
+            let normalized = normalize_stage_name(&raw, max_title_bytes);
+            if normalized.is_empty() {
+                prior.clone().unwrap_or(fallback)
+            } else {
+                normalized
+            }
+        }
+        Err(error) => {
+            log::warn!(
+                target: "xylitol::session",
+                "stage name generation skipped session_id={session_id} error={error}"
+            );
+            prior.clone().unwrap_or(fallback)
+        }
+    };
+    StageNameCommit {
+        session_id,
+        name,
+        force,
+        prior,
     }
 }
 

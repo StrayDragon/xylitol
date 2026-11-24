@@ -4500,7 +4500,7 @@ pub(crate) fn t_c3400_width_ladder_ok(host_pump_bdd: &HostPumpBdd) {
     }
 }
 
-#[given("装配门禁期先后提交根提交 t1 与 follow-up t2")]
+#[given("装配门禁期先后插话 t1 并续跑 t2")]
 pub(crate) async fn g_c3600_gate_root_then_follow_up(host_pump_bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
     pump.driver.set_tools_frozen(false);
@@ -4514,12 +4514,19 @@ pub(crate) async fn g_c3600_gate_root_then_follow_up(host_pump_bdd: &HostPumpBdd
     drain(host_pump_bdd).await;
     let pump = take_pump(host_pump_bdd);
     let held = pump.session.has_gated_submit();
+    let steers = pump.driver.steer_calls.clone();
     let sent = pump.driver.follow_up_calls.clone();
     put_pump(host_pump_bdd, pump);
-    assert!(held, "c3600: the gate must hold the root submit");
-    assert!(
-        sent.is_empty(),
-        "c3600: rows behind the held root must not be sent ahead of it: {sent:?}"
+    assert!(!held, "c3600: plain text must not be held as a root submit");
+    assert_eq!(
+        steers,
+        vec!["t1".to_string()],
+        "c3600: 插话 delivers a steer"
+    );
+    assert_eq!(
+        sent,
+        vec!["t2".to_string()],
+        "c3600: 续跑 delivers a follow-up"
     );
 }
 
@@ -4532,6 +4539,11 @@ pub(crate) async fn w_c3600_gate_release_then_busy_queue(host_pump_bdd: &HostPum
     }
     drain(host_pump_bdd).await;
     drain(host_pump_bdd).await;
+    {
+        let mut pump = take_pump(host_pump_bdd);
+        pump.session.on_turn_started("t1");
+        put_pump(host_pump_bdd, pump);
+    }
     set_editor(host_pump_bdd, "t3");
     step_key(host_pump_bdd, enter_event());
     set_editor(host_pump_bdd, "t4");
@@ -4546,18 +4558,18 @@ pub(crate) async fn w_c3600_gate_release_then_busy_queue(host_pump_bdd: &HostPum
     put_pump(host_pump_bdd, pump);
 }
 
-#[then("根提交 t1 先起轮且后续行按入队先后到达 Host 队列")]
+#[then("t1 以 steer 先交付且 t2 以 follow-up 随后交付")]
 pub(crate) fn t_c3600_root_first_then_fifo(host_pump_bdd: &HostPumpBdd) {
     let s = stats(host_pump_bdd);
-    assert_eq!(
-        s.runs,
-        vec!["t1".to_string()],
-        "c3600: the held root runs first"
+    assert!(
+        s.runs.is_empty(),
+        "c3600: the gate must not start a local root run: {:?}",
+        s.runs
     );
     assert_eq!(
         s.steers,
-        vec!["t3".to_string()],
-        "c3600: the steer uplinks at once"
+        vec!["t1".to_string(), "t3".to_string()],
+        "c3600: Enter delivers steer, in arrival order"
     );
     assert_eq!(
         s.follow_ups,

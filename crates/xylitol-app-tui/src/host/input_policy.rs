@@ -344,6 +344,17 @@ impl<T: Terminal> HostSession<T> {
         root.set_editor_text(String::new());
         drop(root);
         self.persist_client_history(&cleaned);
+        let attachments = crate::mcp_attach::PendingMcpAttachments {
+            tray: tray_refs,
+            tokens: parsed.refs.clone(),
+        };
+        if self.assembly_gate_latched() && attachments.is_empty() {
+            self.ui_model.enqueue_steer_strip(cleaned.clone());
+            self.ui_model.set_busy_status("Assembling");
+            self.pending.push_steer(cleaned);
+            self.sync_ui_root_from_model();
+            return true;
+        }
         if self.assembly_gate_latched() && self.has_pending_submit() {
             self.ui_model.enqueue_follow_up_strip(cleaned.clone());
             self.pending.push_follow_up(cleaned);
@@ -352,10 +363,7 @@ impl<T: Terminal> HostSession<T> {
         }
         self.pending.submit = Some(crate::host::pending::PendingSubmit {
             prompt: cleaned,
-            attachments: crate::mcp_attach::PendingMcpAttachments {
-                tray: tray_refs,
-                tokens: parsed.refs,
-            },
+            attachments,
             gated: false,
         });
         true

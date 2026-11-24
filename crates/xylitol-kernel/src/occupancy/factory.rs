@@ -343,6 +343,20 @@ impl OccupancyEngine for OccupancyDriver {
         Ok(outcome_to_value(outcome))
     }
 
+    async fn prepare_stage_name(
+        &mut self,
+        force: bool,
+    ) -> Result<xylitol_runtime::agent::capabilities::StageNamePrep, XyDriverError> {
+        self.inner.prepare_stage_name(force).await
+    }
+
+    async fn commit_stage_name(
+        &mut self,
+        commit: xylitol_runtime::agent::capabilities::StageNameCommit,
+    ) -> Result<String, XyDriverError> {
+        self.inner.commit_stage_name(commit).await
+    }
+
     fn agent_cwd_for_test(&self) -> String {
         XyInProcessDriver::agent_cwd_for_test(&self.inner)
     }

@@ -199,6 +199,16 @@ impl AsyncQueueRuntime {
         }
     }
 
+    pub(crate) fn enqueue_steer(&self, message: AgentMessage, turn_in_flight: bool) -> QueuedItem {
+        let mut steer = crate::utils::lock_mutex(&self.steer);
+        let mut follow_up = crate::utils::lock_mutex(&self.follow_up);
+        if turn_in_flight || !follow_up.is_empty() {
+            steer.enqueue(message)
+        } else {
+            follow_up.enqueue(message)
+        }
+    }
+
     pub fn bind_event_tx(&self, turn_id: TurnId, tx: EventTx) {
         *crate::utils::lock_mutex(&self.event_tx) = Some((turn_id, tx));
     }

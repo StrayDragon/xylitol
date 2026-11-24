@@ -36,11 +36,11 @@ use xylitol_protocol::method::{
 };
 use xylitol_protocol::registry::parse_command;
 use xylitol_protocol::registry::{
-    METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GET_AVAILABLE_MODELS,
-    METHOD_GET_STATE, METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES,
-    METHOD_MCP_CATALOG, METHOD_MCP_OAUTH_CANCEL, METHOD_MCP_OAUTH_START, METHOD_MCP_OAUTH_STATUS,
-    METHOD_MCP_PROMPT_GET, METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST, METHOD_PROMPT,
-    METHOD_RELOAD, METHOD_SESSION_DETACH, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
+    METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GENERATE_SESSION_NAME,
+    METHOD_GET_AVAILABLE_MODELS, METHOD_GET_STATE, METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL,
+    METHOD_LOADED_RESOURCES, METHOD_MCP_CATALOG, METHOD_MCP_OAUTH_CANCEL, METHOD_MCP_OAUTH_START,
+    METHOD_MCP_OAUTH_STATUS, METHOD_MCP_PROMPT_GET, METHOD_MCP_RESOURCE_READ, METHOD_PERSIST_TRUST,
+    METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_DETACH, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
 use xylitol_protocol::{
     ApprovalRequestedPayload, BashOutputPayload, Notification, QuestionRequestedPayload, RpcResult,
@@ -1762,6 +1762,47 @@ fn rpc_err(e: XyDriverError) -> RpcResult {
     RpcResult::error(stable_business_code(e.kind()), e.to_string())
 }
 
+async fn dispatch_generate_session_name(
+    host: &Arc<HostState>,
+    slot: &Arc<SessionSlot>,
+    payload: &Value,
+    workspace: &Path,
+) -> RpcResult {
+    if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
+        return *e;
+    }
+    let force = payload
+        .get("force")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let prep = {
+        let mut guard = slot.driver.lock().await;
+        let Some(driver) = guard.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        driver.prepare_stage_name(force).await
+    };
+    let job = match prep {
+        Ok(xylitol_runtime::agent::capabilities::StageNamePrep::Ready(name)) => {
+            return RpcResult::ok_value(json!({ "name": name }));
+        }
+        Ok(xylitol_runtime::agent::capabilities::StageNamePrep::Model(job)) => job,
+        Err(error) => return rpc_err(error),
+    };
+    let commit = xylitol_runtime::agent::capabilities::execute_stage_name_job(*job).await;
+    let stored = {
+        let mut guard = slot.driver.lock().await;
+        let Some(driver) = guard.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        driver.commit_stage_name(commit).await
+    };
+    match stored {
+        Ok(name) => RpcResult::ok_value(json!({ "name": name })),
+        Err(error) => rpc_err(error),
+    }
+}
+
 fn stable_business_code(kind: &str) -> String {
     let mut code = String::with_capacity(kind.len() + 4);
     for (i, ch) in kind.char_indices() {
@@ -2334,6 +2375,9 @@ async fn dispatch_writer_unary(
     payload: Value,
     workspace: &Path,
 ) -> RpcResult {
+    if method == METHOD_GENERATE_SESSION_NAME {
+        return dispatch_generate_session_name(host, slot, &payload, workspace).await;
+    }
     if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
         return *e;
     }

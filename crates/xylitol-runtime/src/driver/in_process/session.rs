@@ -320,6 +320,28 @@ impl XySessionOps for super::XyInProcessDriver {
     }
 }
 
+impl super::XyInProcessDriver {
+    pub async fn prepare_stage_name(
+        &mut self,
+        force: bool,
+    ) -> Result<crate::agent::capabilities::StageNamePrep, XyDriverError> {
+        self.ensure_actor_spawned();
+        self.handle
+            .request(|reply| super::actor::DriverCommand::PrepareStageName { force, reply })
+            .await?
+    }
+
+    pub async fn commit_stage_name(
+        &mut self,
+        commit: crate::agent::capabilities::StageNameCommit,
+    ) -> Result<String, XyDriverError> {
+        self.ensure_actor_spawned();
+        self.handle
+            .request(|reply| super::actor::DriverCommand::CommitStageName { commit, reply })
+            .await?
+    }
+}
+
 pub(super) async fn migrate_legacy_before_switch(
     store: &dyn xylitol_plugin_sdk::XySessionStore,
     session_id: &str,

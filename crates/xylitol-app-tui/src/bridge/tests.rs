@@ -444,6 +444,81 @@ fn queue_update_sets_badge() {
 }
 
 #[test]
+fn root_stream_keeps_later_steer_out_of_the_follow_up_lane() {
+    let mut model = UiModel::new();
+    for text in ["t1", "t2"] {
+        model.enqueue_steer_strip(text.into());
+    }
+    for text in ["t3", "t4"] {
+        model.enqueue_follow_up_strip(text.into());
+    }
+    apply_xy_event(
+        &mut model,
+        &XyEvent::QueueUpdate {
+            items: vec![
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "s2".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                    preview: "t2".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "f1".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "t1".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "f3".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "t3".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "f4".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "t4".into(),
+                },
+            ],
+        },
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::QueueUpdate {
+            items: vec![
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "s2".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::Steer,
+                    preview: "t2".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "f3".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "t3".into(),
+                },
+                xylitol_plugin_sdk::session::QueueItem {
+                    id: "f4".into(),
+                    kind: xylitol_plugin_sdk::session::QueueItemKind::FollowUp,
+                    preview: "t4".into(),
+                },
+            ],
+        },
+    );
+    assert_eq!(
+        model.pending_steer,
+        vec!["t2".to_string()],
+        "a later steer stays in the Steering lane while the root streams"
+    );
+    assert!(
+        model.pending_follow_up.iter().any(|text| text == "t3"),
+        "follow-ups stay in their own lane: {:?}",
+        model.pending_follow_up
+    );
+    assert!(
+        !model.pending_follow_up.iter().any(|text| text == "t2"),
+        "t2 must not be repainted as Follow-up: {:?}",
+        model.pending_follow_up
+    );
+}
+
+#[test]
 fn queue_update_trims_steer_lane_but_keeps_follow_up_rows() {
     let mut model = UiModel::new();
     model.enqueue_steer_strip("a".into());
@@ -512,6 +587,36 @@ fn same_text_steer_inject_adds_second_user_bubble() {
     let mut model = UiModel::new();
     model.begin_run("hello");
     model.enqueue_steer_strip("hello".into());
+    apply_xy_event(
+        &mut model,
+        &XyEvent::MessageStart {
+            role: "user".into(),
+            message: Some(AgentMessage::user("hello")),
+        },
+    );
+    let users: Vec<_> = model
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::User { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(users, ["hello", "hello"]);
+}
+
+#[test]
+fn queue_depth_trim_still_commits_the_same_text() {
+    use xylitol_plugin_sdk::message::AgentMessage;
+
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    model.enqueue_steer_strip("hello".into());
+    apply_xy_event(&mut model, &XyEvent::QueueUpdate { items: vec![] });
+    assert!(
+        model.pending_steer.is_empty(),
+        "host depth zero retires the painted steer row"
+    );
     apply_xy_event(
         &mut model,
         &XyEvent::MessageStart {
