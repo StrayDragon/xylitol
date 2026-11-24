@@ -1280,7 +1280,6 @@ where
         let session_id = self.session_id.clone();
         let leaf_entry_id = self.leaf_entry_id.clone();
         let downlink = self.downlink.clone();
-        let chain_pending = self.chain_pending.clone();
         let client_cwd = self.client_cwd.clone();
         let model_id = self.current_model().map(|m| m.id);
         let thinking_level = self
@@ -1356,7 +1355,6 @@ where
                         }
                         let seen = value.get("inflight").and_then(Value::as_bool);
                         settle = !seen.unwrap_or(false);
-                        chain_pending.store(!settle, Ordering::SeqCst);
                     }
                     yield ev;
                 }

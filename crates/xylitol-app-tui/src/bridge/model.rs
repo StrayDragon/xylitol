@@ -288,6 +288,17 @@ impl UiModel {
         }
     }
 
+    pub(crate) fn settle_after_turn_boundary(&mut self) {
+        if self.queue.steer_count > 0 {
+            self.set_busy_status("Delivering steering");
+        } else if self.queue.follow_up_count > 0 {
+            self.set_busy_status("Follow-up pending");
+        } else if self.phase != UiPhase::Idle {
+            self.phase = UiPhase::Idle;
+            self.status = None;
+        }
+    }
+
     pub fn enqueue_steer_strip(&mut self, text: String) {
         self.pending_steer.push(text);
         self.queue.steer_count = self.pending_steer.len();
@@ -714,13 +725,6 @@ impl UiModel {
     }
 
     pub(crate) fn maybe_idle_after_agent_end(&mut self) {
-        if self.queue.steer_count > 0 {
-            self.set_busy_status("Delivering steering");
-        } else if self.queue.follow_up_count > 0 {
-            self.set_busy_status("Follow-up pending");
-        } else {
-            self.phase = UiPhase::Idle;
-            self.status = None;
-        }
+        self.settle_after_turn_boundary();
     }
 }

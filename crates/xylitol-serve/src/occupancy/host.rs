@@ -2316,6 +2316,7 @@ async fn attach_inflight(
     match result.value.as_mut() {
         Some(Value::Object(map)) => {
             map.insert("inflight".into(), inflight);
+            map.insert("queued_follow_up".into(), Value::Bool(queued));
         }
         Some(Value::Null) => {
             result.value = Some(json!({ "inflight": inflight }));

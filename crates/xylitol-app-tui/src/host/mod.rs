@@ -546,8 +546,12 @@ impl<T: Terminal> HostSession<T> {
 
     fn recalc_busy(&mut self) {
         let Some(label) = self.busy.label() else {
-            self.ui_model.phase = UiPhase::Idle;
-            self.ui_model.status = None;
+            if self.host_chain_pending && self.ui_model.phase == UiPhase::Busy {
+                self.ui_model.settle_after_turn_boundary();
+            } else {
+                self.ui_model.phase = UiPhase::Idle;
+                self.ui_model.status = None;
+            }
             return;
         };
         self.ui_model.phase = UiPhase::Busy;
@@ -1105,6 +1109,10 @@ impl<T: Terminal> HostSession<T> {
         std::mem::take(&mut self.pending.queue_refresh)
     }
 
+    pub fn arm_queue_refresh(&mut self) {
+        self.pending.queue_refresh = true;
+    }
+
     pub fn request_footer_token_refresh_throttled(&mut self) {
         const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(750);
         let now = std::time::Instant::now();
@@ -1206,6 +1214,9 @@ impl<T: Terminal> HostSession<T> {
         self.recalc_busy();
         self.stream_paint.suppress_xy_until_stream_end = false;
         self.ui_model.on_stream_closed_without_agent_end();
+        if self.host_chain_pending && self.ui_model.phase == UiPhase::Busy {
+            self.ui_model.settle_after_turn_boundary();
+        }
         if !self.footer_token.run_applied_settlement {
             self.pending.footer_token_refresh = true;
         }

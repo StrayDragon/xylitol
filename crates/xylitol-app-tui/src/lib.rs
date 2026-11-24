@@ -642,6 +642,14 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
                 log::debug!(target: "xylitol::tui", "agent EventStream ended");
                 *agent_stream = None;
                 session.on_run_stream_closed();
+                if session.ui_model_mut().phase == crate::bridge::UiPhase::Idle {
+                    session.arm_queue_refresh();
+                    let model = session.ui_model_mut();
+                    let queued = model.pending_follow_up.len() + model.pending_steer.len();
+                    if queued > 0 {
+                        model.set_busy_status("Waiting for the next turn");
+                    }
+                }
                 let _ = session.tui.try_render();
             }
             if let Some(ev) = deferred {

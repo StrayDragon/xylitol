@@ -7,6 +7,8 @@ pub const PRODUCT_READY_NEEDLE: &str = " · fake";
 
 pub const FAKE_HELLO: &str = "Hello from fake provider";
 
+#[path = "tui_e2e/lab_record.rs"]
+mod lab_record;
 #[path = "tui_e2e/pty.rs"]
 mod pty;
 #[path = "tui_e2e/tmux.rs"]
