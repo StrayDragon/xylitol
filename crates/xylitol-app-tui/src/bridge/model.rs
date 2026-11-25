@@ -754,7 +754,7 @@ impl UiModel {
                 self.history_notice = true;
             }
             (None, true) => {
-                if let Some(pos) = self.entries.iter().position(|entry| is_notice(entry)) {
+                if let Some(pos) = self.entries.iter().position(is_notice) {
                     self.entries.remove(pos);
                 }
                 self.history_notice = false;
