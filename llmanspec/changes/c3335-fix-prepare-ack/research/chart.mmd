@@ -1,0 +1,35 @@
+---
+title: "Prepare acknowledgement"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: one ack
+    lg1: split
+    lg2: Breaks CopiesMatch
+    lg3: Path to the CopiesMatch bug
+  }
+  class lg0 teal
+  class lg1 orange
+  class lg2 breaks
+  class lg3 bugPath
+  s0: Acked
+  s1: Ack reset
+  s2: Old ack still on the driver
+  s3: Acked and tools frozen
+  [*] --> s0
+  s0 --> s1: prepare fires on the driver
+  s0 --> s2: new, fork, or resume
+  s0 --> s3: prepare settles
+  s1 --> s3: prepare settles
+  s2 --> s1: prepare fires on the driver
+  s2 --> s3: prepare settles
+  s3 --> s1: prepare fires on the driver
+  s3 --> s2: new, fork, or resume
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 teal
+  class s0 bugPath
+  class s1 teal
+  class s2 orange
+  class s2 breaks
+  class s2 bugPath
+  class s3 teal

@@ -1,0 +1,32 @@
+---
+title: "Session occupancy"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: occupied
+    lg1: waiting
+    lg2: released
+  }
+  class lg0 teal
+  class lg1 yellow
+  class lg2 tan
+  s0: Occupied
+  s1: Evicted, sequence kept
+  s2: Grace period, lock still held
+  s3: Occupied, turn running
+  s4: Turn running, no subscribers
+  [*] --> s0
+  s0 --> s1: the last client closes cleanly
+  s0 --> s2: the last client drops
+  s0 --> s3: a turn starts
+  s1 --> s0: a client subscribes
+  s2 --> s0: the same process subscribes again
+  s2 --> s1: the grace period ends
+  s3 --> s0: the turn ends
+  s3 --> s4: the last client leaves during a turn
+  s4 --> s2: the turn ends
+  class s0 teal
+  class s1 tan
+  class s2 yellow
+  class s3 teal
+  class s4 teal
