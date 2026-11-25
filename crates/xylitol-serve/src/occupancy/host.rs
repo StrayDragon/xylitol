@@ -1877,8 +1877,7 @@ async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>,
 
 async fn release_and_evict(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
     let _gate = slot.eviction_gate.lock().await;
-    host.ports.store.release_write_lock(&slot.session_id);
-    host.evict_slot(slot).await;
+    release_write_lock_and_evict(host, slot).await;
 }
 
 async fn linger_evict_if_idle(host: Arc<HostState>, slot: Arc<SessionSlot>) {
@@ -1889,8 +1888,12 @@ async fn linger_evict_if_idle(host: Arc<HostState>, slot: Arc<SessionSlot>) {
     if HostState::live_subscriber_count(&slot).await > 0 {
         return;
     }
+    release_write_lock_and_evict(&host, &slot).await;
+}
+
+async fn release_write_lock_and_evict(host: &HostState, slot: &Arc<SessionSlot>) {
     host.ports.store.release_write_lock(&slot.session_id);
-    host.evict_slot(&slot).await;
+    host.evict_slot(slot).await;
 }
 
 async fn gated_subscribe(

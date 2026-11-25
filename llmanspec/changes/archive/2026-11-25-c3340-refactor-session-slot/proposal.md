@@ -2,6 +2,9 @@
 depends_on: []
 title: 会话槽的占用、宽限和驱逐由槽自己完成
 needs_specs_change: false
+branch: sdd/c3340-refactor-session-slot
+base_branch: main
+base_sha: 3990b6dbc4c5b1c019519b05a6a934cfe08a6280
 ---
 
 # 会话槽的占用、宽限和驱逐由槽自己完成
