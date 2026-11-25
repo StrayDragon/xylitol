@@ -317,7 +317,6 @@ pub fn render_scrollback(
     let width = width.max(1);
     cache.prepare(width, fold);
     fold_hits.clear_regions();
-    activity.row_spans.clear();
     let mut lines = Vec::new();
 
     if model.entries.is_empty() && model.streaming_scrollback_tails().is_empty() {

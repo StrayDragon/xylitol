@@ -35,16 +35,12 @@ pub(super) fn paint_envelope_header_row(
     let painted = theme.paint_muted(&plain);
     let row_start = lines.len();
     push_wrapped(lines, &painted, width);
-    let row_end = lines.len();
     fold_hits.push(
         row_start,
         0,
         width.max(1),
         FoldTarget::Segment(seg.id.clone()),
     );
-    activity
-        .row_spans
-        .insert(seg.id.clone(), row_start, row_end);
     *need_spacer = true;
 }
 

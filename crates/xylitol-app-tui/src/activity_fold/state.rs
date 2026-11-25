@@ -10,21 +10,6 @@ use super::settings::ActivityFoldSettings;
 use super::summary::format_duration;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SegmentRowSpans {
-    pub spans: HashMap<String, (usize, usize)>,
-}
-
-impl SegmentRowSpans {
-    pub fn clear(&mut self) {
-        self.spans.clear();
-    }
-
-    pub fn insert(&mut self, id: impl Into<String>, start: usize, end: usize) {
-        self.spans.insert(id.into(), (start, end));
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SegmentClock {
     pub start: Option<OffsetDateTime>,
     pub end: Option<OffsetDateTime>,
@@ -50,7 +35,6 @@ pub struct ActivityFoldState {
     entered: HashSet<String>,
     cluster_open: HashSet<String>,
     clocks: HashMap<String, SegmentClock>,
-    pub row_spans: SegmentRowSpans,
 }
 
 impl ActivityFoldState {

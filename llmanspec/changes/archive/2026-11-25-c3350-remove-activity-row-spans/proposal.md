@@ -2,6 +2,9 @@
 depends_on: []
 title: 删掉折叠状态里只写不读的行区间
 needs_specs_change: false
+branch: sdd/c3350-remove-activity-row-spans
+base_branch: main
+base_sha: a695dea79370d818ebceec617718a358f42bff19
 ---
 
 # 删掉折叠状态里只写不读的行区间
