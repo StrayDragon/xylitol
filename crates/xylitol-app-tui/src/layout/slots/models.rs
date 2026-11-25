@@ -73,17 +73,12 @@ impl ModelsSlot {
             .iter()
             .map(|r| r.to_select_item(focus == Some(r.id.as_str()), width))
             .collect();
-        self.list.filtered_items = self.items.clone();
-        if focused_id
+        let selected_index = focused_id
             .as_ref()
-            .is_none_or(|id| !self.items.iter().any(|i| i.value == *id))
-        {
-            self.list.selected_index = 0;
-        } else if let Some(id) = focused_id
-            && let Some(idx) = self.items.iter().position(|i| i.value == id)
-        {
-            self.list.selected_index = idx;
-        }
+            .and_then(|id| self.items.iter().position(|item| item.value == *id))
+            .unwrap_or(0);
+        self.list
+            .replace_visible(self.items.clone(), selected_index);
     }
 
     fn rebuild_keep_selection(&mut self) {
@@ -92,7 +87,7 @@ impl ModelsSlot {
         if let Some(id) = selected
             && let Some(idx) = self.items.iter().position(|i| i.value == id)
         {
-            self.list.selected_index = idx;
+            self.list.replace_visible(self.items.clone(), idx);
         }
     }
 

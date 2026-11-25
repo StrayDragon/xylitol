@@ -2,6 +2,9 @@
 depends_on: []
 title: 模型槽更换可见行时同时更新列表源和选中下标
 needs_specs_change: false
+branch: sdd/c3355-fix-model-select-visible
+base_branch: main
+base_sha: e225889b2694a24819e371334814e621ceac316d
 ---
 
 # 模型槽更换可见行时同时更新列表源和选中下标

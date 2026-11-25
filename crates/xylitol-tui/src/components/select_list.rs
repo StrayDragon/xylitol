@@ -136,6 +136,12 @@ impl SelectList {
         self.selected_index = 0;
     }
 
+    pub fn replace_visible(&mut self, items: Vec<SelectItem>, selected_index: usize) {
+        self.filtered_items = items.clone();
+        self.items = items;
+        self.set_selected_index(selected_index);
+    }
+
     pub fn set_selected_index(&mut self, index: usize) {
         let max = self.filtered_items.len().saturating_sub(1);
         self.selected_index = index.min(max);
@@ -504,6 +510,21 @@ mod tests {
         list.set_filter("b");
         assert_eq!(list.filtered_items.len(), 1);
         assert_eq!(list.filtered_items[0].value, "banana");
+    }
+
+    #[test]
+    fn test_select_list_replace_visible_keeps_source_and_clamps_index() {
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
+        let visible = vec![SelectItem::new("pear", "Pear")];
+        list.replace_visible(visible, 4);
+        assert_eq!(list.items.len(), 1);
+        assert_eq!(list.items[0].value, list.filtered_items[0].value);
+        assert_eq!(list.selected_index, 0);
+
+        list.replace_visible(Vec::new(), 3);
+        assert!(list.items.is_empty());
+        assert!(list.filtered_items.is_empty());
+        assert_eq!(list.selected_index, 0);
     }
 
     #[test]
