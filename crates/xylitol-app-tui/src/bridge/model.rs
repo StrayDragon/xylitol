@@ -307,8 +307,7 @@ impl UiModel {
         } else if self.queue.follow_up_count > 0 {
             self.set_busy_status("Follow-up pending");
         } else if self.phase != UiPhase::Idle {
-            self.phase = UiPhase::Idle;
-            self.status = None;
+            self.mark_idle();
         }
     }
 
@@ -722,6 +721,46 @@ impl UiModel {
             text,
             elapsed_secs,
         });
+    }
+
+    pub fn mark_idle(&mut self) {
+        self.phase = UiPhase::Idle;
+        self.status = None;
+    }
+
+    pub fn apply_busy_label(&mut self, label: &str) {
+        self.phase = UiPhase::Busy;
+        if self.status_is_placeholder() {
+            self.status = Some(label.to_string());
+        }
+    }
+
+    pub fn apply_history_notice(
+        &mut self,
+        text: Option<String>,
+        is_notice: impl Fn(&UiEntry) -> bool,
+    ) {
+        match (text, self.history_notice) {
+            (Some(text), true) => {
+                if let Some(UiEntry::ScrollNotice { text: current }) =
+                    self.entries.iter_mut().find(|entry| is_notice(entry))
+                {
+                    *current = text;
+                }
+                self.history_notice = true;
+            }
+            (Some(text), false) => {
+                self.entries.insert(0, UiEntry::ScrollNotice { text });
+                self.history_notice = true;
+            }
+            (None, true) => {
+                if let Some(pos) = self.entries.iter().position(|entry| is_notice(entry)) {
+                    self.entries.remove(pos);
+                }
+                self.history_notice = false;
+            }
+            (None, false) => {}
+        }
     }
 
     pub fn set_busy_status(&mut self, status: impl Into<String>) {

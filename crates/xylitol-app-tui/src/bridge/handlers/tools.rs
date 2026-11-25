@@ -79,6 +79,6 @@ fn apply_tool_end(
             apply_tool_result_to_entries(&mut model.entries, id, name, result, details, is_error);
     }
     if model.phase == UiPhase::Busy {
-        model.status = Some("Working".into());
+        model.set_busy_status("Working");
     }
 }

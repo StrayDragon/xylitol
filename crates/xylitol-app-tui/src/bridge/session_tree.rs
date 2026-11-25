@@ -8,8 +8,8 @@ use xylitol_plugin_sdk::session::{
 
 use super::{
     BashBlockStatus, CUSTOM_TYPE_CONTEXT_REMINDER, CompactionBlockStatus, UiEntry, UiModel,
-    UiPhase, allocate_thinking_id, apply_tool_result_to_entries, find_tool_mut,
-    system_reminder_body, user_entry,
+    allocate_thinking_id, apply_tool_result_to_entries, find_tool_mut, system_reminder_body,
+    user_entry,
 };
 
 pub fn rebuild_scrollback_from_travel(
@@ -18,8 +18,7 @@ pub fn rebuild_scrollback_from_travel(
     travel: &SessionTreeTravel,
 ) {
     ui_model.entries.clear();
-    ui_model.phase = UiPhase::Idle;
-    ui_model.status = None;
+    ui_model.mark_idle();
     ui_model.clear_streaming_buffers();
 
     let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());

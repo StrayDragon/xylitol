@@ -551,15 +551,11 @@ impl<T: Terminal> HostSession<T> {
             if self.host_chain_pending && self.ui_model.phase == UiPhase::Busy {
                 self.ui_model.settle_after_turn_boundary();
             } else {
-                self.ui_model.phase = UiPhase::Idle;
-                self.ui_model.status = None;
+                self.ui_model.mark_idle();
             }
             return;
         };
-        self.ui_model.phase = UiPhase::Busy;
-        if self.ui_model.status_is_placeholder() {
-            self.ui_model.status = Some(label.to_string());
-        }
+        self.ui_model.apply_busy_label(label);
     }
 
     pub fn take_reload(&mut self) -> bool {
@@ -863,8 +859,7 @@ impl<T: Terminal> HostSession<T> {
         if !self.busy.is_empty() {
             return;
         }
-        self.ui_model.phase = UiPhase::Idle;
-        self.ui_model.status = None;
+        self.ui_model.mark_idle();
         self.sync_ui_root_from_model();
     }
 

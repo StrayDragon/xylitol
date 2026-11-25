@@ -59,7 +59,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 }
             }
             if model.phase == UiPhase::Busy {
-                model.status = Some("Working".into());
+                model.set_busy_status("Working");
             }
             true
         }
@@ -78,7 +78,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 });
             }
             if model.phase == UiPhase::Busy {
-                model.status = Some("Working".into());
+                model.set_busy_status("Working");
             }
             true
         }
@@ -92,8 +92,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 }
                 model.clear_streaming_buffers();
                 if model.queue.follow_up_count == 0 {
-                    model.phase = UiPhase::Idle;
-                    model.status = None;
+                    model.mark_idle();
                 }
             } else {
                 log::warn!(
@@ -106,8 +105,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     text: err.message.clone(),
                 });
                 if model.phase == UiPhase::Busy && model.queue.follow_up_count == 0 {
-                    model.phase = UiPhase::Idle;
-                    model.status = None;
+                    model.mark_idle();
                 }
             }
             true

@@ -17,7 +17,7 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
         }
         XyEvent::StepStart { .. } => {
             if model.phase == UiPhase::Busy {
-                model.status = Some("Working".into());
+                model.set_busy_status("Working");
             }
             true
         }

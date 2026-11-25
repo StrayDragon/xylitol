@@ -97,29 +97,7 @@ fn is_history_notice(entry: &UiEntry) -> bool {
 }
 
 fn apply_notice(model: &mut UiModel, text: Option<String>) {
-    match (text, model.history_notice) {
-        (Some(text), true) => {
-            if let Some(UiEntry::ScrollNotice { text: current }) = model
-                .entries
-                .iter_mut()
-                .find(|entry| is_history_notice(entry))
-            {
-                *current = text;
-            }
-            model.history_notice = true;
-        }
-        (Some(text), false) => {
-            model.entries.insert(0, UiEntry::ScrollNotice { text });
-            model.history_notice = true;
-        }
-        (None, true) => {
-            if let Some(pos) = model.entries.iter().position(is_history_notice) {
-                model.entries.remove(pos);
-            }
-            model.history_notice = false;
-        }
-        (None, false) => {}
-    }
+    model.apply_history_notice(text, is_history_notice);
 }
 
 pub fn trim_to_window(model: &mut UiModel, has_earlier: bool) {

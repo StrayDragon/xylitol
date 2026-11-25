@@ -2,6 +2,9 @@
 depends_on: []
 title: 端上 transcript 和忙碌状态只有一处可写
 needs_specs_change: false
+branch: sdd/c3345-refactor-ui-model-writes
+base_branch: main
+base_sha: 9bf08c14c32b16f6f32d5148408d42006a53c969
 ---
 
 # 端上 transcript 和忙碌状态只有一处可写
