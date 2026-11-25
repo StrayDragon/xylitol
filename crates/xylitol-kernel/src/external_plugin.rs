@@ -73,6 +73,25 @@ impl ExternalManifest {
     pub fn has_commands(&self) -> bool {
         self.capabilities.iter().any(|cap| cap == "commands")
     }
+
+    pub fn config_schema(&self) -> Option<Value> {
+        self.config_schema.clone()
+    }
+
+    pub fn first_command_description(&self) -> String {
+        self.commands
+            .first()
+            .map(|command| command.description.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn has_mcp(&self) -> bool {
+        self.mcp.is_some()
+    }
+
+    pub fn mcp(&self) -> Option<ExternalMcpSpec> {
+        self.mcp.clone()
+    }
 }
 
 struct ClientState {
@@ -347,7 +366,7 @@ impl Plugin for ExternalPlugin {
                 }
             };
         let has_commands = manifest.has_commands();
-        if !has_commands && manifest.mcp.is_none() {
+        if !has_commands && !manifest.has_mcp() {
             log::warn!(
                 "external plugin `{}`: manifest declares neither `commands` capability nor `mcp` declaration",
                 self.name
@@ -355,10 +374,9 @@ impl Plugin for ExternalPlugin {
             client.shutdown().await;
             return Ok(());
         }
-        if let (Some(config_key), Some(config_schema)) = (
-            manifest.config_key.as_deref(),
-            manifest.config_schema.as_ref(),
-        ) {
+        if let (Some(config_key), Some(config_schema)) =
+            (manifest.config_key.as_deref(), manifest.config_schema())
+        {
             let Some(config_service) =
                 ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>()
             else {
@@ -370,7 +388,7 @@ impl Plugin for ExternalPlugin {
                 return Ok(());
             };
             if let Some(value) = config_service.app.sections.get(config_key) {
-                match jsonschema::Validator::new(config_schema) {
+                match jsonschema::Validator::new(&config_schema) {
                     Ok(validator) => {
                         if let Err(error) = validator.validate(value) {
                             log::error!(
@@ -412,11 +430,7 @@ impl Plugin for ExternalPlugin {
                 return Ok(());
             }
         }
-        let command_description = manifest
-            .commands
-            .first()
-            .map(|c| c.description.clone())
-            .unwrap_or_default();
+        let command_description = manifest.first_command_description();
         let mut registered_commands = Vec::new();
         if has_commands {
             let public_name = format!("plugin:{}", self.name);
@@ -439,7 +453,7 @@ impl Plugin for ExternalPlugin {
             client.shutdown().await;
             Ok(())
         })?;
-        if let Some(mcp) = manifest.mcp {
+        if let Some(mcp) = manifest.mcp() {
             if mcp.command.trim().is_empty() {
                 log::warn!(
                     "external plugin `{}`: mcp declaration has empty command; not registered",
