@@ -13,7 +13,7 @@ seam：`xylitol-runtime` 里覆盖 new、fork、resume 和 MCP 门禁的现有�
 
 ## 3. 临时评判（deslop-please）
 
-不进 `just qa`。基线是 `.tmp/deslop-please.allow`。测试路径诊断见 `.tmp/deslop-please-deferred-tests.md`，本 change 不改。
+不进 `just qa`。基线是 `.tmp/deslop-please.allow`。测试路径诊断见 `.tmp/deslop-please-deferred-tests.md`，本 change 不改。全仓基线只由不带 crate 参数的 `deslop-please --update-allow .tmp/deslop-please.allow` 重写。只检查一个 crate 时，其它 crate 的条目不在这次输出里，它们仍留在基线中。
 
 - [ ] 3.1 在本 change 分支上跑 `deslop-please xylitol-runtime`。`XyInProcessDriver::prepare_acked` 从报告里消失。
 - [ ] 3.2 `deslop-please xylitol-runtime --allow .tmp/deslop-please.allow` 没有基线以外的新诊断。

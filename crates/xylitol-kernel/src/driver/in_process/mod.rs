@@ -190,7 +190,6 @@ fn install_product_tool_set(
     driver.set_workflow_gateway(workflow.clone());
     let tools = compose_tools(features, context, todo, workflow, automation, ask);
     driver.set_base_tools(tools.clone());
-    driver.set_base_tools(tools.clone());
     if let Some(outcome) = driver.try_set_tools_inline(tools) {
         debug_assert!(matches!(outcome, ToolsWriteOutcome::Applied));
     }

@@ -2,6 +2,9 @@
 depends_on: []
 title: 装配工具集时只写入一次基座工具
 needs_specs_change: false
+branch: sdd/c3360-remove-duplicate-base-tools
+base_branch: main
+base_sha: 7b6562c71344b95c6eff4464058158472fb5c664
 ---
 
 # 装配工具集时只写入一次基座工具
