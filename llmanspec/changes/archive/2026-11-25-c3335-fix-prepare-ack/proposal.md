@@ -2,6 +2,9 @@
 depends_on: []
 title: 新建、分叉和恢复会话时准备确认只有一份
 needs_specs_change: false
+branch: sdd/c3335-fix-prepare-ack
+base_branch: main
+base_sha: ee0bfce5f943e6372b2943a4f1bca2e1b9148bb6
 ---
 
 # 新建、分叉和恢复会话时准备确认只有一份

@@ -87,7 +87,6 @@ pub struct XyInProcessDriver {
     mcp_gate_notice: Option<String>,
     session_profile: xylitol_plugin_sdk::session::SessionProfile,
     profile_mismatch_notice: Option<String>,
-    prepare_acked: bool,
     applied_mcp_tool_names: Vec<String>,
     tool_gate_poll_started: Option<std::time::Instant>,
     base_tools: Option<crate::agent::tools::ToolSet>,
@@ -314,7 +313,6 @@ impl XyInProcessDriver {
             mcp_gate_notice: None,
             session_profile: xylitol_plugin_sdk::session::SessionProfile::default(),
             profile_mismatch_notice: None,
-            prepare_acked: true,
             applied_mcp_tool_names: Vec::new(),
             tool_gate_poll_started: None,
             base_tools: None,
@@ -594,7 +592,6 @@ impl XyInProcessDriver {
             let frozen = state.runtime().is_tools_frozen();
             self.handle.shared().set_tools_frozen(frozen);
         }
-        self.prepare_acked = true;
         self.handle.shared().set_prepare_acked(true);
     }
 
@@ -1077,7 +1074,6 @@ impl XyDriver for XyInProcessDriver {
         if self.try_apply_prepare_tools().await {
             self.applied_mcp_tool_names = hub_tools;
             if !self.handle.shared().prepare_acked() {
-                self.prepare_acked = true;
                 self.handle.shared().set_prepare_acked(true);
             }
             return true;
@@ -1133,7 +1129,6 @@ impl XyDriver for XyInProcessDriver {
                 let frozen = state.runtime().is_tools_frozen();
                 self.handle.shared().set_tools_frozen(frozen);
             }
-            self.prepare_acked = true;
             self.handle.shared().set_prepare_acked(true);
         } else {
             self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);

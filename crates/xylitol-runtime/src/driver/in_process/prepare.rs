@@ -140,7 +140,6 @@ impl XyInProcessDriver {
     }
 
     pub fn fire_session_prepare(&mut self, reason: SessionPrepareReason) {
-        self.prepare_acked = false;
         self.handle.shared().set_prepare_acked(false);
         if reason != SessionPrepareReason::Generate
             && let Some(hub) = &self.prepare_hub
@@ -252,7 +251,6 @@ impl XyInProcessDriver {
         self.state_mut().runtime_mut().freeze_tools(tools);
         let frozen = self.state().runtime().is_tools_frozen();
         self.handle.shared().set_tools_frozen(frozen);
-        self.prepare_acked = true;
         self.handle.shared().set_prepare_acked(true);
     }
 
@@ -338,7 +336,8 @@ impl XyInProcessDriver {
         tool_names: Vec<String>,
         view: SessionPrepareView,
     ) -> LoadedResourcesSnapshot {
-        let settled_now = view.complete || (tools_table_frozen && self.prepare_acked);
+        let settled_now =
+            view.complete || (tools_table_frozen && self.handle.shared().prepare_acked());
         if settled_now {
             self.handle.shared().mark_bootstrap_settled();
         }
@@ -437,6 +436,7 @@ mod tests {
 mod tool_gate_poll_tests {
     use super::XyInProcessDriver;
     use crate::agent::runtime::baseline::RuntimeBaseline;
+    use crate::driver::proto::XyDriver;
     use crate::test_support::{MemoryStore, NoopSink};
     use async_trait::async_trait;
     use std::sync::Arc;
@@ -567,5 +567,67 @@ mod tool_gate_poll_tests {
             "gate deadline MUST surface the timeout notice once"
         );
         assert_eq!(hub.drive_calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn session_switch_leaves_prepare_ack_false_for_both_readers() {
+        use crate::driver::in_process::session::XySessionOps;
+        use xylitol_plugin_sdk::session::{EntryBase, ForkPosition, LabelEntry, SessionEntry};
+
+        let hub = CountingHub::new();
+        let mut driver = poll_test_driver(hub);
+        driver.store.create("resume", None, None).await.expect("seed");
+
+        let created = driver.new_session().await.expect("new");
+        assert_ack_unread(&driver);
+
+        driver.handle.shared().set_prepare_acked(true);
+        driver.switch_session("resume").await.expect("resume");
+        assert_ack_unread(&driver);
+
+        driver.handle.shared().set_prepare_acked(true);
+        driver
+            .store
+            .append_session_entry(
+                "resume",
+                &SessionEntry::Label(LabelEntry {
+                    base: EntryBase {
+                        entry_type: "label".into(),
+                        id: "e1".into(),
+                        parent_id: None,
+                        timestamp: 0,
+                    },
+                    target_id: "e1".into(),
+                    label: None,
+                }),
+            )
+            .await
+            .expect("entry");
+        driver
+            .fork_session("e1", ForkPosition::At)
+            .await
+            .expect("fork");
+        assert_ack_unread(&driver);
+        let _ = created;
+    }
+
+    fn assert_ack_unread(driver: &XyInProcessDriver) {
+        assert!(
+            driver.mcp_blocks_agent(),
+            "the gate must read the unacked probe"
+        );
+        let snap = driver.snapshot_from_view(
+            Vec::new(),
+            true,
+            Vec::new(),
+            SessionPrepareView {
+                complete: false,
+                ..SessionPrepareView::default()
+            },
+        );
+        assert!(
+            !snap.mcp_bootstrap_complete,
+            "the resource snapshot must read the same unacked probe"
+        );
     }
 }
