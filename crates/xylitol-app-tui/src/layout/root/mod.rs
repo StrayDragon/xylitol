@@ -612,19 +612,15 @@ impl UiRoot {
     }
 
     pub fn set_activity_settings(&mut self, settings: crate::activity_fold::ActivityFoldSettings) {
-        let thinking_full = matches!(
-            settings.display_level,
-            crate::activity_fold::DisplayLevel::Recent | crate::activity_fold::DisplayLevel::Full
-        );
-        self.fold.apply_visible_items(settings.visible_items());
+        let (thinking_full, visible) = self.activity.install_settings(settings);
+        self.fold.apply_visible_items(visible);
         self.fold.defaults.thinking_expanded = thinking_full;
         self.fold.defaults.streaming_thinking_expanded = thinking_full;
-        self.activity.settings = settings;
     }
 
     pub fn cycle_display_level(&mut self) {
-        let mut settings = self.activity.settings.clone();
-        settings.apply_display_level(settings.display_level.next());
+        let mut settings = self.activity.settings().clone();
+        settings.apply_display_level(settings.display_level().next());
         self.set_activity_settings(settings);
         self.bump_upper_gen();
     }
@@ -650,7 +646,7 @@ impl UiRoot {
         self.fold.clear_user_overrides();
         self.fold.clear_tools_overrides();
         self.fold.clear_thinking_overrides();
-        let mut settings = self.activity.settings.clone();
+        let mut settings = self.activity.settings().clone();
         settings.apply_display_level(crate::activity_fold::DisplayLevel::Summary);
         self.set_activity_settings(settings);
         self.bump_upper_gen();
@@ -699,10 +695,8 @@ impl UiRoot {
         let degraded =
             self.activity
                 .auto_degrade(&self.ui_model.entries, AutoTrigger::TurnCompleted, false);
-        let expanded = matches!(
-            self.activity.settings.display_level,
-            crate::activity_fold::DisplayLevel::Recent
-        ) && self.activity.expand_nearest(&self.ui_model.entries);
+        let expanded = self.activity.display_level() == crate::activity_fold::DisplayLevel::Recent
+            && self.activity.expand_nearest(&self.ui_model.entries);
         if degraded || expanded {
             self.bump_upper_gen();
         }
@@ -897,20 +891,19 @@ impl UiRoot {
     }
 
     pub(crate) fn estimate_dock_rows(&self) -> usize {
-        let queue_rows = if self.ui_model.pending_steer.is_empty()
-            && self.ui_model.pending_follow_up.is_empty()
-        {
-            0
+        let queue_rows = if self.ui_model.has_pending_queue() {
+            self.ui_model.pending_queue_len() + 1
         } else {
-            self.ui_model.pending_steer.len() + self.ui_model.pending_follow_up.len() + 1
+            0
         };
-        let todo_rows = if self.ui_model.todo.is_empty() {
+        let checklist = self.ui_model.todo_list();
+        let todo_rows = if checklist.is_empty() {
             0
         } else {
             crate::widgets::todo_bar_line_count(
                 self.glyphs,
                 crate::widgets::TodoBarParams {
-                    list: &self.ui_model.todo,
+                    list: &checklist,
                     expanded: self.todo_expanded,
                     scroll: 0,
                     width: 80,
@@ -1249,11 +1242,7 @@ impl UiRoot {
         let Some(base) = self.queue_strip_screen_row(transcript_rows) else {
             return Vec::new();
         };
-        let count = self
-            .ui_model
-            .pending_steer
-            .len()
-            .saturating_add(self.ui_model.pending_follow_up.len());
+        let count = self.ui_model.pending_queue_len();
         let first = base.saturating_add(1);
         (0..count)
             .filter_map(|row| {
@@ -1572,18 +1561,16 @@ impl UiRoot {
     }
 
     pub fn apply_ui_model(&mut self, model: &UiModel) {
-        let prev_live_think = self.ui_model.streaming_think_id.clone();
+        let prev_live_think = self.ui_model.streaming_think_id().map(str::to_string);
         let upper_changed = self.ui_model.entries != model.entries
-            || self.ui_model.streaming_assistant != model.streaming_assistant
-            || self.ui_model.streaming_thinking != model.streaming_thinking
-            || self.ui_model.streaming_think_id != model.streaming_think_id
+            || !self.ui_model.streaming_matches(model)
             || self.ui_model.phase != model.phase;
         self.ui_model = model.clone();
         if upper_changed {
             self.bump_upper_gen();
         }
         if prev_live_think.as_deref() == Some(STREAMING_THINK_ID)
-            && model.streaming_think_id.is_none()
+            && model.streaming_think_id().is_none()
         {
             self.promote_streaming_think_fold();
         }

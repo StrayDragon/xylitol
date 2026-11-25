@@ -77,7 +77,7 @@ pub fn live_think_id_for_cluster(
     cluster: &ActivityCluster,
     progressive: bool,
 ) -> Option<String> {
-    let live_id = model.streaming_think_id.as_deref()?;
+    let live_id = model.streaming_think_id()?;
     if progressive && live_id == STREAMING_THINK_ID {
         return Some(live_id.to_string());
     }

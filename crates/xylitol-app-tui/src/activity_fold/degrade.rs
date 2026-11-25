@@ -16,12 +16,12 @@ pub fn apply_auto_degrade(
     trigger: AutoTrigger,
     protect_newest: bool,
 ) -> bool {
-    if !state.settings.enabled {
+    if !state.settings().enabled {
         return false;
     }
     let enabled = match trigger {
-        AutoTrigger::Rebuild => state.settings.auto_on_rebuild,
-        AutoTrigger::TurnCompleted => state.settings.auto_on_turn_end,
+        AutoTrigger::Rebuild => state.settings().auto_on_rebuild,
+        AutoTrigger::TurnCompleted => state.settings().auto_on_turn_end,
     };
     if !enabled {
         return false;
@@ -34,9 +34,9 @@ pub fn apply_auto_degrade(
 
     let keep = match trigger {
         AutoTrigger::Rebuild => 0,
-        AutoTrigger::TurnCompleted => state.settings.keep_recent_turns as usize,
+        AutoTrigger::TurnCompleted => state.settings().keep_recent_turns as usize,
     };
-    let target = state.settings.collapse_floor;
+    let target = state.settings().collapse_floor;
 
     let newest_ord = segments.iter().map(|s| s.turn_ordinal).max().unwrap_or(0);
     let mut changed = false;

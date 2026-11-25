@@ -154,7 +154,7 @@ async fn drain_abort_and_outbox<T: Terminal>(
             session.ui_model_mut().queue_item_ids.clear();
             session.ui_model_mut().clear_follow_up_strip()
         } else {
-            let rows = session.ui_model().pending_follow_up.clone();
+            let rows = session.ui_model().follow_up_rows().to_vec();
             session
                 .ui_model_mut()
                 .queue_item_ids
@@ -346,8 +346,7 @@ pub async fn drain_pending<T: Terminal>(
     if !session.assembly_gate_latched()
         && !session.run_active()
         && session.ui_model().status.as_deref() == Some("Assembling")
-        && session.ui_model().pending_steer.is_empty()
-        && session.ui_model().pending_follow_up.is_empty()
+        && !session.ui_model().has_pending_queue()
         && !session.has_gated_submit()
     {
         session.end_gated_assemble_idle();
@@ -422,8 +421,7 @@ async fn release_gate_if_settled<T: Terminal>(
         start_run_after_tool_gate(session, driver, agent_stream, prompt, attachments).await;
         return;
     }
-    let queued = !session.ui_model().pending_steer.is_empty()
-        || !session.ui_model().pending_follow_up.is_empty();
+    let queued = session.ui_model().has_pending_queue();
     if !queued {
         session.end_gated_assemble_idle();
     }

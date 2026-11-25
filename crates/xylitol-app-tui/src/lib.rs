@@ -557,8 +557,7 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
 ) -> Result<(), XyDriverError> {
     if driver.take_resync_rebuild() {
         session.ui_model_mut().entries.clear();
-        session.ui_model_mut().streaming_assistant.clear();
-        session.ui_model_mut().streaming_thinking.clear();
+        session.ui_model_mut().clear_idle_stream_buffers();
         session.sync_ui_root_from_model();
     }
     let mut model_synced = false;
@@ -649,7 +648,7 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
                 if session.ui_model_mut().phase == crate::bridge::UiPhase::Idle {
                     session.arm_queue_refresh();
                     let model = session.ui_model_mut();
-                    let queued = model.pending_follow_up.len() + model.pending_steer.len();
+                    let queued = model.pending_queue_len();
                     if queued > 0 {
                         model.set_busy_status("Waiting for the next turn");
                     }

@@ -257,19 +257,15 @@ pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction
         let mut root = root.borrow_mut();
         match action {
             FoldAction::View => {
-                let settings = &root.activity().settings;
-                let items = settings.visible_items();
+                let level = root.activity().display_level();
+                let items = root.activity().visible_items();
                 notice = format!(
-                    "display level: {:?}; thinking={} tools={} output={} diff={}",
-                    settings.display_level,
-                    items.thinking,
-                    items.tool_header,
-                    items.tool_output,
-                    items.diff,
+                    "display level: {level:?}; thinking={} tools={} output={} diff={}",
+                    items.thinking, items.tool_header, items.tool_output, items.diff,
                 );
             }
             FoldAction::Set(level) => {
-                let mut settings = root.activity().settings.clone();
+                let mut settings = root.activity().settings().clone();
                 settings.apply_display_level(level);
                 root.set_activity_settings(settings);
                 notice = format!("display level: {level:?}");
@@ -284,7 +280,7 @@ pub(super) fn fold<T: Terminal>(session: &mut HostSession<T>, action: FoldAction
                 notice = format!("fold args: {mode:?}");
             }
             FoldAction::Toggle(item) => {
-                let mut settings = root.activity().settings.clone();
+                let mut settings = root.activity().settings().clone();
                 let (kind, label) = match item {
                     FoldItem::Thinking => (VisibleItemKind::Thinking, "thinking"),
                     FoldItem::Tools => (VisibleItemKind::ToolHeader, "tools"),

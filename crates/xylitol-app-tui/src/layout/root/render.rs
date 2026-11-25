@@ -142,14 +142,15 @@ impl UiRoot {
     pub(super) fn render_queue_slot(&mut self, width: usize) -> Vec<String> {
         render_queue_strip(
             self.theme,
-            &self.ui_model.pending_steer,
-            &self.ui_model.pending_follow_up,
+            self.ui_model.steer_rows(),
+            self.ui_model.follow_up_rows(),
             width,
         )
     }
 
     pub(super) fn render_todo_bar_slot(&mut self, width: usize) -> Vec<String> {
-        if self.ui_model.todo.is_empty() {
+        let checklist = self.ui_model.todo_list();
+        if checklist.is_empty() {
             self.todo_scroll = 0;
             self.last_todo_hits.clear();
             self.last_todo_plain.clear();
@@ -161,7 +162,7 @@ impl UiRoot {
             self.theme,
             self.glyphs,
             crate::widgets::TodoBarParams {
-                list: &self.ui_model.todo,
+                list: &checklist,
                 expanded: self.todo_expanded,
                 scroll: self.todo_scroll,
                 width,

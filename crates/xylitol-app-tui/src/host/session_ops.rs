@@ -634,7 +634,8 @@ impl<T: Terminal> HostSession<T> {
             }
         });
         self.stage_name.attempted = restored_stage_name.is_some();
-        self.ui_model.stage_name = restored_stage_name;
+        self.ui_model
+            .record_stage_name(restored_stage_name.as_deref());
         self.stage_name.request_pending = false;
         crate::history_window::trim_to_window(&mut self.ui_model, buffer_has_more);
         if let Some(root) = self.ui_root.as_ref() {

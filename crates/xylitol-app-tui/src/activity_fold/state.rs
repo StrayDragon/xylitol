@@ -6,7 +6,7 @@ use crate::bridge::UiEntry;
 
 use super::degrade::{AutoTrigger, apply_auto_degrade, in_virgin_recent_window};
 use super::segment::{SegmentLevel, partition_segments};
-use super::settings::ActivityFoldSettings;
+use super::settings::{ActivityFoldSettings, DisplayLevel, VisibleItems};
 use super::summary::format_duration;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -38,6 +38,29 @@ pub struct ActivityFoldState {
 }
 
 impl ActivityFoldState {
+    pub fn settings(&self) -> &ActivityFoldSettings {
+        &self.settings
+    }
+
+    pub fn display_level(&self) -> DisplayLevel {
+        self.settings.display_level()
+    }
+
+    pub fn visible_items(&self) -> VisibleItems {
+        self.settings.visible_items()
+    }
+
+    pub fn paints_envelope_header(&self) -> bool {
+        self.settings.paints_envelope_header()
+    }
+
+    pub fn install_settings(&mut self, settings: ActivityFoldSettings) -> (bool, VisibleItems) {
+        let thinking_expanded = settings.thinking_defaults_expanded();
+        let visible = settings.visible_items();
+        self.settings = settings;
+        (thinking_expanded, visible)
+    }
+
     pub fn level_of(&self, id: &str) -> SegmentLevel {
         if !self.settings.enabled {
             return SegmentLevel::L0;

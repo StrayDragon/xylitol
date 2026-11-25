@@ -728,6 +728,93 @@ impl UiModel {
         self.status = None;
     }
 
+    pub fn steer_rows(&self) -> &[String] {
+        &self.pending_steer
+    }
+
+    pub fn follow_up_rows(&self) -> &[String] {
+        &self.pending_follow_up
+    }
+
+    pub fn has_pending_queue(&self) -> bool {
+        !self.pending_steer.is_empty() || !self.pending_follow_up.is_empty()
+    }
+
+    pub fn pending_queue_len(&self) -> usize {
+        self.pending_steer.len() + self.pending_follow_up.len()
+    }
+
+    pub fn queue_contains(&self, text: &str) -> bool {
+        self.steer_contains(text) || self.follow_up_contains(text)
+    }
+
+    pub fn steer_contains(&self, text: &str) -> bool {
+        self.pending_steer.iter().any(|row| row == text)
+    }
+
+    pub fn follow_up_contains(&self, text: &str) -> bool {
+        self.pending_follow_up.iter().any(|row| row == text)
+    }
+
+    pub fn stage_name(&self) -> Option<&str> {
+        self.stage_name.as_deref()
+    }
+
+    pub fn record_stage_name(&mut self, name: Option<&str>) {
+        self.stage_name = name.map(str::to_string);
+    }
+
+    pub fn todo_list(&self) -> TodoList {
+        self.todo.clone()
+    }
+
+    pub fn set_todo_list(&mut self, list: TodoList) {
+        self.todo = TodoList::new(list.items);
+    }
+
+    pub fn streaming_think_id(&self) -> Option<&str> {
+        self.streaming_think_id.as_deref()
+    }
+
+    pub fn streaming_matches(&self, other: &Self) -> bool {
+        self.streaming_assistant == other.streaming_assistant
+            && self.streaming_thinking == other.streaming_thinking
+            && self.streaming_think_id == other.streaming_think_id
+    }
+
+    pub fn clear_streaming_assistant(&mut self) {
+        self.streaming_assistant.clear();
+    }
+
+    pub fn clear_idle_stream_buffers(&mut self) {
+        self.clear_streaming_assistant();
+        self.streaming_thinking.clear();
+    }
+
+    pub fn append_assistant_delta(&mut self, text: &str) {
+        if self.streaming_think_id.is_some() {
+            self.thought_clock.stamp_end();
+            self.flush_thinking_elapsed(None);
+        }
+        self.streaming_assistant.push_str(text);
+    }
+
+    pub fn append_thinking_delta(&mut self, text: &str) {
+        if self.streaming_think_id.is_none() {
+            self.streaming_think_id = Some(STREAMING_THINK_ID.into());
+            self.thought_clock.stamp_start();
+        }
+        self.streaming_thinking.push_str(text);
+    }
+
+    pub fn live_think_idle(&self) -> bool {
+        self.streaming_think_id.is_none() && self.streaming_thinking.is_empty()
+    }
+
+    pub fn streaming_thinking_latest_line(&self) -> &str {
+        self.streaming_thinking.lines().last().unwrap_or("").trim()
+    }
+
     pub fn apply_busy_label(&mut self, label: &str) {
         self.phase = UiPhase::Busy;
         if self.status_is_placeholder() {

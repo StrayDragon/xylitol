@@ -388,7 +388,7 @@ async fn lab_ao_stream_delta_perf_report() {
         _ => -1.0,
     };
 
-    session.ui_model_mut().streaming_assistant.clear();
+    session.ui_model_mut().clear_streaming_assistant();
     session.sync_ui_root_from_model();
     session.tui.render_now().expect("reset paint");
 

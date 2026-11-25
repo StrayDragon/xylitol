@@ -243,7 +243,7 @@ impl SceneBuilder {
     }
 
     pub fn live_think_idle(&self) -> bool {
-        self.model.streaming_think_id.is_none() && self.model.streaming_thinking.is_empty()
+        self.model.live_think_idle()
     }
 
     pub fn render(&self, width: usize) -> (String, SemanticDump) {

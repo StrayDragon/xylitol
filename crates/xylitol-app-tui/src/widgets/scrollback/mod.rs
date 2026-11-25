@@ -243,7 +243,7 @@ fn plan_segments(
     for (si, seg) in segments.iter().enumerate() {
         let live_seg = live_seg_idx == Some(si);
         let level = activity.level_of(&seg.id);
-        if activity.settings.paints_envelope_header() && !live_seg && level != SegmentLevel::L0 {
+        if activity.paints_envelope_header() && !live_seg && level != SegmentLevel::L0 {
             let mids = middle_entry_indices(&model.entries, seg);
             if let Some(&first) = mids.first() {
                 plan.envelope_summary_at.insert(first, si);
@@ -520,8 +520,8 @@ pub fn render_scrollback(
                     fold_hits,
                     fold,
                     text,
-                    activity.settings.enabled && plan.live_open_cluster,
-                    activity.settings.enabled && plan.live_open_cluster_thought_only,
+                    activity.settings().enabled && plan.live_open_cluster,
+                    activity.settings().enabled && plan.live_open_cluster_thought_only,
                     glyphs,
                     theme,
                     width,
@@ -538,7 +538,7 @@ pub fn render_scrollback(
         }
     }
 
-    if activity.settings.enabled
+    if activity.settings().enabled
         && model.phase == UiPhase::Busy
         && let Some(label) = live_tail_label(model, &segments, has_asst_tail)
     {

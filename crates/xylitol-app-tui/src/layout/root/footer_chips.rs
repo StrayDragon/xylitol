@@ -15,7 +15,7 @@ pub struct FooterChipHit {
 
 impl UiRoot {
     fn display_level_label(&self) -> &'static str {
-        match self.activity.settings.display_level {
+        match self.activity.display_level() {
             crate::activity_fold::DisplayLevel::Summary => "摘要",
             crate::activity_fold::DisplayLevel::Recent => "最近",
             crate::activity_fold::DisplayLevel::Full => "完整",
@@ -52,8 +52,7 @@ impl UiRoot {
         }
         let stage_name = self
             .ui_model
-            .stage_name
-            .as_deref()
+            .stage_name()
             .map(str::trim)
             .filter(|name| !name.is_empty());
         let plain = xylitol_tui::utils::strip_ansi_codes(line);

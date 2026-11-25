@@ -16,8 +16,8 @@ impl UiRoot {
 
     pub(crate) fn apply_fixed_zone_footprint(&mut self, todo_lines: usize) {
         let queue_lines = queue_strip_line_count(
-            self.ui_model.pending_steer.len(),
-            self.ui_model.pending_follow_up.len(),
+            self.ui_model.steer_rows().len(),
+            self.ui_model.follow_up_rows().len(),
         );
         let toast_present = self.toast_notice.is_some();
         let reserved =

@@ -105,6 +105,17 @@ impl Default for ActivityFoldSettings {
 }
 
 impl ActivityFoldSettings {
+    pub fn display_level(&self) -> DisplayLevel {
+        self.display_level
+    }
+
+    pub fn thinking_defaults_expanded(&self) -> bool {
+        matches!(
+            self.display_level,
+            DisplayLevel::Recent | DisplayLevel::Full
+        )
+    }
+
     pub fn paints_envelope_header(&self) -> bool {
         self.enabled && self.collapse_floor == SegmentLevel::L3
     }

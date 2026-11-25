@@ -98,9 +98,8 @@ pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
         | (UiEntry::SystemMessage { text: a }, Some(UiEntry::SystemMessage { text: b })) => a == b,
         _ => false,
     };
-    let queued_inject = model.pending_steer.iter().any(|s| s == &text)
-        || model.pending_follow_up.iter().any(|s| s == &text)
-        || model.awaiting_user_bubble.iter().any(|s| s == &text);
+    let queued_inject =
+        model.queue_contains(&text) || model.awaiting_user_bubble.iter().any(|s| s == &text);
     if same_trailing && !queued_inject {
         return;
     }
@@ -110,9 +109,9 @@ pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
         .position(|row| row == &text)
     {
         model.awaiting_user_bubble.remove(pos);
-    } else if model.pending_steer.iter().any(|row| row == &text) {
+    } else if model.steer_contains(&text) {
         model.pop_steer_strip_matching(&text);
-    } else if model.pending_follow_up.iter().any(|row| row == &text) {
+    } else if model.follow_up_contains(&text) {
         model.pop_follow_up_strip_matching(&text);
     }
     model.forget_queue_item_id(&text);

@@ -937,8 +937,7 @@ impl<T: Terminal> HostSession<T> {
             && follow_up_count == 0
             && outbox_steer == 0
             && outbox_follow == 0
-            && (!self.ui_model.pending_steer.is_empty()
-                || !self.ui_model.pending_follow_up.is_empty())
+            && self.ui_model.has_pending_queue()
         {
             return;
         }
@@ -984,7 +983,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn set_stage_name(&mut self, name: Option<String>) {
-        self.ui_model.stage_name = name;
+        self.ui_model.record_stage_name(name.as_deref());
         self.sync_ui_root_from_model();
         self.tui.request_render(false);
     }
@@ -1771,7 +1770,7 @@ impl<T: Terminal> HostSession<T> {
                 }
                 let phase = match reason {
                     Some(AgentEndReason::UserCancel) => StageNamePhase::Aborted,
-                    _ if self.ui_model.stage_name.is_some() => StageNamePhase::Named,
+                    _ if self.ui_model.stage_name().is_some() => StageNamePhase::Named,
                     _ if self.stage_name.attempted => StageNamePhase::Requested,
                     _ => StageNamePhase::NotStarted,
                 };

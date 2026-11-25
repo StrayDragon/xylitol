@@ -92,7 +92,7 @@ pub(super) fn paint_cluster_header_row(
     );
     if counts.is_thought_only() && !expanded {
         let streaming_latest = if live_think.as_deref() == Some(STREAMING_THINK_ID) {
-            model.streaming_thinking.lines().last().unwrap_or("").trim()
+            model.streaming_thinking_latest_line()
         } else {
             ""
         };

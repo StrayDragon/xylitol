@@ -72,7 +72,7 @@ pub fn sync_todo_checklist_from_entries(ui_model: &mut UiModel, entries: &[Sessi
 }
 
 pub fn sync_todo_checklist(ui_model: &mut UiModel, list: TodoList) {
-    ui_model.todo = list;
+    ui_model.set_todo_list(list);
 }
 
 fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, message: &Value) {
