@@ -576,7 +576,11 @@ mod tool_gate_poll_tests {
 
         let hub = CountingHub::new();
         let mut driver = poll_test_driver(hub);
-        driver.store.create("resume", None, None).await.expect("seed");
+        driver
+            .store
+            .create("resume", None, None)
+            .await
+            .expect("seed");
 
         let created = driver.new_session().await.expect("new");
         assert_ack_unread(&driver);
