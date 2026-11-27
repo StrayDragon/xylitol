@@ -5289,6 +5289,78 @@ fn activity_fold_worked_for_sub_second_is_approx() {
 }
 
 #[test]
+fn activity_fold_resume_keeps_milli_stamps_for_sub_second_wording() {
+    use xylitol_plugin_sdk::session::{
+        EntryBase, MessageEntry, SessionEntry, fixture_message_json,
+    };
+
+    let quick_assistant = serde_json::json!({
+        "role": "assistant",
+        "content": [
+            { "type": "thinking", "thinking": "hmm" },
+            { "type": "text", "text": "quick answer" },
+        ],
+    });
+    let slow_assistant = serde_json::json!({
+        "role": "assistant",
+        "content": [
+            { "type": "thinking", "thinking": "hmm slow" },
+            { "type": "text", "text": "slow answer" },
+        ],
+    });
+    let t0: u64 = 1_795_508_584_700;
+    let mk = |id: &str, parent: Option<&str>, ts: u64, message: serde_json::Value| {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.map(str::to_string),
+                timestamp: ts,
+            },
+            message,
+        })
+    };
+    let entries = vec![
+        mk("u1", None, t0, fixture_message_json("user", "quick ask")),
+        mk("a1", Some("u1"), t0 + 400, quick_assistant),
+        mk(
+            "u2",
+            Some("a1"),
+            t0 + 5_000,
+            fixture_message_json("user", "slow ask"),
+        ),
+        mk("a2", Some("u2"), t0 + 9_000, slow_assistant),
+    ];
+
+    assert_eq!(
+        super::activity_fold::parse_timestamp("1795508584900").map(|dt| dt.unix_timestamp_nanos()),
+        Some(1_795_508_584_900_000_000),
+        "millisecond stamps must keep sub-second precision"
+    );
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+    session.apply_resume_session("sid-milli", entries, false);
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut()
+        .activity_mut()
+        .force_level("seg-0", super::activity_fold::SegmentLevel::L3);
+    root.borrow_mut().touch_activity();
+    let plain = xylitol_tui::utils::strip_ansi_codes(&root.borrow_mut().render(100).join("\n"));
+    assert!(
+        plain.contains("Worked for <1s"),
+        "a 400ms turn must keep the <1s wording: {plain}"
+    );
+    assert!(
+        !plain.contains("Worked for 1s"),
+        "second-truncated stamps must not inflate a sub-second turn: {plain}"
+    );
+    assert!(
+        plain.contains("Worked for 4s"),
+        "whole-second turns keep their duration: {plain}"
+    );
+}
+
+#[test]
 fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
     use super::activity_fold::{SegmentClock, SegmentLevel};
     use super::layout::UiRoot;

@@ -45,8 +45,14 @@ pub fn parse_timestamp(raw: &str) -> Option<OffsetDateTime> {
         return Some(dt);
     }
     if let Ok(n) = raw.parse::<i64>() {
-        let secs = if n > 10_000_000_000 { n / 1000 } else { n };
-        return OffsetDateTime::from_unix_timestamp(secs).ok();
+        let (secs, nanos) = if n > 10_000_000_000 {
+            (n.div_euclid(1000), (n.rem_euclid(1000) as u32) * 1_000_000)
+        } else {
+            (n, 0)
+        };
+        return OffsetDateTime::from_unix_timestamp(secs)
+            .ok()
+            .and_then(|dt| dt.replace_nanosecond(nanos).ok());
     }
     None
 }
