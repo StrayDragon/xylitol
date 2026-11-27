@@ -1,6 +1,9 @@
 ---
 title: "abort 轮次落盘结束墙钟并恢复 Worked for 时长"
 depends_on: []
+branch: sdd/c3365-add-abort-turn-end-stamp
+base_branch: main
+base_sha: ab9d2c79992e9436b43bb8b45cb737c0a97c7d06
 ---
 
 # abort 轮次落盘结束墙钟并恢复 Worked for 时长

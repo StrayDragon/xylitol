@@ -196,6 +196,15 @@
       当 经 Driver 启动会话并在首个 TextDelta 后 abort
       那么 事件流包含 aborted 错误
 
+  @req:r3376
+  规则: abort 轮次结束墙钟落盘
+    turn 以 abort 终止且本轮尚未落盘任何 assistant 消息时，System 必须落盘一条 content 为空、stop_reason 为 aborted、无 errorMessage 的 assistant 消息作为该轮次结束墙钟，并纳入 AgentEnd 消息集；该标记消息不得进入 project_for_llm 投影；不得改变 AgentEnd 的 reason 语义；已有部分 assistant 消息落盘的轮次与正常完成的轮次不得追加该标记。
+
+    场景: 流前中止落盘结束标记
+      假如 装配 agent 并提交一条消息
+      当 模型流产生任何内容前 abort
+      那么 会话落盘恰好一条空 aborted assistant 标记且 AgentEnd 消息集含该标记
+
   @req:r1031
   规则: unknown-event-degrade
     应用面/bridge 对未识别 XyEvent 变体 须降级（日志），不得 panic。由 protocol 单元测试覆盖。

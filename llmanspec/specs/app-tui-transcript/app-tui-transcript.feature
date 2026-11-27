@@ -206,16 +206,20 @@
       那么 该块经覆盖表收起且覆盖表只有这一个条目
   @req:r1353
   规则: activity-nested-envelope-cluster
-    产品 须将 live scrollback 中间活动按嵌套 Activity 管理：信封（一轮）套簇套块。信封折叠可见 须为 User + 一行 Worked for + 该轮最后一段助手正文；中间助手正文与 Compaction、工具与 thinking 一并收纳。待办栏（checklist 投影）不得进信封。ScrollNotice 与 Error 不得进信封。信封展开 须仍画出夹在簇之间的中间助手正文，且 须留下 Worked for 头行与展开标记以便再折。簇展开后块级折叠 须仍服从 att20/att21。每信封与每簇 须有稳定 id，且 live 与 travel/fork/resume 重建 须同构。展开任一级 须留下该级头行与展开标记（att19），以便再折；例外：一簇的中间活动全部为 Compaction 时 不得再画簇摘要头，信封展开 须直接露出既有 Compaction 块。信封头、簇头与块头 须与未折叠细账同一列展示；不得用前导缩进表达嵌套层级。
+    产品 须将 live scrollback 中间活动按嵌套 Activity 管理：信封（一轮）套簇套块。信封折叠可见 须为 User + 一行 Worked for + 该轮最后一段助手正文；中间助手正文与 Compaction、工具与 thinking 一并收纳。待办栏（checklist 投影）不得进信封。ScrollNotice 与 Error 不得进信封。信封展开 须仍画出夹在簇之间的中间助手正文，且 须留下 Worked for 头行与展开标记以便再折。簇展开后块级折叠 须仍服从 att20/att21。每信封与每簇 须有稳定 id，且 live 与 travel/fork/resume 重建 须同构。展开任一级 须留下该级头行与展开标记（att19），以便再折；例外：一簇的中间活动全部为 Compaction 时 不得再画簇摘要头，信封展开 须直接露出既有 Compaction 块。abort 终止的轮次（以落盘轮次结束标记为准）须同样形成信封，即使该轮无任何可收纳中间活动；仅含该标记的簇 不得画簇摘要头；无助手正文的 abort 轮信封折叠视图 须为 User 加 Worked for 行，不得画空正文行。信封头、簇头与块头 须与未折叠细账同一列展示；不得用前导缩进表达嵌套层级。
 
     场景: 信封折叠隐藏内部保留头部无头
       当 以场景构建器回放四轮活动并按回合结束收纳
       那么 最旧信封折叠为用户行加 Worked for 加末段正文且无内层块
       当 左键单击折叠命中表中的信封三角列
       那么 该信封定点展开且中间助手正文与簇头行重新可见
+
+    场景: abort 轮次信封带时长
+      当 以场景构建器回放含空 abort 标记轮次的会话并重建
+      那么 abort 轮信封折叠为用户行加 Worked for 加亚秒时长且无簇摘要头
   @req:r1354
   规则: cluster-summary-envelope-worked-for
-    簇摘要行 须只描述真实发生的活动，英文 Title Case。文件层 须互斥：有改写（edit/write 等）则只写 Edited；否则有读或搜索则写 Explored；不得同一头并列 Edited 与 explored。有 shell 才追加 Ran N commands；仅 shell、无文件活动时整行 须为 Ran。N 须为去重 path 计数：恰一个写 `1 file`、多个写 `N files`（c2540：不得以 basename / 路径片段替代计数——具体文件由展开簇内子块呈现；`Explored .` 类输出随计数式天然消失）。无 path 的搜索 不得加成假文件数，但仍可使该簇进入 Explored。混合簇头 不得写入 thinking、MCP 或 compaction。当文件层与 Ran 皆空：仅 thinking 流式未结束 须为 Thinking（无时长）；思考通道结束后 须为 Thought，有可靠思考通道起止墙钟才附 Thought {Ns}；resume 须优先用落地的 thinkingElapsedSecs 恢复 Thought {Ns}；否则用落盘思考通道起止节点 unix-ms 相减；缺任一端 须省略时长，不得用相邻条目墙钟冒充思考时长，禁止伪造；不得流式滴答时长。同一轮中途 thinking 不切簇（att34），与工具或 Ask 同簇时簇头 须走 Edited / Explored / Ran / Used / Asking questions 等真实活动，不得用 Thought 当聚合头；todo_* 与其它未知/MCP 工具一样走 Used，不单开类目。Used 的 N 须为调用次数（与 Ran 同构），同一工具多次调用 须按次累加；仅一次时 须写 Used {短名}；多次 须写 Used N tools。checklist 投影行 不得计入 Used N。仅 MCP 或未知工具 须为 Used；仅 Ask 须为 Asking questions；仅 Compaction 不得画簇头（见 att23）。不得用文件占位虚构 Explored。打开簇进行中 须用 Editing / Exploring / Running（与文件互斥及 Ran 对齐）；封口后 须用 Edited / Explored / Ran。类目计数 须在工具开始时更新；+/- 须仅在有可靠 diff 统计时于工具结束附加，否则省略；不得伪造 +/-。无中间操作 不得生成空簇。信封 Worked for 须以可靠双端墙钟书写时长；不足 1s 须写 <1s；缺任一端 须仍可画 Worked for 但省略时长数字；不得伪造时长。
+    簇摘要行 须只描述真实发生的活动，英文 Title Case。文件层 须互斥：有改写（edit/write 等）则只写 Edited；否则有读或搜索则写 Explored；不得同一头并列 Edited 与 explored。有 shell 才追加 Ran N commands；仅 shell、无文件活动时整行 须为 Ran。N 须为去重 path 计数：恰一个写 `1 file`、多个写 `N files`（c2540：不得以 basename / 路径片段替代计数——具体文件由展开簇内子块呈现；`Explored .` 类输出随计数式天然消失）。无 path 的搜索 不得加成假文件数，但仍可使该簇进入 Explored。混合簇头 不得写入 thinking、MCP 或 compaction。当文件层与 Ran 皆空：仅 thinking 流式未结束 须为 Thinking（无时长）；思考通道结束后 须为 Thought，有可靠思考通道起止墙钟才附 Thought {Ns}；resume 须优先用落地的 thinkingElapsedSecs 恢复 Thought {Ns}；否则用落盘思考通道起止节点 unix-ms 相减；缺任一端 须省略时长，不得用相邻条目墙钟冒充思考时长，禁止伪造；不得流式滴答时长。同一轮中途 thinking 不切簇（att34），与工具或 Ask 同簇时簇头 须走 Edited / Explored / Ran / Used / Asking questions 等真实活动，不得用 Thought 当聚合头；todo_* 与其它未知/MCP 工具一样走 Used，不单开类目。Used 的 N 须为调用次数（与 Ran 同构），同一工具多次调用 须按次累加；仅一次时 须写 Used {短名}；多次 须写 Used N tools。checklist 投影行 不得计入 Used N。仅 MCP 或未知工具 须为 Used；仅 Ask 须为 Asking questions；仅 Compaction 不得画簇头（见 att23）。不得用文件占位虚构 Explored。打开簇进行中 须用 Editing / Exploring / Running（与文件互斥及 Ran 对齐）；封口后 须用 Edited / Explored / Ran。类目计数 须在工具开始时更新；+/- 须仅在有可靠 diff 统计时于工具结束附加，否则省略；不得伪造 +/-。无中间操作 不得生成空簇。信封 Worked for 须以可靠双端墙钟书写时长；不足 1s 须写 <1s；缺任一端 须仍可画 Worked for 但省略时长数字；不得伪造时长。abort 轮次的结束端 须以落盘的空 aborted assistant 标记墙钟恢复；不得用相邻轮次墙钟冒充。
 
     场景: 簇头部措辞互斥
       当 以场景构建器回放读后改写序列（read old.rs 然后 edit a.rs）

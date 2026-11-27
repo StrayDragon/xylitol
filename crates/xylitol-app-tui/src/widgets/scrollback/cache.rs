@@ -153,6 +153,7 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             detail.hash(&mut h);
             fold.defaults.compaction_expanded.hash(&mut h);
         }
+        UiEntry::TurnAbortMark => {}
     }
     h.finish()
 }

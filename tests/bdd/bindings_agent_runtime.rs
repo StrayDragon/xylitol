@@ -135,6 +135,12 @@ async fn test_c2826_abort_persist(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "流前中止落盘结束标记"
+)]
+async fn test_c3365_abort_end_mark(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "用户取消归因端可见"
 )]
 async fn test_ar_user_cancel_reason(agent: AgentState, ws: Workspace, bridge_bdd: BridgeBdd) {}

@@ -22,6 +22,17 @@ pub(crate) fn upsert_streaming_tool(
     }
 }
 
+pub(crate) fn abort_turn_end_mark() -> AgentMessage {
+    build_assistant_message(
+        Vec::new(),
+        Some(xylitol_plugin_sdk::message::XyStopReason::Aborted),
+        None,
+        String::new(),
+        String::new(),
+        None,
+    )
+}
+
 pub(crate) fn streaming_assistant_parts(
     text: &str,
     thinking: &str,

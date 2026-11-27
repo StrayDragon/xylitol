@@ -97,6 +97,9 @@
       那么 已流式正文保留且至多一行 aborted 提示且相位 idle
       当 再注入同轮 aborted 错误
       那么 不追加重复 aborted 行
+  @req:r3379
+  规则: 空abort标记投影
+    resume/live 重建遇到 content 为空且无 errorMessage 的 aborted assistant 消息时，产品 bridge 必须投影为不可见的轮次结束标记：不得画助手气泡，不得画 Aborted 通知；该标记必须参与 abort 轮次信封形成与 Worked for 时长恢复。部分内容的 aborted assistant 维持现行投影（含 Aborted 通知），不得被本规则改变。本规则的端到端可观察行为由 app-tui-transcript 的 abort 信封场景覆盖，产品端另以单测断言两种投影形状。
   @req:r1178
   规则: error-kind-branch
     产品 bridge 收到 XyEvent::Error 时 须按 kind 分流：Aborted（或 is_aborted）须走 atb7 的 ScrollNotice/idle 路径，不得追加粘性 UiEntry::Error；其余 kind（Config/Session/Provider/Tool/Message/…）须追加粘性 UiEntry::Error（文案为 message），并 须记录含 error.kind 的日志。不得把非 abort 错误伪装成 Aborted 脚注。

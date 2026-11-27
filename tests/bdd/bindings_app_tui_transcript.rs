@@ -112,6 +112,12 @@ fn test_att23_envelope_fold(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "abort 轮次信封带时长"
+)]
+fn test_c3365_abort_turn_envelope_duration(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
     name = "活动自动折叠窗口无头"
 )]
 fn test_att26_auto_collapse(tui_interaction: TuiInteraction) {}

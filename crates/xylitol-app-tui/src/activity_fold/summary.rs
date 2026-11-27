@@ -21,6 +21,7 @@ pub struct ActivityCounts {
     pub used_calls: u32,
     pub asks: u32,
     pub compaction: u32,
+    pub turn_abort: u32,
     pub diff_plus: Option<u32>,
     pub diff_minus: Option<u32>,
     pub live_think_id: Option<String>,
@@ -28,7 +29,7 @@ pub struct ActivityCounts {
 
 impl ActivityCounts {
     pub fn omits_cluster_header(&self) -> bool {
-        self.compaction > 0
+        (self.compaction > 0 || self.turn_abort > 0)
             && self.edit_paths.is_empty()
             && self.explore_paths.is_empty()
             && !self.search_no_path
@@ -150,6 +151,7 @@ fn counts_from_atoms(atoms: impl IntoIterator<Item = ActivityAtom>) -> ActivityC
             }
             ActivityAtom::Ask { .. } => c.asks += 1,
             ActivityAtom::Compaction => c.compaction += 1,
+            ActivityAtom::TurnAbortMark => c.turn_abort += 1,
             ActivityAtom::Noise => {}
         }
     }

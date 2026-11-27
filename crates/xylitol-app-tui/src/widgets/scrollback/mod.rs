@@ -397,6 +397,9 @@ pub fn render_scrollback(
                 &mut need_spacer,
             );
         }
+        if matches!(entry, UiEntry::TurnAbortMark) {
+            continue;
+        }
         let glued_to_header = plan.cluster_header_at.contains_key(&entry_idx);
         if need_spacer && !glued_to_header {
             lines.push(inter_block_spacer(width));
@@ -489,6 +492,7 @@ pub fn render_scrollback(
             UiEntry::ScrollNotice { text } => paint_scroll_notice_block(text, paint_ctx),
             UiEntry::SystemMessage { text } => paint_system_message_block(text, paint_ctx),
             UiEntry::Error { text } => paint_error_block(text, paint_ctx),
+            UiEntry::TurnAbortMark => (Vec::new(), Vec::new()),
         };
         cache.entry_misses = cache.entry_misses.saturating_add(1);
         if entry_idx < cache.entries.len() {

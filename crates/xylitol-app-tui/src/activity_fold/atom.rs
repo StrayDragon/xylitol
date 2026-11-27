@@ -30,6 +30,7 @@ pub enum ActivityAtom {
         id: String,
     },
     Compaction,
+    TurnAbortMark,
     Noise,
 }
 
@@ -83,6 +84,7 @@ pub fn activity_atom(entry: &UiEntry) -> ActivityAtom {
         UiEntry::Thinking { id, .. } => ActivityAtom::Think { id: id.clone() },
         UiEntry::Ask { id, .. } => ActivityAtom::Ask { id: id.clone() },
         UiEntry::Compaction { .. } => ActivityAtom::Compaction,
+        UiEntry::TurnAbortMark => ActivityAtom::TurnAbortMark,
         UiEntry::Bash { .. }
         | UiEntry::User { .. }
         | UiEntry::Assistant { .. }
@@ -274,6 +276,9 @@ mod tests {
         );
         assert_atom(UiEntry::ScrollNotice { text: "n".into() }, |a| {
             matches!(a, ActivityAtom::Noise)
+        });
+        assert_atom(UiEntry::TurnAbortMark, |a| {
+            a.is_foldable_middle() && matches!(a, ActivityAtom::TurnAbortMark)
         });
         assert_atom(UiEntry::Error { text: "e".into() }, |a| {
             matches!(a, ActivityAtom::Noise)

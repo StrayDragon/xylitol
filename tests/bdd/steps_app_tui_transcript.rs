@@ -1241,6 +1241,88 @@ fn then_rebuild_folds_all(tui_interaction: &TuiInteraction) {
     );
 }
 
+fn abort_mark_turn_fixture() -> (Vec<SessionEntry>, SessionTreeTravel) {
+    let t0: u64 = 1_795_508_584_700;
+    let mk = |id: &str, parent: Option<&str>, ts: u64, message: serde_json::Value| {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.map(str::to_string),
+                timestamp: ts,
+            },
+            message,
+        })
+    };
+    let entries = vec![
+        mk(
+            "u-abort",
+            None,
+            t0,
+            serde_json::json!({
+                "role": "user",
+                "content": [{ "type": "text", "text": "abort me" }],
+                "timestamp": 0u64,
+            }),
+        ),
+        mk(
+            "a-abort",
+            Some("u-abort"),
+            t0 + 400,
+            serde_json::json!({
+                "role": "assistant",
+                "content": [],
+                "stopReason": "aborted",
+                "timestamp": 0u64,
+            }),
+        ),
+    ];
+    let travel = SessionTreeTravel {
+        kind: SessionTreeKind::MessageHistory,
+        selected_id: "a-abort".into(),
+        leaf_id: Some("a-abort".into()),
+        editor_text: None,
+    };
+    (entries, travel)
+}
+
+#[when("以场景构建器回放含空 abort 标记轮次的会话并重建")]
+fn when_mount_abort_mark_turn_rebuild(tui_interaction: &TuiInteraction) {
+    let (entries, travel) = abort_mark_turn_fixture();
+    let mut model = UiModel::default();
+    rebuild_scrollback_from_travel(&mut model, &entries, &travel);
+    let mut fx = InteractionBdd::from_model(model);
+    fx.open_hit_viewport(400);
+    fx.rebuild_activity(&entries, &travel);
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[then("abort 轮信封折叠为用户行加 Worked for 加亚秒时长且无簇摘要头")]
+fn then_abort_turn_envelope_with_duration(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert!(
+        plain.contains("abort me"),
+        "c3365: the abort turn keeps its user row:\n{plain}"
+    );
+    assert_eq!(
+        worked_for_lines(&plain),
+        1,
+        "c3365: the abort turn forms exactly one envelope:\n{plain}"
+    );
+    assert!(
+        plain.contains("Worked for <1s"),
+        "c3365: the persisted end mark restores the sub-second duration:\n{plain}"
+    );
+    assert!(
+        !plain.contains("Operation aborted"),
+        "c3365: the mark projects no aborted notice:\n{plain}"
+    );
+    assert!(
+        !plain.lines().any(|l| l.contains("Activity")),
+        "c3365: a mark-only cluster paints no cluster summary head:\n{plain}"
+    );
+}
+
 #[when("关闭 ActivityFold 重挂并按回合结束收纳")]
 fn when_mount_disabled_fold(tui_interaction: &TuiInteraction) {
     use xylitol_app_tui::ActivityFoldSettings;

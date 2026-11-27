@@ -1,5 +1,21 @@
-use crate::bridge::{UiModel, UiPhase, push_user_entry_dedup, sync_tool_intent_from_message};
+use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage, XyStopReason};
+
+use crate::bridge::{
+    UiEntry, UiModel, UiPhase, push_user_entry_dedup, sync_tool_intent_from_message,
+};
 use crate::driver::XyEvent;
+
+fn is_turn_abort_end_mark(messages: &[AgentMessage]) -> bool {
+    matches!(
+        messages.last(),
+        Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage {
+            content,
+            stop_reason: Some(XyStopReason::Aborted),
+            error_message: None,
+            ..
+        })) if content.is_empty()
+    )
+}
 
 pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
@@ -7,9 +23,12 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
             model.set_busy_placeholder("Working");
             true
         }
-        XyEvent::AgentEnd { reason, .. } => {
+        XyEvent::AgentEnd { messages, reason } => {
             model.flush_streaming();
             if let Some(reason) = reason {
+                if is_turn_abort_end_mark(messages) {
+                    model.entries.push(UiEntry::TurnAbortMark);
+                }
                 model.note_agent_end_reason(*reason);
             }
             model.maybe_idle_after_agent_end();

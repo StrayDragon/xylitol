@@ -300,6 +300,20 @@ mod tests {
     }
 
     #[test]
+    fn mark_only_abort_turn_forms_one_headerless_cluster() {
+        let entries = vec![UiEntry::User { text: "u".into() }, UiEntry::TurnAbortMark];
+        let segs = partition_segments(&entries);
+        assert_eq!(segs.len(), 1, "the mark alone must seal a segment");
+        assert_eq!(segs[0].clusters.len(), 1);
+        assert_eq!(segs[0].clusters[0].middle, 1..2);
+        assert_eq!(segs[0].assistant_idx, None);
+        assert!(
+            crate::activity_fold::cluster_omits_header(&entries, &segs[0].clusters[0]),
+            "a mark-only cluster must not paint a cluster summary head"
+        );
+    }
+
+    #[test]
     fn partition_stable_ids_match_user_index() {
         let entries = vec![
             UiEntry::User { text: "a".into() },

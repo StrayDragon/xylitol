@@ -338,6 +338,35 @@ mod tests {
     }
 
     #[test]
+    fn empty_aborted_assistant_skipped_for_llm() {
+        use xylitol_plugin_sdk::message::XyStopReason;
+
+        let mark = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
+            content: Vec::new(),
+            stop_reason: Some(XyStopReason::Aborted),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: now_ms(),
+            diagnostics: Vec::new(),
+        });
+        let history = vec![AgentMessage::user("hi"), mark, AgentMessage::user("again")];
+        let projected = project_for_llm(&history);
+        assert_eq!(
+            projected.len(),
+            2,
+            "mark must not reach the LLM: {projected:?}"
+        );
+        assert!(
+            projected.iter().all(|m| m.role_name() == "user"),
+            "only the user rows remain: {projected:?}"
+        );
+    }
+
+    #[test]
     fn llm_passthrough_is_identity() {
         let user = AgentMessage::user("hi");
         let projected = project_for_llm(std::slice::from_ref(&user));

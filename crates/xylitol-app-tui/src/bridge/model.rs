@@ -157,6 +157,7 @@ pub enum UiEntry {
     Error {
         text: String,
     },
+    TurnAbortMark,
 }
 
 pub const STREAMING_THINK_ID: &str = "live:streaming";
@@ -503,6 +504,7 @@ impl UiModel {
                 },
                 UiEntry::ScrollNotice { text } => lines.push(format!("scroll_notice: {text}")),
                 UiEntry::Error { text } => lines.push(format!("error: {text}")),
+                UiEntry::TurnAbortMark => {}
             }
         }
         for (kind, text) in self.streaming_scrollback_tails() {

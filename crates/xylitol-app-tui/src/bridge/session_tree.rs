@@ -396,6 +396,7 @@ fn assistant_parts_to_ui(
         let text = message_text(message);
         return assistant_terminal_ui(stop, error_message, text);
     };
+    let content_empty = parts.is_empty();
 
     let mut out = Vec::new();
     for part in parts {
@@ -485,7 +486,7 @@ fn assistant_parts_to_ui(
         }
     }
 
-    push_assistant_terminal_note(&mut out, stop, error_message);
+    push_assistant_terminal_note(&mut out, stop, error_message, content_empty);
     out
 }
 
@@ -495,10 +496,11 @@ fn assistant_terminal_ui(
     text: String,
 ) -> Vec<UiEntry> {
     let mut out = Vec::new();
+    let content_empty = text.is_empty();
     if !text.is_empty() {
         out.push(UiEntry::Assistant { text });
     }
-    push_assistant_terminal_note(&mut out, stop, error_message);
+    push_assistant_terminal_note(&mut out, stop, error_message, content_empty);
     out
 }
 
@@ -506,6 +508,7 @@ fn push_assistant_terminal_note(
     out: &mut Vec<UiEntry>,
     stop: Option<&str>,
     error_message: Option<&str>,
+    content_empty: bool,
 ) {
     match stop {
         Some("error") => {
@@ -513,6 +516,9 @@ fn push_assistant_terminal_note(
                 .map(str::to_string)
                 .unwrap_or_else(|| "Error".into());
             out.push(UiEntry::Error { text });
+        }
+        Some("aborted") if content_empty && error_message.is_none() => {
+            out.push(UiEntry::TurnAbortMark);
         }
         Some("aborted") => {
             let text = error_message
@@ -616,6 +622,62 @@ mod tests {
             ] if text == "step 1" && reply == "hello"),
             "got: {ui:?}"
         );
+    }
+
+    #[test]
+    fn rebuild_projects_empty_aborted_as_turn_abort_mark() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: 0,
+            },
+            message: json!({
+                "role": "assistant",
+                "content": [],
+                "stopReason": "aborted",
+                "timestamp": 0u64,
+            }),
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert_eq!(
+            ui,
+            vec![UiEntry::TurnAbortMark],
+            "an empty aborted assistant is the invisible turn end mark: {ui:?}"
+        );
+    }
+
+    #[test]
+    fn rebuild_keeps_partial_aborted_projection_with_notice() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: 0,
+            },
+            message: json!({
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "partial draft" }],
+                "stopReason": "aborted",
+                "timestamp": 0u64,
+            }),
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert_eq!(
+            ui,
+            vec![
+                UiEntry::Assistant {
+                    text: "partial draft".into(),
+                },
+                UiEntry::ScrollNotice {
+                    text: "Operation aborted".into(),
+                },
+            ],
+            "partial aborted assistants keep the current projection: {ui:?}"
+        );
+        assert!(!ui.contains(&UiEntry::TurnAbortMark));
     }
 
     #[test]

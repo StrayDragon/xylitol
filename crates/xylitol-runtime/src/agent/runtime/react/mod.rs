@@ -4,8 +4,8 @@ pub(crate) mod support;
 
 use crate::utils::{StreamNode, StreamNodeClock};
 use assistant::{
-    build_assistant_message, current_provider_model, streaming_assistant_parts,
-    streaming_message_update, upsert_streaming_tool,
+    abort_turn_end_mark, build_assistant_message, current_provider_model,
+    streaming_assistant_parts, streaming_message_update, upsert_streaming_tool,
 };
 use step_end::{
     FinishTurnOutcome, IterationClose, close_iteration, drain_queue, pop_queue, queue_items,
@@ -1104,6 +1104,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             agent_turn_span.as_ref().map(|s| s.span()),
         );
         let mut abort_reason: Option<AgentEndReason> = None;
+        let mut turn_persisted_assistant = false;
         let mut step_consumes_new_user = true;
         let chain_active = !loop_chain.is_empty();
         let decide_active = !loop_chain.decide_continue.is_empty();
@@ -1384,6 +1385,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             Some(err_text.clone()),
                         );
                         persist_agent_message(&store, &session_id, &err_asst).await;
+                        turn_persisted_assistant = true;
                         history.push(err_asst);
                         yield XyEvent::error_msg(err_text);
                         let will_continue = try_turn_end_compaction(
@@ -1464,6 +1466,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     Some(&stream_clock),
                                 )
                                 .await;
+                                turn_persisted_assistant = true;
                                 yield XyEvent::MessageEnd {
                                     role: "assistant".to_string(),
                                     message: Some(assistant_msg.clone()),
@@ -1674,6 +1677,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     Some(&stream_clock),
                                 )
                                 .await;
+                                turn_persisted_assistant = true;
                                 yield XyEvent::MessageEnd {
                                     role: "assistant".to_string(),
                                     message: Some(msg.clone()),
@@ -1718,6 +1722,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         Some(&stream_clock),
                     )
                     .await;
+                    turn_persisted_assistant = true;
                 }
                 yield XyEvent::MessageEnd {
                     role: "assistant".to_string(),
@@ -2267,6 +2272,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let (ty, phase, ctx) = super::script_hook_ctx::turn_end();
                 observe_script_hook(bus, ty, phase, ctx).await;
             }
+            if turn_reason.is_some() && !turn_persisted_assistant {
+                let mark = abort_turn_end_mark();
+                persist_agent_message(&store, &session_id, &mark).await;
+                history.push(mark);
+            }
             yield XyEvent::AgentEnd {
                 messages: history.clone(),
                 reason: turn_reason,
@@ -2281,6 +2291,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     .map(|model| model.id.clone())
                     .unwrap_or_default()
             };
+            turn_persisted_assistant = false;
             stream_clock.stamp(StreamNode::AgentStart);
             coordinator.with_mut(|c| c.set_turn_in_flight(true));
             yield XyEvent::AgentStart {
@@ -2321,6 +2332,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             } else {
                 StepEndReason::Ok
             });
+        }
+        if abort_reason.is_some() && !turn_persisted_assistant {
+            let mark = abort_turn_end_mark();
+            persist_agent_message(&store, &session_id, &mark).await;
+            history.push(mark);
         }
         yield XyEvent::AgentEnd {
             messages: history,
@@ -3873,5 +3889,263 @@ mod loop_middleware_tests {
         );
         assert!(texts.iter().any(|text| text == "new question"));
         assert!(texts.iter().any(|text| text == "done"));
+    }
+
+    fn is_empty_aborted_end_mark(message: &xylitol_plugin_sdk::message::AgentMessage) -> bool {
+        matches!(
+            message,
+            xylitol_plugin_sdk::message::AgentMessage::Llm(
+                xylitol_plugin_sdk::message::XyLlmMessage::AssistantMessage {
+                    content,
+                    stop_reason: Some(xylitol_plugin_sdk::message::XyStopReason::Aborted),
+                    error_message: None,
+                    ..
+                },
+            ) if content.is_empty()
+        )
+    }
+
+    fn empty_aborted_end_mark_count(
+        messages: &[xylitol_plugin_sdk::message::AgentMessage],
+    ) -> usize {
+        messages
+            .iter()
+            .filter(|m| is_empty_aborted_end_mark(m))
+            .count()
+    }
+
+    struct SilentPendingStream;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for SilentPendingStream {
+        fn name(&self) -> &str {
+            "silent-pending-stream"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            Ok(Box::pin(futures::stream::pending()))
+        }
+    }
+
+    struct DeltaThenPending;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyModel for DeltaThenPending {
+        fn name(&self) -> &str {
+            "delta-then-pending"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+            _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
+            _stream: bool,
+            _options: xylitol_plugin_sdk::generate::XyGenerateOptions,
+        ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
+            Ok(Box::pin(
+                futures::stream::iter(vec![Ok(xylitol_plugin_sdk::model::XyChunk::TextDelta(
+                    "partial".into(),
+                ))])
+                .chain(futures::stream::pending()),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn abort_before_stream_persists_empty_aborted_end_mark() {
+        use xylitol_plugin_sdk::session::SessionEntry;
+
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(SilentPendingStream) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let store = base.store.clone();
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-abort-mark-pre").expect("bind");
+
+        let mut stream = runtime.submit_root("go").await;
+        runtime.abort();
+        let mut events = Vec::new();
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+
+        let (messages, reason) = events
+            .iter()
+            .find_map(|e| match e {
+                crate::agent::runtime::XyEvent::AgentEnd { messages, reason } => {
+                    Some((messages, *reason))
+                }
+                _ => None,
+            })
+            .expect("AgentEnd must be emitted");
+        assert_eq!(
+            reason,
+            Some(AgentEndReason::UserCancel),
+            "abort reason semantics must not change: {events:?}"
+        );
+        assert_eq!(
+            empty_aborted_end_mark_count(messages),
+            1,
+            "AgentEnd must carry exactly one end mark: {messages:?}"
+        );
+        assert!(
+            messages.last().is_some_and(is_empty_aborted_end_mark),
+            "the mark is the turn's trailing message: {messages:?}"
+        );
+
+        let entries = store
+            .load_entries("sess-abort-mark-pre")
+            .await
+            .expect("persisted session");
+        let assistants: Vec<_> = entries
+            .iter()
+            .filter_map(|entry| match entry {
+                SessionEntry::Message(m)
+                    if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant") =>
+                {
+                    Some(&m.message)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            assistants.len(),
+            1,
+            "exactly one assistant row is persisted: {assistants:?}"
+        );
+        let mark = assistants[0];
+        assert!(
+            mark.get("content")
+                .and_then(|c| c.as_array())
+                .is_none_or(Vec::is_empty),
+            "the persisted mark has empty content: {mark}"
+        );
+        assert_eq!(
+            mark.get("stopReason").and_then(|s| s.as_str()),
+            Some("aborted"),
+            "the persisted mark is aborted: {mark}"
+        );
+        assert!(
+            mark.get("errorMessage").is_none(),
+            "the persisted mark carries no errorMessage: {mark}"
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_mid_stream_without_content_persists_one_end_mark() {
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(SilentPendingStream) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let store = base.store.clone();
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-abort-mark-mid").expect("bind");
+
+        let mut stream = runtime.submit_root("go").await;
+        let mut events = Vec::new();
+        while let Some(ev) = stream.next().await {
+            let in_assistant_message_start = matches!(
+                &ev,
+                crate::agent::runtime::XyEvent::MessageStart { role, .. } if role == "assistant"
+            );
+            events.push(ev);
+            if in_assistant_message_start {
+                runtime.abort();
+                break;
+            }
+        }
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+
+        let (messages, reason) = events
+            .iter()
+            .find_map(|e| match e {
+                crate::agent::runtime::XyEvent::AgentEnd { messages, reason } => {
+                    Some((messages, *reason))
+                }
+                _ => None,
+            })
+            .expect("AgentEnd must be emitted");
+        assert_eq!(reason, Some(AgentEndReason::UserCancel), "{events:?}");
+        assert_eq!(
+            empty_aborted_end_mark_count(messages),
+            1,
+            "in-stream cancel with empty parts still lands one mark: {messages:?}"
+        );
+        let entries = store
+            .load_entries("sess-abort-mark-mid")
+            .await
+            .expect("persisted session");
+        let aborted = entries
+            .iter()
+            .filter_map(|entry| entry.as_agent_message())
+            .filter(is_empty_aborted_end_mark)
+            .count();
+        assert_eq!(
+            aborted, 1,
+            "exactly one empty aborted assistant is persisted: {entries:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_with_partial_assistant_appends_no_end_mark() {
+        let mut base = baseline();
+        base.model_builder =
+            Arc::new(|_| Arc::new(DeltaThenPending) as Arc<dyn xylitol_plugin_sdk::XyModel>);
+        let store = base.store.clone();
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-abort-partial").expect("bind");
+
+        let mut stream = runtime.submit_root("go").await;
+        let mut saw_delta = false;
+        let mut events = Vec::new();
+        while let Some(ev) = stream.next().await {
+            if !saw_delta && matches!(ev, crate::agent::runtime::XyEvent::TextDelta(_)) {
+                saw_delta = true;
+                runtime.abort();
+            }
+            events.push(ev);
+        }
+        assert!(saw_delta, "the turn must stream a delta first");
+
+        let (messages, reason) = events
+            .iter()
+            .find_map(|e| match e {
+                crate::agent::runtime::XyEvent::AgentEnd { messages, reason } => {
+                    Some((messages, *reason))
+                }
+                _ => None,
+            })
+            .expect("AgentEnd must be emitted");
+        assert_eq!(reason, Some(AgentEndReason::UserCancel), "{events:?}");
+        assert_eq!(
+            empty_aborted_end_mark_count(messages),
+            0,
+            "a partially persisted turn must not gain a mark: {messages:?}"
+        );
+        let entries = store
+            .load_entries("sess-abort-partial")
+            .await
+            .expect("persisted session");
+        let assistants: Vec<_> = entries
+            .iter()
+            .filter_map(|entry| entry.as_agent_message())
+            .filter(|m| m.role_name() == "assistant")
+            .collect();
+        assert_eq!(
+            assistants.len(),
+            1,
+            "only the partial assistant: {assistants:?}"
+        );
+        assert_eq!(assistants[0].text(), "partial", "partial text survives");
     }
 }

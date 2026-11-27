@@ -5361,6 +5361,87 @@ fn activity_fold_resume_keeps_milli_stamps_for_sub_second_wording() {
 }
 
 #[test]
+fn activity_fold_abort_turn_envelope_restores_duration_from_end_mark() {
+    use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
+
+    let t0: u64 = 1_795_508_584_700;
+    let mk = |id: &str, parent: Option<&str>, ts: u64, message: serde_json::Value| {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.map(str::to_string),
+                timestamp: ts,
+            },
+            message,
+        })
+    };
+    let entries = vec![
+        mk(
+            "u1",
+            None,
+            t0,
+            serde_json::json!({
+                "role": "user",
+                "content": [{ "type": "text", "text": "abort me" }],
+                "timestamp": 0u64,
+            }),
+        ),
+        mk(
+            "a1",
+            Some("u1"),
+            t0 + 400,
+            serde_json::json!({
+                "role": "assistant",
+                "content": [],
+                "stopReason": "aborted",
+                "timestamp": 0u64,
+            }),
+        ),
+    ];
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+    session.apply_resume_session("sid-abort-mark", entries, false);
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut()
+        .activity_mut()
+        .force_level("seg-0", super::activity_fold::SegmentLevel::L3);
+    root.borrow_mut().touch_activity();
+    let plain = xylitol_tui::utils::strip_ansi_codes(&root.borrow_mut().render(100).join("\n"));
+    assert!(
+        plain.contains("abort me"),
+        "the abort turn keeps its user row: {plain}"
+    );
+    assert!(
+        plain.contains("Worked for <1s"),
+        "the persisted end mark restores the sub-second turn end: {plain}"
+    );
+    assert!(
+        !plain.contains("Activity"),
+        "a mark-only cluster must not paint a cluster summary head: {plain}"
+    );
+    assert!(
+        !plain.contains("Operation aborted"),
+        "the persisted mark projects no aborted notice: {plain}"
+    );
+    let entries = &session.ui_model_mut().entries;
+    assert!(
+        entries.starts_with(&[
+            crate::bridge::UiEntry::User {
+                text: "abort me".into(),
+            },
+            crate::bridge::UiEntry::TurnAbortMark,
+        ]),
+        "the rebuilt transcript is the user row plus the invisible mark: {entries:?}"
+    );
+    assert_eq!(entries.len(), 3, "no assistant bubble row for the mark");
+    assert!(matches!(
+        entries.last(),
+        Some(crate::bridge::UiEntry::ScrollNotice { .. })
+    ));
+}
+
+#[test]
 fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
     use super::activity_fold::{SegmentClock, SegmentLevel};
     use super::layout::UiRoot;

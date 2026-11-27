@@ -2201,3 +2201,133 @@ pub(crate) fn _t_ar_agent_start_fields(agent: &AgentState) {
         "AgentStart.model MUST equal the run-start current model id"
     );
 }
+
+thread_local! {
+    static AR_ABORT_MARK: RefCell<Option<AbortMarkBdd>> = const { RefCell::new(None) };
+}
+
+struct AbortMarkBdd {
+    driver: xylitol::embed::XyInProcessDriver,
+    store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
+    sid: String,
+    stream: xylitol_runtime::driver::EventStream,
+    events: Vec<XyEvent>,
+}
+
+#[given("装配 agent 并提交一条消息")]
+pub(crate) async fn g_ar_abort_mark_submit(agent: &AgentState, ws: &Workspace) {
+    use xylitol::embed::{XyDriver, XySessionOps, assemble_driver};
+    reset_fake_state();
+    ws.init();
+    ar_register_fake(agent, "ar-abort-mark");
+    set_fake_slow_stream(40, 20);
+    let (runtime, store) = make_agent_with_store(agent);
+    let mut driver = assemble_driver(runtime, store.clone());
+    let sid = driver.new_session().await.expect("abort mark session");
+    let stream = driver.run("abort me").await;
+    AR_ABORT_MARK.with(|slot| {
+        *slot.borrow_mut() = Some(AbortMarkBdd {
+            driver,
+            store,
+            sid,
+            stream,
+            events: Vec::new(),
+        });
+    });
+}
+
+#[when("模型流产生任何内容前 abort")]
+pub(crate) async fn w_ar_abort_before_content() {
+    use xylitol::embed::XyDriver;
+    let mut fx = AR_ABORT_MARK
+        .with(|slot| slot.borrow_mut().take())
+        .expect("abort mark fixture must be assembled");
+    fx.driver.abort();
+    while let Some(event) = fx.stream.next().await {
+        fx.events.push(event);
+    }
+    AR_ABORT_MARK.with(|slot| *slot.borrow_mut() = Some(fx));
+}
+
+#[then("会话落盘恰好一条空 aborted assistant 标记且 AgentEnd 消息集含该标记")]
+pub(crate) async fn t_ar_abort_mark_persisted() {
+    use xylitol_plugin_sdk::message::{XyLlmMessage, XyStopReason};
+
+    let fx = AR_ABORT_MARK
+        .with(|slot| slot.borrow_mut().take())
+        .expect("abort mark fixture must be assembled");
+    let (messages, reason) = fx
+        .events
+        .iter()
+        .find_map(|event| match event {
+            XyEvent::AgentEnd { messages, reason } => Some((messages, *reason)),
+            _ => None,
+        })
+        .expect("AgentEnd must be emitted");
+    assert!(
+        reason.is_some(),
+        "the aborted turn ends with an abort reason: {:?}",
+        fx.events
+    );
+    let marks = messages
+        .iter()
+        .filter(|m| {
+            matches!(
+                m,
+                xylitol_plugin_sdk::message::AgentMessage::Llm(
+                    XyLlmMessage::AssistantMessage {
+                        content,
+                        stop_reason: Some(XyStopReason::Aborted),
+                        error_message: None,
+                        ..
+                    }
+                ) if content.is_empty()
+            )
+        })
+        .count();
+    assert_eq!(
+        marks, 1,
+        "AgentEnd must carry exactly one empty aborted mark: {messages:?}"
+    );
+
+    let entries = fx
+        .store
+        .load_entries(&fx.sid)
+        .await
+        .expect("persisted session");
+    let assistants: Vec<&serde_json::Value> = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            SessionEntry::Message(m)
+                if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant") =>
+            {
+                Some(&m.message)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        assistants.len(),
+        1,
+        "exactly one assistant row is persisted: {assistants:?}"
+    );
+    let mark = assistants[0];
+    assert!(
+        mark.get("content")
+            .and_then(|c| c.as_array())
+            .is_none_or(|parts| parts.is_empty()),
+        "the persisted mark has empty content: {mark}"
+    );
+    assert_eq!(
+        mark.get("stopReason").and_then(|s| s.as_str()),
+        Some("aborted"),
+        "the persisted mark is aborted: {mark}"
+    );
+    assert!(
+        !mark
+            .get("errorMessage")
+            .and_then(|e| e.as_str())
+            .is_some_and(|s| !s.is_empty()),
+        "the persisted mark carries no errorMessage: {mark}"
+    );
+}
